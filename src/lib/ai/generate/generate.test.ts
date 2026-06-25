@@ -43,7 +43,7 @@ function scriptedProvider(replies: string[]): Provider {
 			throw new Error('not used — orchestrator drives chatStream directly');
 		},
 		generateQuiz: () => Promise.reject(new Error('P4')),
-		gradeAnswer: () => Promise.reject(new Error('P4'))
+		gradeShortAnswer: () => Promise.reject(new Error('P4'))
 	};
 }
 

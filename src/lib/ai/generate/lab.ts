@@ -13,6 +13,9 @@
 import { z } from 'zod';
 import { uuid } from '$lib/db/ids';
 import type { LabChecklistItem } from '$lib/db/repositories/labs';
+import { extractFencedJson } from './fence';
+
+export { extractFencedJson } from './fence';
 
 /**
  * The shape we ask the model to emit. `checklist` items carry only `{ text }`;
@@ -65,34 +68,6 @@ export class LabParseError extends Error {
 		super(message);
 		this.name = 'LabParseError';
 	}
-}
-
-/**
- * Pull the first ```json (or bare ```) fenced block from `raw`. Falls back to
- * the whole (trimmed) string when there's no fence — some models emit bare JSON.
- *
- * **Nested-fence handling:** model output frequently embeds code blocks inside
- * JSON string values (e.g. a step containing ` ```hcl ... ``` `). A naive
- * non-greedy `([\s\S]*?)``` would stop at the *inner* fence and yield
- * truncated, unparseable JSON. We instead capture from the opening fence to the
- * LAST ``` in the text (greedy across the body), which correctly keeps nested
- * fences intact as part of the JSON string. If that fails to parse, the caller's
- * retry path kicks in.
- */
-export function extractFencedJson(raw: string): string {
-	const trimmed = raw.trim();
-	// Opening fence: ``` optionally tagged (json/JSON/no tag).
-	const open = trimmed.match(/```(?:json)?\s*\n?/i);
-	if (!open || open.index === undefined) return trimmed;
-	const start = open.index + open[0].length;
-	// Closing fence: the LAST ``` in the text (greedy). This preserves any
-	// nested ``` that appear inside JSON string values.
-	const closeIdx = trimmed.lastIndexOf('```');
-	if (closeIdx <= start) {
-		// No closing fence after the opening one — take everything to the end.
-		return trimmed.slice(start).trim();
-	}
-	return trimmed.slice(start, closeIdx).trim();
 }
 
 /**

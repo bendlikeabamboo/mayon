@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import { quizAnswers, quizAttempts, type QuizAnswer, type QuizAttempt } from '$lib/db/schema';
 import { getDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
@@ -27,8 +27,14 @@ export const quizAttemptsRepo = {
 		return rows[0] ?? null;
 	},
 
+	/** All attempts for a quiz, newest first (for the attempt-history view). */
 	async listByQuiz(quizId: string): Promise<QuizAttempt[]> {
-		return getDb().select().from(quizAttempts).where(eq(quizAttempts.quizId, quizId)).all();
+		return getDb()
+			.select()
+			.from(quizAttempts)
+			.where(eq(quizAttempts.quizId, quizId))
+			.orderBy(desc(quizAttempts.startedAt))
+			.all();
 	}
 };
 

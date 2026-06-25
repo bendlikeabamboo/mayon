@@ -1,10 +1,11 @@
 /**
  * Provider/AI layer public types. Spec: `refinement/architecture.md` §6.
  *
- * The `Provider` interface is the single shape every adapter implements. Only
- * `chatStream` is functional in P1; `generateLab`/`generateQuiz`/`gradeAnswer`
- * are declared here to lock the shape so later phases don't reopen adapters
- * (they throw `Error('P3')` / `Error('P4')`).
+ * The `Provider` interface is the single shape every adapter implements.
+ * `chatStream` is the only transport method; `generateLab`/`generateQuiz`/
+ * `gradeShortAnswer` are thin wrappers that delegate to the shared
+ * orchestrators in `generate/` (prompt-driven: stream, parse fenced JSON,
+ * retry on parse failure).
  */
 
 /** Provider kinds the registry can build adapters for. */
@@ -35,6 +36,12 @@ export interface ChatStreamOptions {
 import type { GeneratedLab } from './generate/lab';
 export type { GeneratedLab };
 
+// Same rationale for the P4 quiz/grading shapes: every adapter's
+// `generateQuiz` / `gradeShortAnswer` wrapper can reference them via the
+// `Provider` interface without re-importing from `generate/quiz.ts`.
+import type { GeneratedQuiz, GradedAnswer } from './generate/quiz';
+export type { GeneratedQuiz, GradedAnswer };
+
 /**
  * Static, non-secret configuration for a configured provider. Stored under the
  * `providers` settings key as `{[id]: ProviderConfig}`. API keys live separately
@@ -50,9 +57,10 @@ export interface ProviderConfig {
 }
 
 /**
- * The provider abstraction. Adapters implement `chatStream`; lab generation
- * delegates to the shared orchestrator in `generate/generate.ts` (every
- * adapter's `generateLab` is a thin wrapper). Quiz/grading stay stubbed until P4.
+ * The provider abstraction. Adapters implement `chatStream`; lab/quiz
+ * generation and short-answer grading delegate to the shared orchestrators in
+ * `generate/` (every adapter's `generateLab`/`generateQuiz`/`gradeShortAnswer`
+ * is a thin wrapper).
  */
 export interface Provider {
 	readonly kind: ProviderKind;
@@ -70,9 +78,26 @@ export interface Provider {
 	 */
 	generateLab(messages: ChatMessage[], opts?: ChatStreamOptions): Promise<GeneratedLab>;
 
-	// ── P4 generation helpers — declared now, implemented in P4. ─────────────
-	generateQuiz(_messages: ChatMessage[], _opts?: ChatStreamOptions): Promise<never>;
-	gradeAnswer(_questionId: string, _answer: string): Promise<never>;
+	/**
+	 * Generate a mixed quiz from `messages` (the chat context). Prompt-driven
+	 * (no wire JSON mode): streams tokens via `chatStream`, parses fenced JSON,
+	 * retries on parse failure (≤2). Delegates to the shared orchestrator in
+	 * `generate/generate-quiz.ts`. `AbortError` propagates.
+	 */
+	generateQuiz(messages: ChatMessage[], opts?: ChatStreamOptions): Promise<GeneratedQuiz>;
+
+	/**
+	 * Grade a learner's short answer against `rubric`, grounded in `context`.
+	 * Prompt-driven: streams tokens via `chatStream`, parses fenced JSON, retries
+	 * on parse failure (≤2). Delegates to the shared orchestrator in
+	 * `generate/generate-quiz.ts`. `AbortError` propagates.
+	 */
+	gradeShortAnswer(opts: {
+		prompt: string;
+		rubric: string;
+		answer: string;
+		context: ChatMessage[];
+	}): Promise<GradedAnswer>;
 }
 
 // ── Typed error declarations (implemented in errors.ts) ─────────────────────

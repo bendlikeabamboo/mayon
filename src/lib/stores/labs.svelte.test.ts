@@ -47,7 +47,7 @@ function baseProvider(generateLabImpl: () => Promise<GeneratedLab>): Provider {
 		},
 		generateLab: generateLabImpl,
 		generateQuiz: () => Promise.reject(new Error('P4')),
-		gradeAnswer: () => Promise.reject(new Error('P4'))
+		gradeShortAnswer: () => Promise.reject(new Error('P4'))
 	};
 }
 

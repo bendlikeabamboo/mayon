@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import {
 	quizQuestions,
 	quizzes,
@@ -38,6 +38,11 @@ export const quizzesRepo = {
 
 	async listByChat(chatId: string): Promise<Quiz[]> {
 		return getDb().select().from(quizzes).where(eq(quizzes.chatId, chatId)).all();
+	},
+
+	/** All quizzes, newest first (the `/quiz` index page groups by chat client-side). */
+	async listAll(): Promise<Quiz[]> {
+		return getDb().select().from(quizzes).orderBy(desc(quizzes.createdAt)).all();
 	},
 
 	async delete(id: string): Promise<void> {

@@ -11,7 +11,10 @@ import { streamSse } from '../transport';
 import { MissingKeyError } from '../types';
 import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
 import { generateLab as generateLabOrchestrator } from '../generate/generate';
-import { p3, p4 } from './stubs';
+import {
+	generateQuiz as generateQuizOrchestrator,
+	gradeShortAnswer as gradeShortAnswerOrchestrator
+} from '../generate/generate-quiz';
 
 /** Shape of a streamed OpenAI completion chunk (only the fields we read). */
 interface OpenAiStreamChunk {
@@ -68,8 +71,8 @@ export function createOpenAICompatibleAdapter(
 		// `adapter` is assigned to `const adapter` below, so this closure captures
 		// the fully-built provider (chatStream + generateLab) for the orchestrator.
 		generateLab: (messages, opts) => generateLabOrchestrator(adapter, messages, opts),
-		generateQuiz: p3,
-		gradeAnswer: p4
+		generateQuiz: (messages, opts) => generateQuizOrchestrator(adapter, messages, opts),
+		gradeShortAnswer: (input) => gradeShortAnswerOrchestrator(adapter, input)
 	};
 	return adapter;
 }

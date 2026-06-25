@@ -8,7 +8,10 @@
 import { streamNdjson } from '../transport';
 import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
 import { generateLab as generateLabOrchestrator } from '../generate/generate';
-import { p3, p4 } from './stubs';
+import {
+	generateQuiz as generateQuizOrchestrator,
+	gradeShortAnswer as gradeShortAnswerOrchestrator
+} from '../generate/generate-quiz';
 
 interface OllamaChatLine {
 	message?: { content?: string };
@@ -50,8 +53,8 @@ export function createOllamaAdapter(config: ProviderConfig): Provider {
 
 		// `adapter` is assigned below; the closure captures the built provider.
 		generateLab: (messages, opts) => generateLabOrchestrator(adapter, messages, opts),
-		generateQuiz: p3,
-		gradeAnswer: p4
+		generateQuiz: (messages, opts) => generateQuizOrchestrator(adapter, messages, opts),
+		gradeShortAnswer: (input) => gradeShortAnswerOrchestrator(adapter, input)
 	};
 	return adapter;
 }

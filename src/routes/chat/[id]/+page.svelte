@@ -2,13 +2,14 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { FlaskConical, Network } from '@lucide/svelte';
+	import { FlaskConical, ListChecks, Network } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
+	import { quizzesStore } from '$lib/stores/quizzes.svelte';
 	import { repos } from '$lib/db';
 	import { breadcrumbToRoot } from '$lib/chat/tree';
-	import type { Chat, Lab } from '$lib/db/schema';
+	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
@@ -19,6 +20,7 @@
 	let children = $state<Chat[]>([]);
 	let siblings = $state<Chat[]>([]);
 	let labs = $state<Lab[]>([]);
+	let quizzes = $state<Quiz[]>([]);
 
 	async function loadNav(chat: Chat) {
 		const subtree = await repos.chats.listSubtree(chat.rootId);
@@ -34,6 +36,8 @@
 		}
 		// Existing labs for this chat (shown as chips under the composer).
 		labs = await repos.labs.listByChat(chat.id);
+		// Existing quizzes for this chat (shown as chips under the composer).
+		quizzes = await repos.quizzes.listByChat(chat.id);
 	}
 
 	async function loadAll(chatId: string) {
@@ -76,6 +80,12 @@
 		if (id) await goto(`/lab/${id}`);
 	}
 
+	async function onGenerateQuiz() {
+		if (!chatStore.chat) return;
+		const id = await quizzesStore.generate(chatStore.chat.id);
+		if (id) await goto(`/quiz/${id}`);
+	}
+
 	async function onSaveRawLab() {
 		if (!labsStore.rawOffer) return;
 		const id = await labsStore.saveRaw(labsStore.rawOffer.chatId, labsStore.rawOffer.raw);
@@ -105,7 +115,7 @@
 					variant="ghost"
 					size="sm"
 					onclick={onGenerateLab}
-					disabled={chatStore.streaming || labsStore.generating}
+					disabled={chatStore.streaming || labsStore.generating || quizzesStore.generating}
 					title="Generate a hands-on lab from this chat"
 				>
 					<FlaskConical class="size-4" />
@@ -113,6 +123,20 @@
 						Generating…
 					{:else}
 						Generate lab
+					{/if}
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					onclick={onGenerateQuiz}
+					disabled={chatStore.streaming || labsStore.generating || quizzesStore.generating}
+					title="Generate a self-graded quiz from this chat"
+				>
+					<ListChecks class="size-4" />
+					{#if quizzesStore.generating}
+						Generating…
+					{:else}
+						Generate quiz
 					{/if}
 				</Button>
 				<Button
@@ -160,6 +184,18 @@
 			</div>
 		{/if}
 
+		{#if quizzesStore.error}
+			<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
+				<p class="font-medium text-red-700 dark:text-red-400">{quizzesStore.error.title}</p>
+				<p class="mt-0.5 text-red-700/90 dark:text-red-400/90">{quizzesStore.error.message}</p>
+				{#if quizzesStore.error.hint}
+					<p class="mt-1 text-xs text-muted-foreground">{quizzesStore.error.hint}</p>
+				{/if}
+				<Button variant="outline" size="sm" class="mt-2" onclick={onGenerateQuiz}>Regenerate</Button
+				>
+			</div>
+		{/if}
+
 		{#if labsStore.rawOffer && labsStore.rawOffer.chatId === chatStore.chat.id}
 			<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
 				<p class="font-medium text-amber-700 dark:text-amber-400">Lab output couldn't be parsed</p>
@@ -181,8 +217,8 @@
 			onStop={chatStore.stop.bind(chatStore)}
 		/>
 
-		<!-- Children + siblings + labs under the composer -->
-		{#if children.length > 0 || siblings.length > 0 || labs.length > 0}
+		<!-- Children + siblings + labs + quizzes under the composer -->
+		{#if children.length > 0 || siblings.length > 0 || labs.length > 0 || quizzes.length > 0}
 			<div class="space-y-2 border-t border-border pt-2">
 				{#if labs.length > 0}
 					<div>
@@ -199,6 +235,27 @@
 									>
 										<FlaskConical class="size-3" />
 										{l.title}
+									</a>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+				{#if quizzes.length > 0}
+					<div>
+						<p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+							Quizzes ({quizzes.length})
+						</p>
+						<ul class="flex flex-wrap gap-1.5">
+							{#each quizzes as q (q.id)}
+								<li>
+									<a
+										href="/quiz/{q.id}"
+										class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
+										title={new Date(q.createdAt).toLocaleString()}
+									>
+										<ListChecks class="size-3" />
+										Quiz
 									</a>
 								</li>
 							{/each}
