@@ -58,6 +58,9 @@ toolchains.
 - **Runtime selection** happens in `src/lib/db/driver/client.ts` via `isTauri()`.
 - **No secrets in `settings`.** Provider config holds non-secret handle fields only; API
   keys are a P1 concern (desktop keychain / browser IndexedDB).
+  > **P1 tradeoff:** as of P1, API keys are stored as **plaintext** in the `settings` KV
+  > under `providerKey:<id>` (see `src/lib/ai/client.ts`, marked `TODO(P5)`). This
+  > knowingly violates the rule above; secure storage ships with the P5 Rust transport.
 
 ## Manual acceptance gates (P0)
 
@@ -79,3 +82,25 @@ writes/reads/deletes a `chats` row via the repository and shows pass/fail.
 
 > The desktop build needs the GTK/WebKit dev libs (above). It cannot be compiled or run
 > in the headless CI sandbox; verify it on a real machine.
+
+## Manual acceptance gates (P1)
+
+P1 delivers the provider/AI layer: configure a provider, persist its config + key,
+and stream a real reply. The `/chat` route is an **ephemeral streaming demo** (no
+persistence — the real chat lands in P2); `/settings` has the provider config UI.
+
+- **Browser:** `pnpm dev` → open `/settings` → **Add provider** → pick a template
+  (Z.AI/GLM is OpenAI-compatible and the default; OpenAI, Anthropic, Gemini, and a
+  local Ollama server are also available) → edit base URL / default model if needed →
+  paste the **API key** → **Save key** → **Set active**. Then go to `/chat`, type a
+  prompt, and tokens stream in live. **Reload the tab** → the provider config and key
+  survive (proving settings-KV persistence).
+- **Desktop:** `pnpm tauri dev` → same flow → key + config survive an **app restart**.
+- **Provider switch:** add a second provider, **Set active** to it, stream again.
+- **CORS fallback (best-effort):** configure Anthropic in the browser; if the provider
+  blocks the request, `/chat` shows the **"use the desktop app"** notice (from
+  `formatProviderError` on a `CorsBlockedError`) rather than a raw error.
+
+> The streaming transport, adapters, error mapping, and context assembly are covered by
+> the automated Vitest suite (`pnpm test`). Provider keys are never echoed back in the
+> UI after save (the key field is masked with a "replace key" affordance).

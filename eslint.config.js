@@ -43,7 +43,12 @@ export default ts.config(
 	{
 		rules: {
 			// Optional type-safe routing; P0 uses plain hrefs.
-			'svelte/no-navigation-without-resolve': 'off'
+			'svelte/no-navigation-without-resolve': 'off',
+			// Allow intentionally-unused params/props prefixed with `_`.
+			'@typescript-eslint/no-unused-vars': [
+				'error',
+				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }
+			]
 		}
 	}
 );
