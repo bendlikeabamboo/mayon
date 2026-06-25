@@ -1,10 +1,10 @@
 import { eq } from 'drizzle-orm';
 import { branchSources, type BranchSource } from '$lib/db/schema';
-import { getDb } from '$lib/db/driver/client';
+import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 
 async function insert(input: typeof branchSources.$inferInsert): Promise<BranchSource> {
-	const [row] = await getDb().insert(branchSources).values(input).returning();
+	const [row] = await (await awaitDb()).insert(branchSources).values(input).returning();
 	return row!;
 }
 
@@ -29,7 +29,7 @@ export const branchSourcesRepo = {
 	},
 
 	async getByBranchChat(branchChatId: string): Promise<BranchSource | null> {
-		const rows = await getDb()
+		const rows = await (await awaitDb())
 			.select()
 			.from(branchSources)
 			.where(eq(branchSources.branchChatId, branchChatId))
@@ -38,7 +38,7 @@ export const branchSourcesRepo = {
 	},
 
 	async listBySourceMessage(sourceMessageId: string): Promise<BranchSource[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(branchSources)
 			.where(eq(branchSources.sourceMessageId, sourceMessageId))

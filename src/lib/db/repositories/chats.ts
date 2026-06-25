@@ -1,10 +1,10 @@
 import { asc, desc, eq, isNull } from 'drizzle-orm';
 import { chats, type Chat, type NewChat } from '$lib/db/schema';
-import { getDb } from '$lib/db/driver/client';
+import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 
 async function insertChat(input: NewChat): Promise<Chat> {
-	const [row] = await getDb().insert(chats).values(input).returning();
+	const [row] = await (await awaitDb()).insert(chats).values(input).returning();
 	return row!;
 }
 
@@ -39,7 +39,7 @@ export const chatsRepo = {
 		provider?: string;
 		model?: string;
 	}): Promise<Chat> {
-		const db = getDb();
+		const db = await awaitDb();
 		const parents = await db.select().from(chats).where(eq(chats.id, opts.parentId)).all();
 		const parent = parents[0];
 		if (!parent) throw new Error(`Parent chat ${opts.parentId} not found`);
@@ -59,13 +59,13 @@ export const chatsRepo = {
 	},
 
 	async getById(id: string): Promise<Chat | null> {
-		const rows = await getDb().select().from(chats).where(eq(chats.id, id)).all();
+		const rows = await (await awaitDb()).select().from(chats).where(eq(chats.id, id)).all();
 		return rows[0] ?? null;
 	},
 
 	/** Top-level chats, most recently touched first. */
 	async listRoots(): Promise<Chat[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(chats)
 			.where(isNull(chats.parentId))
@@ -75,7 +75,7 @@ export const chatsRepo = {
 
 	/** Direct children of a chat (tree expansion). */
 	async listChildren(parentId: string): Promise<Chat[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(chats)
 			.where(eq(chats.parentId, parentId))
@@ -85,7 +85,7 @@ export const chatsRepo = {
 
 	/** All descendants of a root (fast via root_id). Tree-walk primitive for P2. */
 	async listSubtree(rootId: string): Promise<Chat[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(chats)
 			.where(eq(chats.rootId, rootId))
@@ -94,14 +94,18 @@ export const chatsRepo = {
 	},
 
 	async updateTitle(id: string, title: string): Promise<void> {
-		await getDb().update(chats).set({ title, updatedAt: now() }).where(eq(chats.id, id)).run();
+		await (await awaitDb())
+			.update(chats)
+			.set({ title, updatedAt: now() })
+			.where(eq(chats.id, id))
+			.run();
 	},
 
 	async touch(id: string): Promise<void> {
-		await getDb().update(chats).set({ updatedAt: now() }).where(eq(chats.id, id)).run();
+		await (await awaitDb()).update(chats).set({ updatedAt: now() }).where(eq(chats.id, id)).run();
 	},
 
 	async delete(id: string): Promise<void> {
-		await getDb().delete(chats).where(eq(chats.id, id)).run();
+		await (await awaitDb()).delete(chats).where(eq(chats.id, id)).run();
 	}
 };

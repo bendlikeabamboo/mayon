@@ -79,6 +79,20 @@ export function getDb(): Db {
 	return dbRef;
 }
 
+/**
+ * Await the bootstrapped drizzle instance. Repository code should prefer this
+ * over `getDb()` so that a repo call made during early boot (before the layout's
+ * `onMount` resolves `bootstrapDb`) waits for boot instead of throwing a race.
+ * Throws if boot failed or was never started.
+ */
+export async function awaitDb(): Promise<Db> {
+	if (dbRef) return dbRef;
+	if (!driverPromise) {
+		throw new Error('Database not bootstrapped yet — call bootstrapDb() first.');
+	}
+	return driverPromise;
+}
+
 /** Resolved raw driver (used by the boot-time self-check). */
 export function getDriver(): StorageDriver {
 	if (!driverRef) throw new Error('Driver not bootstrapped yet.');

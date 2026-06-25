@@ -1,10 +1,10 @@
 import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import { messages, type Message, type MessageRole } from '$lib/db/schema';
-import { getDb } from '$lib/db/driver/client';
+import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 
 async function insertMessage(input: typeof messages.$inferInsert): Promise<Message> {
-	const [row] = await getDb().insert(messages).values(input).returning();
+	const [row] = await (await awaitDb()).insert(messages).values(input).returning();
 	return row!;
 }
 
@@ -17,7 +17,8 @@ export const messagesRepo = {
 		content: string,
 		opts?: { model?: string; tokens?: number }
 	): Promise<Message> {
-		const last = await getDb()
+		const db = await awaitDb();
+		const last = await db
 			.select({ ord: messages.ord })
 			.from(messages)
 			.where(eq(messages.chatId, chatId))
@@ -39,7 +40,7 @@ export const messagesRepo = {
 
 	/** All messages of a chat in display order. */
 	async listByChat(chatId: string): Promise<Message[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(messages)
 			.where(eq(messages.chatId, chatId))
@@ -52,7 +53,7 @@ export const messagesRepo = {
 	 * a chat's own messages up to an `ord` cutoff (inclusive).
 	 */
 	async listUpToOrd(chatId: string, cutoffOrd: number | null): Promise<Message[]> {
-		const db = getDb();
+		const db = await awaitDb();
 		const cond =
 			cutoffOrd == null
 				? eq(messages.chatId, chatId)
@@ -61,15 +62,15 @@ export const messagesRepo = {
 	},
 
 	async getById(id: string): Promise<Message | null> {
-		const rows = await getDb().select().from(messages).where(eq(messages.id, id)).all();
+		const rows = await (await awaitDb()).select().from(messages).where(eq(messages.id, id)).all();
 		return rows[0] ?? null;
 	},
 
 	async delete(id: string): Promise<void> {
-		await getDb().delete(messages).where(eq(messages.id, id)).run();
+		await (await awaitDb()).delete(messages).where(eq(messages.id, id)).run();
 	},
 
 	async deleteByChat(chatId: string): Promise<void> {
-		await getDb().delete(messages).where(eq(messages.chatId, chatId)).run();
+		await (await awaitDb()).delete(messages).where(eq(messages.chatId, chatId)).run();
 	}
 };
