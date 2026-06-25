@@ -12,6 +12,7 @@
 import { streamSse } from '../transport';
 import { MissingKeyError } from '../types';
 import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import { generateLab as generateLabOrchestrator } from '../generate/generate';
 import { p3, p4 } from './stubs';
 
 interface GeminiStreamChunk {
@@ -25,7 +26,7 @@ export interface GeminiAdapterDeps {
 }
 
 export function createGeminiAdapter(config: ProviderConfig, deps: GeminiAdapterDeps): Provider {
-	return {
+	const adapter: Provider = {
 		kind: 'gemini',
 		config,
 
@@ -91,10 +92,12 @@ export function createGeminiAdapter(config: ProviderConfig, deps: GeminiAdapterD
 			}
 		},
 
-		generateLab: p3,
+		// `adapter` is assigned below; the closure captures the built provider.
+		generateLab: (messages, opts) => generateLabOrchestrator(adapter, messages, opts),
 		generateQuiz: p3,
 		gradeAnswer: p4
 	};
+	return adapter;
 }
 
 function safeParse(data: string): GeminiStreamChunk | null {

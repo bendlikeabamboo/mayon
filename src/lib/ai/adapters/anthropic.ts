@@ -15,6 +15,7 @@
 import { streamSse } from '../transport';
 import { MissingKeyError } from '../types';
 import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import { generateLab as generateLabOrchestrator } from '../generate/generate';
 import { p3, p4 } from './stubs';
 
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -35,7 +36,7 @@ export function createAnthropicAdapter(
 ): Provider {
 	const endpoint = joinUrl(config.baseUrl, '/v1/messages');
 
-	return {
+	const adapter: Provider = {
 		kind: 'anthropic',
 		config,
 
@@ -92,10 +93,12 @@ export function createAnthropicAdapter(
 			}
 		},
 
-		generateLab: p3,
+		// `adapter` is assigned below; the closure captures the built provider.
+		generateLab: (messages, opts) => generateLabOrchestrator(adapter, messages, opts),
 		generateQuiz: p3,
 		gradeAnswer: p4
 	};
+	return adapter;
 }
 
 function safeParse(data: string): AnthropicDelta | null {

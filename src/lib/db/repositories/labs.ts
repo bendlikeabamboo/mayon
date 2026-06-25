@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { labs, type Lab } from '$lib/db/schema';
 import { getDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
@@ -58,6 +58,11 @@ export const labsRepo = {
 
 	async listByChat(chatId: string): Promise<Lab[]> {
 		return getDb().select().from(labs).where(eq(labs.chatId, chatId)).all();
+	},
+
+	/** All labs, newest first (the `/lab` index page groups by chat client-side). */
+	async listAll(): Promise<Lab[]> {
+		return getDb().select().from(labs).orderBy(desc(labs.createdAt)).all();
 	},
 
 	async updateContent(id: string, content: string): Promise<void> {

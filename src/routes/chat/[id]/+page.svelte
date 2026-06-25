@@ -2,12 +2,13 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { Network } from '@lucide/svelte';
+	import { FlaskConical, Network } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore } from '$lib/stores/chat.svelte';
+	import { labsStore } from '$lib/stores/labs.svelte';
 	import { repos } from '$lib/db';
 	import { breadcrumbToRoot } from '$lib/chat/tree';
-	import type { Chat } from '$lib/db/schema';
+	import type { Chat, Lab } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
@@ -17,6 +18,7 @@
 	let breadcrumb = $state<Chat[]>([]);
 	let children = $state<Chat[]>([]);
 	let siblings = $state<Chat[]>([]);
+	let labs = $state<Lab[]>([]);
 
 	async function loadNav(chat: Chat) {
 		const subtree = await repos.chats.listSubtree(chat.rootId);
@@ -30,6 +32,8 @@
 		} else {
 			siblings = [];
 		}
+		// Existing labs for this chat (shown as chips under the composer).
+		labs = await repos.labs.listByChat(chat.id);
 	}
 
 	async function loadAll(chatId: string) {
@@ -65,6 +69,18 @@
 		const childId = await chatStore.branchFromMessage(messageId);
 		await goto(`/chat/${childId}`);
 	}
+
+	async function onGenerateLab() {
+		if (!chatStore.chat) return;
+		const id = await labsStore.generate(chatStore.chat.id);
+		if (id) await goto(`/lab/${id}`);
+	}
+
+	async function onSaveRawLab() {
+		if (!labsStore.rawOffer) return;
+		const id = await labsStore.saveRaw(labsStore.rawOffer.chatId, labsStore.rawOffer.raw);
+		if (id) await goto(`/lab/${id}`);
+	}
 </script>
 
 <svelte:head>
@@ -84,15 +100,31 @@
 			<div class="min-w-0 flex-1">
 				<Breadcrumb chain={breadcrumb} />
 			</div>
-			<Button
-				href="/tree"
-				variant="ghost"
-				size="sm"
-				class="shrink-0"
-				title="Open the conversation tree"
-			>
-				<Network class="size-4" /> Tree
-			</Button>
+			<div class="flex shrink-0 items-center gap-1">
+				<Button
+					variant="ghost"
+					size="sm"
+					onclick={onGenerateLab}
+					disabled={chatStore.streaming || labsStore.generating}
+					title="Generate a hands-on lab from this chat"
+				>
+					<FlaskConical class="size-4" />
+					{#if labsStore.generating}
+						Generating…
+					{:else}
+						Generate lab
+					{/if}
+				</Button>
+				<Button
+					href="/tree"
+					variant="ghost"
+					size="sm"
+					class="shrink-0"
+					title="Open the conversation tree"
+				>
+					<Network class="size-4" /> Tree
+				</Button>
+			</div>
 		</div>
 
 		<CrossLinks chatId={chatStore.chat.id} />
@@ -118,15 +150,61 @@
 			</div>
 		{/if}
 
+		{#if labsStore.error}
+			<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
+				<p class="font-medium text-red-700 dark:text-red-400">{labsStore.error.title}</p>
+				<p class="mt-0.5 text-red-700/90 dark:text-red-400/90">{labsStore.error.message}</p>
+				{#if labsStore.error.hint}
+					<p class="mt-1 text-xs text-muted-foreground">{labsStore.error.hint}</p>
+				{/if}
+			</div>
+		{/if}
+
+		{#if labsStore.rawOffer && labsStore.rawOffer.chatId === chatStore.chat.id}
+			<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+				<p class="font-medium text-amber-700 dark:text-amber-400">Lab output couldn't be parsed</p>
+				<p class="mt-0.5 text-amber-700/90 dark:text-amber-400/90">
+					The model returned output that didn't match the lab schema after retries.
+				</p>
+				<div class="mt-2 flex gap-2">
+					<Button variant="outline" size="sm" onclick={onSaveRawLab}>Save raw text as lab</Button>
+					<Button variant="ghost" size="sm" onclick={() => labsStore.dismissRawOffer()}
+						>Dismiss</Button
+					>
+				</div>
+			</div>
+		{/if}
+
 		<Composer
 			bind:streaming={chatStore.streaming}
 			{onSend}
 			onStop={chatStore.stop.bind(chatStore)}
 		/>
 
-		<!-- Children + siblings under the composer -->
-		{#if children.length > 0 || siblings.length > 0}
+		<!-- Children + siblings + labs under the composer -->
+		{#if children.length > 0 || siblings.length > 0 || labs.length > 0}
 			<div class="space-y-2 border-t border-border pt-2">
+				{#if labs.length > 0}
+					<div>
+						<p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+							Labs ({labs.length})
+						</p>
+						<ul class="flex flex-wrap gap-1.5">
+							{#each labs as l (l.id)}
+								<li>
+									<a
+										href="/lab/{l.id}"
+										class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
+										title={l.title}
+									>
+										<FlaskConical class="size-3" />
+										{l.title}
+									</a>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 				{#if children.length > 0}
 					<div>
 						<p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">

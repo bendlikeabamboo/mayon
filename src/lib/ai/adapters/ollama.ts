@@ -7,6 +7,7 @@
  */
 import { streamNdjson } from '../transport';
 import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import { generateLab as generateLabOrchestrator } from '../generate/generate';
 import { p3, p4 } from './stubs';
 
 interface OllamaChatLine {
@@ -17,7 +18,7 @@ interface OllamaChatLine {
 export function createOllamaAdapter(config: ProviderConfig): Provider {
 	const endpoint = joinUrl(config.baseUrl, '/api/chat');
 
-	return {
+	const adapter: Provider = {
 		kind: 'ollama',
 		config,
 
@@ -47,10 +48,12 @@ export function createOllamaAdapter(config: ProviderConfig): Provider {
 			}
 		},
 
-		generateLab: p3,
+		// `adapter` is assigned below; the closure captures the built provider.
+		generateLab: (messages, opts) => generateLabOrchestrator(adapter, messages, opts),
 		generateQuiz: p3,
 		gradeAnswer: p4
 	};
+	return adapter;
 }
 
 function safeParse(line: string): OllamaChatLine | null {

@@ -29,6 +29,12 @@ export interface ChatStreamOptions {
 	model?: string;
 }
 
+// Re-exported so `Provider.generateLab` can reference the generated-lab shape
+// without every adapter re-importing from `generate/lab.ts`. The orchestrator
+// is still the single implementer; this is a type-only re-export.
+import type { GeneratedLab } from './generate/lab';
+export type { GeneratedLab };
+
 /**
  * Static, non-secret configuration for a configured provider. Stored under the
  * `providers` settings key as `{[id]: ProviderConfig}`. API keys live separately
@@ -44,8 +50,9 @@ export interface ProviderConfig {
 }
 
 /**
- * The provider abstraction. Adapters implement `chatStream`; the generation
- * helpers are declared but unimplemented until P3/P4.
+ * The provider abstraction. Adapters implement `chatStream`; lab generation
+ * delegates to the shared orchestrator in `generate/generate.ts` (every
+ * adapter's `generateLab` is a thin wrapper). Quiz/grading stay stubbed until P4.
  */
 export interface Provider {
 	readonly kind: ProviderKind;
@@ -55,8 +62,15 @@ export interface Provider {
 	 *  callers accumulate. Throws typed errors (see `errors.ts`). */
 	chatStream(messages: ChatMessage[], opts?: ChatStreamOptions): AsyncIterable<Token>;
 
-	// ── Generation helpers — declared now, implemented in P3/P4. ─────────────
-	generateLab(_messages: ChatMessage[], _opts?: ChatStreamOptions): Promise<never>;
+	/**
+	 * Generate a hands-on lab from `messages` (the chat context). Prompt-driven
+	 * (no wire JSON mode): streams tokens via `chatStream`, parses fenced JSON,
+	 * retries on parse failure (≤2). Implemented in P3 by delegating to the
+	 * shared orchestrator in `generate/generate.ts`. `AbortError` propagates.
+	 */
+	generateLab(messages: ChatMessage[], opts?: ChatStreamOptions): Promise<GeneratedLab>;
+
+	// ── P4 generation helpers — declared now, implemented in P4. ─────────────
 	generateQuiz(_messages: ChatMessage[], _opts?: ChatStreamOptions): Promise<never>;
 	gradeAnswer(_questionId: string, _answer: string): Promise<never>;
 }

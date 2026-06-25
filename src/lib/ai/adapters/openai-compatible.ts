@@ -10,6 +10,7 @@
 import { streamSse } from '../transport';
 import { MissingKeyError } from '../types';
 import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import { generateLab as generateLabOrchestrator } from '../generate/generate';
 import { p3, p4 } from './stubs';
 
 /** Shape of a streamed OpenAI completion chunk (only the fields we read). */
@@ -28,7 +29,7 @@ export function createOpenAICompatibleAdapter(
 ): Provider {
 	const endpoint = joinUrl(config.baseUrl, '/chat/completions');
 
-	return {
+	const adapter: Provider = {
 		kind: 'openai-compatible',
 		config,
 
@@ -64,10 +65,13 @@ export function createOpenAICompatibleAdapter(
 			}
 		},
 
-		generateLab: p3,
+		// `adapter` is assigned to `const adapter` below, so this closure captures
+		// the fully-built provider (chatStream + generateLab) for the orchestrator.
+		generateLab: (messages, opts) => generateLabOrchestrator(adapter, messages, opts),
 		generateQuiz: p3,
 		gradeAnswer: p4
 	};
+	return adapter;
 }
 
 /** Parse a JSON data payload defensively (some providers emit keep-alive blanks). */

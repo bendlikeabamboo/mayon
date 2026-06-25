@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { CheckCircle2, KeyRound, Plus, Trash2 } from '@lucide/svelte';
+	import type { Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
 	import {
@@ -18,6 +19,11 @@
 	// NOTE(P1 tradeoff): keys are stored as plaintext in the settings KV. The
 	// "replace key" affordance below never echoes the stored key back; it only
 	// writes. See the TODO(P5) marker in client.ts.
+
+	// Optional extra sections rendered inside the page's column (e.g. the lab
+	// prompt override). Keeps the page chrome (title + max-width + padding) in
+	// one place.
+	let { children }: { children?: Snippet } = $props();
 
 	let providers = $state<ProviderConfig[]>([]);
 	let activeId = $state<string | null>(null);
@@ -300,4 +306,6 @@
 			</ul>
 		{/if}
 	</section>
+
+	{@render children?.()}
 </div>

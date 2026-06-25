@@ -103,4 +103,14 @@ describe('labs repository', () => {
 		expect(after?.[0]?.done).toBe(true);
 		expect((await repos.labs.getById(lab.id))?.checklist).toContain('"done":true');
 	});
+
+	it('listAll returns labs newest-first', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const a = await repos.labs.create({ chatId: chat.id, title: 'A', content: 'x' });
+		// createdAt is set to `now()` (ms); nudge the clock so ordering is stable.
+		await new Promise((r) => setTimeout(r, 5));
+		const b = await repos.labs.create({ chatId: chat.id, title: 'B', content: 'x' });
+		const all = await repos.labs.listAll();
+		expect(all.map((l) => l.id)).toEqual([b.id, a.id]);
+	});
 });
