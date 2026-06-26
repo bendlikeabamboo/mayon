@@ -6,10 +6,9 @@ import type { ChatMessage, ChatStreamOptions, Provider } from '$lib/ai/types';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
 import { buildExpoundPrompt } from '$lib/chat/expound';
+import { parseBrief } from '$lib/chat/brief';
 import type { LearningBrief } from '$lib/chat/brief';
 
-// `chatStore.send()` calls `getActiveProvider()`; mock it so the pendingPrompt
-// drain test can stream a deterministic reply without a real provider.
 vi.mock('$lib/ai/client', () => ({
 	getActiveProvider: vi.fn()
 }));
@@ -513,8 +512,9 @@ describe('chatStore auto-title', () => {
 	});
 
 	it('forwards the composer reasoning mode to the main reply stream', async () => {
-		// Custom (non-placeholder) title → the parallel title never fires, so the
-		// only recorded call is the main reply stream.
+		// Custom (non-placeholder) title → the parallel title never fires.
+		// A null-brief root fires brief inference in parallel (system-led), so
+		// we expect 2 calls: brief inference + main reply.
 		const root = await repos.chats.createRoot({ title: 'Custom Title' });
 		const { provider, calls } = recordingProvider('reply', 'Ignored');
 		mockedGetActiveProvider.mockResolvedValue(provider);
@@ -522,8 +522,11 @@ describe('chatStore auto-title', () => {
 
 		await chatStore.send('hello', { reasoning: 'disabled' });
 
-		expect(calls).toHaveLength(1);
-		expect(calls[0].opts?.reasoning).toBe('disabled');
+		expect(calls).toHaveLength(2);
+		// The main reply (non-system) forwards the composer reasoning mode.
+		const mainCall = calls.find((c) => c.messages[0]?.role !== 'system');
+		expect(mainCall).toBeDefined();
+		expect(mainCall!.opts?.reasoning).toBe('disabled');
 	});
 
 	it('does not retitle a chat whose title is no longer the placeholder', async () => {
@@ -657,5 +660,221 @@ describe('chatStore brief', () => {
 		const ctx = await assembleContext(id);
 		expect(ctx[0].content).toContain('write a Makefile from scratch');
 		expect(ctx[0].content).not.toContain('be able to read a Makefile');
+	});
+});
+
+describe('chatStore inferred brief', () => {
+	const stubConfig = {
+		id: 'stub',
+		kind: 'openai-compatible' as const,
+		name: 'stub',
+		baseUrl: 'http://stub',
+		defaultModel: 'stub-model',
+		models: ['stub-model']
+	};
+
+	const inferredBrief: LearningBrief = {
+		goal: 'be able to write a Makefile',
+		level: 'some',
+		mode: 'socratic'
+	};
+
+	function briefAwareProvider(reply: string, title: string, briefJson: string): Provider {
+		return {
+			kind: 'openai-compatible',
+			config: stubConfig,
+			async *chatStream(messages) {
+				const sys = messages[0]?.content ?? '';
+				if (sys.includes('learning brief') || sys.includes('infer')) {
+					yield { text: briefJson };
+				} else if (sys.includes('title')) {
+					yield { text: title };
+				} else {
+					yield { text: reply };
+				}
+			},
+			generateLab: () => Promise.reject(new Error('unused')),
+			generateQuiz: () => Promise.reject(new Error('unused')),
+			gradeShortAnswer: () => Promise.reject(new Error('unused'))
+		};
+	}
+
+	async function waitForInferredBrief(): Promise<void> {
+		for (let i = 0; i < 200; i++) {
+			if (chatStore.inferredBrief !== null) return;
+			await new Promise((r) => setTimeout(r, 5));
+		}
+	}
+
+	it('first message on a null-brief root sets inferredBrief', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const fencedBrief = '```json\n' + JSON.stringify(inferredBrief) + '\n```';
+		mockedGetActiveProvider.mockResolvedValue(
+			briefAwareProvider('the answer', 'Docker', fencedBrief)
+		);
+		await chatStore.load(root.id);
+		expect(chatStore.inferredBrief).toBeNull();
+
+		await chatStore.send('I want to learn about Makefiles');
+
+		await waitForInferredBrief();
+		expect(chatStore.inferredBrief).not.toBeNull();
+		expect(chatStore.inferredBrief!.goal).toBe('be able to write a Makefile');
+	});
+
+	it('briefed root does not trigger inference', async () => {
+		const existingBrief: LearningBrief = { goal: 'learn rust', level: 'novice' };
+		const root = await repos.chats.createRoot({ title: 'New chat', brief: existingBrief });
+		mockedGetActiveProvider.mockResolvedValue(
+			briefAwareProvider('reply', 'Title', '```json\n{"goal":"x"}\n```')
+		);
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		await new Promise((r) => setTimeout(r, 100));
+		expect(chatStore.inferredBrief).toBeNull();
+	});
+
+	it('branch does not trigger inference', async () => {
+		const parent = await repos.chats.createRoot({ title: 'New chat' });
+		const assistant = await repos.messages.append(parent.id, 'assistant', 'hi');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: assistant.id,
+			title: 'New chat'
+		});
+		mockedGetActiveProvider.mockResolvedValue(
+			briefAwareProvider('reply', 'Title', '```json\n{"goal":"x"}\n```')
+		);
+		await chatStore.load(child.id);
+		await chatStore.send('hello');
+
+		await new Promise((r) => setTimeout(r, 100));
+		expect(chatStore.inferredBrief).toBeNull();
+	});
+
+	it('confirmInferredBrief persists the brief and clears inferredBrief', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const fencedBrief = '```json\n' + JSON.stringify(inferredBrief) + '\n```';
+		mockedGetActiveProvider.mockResolvedValue(
+			briefAwareProvider('the answer', 'Docker', fencedBrief)
+		);
+		await chatStore.load(root.id);
+		await chatStore.send('teach me Makefiles');
+		await waitForInferredBrief();
+
+		await chatStore.confirmInferredBrief();
+		expect(chatStore.inferredBrief).toBeNull();
+		const row = await repos.chats.getById(root.id);
+		expect(parseBrief(row?.brief)).not.toBeNull();
+		expect(parseBrief(row?.brief)!.goal).toBe('be able to write a Makefile');
+	});
+
+	it('confirmInferredBrief(edited) persists the edited value', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const fencedBrief = '```json\n' + JSON.stringify(inferredBrief) + '\n```';
+		mockedGetActiveProvider.mockResolvedValue(
+			briefAwareProvider('the answer', 'Docker', fencedBrief)
+		);
+		await chatStore.load(root.id);
+		await chatStore.send('teach me Makefiles');
+		await waitForInferredBrief();
+
+		const edited: LearningBrief = { goal: 'write a complex Makefile', mode: 'build' };
+		await chatStore.confirmInferredBrief(edited);
+		expect(chatStore.inferredBrief).toBeNull();
+		const row = await repos.chats.getById(root.id);
+		expect(parseBrief(row?.brief)!.goal).toBe('write a complex Makefile');
+		expect(parseBrief(row?.brief)!.mode).toBe('build');
+	});
+
+	it('dismissInferredBrief clears inferredBrief without persisting', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const fencedBrief = '```json\n' + JSON.stringify(inferredBrief) + '\n```';
+		mockedGetActiveProvider.mockResolvedValue(
+			briefAwareProvider('the answer', 'Docker', fencedBrief)
+		);
+		await chatStore.load(root.id);
+		await chatStore.send('teach me Makefiles');
+		await waitForInferredBrief();
+
+		chatStore.dismissInferredBrief();
+		expect(chatStore.inferredBrief).toBeNull();
+		const row = await repos.chats.getById(root.id);
+		expect(row?.brief).toBeNull();
+	});
+
+	it('dismiss-race guard: dismiss before inference completes keeps inferredBrief null', async () => {
+		const provider: Provider = {
+			kind: 'openai-compatible',
+			config: stubConfig,
+			async *chatStream(messages) {
+				const sys = messages[0]?.content ?? '';
+				if (sys.includes('learning brief') || sys.includes('infer')) {
+					await new Promise((r) => setTimeout(r, 200));
+					yield { text: '```json\n{"goal":"late brief"}\n```' };
+				} else if (sys.includes('title')) {
+					yield { text: 'Title' };
+				} else {
+					yield { text: 'reply' };
+				}
+			},
+			generateLab: () => Promise.reject(new Error('unused')),
+			generateQuiz: () => Promise.reject(new Error('unused')),
+			gradeShortAnswer: () => Promise.reject(new Error('unused'))
+		};
+
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		mockedGetActiveProvider.mockResolvedValue(provider);
+		await chatStore.load(root.id);
+
+		void chatStore.send('first message');
+
+		await vi.waitFor(() => expect(chatStore.inferredBrief).toBeNull());
+		chatStore.dismissInferredBrief();
+
+		await new Promise((r) => setTimeout(r, 300));
+
+		expect(chatStore.inferredBrief).toBeNull();
+	});
+
+	it('aborts inferController on load() switch', async () => {
+		let briefSignal: AbortSignal | undefined;
+		const provider: Provider = {
+			kind: 'openai-compatible',
+			config: stubConfig,
+			async *chatStream(messages, opts) {
+				const sys = messages[0]?.content ?? '';
+				if (sys.includes('learning brief') || sys.includes('infer')) {
+					briefSignal = opts?.signal;
+					await new Promise<void>((resolve) => {
+						if (opts?.signal?.aborted) return resolve();
+						opts?.signal?.addEventListener('abort', () => resolve(), { once: true });
+					});
+					if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+					yield { text: '```json\n{"goal":"brief"}\n```' };
+					return;
+				}
+				if (sys.includes('title')) {
+					yield { text: 'Title' };
+					return;
+				}
+				yield { text: 'reply' };
+			},
+			generateLab: () => Promise.reject(new Error('unused')),
+			generateQuiz: () => Promise.reject(new Error('unused')),
+			gradeShortAnswer: () => Promise.reject(new Error('unused'))
+		};
+
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const other = await repos.chats.createRoot({ title: 'Other' });
+		mockedGetActiveProvider.mockResolvedValue(provider);
+		await chatStore.load(root.id);
+
+		void chatStore.send('first');
+		await vi.waitFor(() => expect(briefSignal).toBeDefined());
+
+		await chatStore.load(other.id);
+		expect(briefSignal?.aborted).toBe(true);
 	});
 });

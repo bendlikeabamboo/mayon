@@ -20,7 +20,9 @@ import { assembleContext } from '$lib/chat/context';
 import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highlight';
 import { selectionOverlapsExisting } from '$lib/chat/expound';
 import type { LearningBrief } from '$lib/chat/brief';
+import { parseBrief } from '$lib/chat/brief';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
+import { generateBrief } from '$lib/ai/generate/generate-brief';
 import type { ChatMessage, Provider, ReasoningMode } from '$lib/ai/types';
 import { getActiveProvider } from '$lib/ai/client';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
@@ -63,6 +65,11 @@ class ChatState {
 	private titleController: AbortController | null = null;
 	private titling = false;
 
+	inferredBrief = $state<LearningBrief | null>(null);
+	private inferring = false;
+	private inferDismissed = false;
+	private inferController: AbortController | null = null;
+
 	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
 	get showLiveBubble(): boolean {
 		return this.streaming && this.streamBuffer.length > 0;
@@ -76,6 +83,10 @@ class ChatState {
 		// Abort any in-flight stream AND title request for the previous chat.
 		this.stop();
 		this.titleController?.abort();
+		this.inferController?.abort();
+		this.inferredBrief = null;
+		this.inferDismissed = false;
+		this.inferring = false;
 		this.loading = true;
 		this.error = null;
 		this.streamBuffer = '';
@@ -162,6 +173,12 @@ class ChatState {
 				void this.autoTitleRoot(provider, prompt);
 			}
 
+			const shouldInferBrief =
+				chat && chat.parentId === null && parseBrief(chat.brief) === null && !this.inferDismissed;
+			if (shouldInferBrief) {
+				void this.inferBriefRoot(provider, ctx);
+			}
+
 			// 4) Stream the main assistant reply, honoring the composer reasoning.
 			for await (const token of provider.chatStream(ctx, {
 				signal: this.controller.signal,
@@ -221,6 +238,10 @@ class ChatState {
 			// Abort any in-flight stream AND title request before clearing state.
 			this.stop();
 			this.titleController?.abort();
+			this.inferController?.abort();
+			this.inferredBrief = null;
+			this.inferDismissed = false;
+			this.inferring = false;
 			this.chat = null;
 			this.chatId = null;
 			this.messages = [];
@@ -270,7 +291,39 @@ class ChatState {
 	 * raw offsets via `resolveSelectionOffsets`, falling back to the full
 	 * excerpt span when mapping can't be confident. Returns the child chat id.
 	 */
-	async branchFromSelection(
+	async confirmInferredBrief(b?: LearningBrief): Promise<void> {
+		await this.saveBrief(b ?? this.inferredBrief!);
+		this.inferredBrief = null;
+		this.inferDismissed = false;
+	}
+
+	dismissInferredBrief(): void {
+		this.inferDismissed = true;
+		this.inferredBrief = null;
+	}
+
+	private async inferBriefRoot(provider: Provider, ctx: ChatMessage[]): Promise<void> {
+		const chat = this.chat;
+		if (!chat || chat.parentId !== null || parseBrief(chat.brief) !== null) return;
+		if (this.inferring || this.inferDismissed) return;
+		this.inferring = true;
+		this.inferController = new AbortController();
+		try {
+			const brief = await generateBrief(provider, ctx, {
+				signal: this.inferController.signal
+			});
+			if (!this.inferDismissed) {
+				this.inferredBrief = brief;
+			}
+		} catch {
+			/* best-effort */
+		} finally {
+			this.inferring = false;
+			this.inferController = null;
+		}
+	}
+
+	branchFromSelection(
 		messageId: string,
 		rawContent: string,
 		selection: SelectionInput

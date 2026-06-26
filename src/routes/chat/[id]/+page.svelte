@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { FlaskConical, ListChecks, Network, Target } from '@lucide/svelte';
+	import { FlaskConical, ListChecks, Network, Sparkles, Target } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
@@ -30,6 +30,7 @@
 	let editingBrief = $state(false);
 	/** When true, the intake card on this chat is dismissed for the session. */
 	let intakeDismissed = $state(false);
+	let editingInferred = $state(false);
 
 	/** The parsed brief for the ROOT of this chat's tree (inherited by branches). */
 	const rootBrief = $derived<LearningBrief | null>(
@@ -71,6 +72,7 @@
 	async function loadAll(chatId: string) {
 		editingBrief = false;
 		intakeDismissed = false;
+		editingInferred = false;
 		await chatStore.load(chatId);
 		if (chatStore.chat) await loadNav(chatStore.chat);
 		// Drain a staged expound prompt: auto-send + auto-stream the first turn
@@ -166,6 +168,16 @@
 	function onSkipIntake() {
 		intakeDismissed = true;
 	}
+
+	async function onConfirmInferred() {
+		await chatStore.confirmInferredBrief();
+		editingInferred = false;
+	}
+
+	async function onSaveInferred(brief: LearningBrief) {
+		await chatStore.confirmInferredBrief(brief);
+		editingInferred = false;
+	}
 </script>
 
 <svelte:head>
@@ -257,6 +269,36 @@
 					<span class="shrink-0 text-muted-foreground/70">(inherited)</span>
 				{/if}
 			</button>
+		{:else if chatStore.inferredBrief && chatStore.chat?.parentId === null && !editingInferred}
+			<div class="self-start rounded-md border border-border bg-card p-3 text-sm">
+				<div class="flex items-center gap-2">
+					<Sparkles class="size-3 shrink-0 text-muted-foreground" />
+					<span class="text-muted-foreground">Heard:</span>
+					<span class="truncate">{summarizeBrief(chatStore.inferredBrief)}</span>
+				</div>
+				<div class="mt-2 flex gap-2">
+					<Button variant="default" size="sm" onclick={onConfirmInferred}>Use this</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => {
+							editingInferred = true;
+						}}>Edit</Button
+					>
+					<Button variant="ghost" size="sm" onclick={() => chatStore.dismissInferredBrief()}
+						>Dismiss</Button
+					>
+				</div>
+			</div>
+		{:else if editingInferred && chatStore.inferredBrief}
+			<BriefCard
+				mode="edit"
+				brief={chatStore.inferredBrief}
+				onSave={onSaveInferred}
+				onDismiss={() => {
+					editingInferred = false;
+				}}
+			/>
 		{/if}
 
 		<MessageList
