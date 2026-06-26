@@ -18,6 +18,11 @@ const migrations: MigrationMeta[] = [
 		],
 		folderMillis: 1782370493595,
 		hash: 'ece23599a9f422e27a8093673bf595103bdfb07332e6f11de8c7285583d487c5'
+	},
+	{
+		sql: ['ALTER TABLE `chats` ADD `brief` text;'],
+		folderMillis: 1782469750295,
+		hash: '5861d0563f9d2aefdac2a48a81e5376ff1265a92128d4354832ce2f73600ed4e'
 	}
 ];
 

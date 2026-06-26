@@ -19,6 +19,7 @@
 import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import type { ChatMessage } from '$lib/ai/types';
+import { buildBriefSystemNote, parseBrief } from '$lib/chat/brief';
 
 /** A message plus the depth of the chat it belongs to (for ordering). */
 interface AnchoredMessage {
@@ -58,10 +59,14 @@ export async function assembleContext(targetChatId: string): Promise<ChatMessage
 	// 3) Sort by depth asc, then ord asc.
 	collected.sort((a, b) => a.depth - b.depth || a.ord - b.ord);
 
-	// 4) Optional leading excerpt note.
+	// 4) Optional leading notes. The brief (overarching framing, read from the
+	//    root) leads, then the branch excerpt (branch-specific seed). Branches
+	//    inherit the root's brief via `rootId`; their own `brief` column is null.
+	const briefNote = await briefSystemNoteFor(target);
 	const excerptNote = await excerptSystemNoteFor(target.id);
 
 	const out: ChatMessage[] = [];
+	if (briefNote) out.push(briefNote);
 	if (excerptNote) out.push(excerptNote);
 	for (const m of collected) out.push({ role: m.role, content: m.content });
 	return out;
@@ -90,6 +95,23 @@ function pushAll(out: AnchoredMessage[], msgs: Message[], depth: number): void {
 	for (const m of msgs) {
 		out.push({ depth, ord: m.ord, role: m.role, content: m.content });
 	}
+}
+
+/**
+ * If the target's ROOT carries a Learning Brief, render it as a leading system
+ * note. The brief is authored on the root only; a branch inherits it because we
+ * read from `target.rootId` (self for a root), never the target's own (null)
+ * `brief` column. Returns `null` when the root has no parseable brief.
+ *
+ * Reuses the already-fetched `target` when the target IS the root (avoids a
+ * redundant fetch); otherwise does a single `getById` for the root.
+ */
+async function briefSystemNoteFor(target: Chat): Promise<ChatMessage | null> {
+	const root = target.rootId === target.id ? target : await repos.chats.getById(target.rootId);
+	if (!root) return null;
+	const brief = parseBrief(root.brief);
+	if (!brief) return null;
+	return buildBriefSystemNote(brief);
 }
 
 /**

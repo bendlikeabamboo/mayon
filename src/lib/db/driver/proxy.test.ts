@@ -72,11 +72,12 @@ describe('storage seam (proxy + migrator + bundled migration)', () => {
 		const driver = await createMemoryDriver();
 		await runMigrations(driver, migrations);
 		const before = await driver.query<number[]>('SELECT count(*) FROM __drizzle_migrations');
-		expect(Number(before.rows[0]?.[0] ?? 0)).toBe(1);
+		const total = migrations.length;
+		expect(Number(before.rows[0]?.[0] ?? 0)).toBe(total);
 
 		// Re-running must not re-apply (already at the latest folderMillis).
 		await runMigrations(driver, migrations);
 		const after = await driver.query<number[]>('SELECT count(*) FROM __drizzle_migrations');
-		expect(Number(after.rows[0]?.[0] ?? 0)).toBe(1);
+		expect(Number(after.rows[0]?.[0] ?? 0)).toBe(total);
 	});
 });

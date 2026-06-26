@@ -2,6 +2,7 @@ import { asc, desc, eq, isNull } from 'drizzle-orm';
 import { chats, type Chat, type NewChat } from '$lib/db/schema';
 import { awaitDb, getDriver } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
+import type { LearningBrief } from '$lib/chat/brief';
 
 async function insertChat(input: NewChat): Promise<Chat> {
 	const [row] = await (await awaitDb()).insert(chats).values(input).returning();
@@ -15,7 +16,13 @@ export const chatsRepo = {
 	},
 
 	/** Root chat: no parent, root = self, depth 0. */
-	async createRoot(opts: { title: string; provider?: string; model?: string }): Promise<Chat> {
+	async createRoot(opts: {
+		title: string;
+		provider?: string;
+		model?: string;
+		/** Learning brief authored on the root (null/omit = brief-less chat). */
+		brief?: LearningBrief | null;
+	}): Promise<Chat> {
 		const id = uuid();
 		return insertChat({
 			id,
@@ -26,6 +33,7 @@ export const chatsRepo = {
 			depth: 0,
 			provider: opts.provider ?? null,
 			model: opts.model ?? null,
+			brief: opts.brief ? JSON.stringify(opts.brief) : null,
 			createdAt: now(),
 			updatedAt: now()
 		});
@@ -97,6 +105,20 @@ export const chatsRepo = {
 		await (await awaitDb())
 			.update(chats)
 			.set({ title, updatedAt: now() })
+			.where(eq(chats.id, id))
+			.run();
+	},
+
+	/**
+	 * Set (or clear) a root's Learning Brief. Pass `null` to clear. Storing a
+	 * brief JSON-serializes it; `parseBrief` is the safe inverse. Branches never
+	 * have their own brief (they inherit the root's), so this is root-only.
+	 */
+	async updateBrief(id: string, brief: LearningBrief | null): Promise<void> {
+		const json = brief ? JSON.stringify(brief) : null;
+		await (await awaitDb())
+			.update(chats)
+			.set({ brief: json, updatedAt: now() })
 			.where(eq(chats.id, id))
 			.run();
 	},

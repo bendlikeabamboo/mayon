@@ -29,6 +29,14 @@ export const chats = sqliteTable('chats', {
 	depth: integer('depth').notNull(),
 	provider: text('provider'),
 	model: text('model'),
+	/**
+	 * Learning Brief authored on the ROOT chat only, stored as a JSON string
+	 * (parsed via the total `parseBrief` in `src/lib/chat/brief.ts`). Branches
+	 * inherit it via the root→target walk in `assembleContext`, so their own
+	 * `brief` column stays `null`. Nullable + additive: old rows get `null` and
+	 * behave exactly as before (no system note).
+	 */
+	brief: text('brief'),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });

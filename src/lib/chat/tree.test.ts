@@ -12,6 +12,7 @@ function mkChat(opts: Partial<Chat> & { id: string }): Chat {
 		depth: opts.depth ?? 0,
 		provider: opts.provider ?? null,
 		model: opts.model ?? null,
+		brief: opts.brief ?? null,
 		createdAt: opts.createdAt ?? 0,
 		updatedAt: opts.updatedAt ?? 0
 	};

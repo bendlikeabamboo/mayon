@@ -101,6 +101,8 @@ export const DEFAULT_QUIZ_PROMPT = [
 	QUIZ_EXAMPLE,
 	FENCE,
 	'',
+	'The conversation may open with a learner brief (goal/level/mode/scope). Align the quiz to that goal and level; make the questions test whether the learner can DO the goal.',
+	'',
 	'Critical rules:',
 	`- Output ONE ${FENCE}json block containing ONE JSON object of the form {"questions": [...]}. Do not nest code fences inside the JSON — if a prompt, option, front, back, or rubric needs code, escape backticks inside the JSON string (e.g. "Run ${EXAMPLE_BACKTICK}make${EXAMPLE_BACKTICK}"), never open a new fence.`,
 	`- Every backtick and newline inside a JSON string MUST be escaped (backtick as backslash-${EXAMPLE_BACKTICK}, newline as backslash-n) so the whole block stays valid JSON.`,

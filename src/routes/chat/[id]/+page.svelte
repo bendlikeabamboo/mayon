@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { FlaskConical, ListChecks, Network } from '@lucide/svelte';
+	import { FlaskConical, ListChecks, Network, Target } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
@@ -10,6 +10,8 @@
 	import { repos } from '$lib/db';
 	import { breadcrumbToRoot } from '$lib/chat/tree';
 	import { buildExpoundPrompt } from '$lib/chat/expound';
+	import { parseBrief, summarizeBrief, type LearningBrief } from '$lib/chat/brief';
+	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
@@ -24,6 +26,29 @@
 	let siblings = $state<Chat[]>([]);
 	let labs = $state<Lab[]>([]);
 	let quizzes = $state<Quiz[]>([]);
+	/** When true, the brief editor is open (root only). */
+	let editingBrief = $state(false);
+	/** When true, the intake card on this chat is dismissed for the session. */
+	let intakeDismissed = $state(false);
+
+	/** The parsed brief for the ROOT of this chat's tree (inherited by branches). */
+	const rootBrief = $derived<LearningBrief | null>(
+		chatStore.chat ? parseBrief(chatStore.chat.brief) : null
+	);
+
+	/**
+	 * True when the brief intake card should render: root chat, no messages yet,
+	 * no brief, and not dismissed this session. Branches never show intake (they
+	 * inherit the root's brief). Reset on chat switch.
+	 */
+	const showBriefIntake = $derived(
+		!intakeDismissed &&
+			chatStore.chat !== null &&
+			chatStore.chat.parentId === null &&
+			chatStore.chat.id === chatStore.chat.rootId &&
+			chatStore.messages.length === 0 &&
+			rootBrief === null
+	);
 
 	async function loadNav(chat: Chat) {
 		const subtree = await repos.chats.listSubtree(chat.rootId);
@@ -44,6 +69,8 @@
 	}
 
 	async function loadAll(chatId: string) {
+		editingBrief = false;
+		intakeDismissed = false;
 		await chatStore.load(chatId);
 		if (chatStore.chat) await loadNav(chatStore.chat);
 		// Drain a staged expound prompt: auto-send + auto-stream the first turn
@@ -125,6 +152,20 @@
 		const id = await labsStore.saveRaw(labsStore.rawOffer.chatId, labsStore.rawOffer.raw);
 		if (id) await goto(`/lab/${id}`);
 	}
+
+	async function onSaveBrief(brief: LearningBrief) {
+		await chatStore.saveBrief(brief);
+		editingBrief = false;
+	}
+
+	async function onSaveIntakeBrief(brief: LearningBrief) {
+		await chatStore.saveBrief(brief);
+	}
+
+	/** "Just start chatting" on the [id] intake: dismiss the card, no brief. */
+	function onSkipIntake() {
+		intakeDismissed = true;
+	}
 </script>
 
 <svelte:head>
@@ -186,6 +227,37 @@
 		</div>
 
 		<CrossLinks chatId={chatStore.chat.id} />
+
+		{#if showBriefIntake}
+			<BriefCard mode="intake" onSave={onSaveIntakeBrief} onSkip={onSkipIntake} />
+		{:else if rootBrief && editingBrief}
+			<BriefCard
+				mode="edit"
+				brief={rootBrief}
+				onSave={onSaveBrief}
+				onDismiss={() => {
+					editingBrief = false;
+				}}
+			/>
+		{:else if rootBrief}
+			<button
+				type="button"
+				class="flex items-center gap-2 self-start rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
+					.chat?.parentId
+					? 'cursor-default'
+					: 'cursor-pointer'}"
+				title={chatStore.chat?.parentId ? 'Inherited from the root chat' : 'Edit your brief'}
+				onclick={() => {
+					if (!chatStore.chat?.parentId) editingBrief = true;
+				}}
+			>
+				<Target class="size-3 shrink-0" />
+				<span class="truncate">{summarizeBrief(rootBrief)}</span>
+				{#if chatStore.chat?.parentId}
+					<span class="shrink-0 text-muted-foreground/70">(inherited)</span>
+				{/if}
+			</button>
+		{/if}
 
 		<MessageList
 			messages={chatStore.messages}

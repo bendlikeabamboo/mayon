@@ -6,6 +6,7 @@ import type { ChatMessage, ChatStreamOptions, Provider } from '$lib/ai/types';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
 import { buildExpoundPrompt } from '$lib/chat/expound';
+import type { LearningBrief } from '$lib/chat/brief';
 
 // `chatStore.send()` calls `getActiveProvider()`; mock it so the pendingPrompt
 // drain test can stream a deterministic reply without a real provider.
@@ -598,5 +599,63 @@ describe('chatStore.deleteChat', () => {
 		expect(chatStore.chat).toBeNull();
 		expect(chatStore.chatId).toBeNull();
 		expect(chatStore.messages).toEqual([]);
+	});
+});
+
+describe('chatStore brief', () => {
+	const sampleBrief: LearningBrief = {
+		goal: 'be able to read a Makefile',
+		level: 'some',
+		mode: 'socratic',
+		context: 'engineer',
+		scope: '10 min'
+	};
+
+	it('createAndNavigate({ brief }) persists a root whose context leads with the brief note', async () => {
+		const id = await chatStore.createAndNavigate({ brief: sampleBrief });
+		const row = await repos.chats.getById(id);
+		expect(row?.parentId).toBeNull();
+		expect(row?.brief).not.toBeNull();
+		// assembleContext leads with the brief system note.
+		const ctx = await assembleContext(id);
+		expect(ctx[0].role).toBe('system');
+		expect(ctx[0].content).toContain('be able to read a Makefile');
+	});
+
+	it('createAndNavigate() with no brief creates a null-brief root (no system note)', async () => {
+		const id = await chatStore.createAndNavigate();
+		const row = await repos.chats.getById(id);
+		expect(row?.brief).toBeNull();
+		const ctx = await assembleContext(id);
+		expect(ctx.every((m) => m.role !== 'system')).toBe(true);
+	});
+
+	it('saveBrief updates the row and the store chat', async () => {
+		const id = await chatStore.createAndNavigate();
+		await chatStore.load(id);
+		expect(chatStore.chat?.brief).toBeNull();
+
+		await chatStore.saveBrief(sampleBrief);
+
+		// Store reflects the new brief JSON.
+		expect(chatStore.chat?.brief).toBe(JSON.stringify(sampleBrief));
+		// Row was persisted.
+		const row = await repos.chats.getById(id);
+		expect(row?.brief).toBe(JSON.stringify(sampleBrief));
+		// assembleContext now leads with the brief note.
+		const ctx = await assembleContext(id);
+		expect(ctx[0].role).toBe('system');
+		expect(ctx[0].content).toContain('be able to read a Makefile');
+	});
+
+	it('saveBrief replaces an existing brief (edit recalibrates the next reply)', async () => {
+		const id = await chatStore.createAndNavigate({ brief: sampleBrief });
+		await chatStore.load(id);
+		const updated: LearningBrief = { goal: 'write a Makefile from scratch', mode: 'explainer' };
+		await chatStore.saveBrief(updated);
+		expect(chatStore.chat?.brief).toBe(JSON.stringify(updated));
+		const ctx = await assembleContext(id);
+		expect(ctx[0].content).toContain('write a Makefile from scratch');
+		expect(ctx[0].content).not.toContain('be able to read a Makefile');
 	});
 });

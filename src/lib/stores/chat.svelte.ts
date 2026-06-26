@@ -19,6 +19,7 @@ import type { Chat, Message } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
 import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highlight';
 import { selectionOverlapsExisting } from '$lib/chat/expound';
+import type { LearningBrief } from '$lib/chat/brief';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 import type { ChatMessage, Provider, ReasoningMode } from '$lib/ai/types';
 import { getActiveProvider } from '$lib/ai/client';
@@ -99,10 +100,30 @@ class ChatState {
 		}
 	}
 
-	/** Create a fresh root chat and return its id (the caller navigates to it). */
-	async createAndNavigate(title?: string): Promise<string> {
-		const chat = await repos.chats.createRoot({ title: title ?? DEFAULT_TITLE });
+	/**
+	 * Create a fresh root chat and return its id (the caller navigates to it).
+	 * When `brief` is provided it is authored on the root; omitting it (or the
+	 * "Just start chatting" escape) creates a brief-less chat — exactly today's
+	 * behavior, so `assembleContext` emits no system note.
+	 */
+	async createAndNavigate(opts?: { title?: string; brief?: LearningBrief }): Promise<string> {
+		const chat = await repos.chats.createRoot({
+			title: opts?.title ?? DEFAULT_TITLE,
+			brief: opts?.brief ?? null
+		});
 		return chat.id;
+	}
+
+	/**
+	 * Set (or replace) the brief on the current root chat and reflect it in the
+	 * store. No streaming impact — the new framing applies to the next
+	 * `assembleContext`. Editable from the collapsed summary chip (root only).
+	 */
+	async saveBrief(brief: LearningBrief): Promise<void> {
+		const chat = this.chat;
+		if (!chat) return;
+		await repos.chats.updateBrief(chat.id, brief);
+		this.chat = { ...chat, brief: JSON.stringify(brief) };
 	}
 
 	/** Send a user prompt and stream the assistant reply, persisting on finish. */

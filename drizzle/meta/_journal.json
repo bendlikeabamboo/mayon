@@ -8,6 +8,13 @@
       "when": 1782370493595,
       "tag": "0000_needy_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782469750295,
+      "tag": "0001_parched_thundra",
+      "breakpoints": true
     }
   ]
 }

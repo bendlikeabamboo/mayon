@@ -75,6 +75,8 @@ export const DEFAULT_LAB_PROMPT = [
 	LAB_EXAMPLE,
 	FENCE,
 	'',
+	'The conversation may open with a learner brief (goal/level/mode/scope). Align the lab to that goal and level; make the checklist criteria test whether the learner can DO the goal.',
+	'',
 	'Critical rules:',
 	`- Output ONE ${FENCE}json block containing ONE JSON object. Do not nest code fences inside the JSON — if a step needs code, escape backticks inside the JSON string (e.g. "Run ${EXAMPLE_BACKTICK}make${EXAMPLE_BACKTICK}"), never open a new fence.`,
 	`- Every backtick and newline inside a JSON string MUST be escaped (backtick as backslash-${EXAMPLE_BACKTICK}, newline as backslash-n) so the whole block stays valid JSON.`,
