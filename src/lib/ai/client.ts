@@ -11,6 +11,7 @@
 import { repos } from '$lib/db';
 import { buildProvider, type ProviderKeyAccessor } from './registry';
 import { createKeyStore } from './keystore/client';
+import { discoverModels } from './model-discovery';
 import { MissingKeyError, type Provider, type ProviderConfig } from './types';
 
 const ACTIVE_KEY = 'activeProvider';
@@ -65,6 +66,19 @@ export async function hasProviderKey(id: string): Promise<boolean> {
 /** True if a provider of this kind needs a key (Ollama does not). */
 export function kindRequiresKey(config: Pick<ProviderConfig, 'kind'>): boolean {
 	return config.kind !== 'ollama';
+}
+
+/**
+ * Discover the live model list for an OpenAI-compatible gateway (OpenRouter,
+ * Kilo Gateway, Z.AI) from its `/models` endpoint. Auth is attached only when a
+ * key is configured, so public catalogs work pre-key. Throws the same typed
+ * provider errors as a chat request on failure — the UI treats this best-effort.
+ */
+export async function discoverProviderModels(
+	config: ProviderConfig,
+	signal?: AbortSignal
+): Promise<string[]> {
+	return discoverModels(config, settingsKeyAccessor, signal);
 }
 
 /** The lazy key probe handed to the adapter factory (boolean only — never the secret). */

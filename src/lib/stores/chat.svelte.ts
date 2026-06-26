@@ -20,7 +20,7 @@ import { assembleContext } from '$lib/chat/context';
 import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highlight';
 import { selectionOverlapsExisting } from '$lib/chat/expound';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
-import type { Provider } from '$lib/ai/types';
+import type { ChatMessage, Provider, ReasoningMode } from '$lib/ai/types';
 import { getActiveProvider } from '$lib/ai/client';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 
@@ -58,6 +58,8 @@ class ChatState {
 	pendingPrompt = $state<string | null>(null);
 
 	private controller: AbortController | null = null;
+	/** Separate abort for the parallel first-message title request. */
+	private titleController: AbortController | null = null;
 	private titling = false;
 
 	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
@@ -70,8 +72,9 @@ class ChatState {
 	 * so switching chats never leaks a previous conversation's buffer/error.
 	 */
 	async load(chatId: string): Promise<void> {
-		// Abort any in-flight stream for the previous chat.
+		// Abort any in-flight stream AND title request for the previous chat.
 		this.stop();
+		this.titleController?.abort();
 		this.loading = true;
 		this.error = null;
 		this.streamBuffer = '';
@@ -103,12 +106,21 @@ class ChatState {
 	}
 
 	/** Send a user prompt and stream the assistant reply, persisting on finish. */
-	async send(text: string): Promise<void> {
+	async send(text: string, opts?: { reasoning?: ReasoningMode }): Promise<void> {
 		const prompt = text.trim();
 		if (!prompt || this.streaming || !this.chatId) return;
 
 		this.error = null;
 		const chatId = this.chatId;
+		const reasoning: ReasoningMode = opts?.reasoning ?? 'auto';
+		const chat = this.chat;
+		// A root that still holds the placeholder title and has no prior turns:
+		// this is the first real message → fire the parallel title request.
+		const isFirstRootTurn =
+			chat !== null &&
+			chat.parentId === null &&
+			chat.title === DEFAULT_TITLE &&
+			!this.messages.some((m) => m.role === 'user' || m.role === 'assistant');
 
 		// 1) Persist the user row immediately and reflect it in the UI.
 		const userRow = await repos.messages.append(chatId, 'user', prompt);
@@ -122,7 +134,18 @@ class ChatState {
 
 		try {
 			const [ctx, provider] = await Promise.all([assembleContext(chatId), getActiveProvider()]);
-			for await (const token of provider.chatStream(ctx, { signal: this.controller.signal })) {
+
+			// 3) Fire the parallel title request (first message only). Not awaited:
+			// the title lands before the main reply finishes; failures are swallowed.
+			if (isFirstRootTurn) {
+				void this.autoTitleRoot(provider, prompt);
+			}
+
+			// 4) Stream the main assistant reply, honoring the composer reasoning.
+			for await (const token of provider.chatStream(ctx, {
+				signal: this.controller.signal,
+				reasoning
+			})) {
 				this.streamBuffer += token.text ?? token.delta ?? '';
 			}
 
@@ -131,9 +154,6 @@ class ChatState {
 				const assistantRow = await repos.messages.append(chatId, 'assistant', this.streamBuffer);
 				this.messages = [...this.messages, assistantRow];
 				await repos.chats.touch(chatId);
-				// After a root's first real exchange, auto-generate a title.
-				// Fire-and-forget: failures are swallowed (never break the chat).
-				void this.autoTitleRoot(provider);
 			}
 		} catch (err) {
 			if (!isAbortError(err)) {
@@ -177,6 +197,9 @@ class ChatState {
 	async deleteChat(chatId: string): Promise<void> {
 		await repos.chats.deleteSubtree(chatId);
 		if (this.chat && (this.chat.id === chatId || this.chat.rootId === chatId)) {
+			// Abort any in-flight stream AND title request before clearing state.
+			this.stop();
+			this.titleController?.abort();
 			this.chat = null;
 			this.chatId = null;
 			this.messages = [];
@@ -187,19 +210,28 @@ class ChatState {
 	}
 
 	/**
-	 * Best-effort: after a root chat's first exchange, ask the active provider for
+	 * Best-effort: after a root chat's first message, ask the active provider for
 	 * a concise title and persist it (replacing the {@link DEFAULT_TITLE}
-	 * placeholder). Swallows every error so title generation can never break the
-	 * chat; `titling` guards against re-entrancy while the async gen is in flight.
+	 * placeholder). Runs in parallel with the main assistant stream (not awaited
+	 * by `send`), so the title lands before the reply finishes.
+	 *
+	 * Context is just the first user message (no `assembleContext` walk). The
+	 * request always runs with reasoning OFF (fast, no thinking). Swallows every
+	 * error so title generation can never break the chat; `titling` guards
+	 * against re-entrancy while the async gen is in flight. Its own
+	 * `titleController` is aborted by `load`/`deleteChat` (not by `stop`).
 	 */
-	private async autoTitleRoot(provider: Provider): Promise<void> {
+	private async autoTitleRoot(provider: Provider, firstMessage: string): Promise<void> {
 		const chat = this.chat;
 		if (!chat || chat.parentId !== null || chat.title !== DEFAULT_TITLE) return;
 		if (this.titling) return;
 		this.titling = true;
+		this.titleController = new AbortController();
 		try {
-			const ctx = await assembleContext(chat.id);
-			const title = await generateTitle(provider, ctx);
+			const ctx: ChatMessage[] = [{ role: 'user', content: firstMessage }];
+			const title = await generateTitle(provider, ctx, {
+				signal: this.titleController.signal
+			});
 			// Re-check: a retitle (or a concurrent auto-title) may have landed.
 			if (!this.chat || this.chat.id !== chat.id || this.chat.title !== DEFAULT_TITLE) return;
 			await repos.chats.updateTitle(chat.id, title);
@@ -208,6 +240,7 @@ class ChatState {
 			/* best-effort; leave the placeholder title in place */
 		} finally {
 			this.titling = false;
+			this.titleController = null;
 		}
 	}
 

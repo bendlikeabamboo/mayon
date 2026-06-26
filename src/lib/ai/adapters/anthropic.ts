@@ -63,12 +63,17 @@ export function createAnthropicAdapter(
 				turns.unshift({ role: 'user', content: '' });
 			}
 
+			// Extended thinking (Anthropic). Only `'enabled'` opts in; `'auto'`/
+			// `'disabled'` both omit it (Anthropic's default = no extended
+			// thinking). `max_tokens` must exceed the thinking budget.
+			const budget = opts.reasoning === 'enabled' ? 2048 : 0;
 			const body = JSON.stringify({
 				model: opts.model ?? config.defaultModel,
 				messages: turns,
 				system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
-				max_tokens: 4096,
-				stream: true
+				max_tokens: 4096 + budget,
+				stream: true,
+				...(budget > 0 ? { thinking: { type: 'enabled', budget_tokens: budget } } : {})
 			});
 
 			for await (const data of streamSse(

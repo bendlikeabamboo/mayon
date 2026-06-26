@@ -23,11 +23,16 @@ export interface Token {
 	delta?: string;
 }
 
+/** Reasoning/thinking control. `'auto'` (or omitted) = provider default. */
+export type ReasoningMode = 'auto' | 'enabled' | 'disabled';
+
 /** Options accepted by `Provider.chatStream`. */
 export interface ChatStreamOptions {
 	signal?: AbortSignal;
 	/** Override the provider's `defaultModel` for this call only. */
 	model?: string;
+	/** Reasoning/thinking control. `'auto'` (or omitted) = provider default. */
+	reasoning?: ReasoningMode;
 }
 
 // Re-exported so `Provider.generateLab` can reference the generated-lab shape
@@ -54,6 +59,13 @@ export interface ProviderConfig {
 	baseUrl: string;
 	defaultModel: string;
 	models: string[];
+	/**
+	 * Whether the model list can be discovered live from a `/models` endpoint.
+	 * Set from the provider template on add. When true the Settings UI fetches
+	 * the catalog (OpenRouter / Kilo Gateway / Z.AI) instead of relying on the
+	 * shipped fallback list. Optional: older configs predate this field.
+	 */
+	discoverable?: boolean;
 }
 
 /**

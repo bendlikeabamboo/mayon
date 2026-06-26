@@ -13,6 +13,7 @@
 	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
+	import type { ReasoningMode } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
@@ -69,8 +70,8 @@
 		}
 	});
 
-	async function onSend(text: string) {
-		await chatStore.send(text);
+	async function onSend(text: string, reasoning: ReasoningMode) {
+		await chatStore.send(text, { reasoning });
 	}
 
 	async function onExpound(

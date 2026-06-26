@@ -59,6 +59,13 @@ export interface ProviderTemplate {
 	models: string[];
 	/** Whether this kind typically requires an API key (drives the UI prompt). */
 	requiresKey: boolean;
+	/**
+	 * Whether the catalog is fetched live from the provider's `/models` endpoint.
+	 * Set for OpenAI-compatible gateways with large/frequently-updated catalogs
+	 * (OpenRouter, Kilo Gateway, Z.AI). The shipped `models` list is a fallback
+	 * used until discovery completes (and when no key is set yet).
+	 */
+	discoverable?: boolean;
 }
 
 /**
@@ -69,11 +76,40 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 	{
 		kind: 'openai-compatible',
 		label: 'Z.AI (GLM)',
-		description: 'Z.AI coding endpoint — OpenAI-compatible. Models: glm-5.2, glm-4.7, …',
+		description: 'Z.AI coding endpoint — OpenAI-compatible. Models discovered automatically.',
 		baseUrl: 'https://api.z.ai/api/coding/paas/v4',
 		defaultModel: 'glm-5.2',
 		models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-4.7', 'glm-4.5-air'],
-		requiresKey: true
+		requiresKey: true,
+		discoverable: true
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Kilo Gateway',
+		description:
+			'Unified OpenAI-compatible gateway to hundreds of models (BYOK or a Kilo key). Models discovered automatically.',
+		baseUrl: 'https://api.kilo.ai/api/gateway',
+		defaultModel: 'z-ai/glm-5.2',
+		models: ['z-ai/glm-5.2', 'anthropic/claude-sonnet-4.5', 'openai/gpt-4o'],
+		requiresKey: true,
+		discoverable: true
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'OpenRouter',
+		description:
+			'300+ models from many providers behind one OpenAI-compatible key. Models discovered automatically.',
+		baseUrl: 'https://openrouter.ai/api/v1',
+		defaultModel: 'openai/gpt-4o-mini',
+		models: [
+			'openai/gpt-4o-mini',
+			'openai/gpt-4o',
+			'anthropic/claude-3.5-sonnet',
+			'google/gemini-flash-1.5',
+			'meta-llama/llama-3.1-8b-instruct'
+		],
+		requiresKey: true,
+		discoverable: true
 	},
 	{
 		kind: 'openai-compatible',

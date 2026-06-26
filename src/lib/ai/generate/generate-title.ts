@@ -14,7 +14,7 @@ import type { ChatMessage, ChatStreamOptions, Provider } from '../types';
 const TITLE_PROMPT = [
 	'You generate a short title for a conversation.',
 	'Reply with ONLY the title. Rules:',
-	'- At most 6 words.',
+	'- Between 3 and 10 words.',
 	'- No quotation marks, no markdown, no trailing punctuation, no emoji.',
 	'- Plain text; nothing else.'
 ].join('\n');
@@ -34,7 +34,9 @@ export async function generateTitle(
 ): Promise<string> {
 	const turns: ChatMessage[] = [{ role: 'system', content: TITLE_PROMPT }, ...messages];
 	let buffer = '';
-	for await (const token of provider.chatStream(turns, opts)) {
+	// Titles are always generated with reasoning OFF: it's a tiny, fast call
+	// that should never reason. A caller `signal` still propagates.
+	for await (const token of provider.chatStream(turns, { ...opts, reasoning: 'disabled' })) {
 		buffer += token.text ?? token.delta ?? '';
 	}
 	return cleanTitle(buffer);
@@ -52,6 +54,6 @@ export function cleanTitle(raw: string): string {
 	t = t.replace(/\s+/g, ' ').trim();
 	t = t.replace(/[.!?,;:]+$/g, '');
 	if (t.length === 0) return DEFAULT_TITLE;
-	if (t.length > 80) return t.slice(0, 77) + '\u2026';
+	if (t.length > 80) return t.slice(0, 79) + '\u2026';
 	return t;
 }

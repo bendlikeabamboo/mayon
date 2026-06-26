@@ -71,7 +71,14 @@ export function createGeminiAdapter(config: ProviderConfig, deps: GeminiAdapterD
 				}
 			}
 
-			const body = JSON.stringify({ contents });
+			const body = JSON.stringify({
+				contents,
+				// Gemini thinking budget: `'disabled'` requests zero thinking tokens;
+				// `'auto'`/`'enabled'` omit the field (provider default).
+				...(opts.reasoning === 'disabled'
+					? { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } }
+					: {})
+			});
 
 			for await (const data of streamSse(
 				endpoint,

@@ -9,7 +9,14 @@
  */
 import { streamSse } from '../transport';
 import { MissingKeyError } from '../types';
-import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import type {
+	ChatMessage,
+	ChatStreamOptions,
+	Provider,
+	ProviderConfig,
+	ReasoningMode,
+	Token
+} from '../types';
 import { generateLab as generateLabOrchestrator } from '../generate/generate';
 import {
 	generateQuiz as generateQuizOrchestrator,
@@ -47,7 +54,12 @@ export function createOpenAICompatibleAdapter(
 			const body = JSON.stringify({
 				model,
 				messages: messages.map((m) => ({ role: m.role, content: m.content })),
-				stream: true
+				stream: true,
+				// Z.AI/GLM thinking control (the `thinking` field). Omitted on
+				// `'auto'` (provider default). Stock OpenAI may ignore/reject this
+				// unknown field — best-effort; only the affected call dies. Do NOT
+				// gate by `baseUrl` (the field is harmless noise elsewhere).
+				...thinkingField(opts.reasoning)
 			});
 
 			for await (const data of streamSse(
@@ -88,4 +100,14 @@ function safeParse(data: string): OpenAiStreamChunk | null {
 /** Join a base URL and a path, tolerating a trailing slash / leading slash. */
 function joinUrl(base: string, path: string): string {
 	return `${base.replace(/\/+$/, '')}${path}`;
+}
+
+/**
+ * Build the Z.AI/GLM `thinking` request-field entry for a reasoning mode.
+ * Returns `{}` on `'auto'`/absent so the field is omitted (provider default).
+ */
+function thinkingField(reasoning?: ReasoningMode): { thinking?: { type: string } } {
+	if (reasoning === 'disabled') return { thinking: { type: 'disabled' } };
+	if (reasoning === 'enabled') return { thinking: { type: 'enabled' } };
+	return {};
 }

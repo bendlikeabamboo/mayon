@@ -78,7 +78,9 @@
 	{:else}
 		<ul class="space-y-2">
 			{#each roots as chat (chat.id)}
-				<li class="group flex items-center gap-2 rounded-lg border border-border bg-card p-3 pr-2 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+				<li
+					class="group flex items-center gap-2 rounded-lg border border-border bg-card p-3 pr-2 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+				>
 					<a href="/chat/{chat.id}" class="flex min-w-0 flex-1 items-center justify-between gap-3">
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{chat.title}</p>

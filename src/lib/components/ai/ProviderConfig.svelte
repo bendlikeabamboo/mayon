@@ -3,9 +3,11 @@
 	import { CheckCircle2, KeyRound, Plus, Trash2 } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import ModelSelect from '$lib/components/ai/ModelSelect.svelte';
 	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
 	import {
 		deleteProviderKey,
+		discoverProviderModels,
 		getActiveProviderId,
 		hasProviderKey,
 		kindRequiresKey,
@@ -31,6 +33,7 @@
 	let activeId = $state<string | null>(null);
 	let keyFlags = $state<Record<string, boolean>>({}); // id → has a key set
 	let keyDrafts = $state<Record<string, string>>({}); // id → unsaved key input value
+	let discovering = $state<Record<string, boolean>>({}); // id → model list refreshing
 	let loading = $state(true);
 	let saving = $state(false);
 	let status = $state<string | null>(null);
@@ -52,6 +55,13 @@
 			if (kindRequiresKey(p)) keyFlags[p.id] = await hasProviderKey(p.id);
 		}
 		loading = false;
+		// Keep gateway catalogs fresh: discover in the background for providers
+		// that can (best-effort, silent — failures don't surface here).
+		for (const p of providers) {
+			if (p.discoverable && (!kindRequiresKey(p) || keyFlags[p.id])) {
+				void refreshModels(p.id, { silent: true });
+			}
+		}
 	}
 
 	async function persist(next: ProviderConfig[]) {
@@ -76,13 +86,17 @@
 			name: t.label,
 			baseUrl: t.baseUrl,
 			defaultModel: t.defaultModel,
-			models: [...t.models]
+			models: [...t.models],
+			discoverable: t.discoverable
 		};
 		const next = [...providers, config];
 		adding = false;
 		void persist(next).then(() => {
 			// First provider becomes active automatically.
 			if (next.length === 1) void activate(id);
+			// Auto-discover the catalog for gateways (best-effort; works pre-key
+			// for public endpoints, and is re-run after a key is saved).
+			if (config.discoverable) void refreshModels(id, { silent: true });
 		});
 	}
 
@@ -92,6 +106,38 @@
 
 	function commit(_id: string) {
 		void persist(providers);
+	}
+
+	function onSelectModel(id: string, model: string) {
+		updateField(id, { defaultModel: model });
+		commit(id);
+	}
+
+	/**
+	 * Fetch the live model catalog for a discoverable gateway and merge it into
+	 * the stored config (discovered IDs first, any manual additions preserved).
+	 * Best-effort: `silent` suppresses status messages (used on load/add).
+	 */
+	async function refreshModels(id: string, { silent = false }: { silent?: boolean } = {}) {
+		const p = providers.find((x) => x.id === id);
+		if (!p || !p.discoverable) return;
+		discovering = { ...discovering, [id]: true };
+		if (!silent) status = 'Discovering models…';
+		try {
+			const discovered = await discoverProviderModels(p);
+			if (discovered.length > 0) {
+				const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
+				providers = providers.map((x) => (x.id === id ? { ...x, models: merged } : x));
+				await saveProviders(providers);
+				if (!silent) status = `Found ${discovered.length} models.`;
+			} else if (!silent) {
+				status = 'No models returned. Check the base URL / API key.';
+			}
+		} catch (err) {
+			if (!silent) status = `Discovery failed: ${err instanceof Error ? err.message : String(err)}`;
+		} finally {
+			discovering = { ...discovering, [id]: false };
+		}
 	}
 
 	function modelsText(p: ProviderConfig): string {
@@ -117,6 +163,9 @@
 		}
 		keyDrafts = { ...keyDrafts, [id]: '' };
 		status = 'Key saved.';
+		// A freshly-saved key unlocks authenticated discovery; refresh the catalog.
+		const p = providers.find((x) => x.id === id);
+		if (p?.discoverable) void refreshModels(id);
 	}
 
 	async function activate(id: string) {
@@ -132,10 +181,13 @@
 		// Drop any cached key state for the removed provider.
 		const flags = { ...keyFlags };
 		const drafts = { ...keyDrafts };
+		const probing = { ...discovering };
 		delete flags[id];
 		delete drafts[id];
+		delete probing[id];
 		keyFlags = flags;
 		keyDrafts = drafts;
+		discovering = probing;
 		if (activeId === id) {
 			activeId = next.length > 0 ? next[0].id : null;
 			await setActiveProvider(activeId);
@@ -258,32 +310,49 @@
 									onchange={() => commit(p.id)}
 								/>
 							</label>
-							<label class="space-y-1 text-xs text-muted-foreground">
-								<span>Default model</span>
-								<select
-									class={inputClass}
-									value={p.defaultModel}
-									onchange={(e) => {
-										updateField(p.id, { defaultModel: e.currentTarget.value });
-										commit(p.id);
-									}}
-								>
-									{#each p.models as m (m)}
-										<option value={m}>{m}</option>
-									{/each}
-								</select>
-							</label>
+							<div class="space-y-1">
+								<span class="block text-xs text-muted-foreground">Default model</span>
+								{#if p.discoverable}
+									<ModelSelect
+										models={p.models}
+										value={p.defaultModel}
+										discoverable
+										discovering={discovering[p.id] === true}
+										onselect={(m) => onSelectModel(p.id, m)}
+										onrefresh={() => void refreshModels(p.id)}
+									/>
+									<p class="text-xs text-muted-foreground">
+										{p.models.length} models
+										{discovering[p.id] ? ' · refreshing…' : ' · click ⟳ to refresh'}
+									</p>
+								{:else}
+									<select
+										class={inputClass}
+										value={p.defaultModel}
+										onchange={(e) => {
+											updateField(p.id, { defaultModel: e.currentTarget.value });
+											commit(p.id);
+										}}
+									>
+										{#each p.models as m (m)}
+											<option value={m}>{m}</option>
+										{/each}
+									</select>
+								{/if}
+							</div>
 						</div>
 
-						<label class="space-y-1 text-xs text-muted-foreground">
-							<span>Models (comma-separated)</span>
-							<input
-								class={inputClass}
-								value={modelsText(p)}
-								oninput={(e) => onModelsInput(p.id, e.currentTarget.value)}
-								onchange={() => commit(p.id)}
-							/>
-						</label>
+						{#if !p.discoverable}
+							<label class="space-y-1 text-xs text-muted-foreground">
+								<span>Models (comma-separated)</span>
+								<input
+									class={inputClass}
+									value={modelsText(p)}
+									oninput={(e) => onModelsInput(p.id, e.currentTarget.value)}
+									onchange={() => commit(p.id)}
+								/>
+							</label>
+						{/if}
 
 						{#if needsKey}
 							<label class="space-y-1 text-xs text-muted-foreground">

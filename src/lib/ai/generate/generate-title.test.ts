@@ -4,10 +4,14 @@ import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } 
 
 /**
  * Stub provider emitting one scripted reply per `chatStream` call, char by char
- * (mirrors generate.test.ts). Records each call's message list for assertions.
+ * (mirrors generate.test.ts). Records each call's message list + opts for
+ * assertions (e.g. that reasoning is forwarded).
  */
-function scriptedProvider(replies: string[]): { provider: Provider; calls: ChatMessage[][] } {
-	const calls: ChatMessage[][] = [];
+function scriptedProvider(replies: string[]): {
+	provider: Provider;
+	calls: { messages: ChatMessage[]; opts?: ChatStreamOptions }[];
+} {
+	const calls: { messages: ChatMessage[]; opts?: ChatStreamOptions }[] = [];
 	let call = 0;
 	const config: ProviderConfig = {
 		id: 'stub',
@@ -21,7 +25,7 @@ function scriptedProvider(replies: string[]): { provider: Provider; calls: ChatM
 		kind: 'openai-compatible',
 		config,
 		async *chatStream(messages: ChatMessage[], opts?: ChatStreamOptions): AsyncIterable<Token> {
-			calls.push(messages);
+			calls.push({ messages, opts });
 			if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 			const reply = replies[Math.min(call, replies.length - 1)] ?? '';
 			call += 1;
@@ -82,10 +86,33 @@ describe('generateTitle', () => {
 		]);
 		expect(title).toBe('Docker Volumes');
 		// The first turn sent to the provider is the title system instruction.
-		expect(calls[0][0].role).toBe('system');
-		expect(calls[0][0].content).toContain('title');
+		expect(calls[0].messages[0].role).toBe('system');
+		expect(calls[0].messages[0].content).toContain('title');
 		// The provided context follows it.
-		expect(calls[0].slice(1).map((m) => m.role)).toEqual(['user', 'assistant']);
+		expect(calls[0].messages.slice(1).map((m) => m.role)).toEqual(['user', 'assistant']);
+	});
+
+	it('forwards reasoning "disabled" to the provider (titles never reason)', async () => {
+		const { provider, calls } = scriptedProvider(['Terraform Basics']);
+		await generateTitle(provider, [{ role: 'user', content: 'hi' }]);
+		expect(calls[0].opts?.reasoning).toBe('disabled');
+	});
+
+	it('overrides a caller-supplied reasoning mode with "disabled"', async () => {
+		const { provider, calls } = scriptedProvider(['Title']);
+		await generateTitle(provider, [{ role: 'user', content: 'hi' }], {
+			reasoning: 'enabled'
+		});
+		expect(calls[0].opts?.reasoning).toBe('disabled');
+	});
+
+	it('uses a prompt that asks for a 3 to 10 word title', async () => {
+		const { provider, calls } = scriptedProvider(['T']);
+		await generateTitle(provider, [{ role: 'user', content: 'hi' }]);
+		const prompt = calls[0].messages[0].content;
+		expect(prompt).toContain('3');
+		expect(prompt).toContain('10');
+		expect(prompt).not.toContain('6 words');
 	});
 
 	it('falls back to the placeholder when the model returns nothing usable', async () => {
@@ -100,6 +127,6 @@ describe('generateTitle', () => {
 		ctrl.abort();
 		await expect(
 			generateTitle(provider, [{ role: 'user', content: 'hi' }], { signal: ctrl.signal })
-		).rejects.toThrow('AbortError');
+		).rejects.toThrow('Aborted');
 	});
 });

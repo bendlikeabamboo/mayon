@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
 import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
-import type { Provider } from '$lib/ai/types';
+import type { ChatMessage, ChatStreamOptions, Provider } from '$lib/ai/types';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
 import { buildExpoundPrompt } from '$lib/chat/expound';
@@ -341,6 +341,15 @@ describe('chatStore.createExpoundBranch', () => {
 });
 
 describe('chatStore auto-title', () => {
+	const stubConfig = {
+		id: 'stub',
+		kind: 'openai-compatible' as const,
+		name: 'stub',
+		baseUrl: 'http://stub',
+		defaultModel: 'stub-model',
+		models: ['stub-model']
+	};
+
 	/**
 	 * Provider that returns `reply` for the chat stream and `title` for a title
 	 * request (distinguished by the leading system message generateTitle prepends).
@@ -348,14 +357,7 @@ describe('chatStore auto-title', () => {
 	function titleAwareProvider(reply: string, title: string): Provider {
 		return {
 			kind: 'openai-compatible',
-			config: {
-				id: 'stub',
-				kind: 'openai-compatible',
-				name: 'stub',
-				baseUrl: 'http://stub',
-				defaultModel: 'stub-model',
-				models: ['stub-model']
-			},
+			config: stubConfig,
 			async *chatStream(messages) {
 				yield { text: messages[0]?.role === 'system' ? title : reply };
 			},
@@ -363,6 +365,33 @@ describe('chatStore auto-title', () => {
 			generateQuiz: () => Promise.reject(new Error('unused')),
 			gradeShortAnswer: () => Promise.reject(new Error('unused'))
 		};
+	}
+
+	/**
+	 * Provider that records every `chatStream` call's `(messages, opts)` and
+	 * returns `reply` for the main stream and `title` for a title request. Used
+	 * to assert reasoning forwarding and the title context.
+	 */
+	function recordingProvider(
+		reply: string,
+		title: string
+	): {
+		provider: Provider;
+		calls: { messages: ChatMessage[]; opts?: ChatStreamOptions }[];
+	} {
+		const calls: { messages: ChatMessage[]; opts?: ChatStreamOptions }[] = [];
+		const provider: Provider = {
+			kind: 'openai-compatible',
+			config: stubConfig,
+			async *chatStream(messages, opts) {
+				calls.push({ messages, opts });
+				yield { text: messages[0]?.role === 'system' ? title : reply };
+			},
+			generateLab: () => Promise.reject(new Error('unused')),
+			generateQuiz: () => Promise.reject(new Error('unused')),
+			gradeShortAnswer: () => Promise.reject(new Error('unused'))
+		};
+		return { provider, calls };
 	}
 
 	/** Poll for the auto-title (fire-and-forget) to land, with a generous cap. */
@@ -373,7 +402,7 @@ describe('chatStore auto-title', () => {
 		}
 	}
 
-	it('auto-generates and persists a title after a root chat first exchange', async () => {
+	it('auto-generates and persists a title from the first user message (fired in parallel)', async () => {
 		const root = await repos.chats.createRoot({ title: 'New chat' });
 		mockedGetActiveProvider.mockResolvedValue(titleAwareProvider('the answer', 'Docker Volumes'));
 		await chatStore.load(root.id);
@@ -387,6 +416,113 @@ describe('chatStore auto-title', () => {
 		expect(row?.title).toBe('Docker Volumes');
 		// …and reflected in the store.
 		expect(chatStore.chat?.title).toBe('Docker Volumes');
+	});
+
+	it('requests the title with reasoning off and the first user message only', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const { provider, calls } = recordingProvider('the answer', 'Terraform Basics');
+		mockedGetActiveProvider.mockResolvedValue(provider);
+		await chatStore.load(root.id);
+
+		await chatStore.send('I want to learn Terraform');
+		await waitForTitle('Terraform Basics');
+
+		// The title call is system-led (generateTitle prepends the prompt).
+		const titleCall = calls.find((c) => c.messages[0]?.role === 'system');
+		expect(titleCall).toBeDefined();
+		// Titles are always generated with reasoning OFF.
+		expect(titleCall!.opts?.reasoning).toBe('disabled');
+		// Title context = [system prompt, first user message] — no full walk.
+		expect(titleCall!.messages.map((m) => m.role)).toEqual(['system', 'user']);
+		expect(titleCall!.messages[1].content).toBe('I want to learn Terraform');
+	});
+
+	it('lands the title while the main reply stream is still running (parallel)', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		let releaseMain: () => void = () => {};
+		const mainBlocked = new Promise<void>((resolve) => {
+			releaseMain = resolve;
+		});
+		const provider: Provider = {
+			kind: 'openai-compatible',
+			config: stubConfig,
+			async *chatStream(messages, opts) {
+				if (messages[0]?.role === 'system') {
+					yield { text: 'Parallel Title' };
+					return;
+				}
+				// Main reply: block until released (proves the title doesn't wait).
+				await mainBlocked;
+				if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+				yield { text: 'main reply' };
+			},
+			generateLab: () => Promise.reject(new Error('unused')),
+			generateQuiz: () => Promise.reject(new Error('unused')),
+			gradeShortAnswer: () => Promise.reject(new Error('unused'))
+		};
+		mockedGetActiveProvider.mockResolvedValue(provider);
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('first message');
+		// While the main stream is still blocked, the title already landed.
+		await waitForTitle('Parallel Title');
+		expect(chatStore.streaming).toBe(true);
+
+		releaseMain();
+		await sendP;
+		expect((await repos.chats.getById(root.id))?.title).toBe('Parallel Title');
+	});
+
+	it('aborts an in-flight title request when switching chats', async () => {
+		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const other = await repos.chats.createRoot({ title: 'Other' });
+		let titleSignal: AbortSignal | undefined;
+		const provider: Provider = {
+			kind: 'openai-compatible',
+			config: stubConfig,
+			async *chatStream(messages, opts) {
+				if (messages[0]?.role === 'system') {
+					titleSignal = opts?.signal;
+					// Suspend until the title request is aborted (or never).
+					await new Promise<void>((resolve) => {
+						if (opts?.signal?.aborted) return resolve();
+						opts?.signal?.addEventListener('abort', () => resolve(), { once: true });
+					});
+					if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+					yield { text: 'Stale Title' };
+					return;
+				}
+				yield { text: 'reply' };
+			},
+			generateLab: () => Promise.reject(new Error('unused')),
+			generateQuiz: () => Promise.reject(new Error('unused')),
+			gradeShortAnswer: () => Promise.reject(new Error('unused'))
+		};
+		mockedGetActiveProvider.mockResolvedValue(provider);
+		await chatStore.load(root.id);
+
+		void chatStore.send('hello');
+		await vi.waitFor(() => expect(titleSignal).toBeDefined());
+
+		// Switching chats aborts the in-flight title request.
+		await chatStore.load(other.id);
+		expect(titleSignal?.aborted).toBe(true);
+		// The stale title never persisted on the original root.
+		expect((await repos.chats.getById(root.id))?.title).toBe('New chat');
+	});
+
+	it('forwards the composer reasoning mode to the main reply stream', async () => {
+		// Custom (non-placeholder) title → the parallel title never fires, so the
+		// only recorded call is the main reply stream.
+		const root = await repos.chats.createRoot({ title: 'Custom Title' });
+		const { provider, calls } = recordingProvider('reply', 'Ignored');
+		mockedGetActiveProvider.mockResolvedValue(provider);
+		await chatStore.load(root.id);
+
+		await chatStore.send('hello', { reasoning: 'disabled' });
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0].opts?.reasoning).toBe('disabled');
 	});
 
 	it('does not retitle a chat whose title is no longer the placeholder', async () => {

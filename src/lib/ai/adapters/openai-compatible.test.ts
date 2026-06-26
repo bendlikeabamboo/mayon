@@ -110,6 +110,52 @@ describe('createOpenAICompatibleAdapter', () => {
 		expect(body.messages).toEqual([{ role: 'user', content: 'hi' }]);
 	});
 
+	it('includes thinking: { type: "disabled" } when reasoning is disabled', async () => {
+		await fakeKeyStore.set(config.id, 'secret');
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			cannedResponse(openaiSse(['ok']))
+		);
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
+		await collectTokens(
+			provider.chatStream([{ role: 'user', content: 'hi' }], { reasoning: 'disabled' })
+		);
+		const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+		const body = JSON.parse(init.body as string);
+		expect(body.thinking).toEqual({ type: 'disabled' });
+	});
+
+	it('includes thinking: { type: "enabled" } when reasoning is enabled', async () => {
+		await fakeKeyStore.set(config.id, 'secret');
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			cannedResponse(openaiSse(['ok']))
+		);
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
+		await collectTokens(
+			provider.chatStream([{ role: 'user', content: 'hi' }], { reasoning: 'enabled' })
+		);
+		const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+		const body = JSON.parse(init.body as string);
+		expect(body.thinking).toEqual({ type: 'enabled' });
+	});
+
+	it('omits thinking on the default (auto) reasoning mode', async () => {
+		await fakeKeyStore.set(config.id, 'secret');
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			cannedResponse(openaiSse(['ok']))
+		);
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
+		await collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }]));
+		const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+		const body = JSON.parse(init.body as string);
+		expect(body.thinking).toBeUndefined();
+	});
+
 	it('throws MissingKeyError when no key is configured', async () => {
 		// Keystore left empty.
 		const provider = createOpenAICompatibleAdapter(config, {

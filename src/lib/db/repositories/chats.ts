@@ -107,7 +107,7 @@ export const chatsRepo = {
 
 	async delete(id: string): Promise<void> {
 		await (await awaitDb()).delete(chats).where(eq(chats.id, id)).run();
-	}
+	},
 
 	/**
 	 * Delete an entire conversation tree (root + all descendants) and every
@@ -147,6 +147,15 @@ export const chatsRepo = {
 			},
 			{
 				sql: 'DELETE FROM branch_sources WHERE source_message_id IN (SELECT m.id FROM messages m JOIN chats c ON c.id = m.chat_id WHERE c.root_id = ?)',
+				params: [rootId]
+			},
+			// chats.branch_point_message_id → messages forms a cycle with
+			// messages.chat_id → chats. Clear the (nullable) branch-point
+			// reference on subtree chats before deleting messages, so removing
+			// a branched message can't trip a chats→messages FK. (A child's
+			// branch point always lives within its own subtree.)
+			{
+				sql: 'UPDATE chats SET branch_point_message_id = NULL WHERE root_id = ?',
 				params: [rootId]
 			},
 			{

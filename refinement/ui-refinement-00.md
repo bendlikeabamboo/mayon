@@ -1,0 +1,2 @@
+1. I want the line on on expound string to use the --highlight color and not make it dashed. For external links, I want it to be in --muted-foreground and with an external link icon (a small one) next to it.
+2. 

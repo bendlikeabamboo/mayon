@@ -100,11 +100,14 @@ and stream a real reply. The `/chat` route is an **ephemeral streaming demo** (n
 persistence — the real chat lands in P2); `/settings` has the provider config UI.
 
 - **Browser:** `pnpm dev` → open `/settings` → **Add provider** → pick a template
-  (Z.AI/GLM is OpenAI-compatible and the default; OpenAI, Anthropic, Gemini, and a
-  local Ollama server are also available) → edit base URL / default model if needed →
-  paste the **API key** → **Save key** → **Set active**. Then go to `/chat`, type a
-  prompt, and tokens stream in live. **Reload the tab** → the provider config and key
-  survive (proving settings-KV persistence).
+  (Z.AI/GLM is OpenAI-compatible and the default; OpenRouter and Kilo Gateway are
+  OpenAI-compatible gateways; OpenAI, Anthropic, Gemini, and a local Ollama server
+  are also available) → edit base URL / default model if needed → paste the
+  **API key** → **Save key** → **Set active**. The gateways (OpenRouter / Kilo
+  Gateway / Z.AI) auto-discover their model catalog via the `/models` endpoint and
+  offer a searchable model picker; **Reload the tab** → the provider config and key
+  survive (proving settings-KV persistence). Then go to `/chat`, type a prompt, and
+  tokens stream in live.
 - **Desktop:** `pnpm tauri dev` → same flow → key + config survive an **app restart**.
 - **Provider switch:** add a second provider, **Set active** to it, stream again.
 - **CORS fallback (best-effort):** configure Anthropic in the browser; if the provider
