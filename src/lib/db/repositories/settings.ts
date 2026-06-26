@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { settings } from '$lib/db/schema';
 import { awaitDb } from '$lib/db/driver/client';
+import { DEFAULT_PROFILE } from '$lib/chat/brief';
 
 /**
  * Key/value store with JSON values. The ONLY way app code reads/writes settings.
@@ -46,5 +47,7 @@ export const settingsRepo = {
 	/** Seed required defaults on first run (idempotent). */
 	async seedDefaults(): Promise<void> {
 		if ((await this.get('providers')) === null) await this.set('providers', {});
+		if ((await this.get('learnerProfile')) === null)
+			await this.set('learnerProfile', DEFAULT_PROFILE);
 	}
 };

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-	buildBriefSystemNote,
+	applyProfile,
 	DEFAULT_LEVEL,
 	DEFAULT_MODE,
+	buildBriefSystemNote,
 	parseBrief,
 	summarizeBrief,
-	type LearningBrief
+	type LearningBrief,
+	type LearnerProfile
 } from './brief';
 
 describe('parseBrief', () => {
@@ -143,5 +145,57 @@ describe('summarizeBrief', () => {
 		expect(summary.endsWith(`level: ${DEFAULT_LEVEL} · ${DEFAULT_MODE}`)).toBe(true);
 		// Total chip stays compact (well under the raw goal length).
 		expect(summary.length).toBeLessThan(longGoal.length);
+	});
+});
+
+describe('applyProfile', () => {
+	it('brief fields win over profile fields', () => {
+		const profile: LearnerProfile = { context: 'p-ctx', level: 'novice', mode: 'build' };
+		const brief = { context: 'b-ctx', level: 'regular' as const, mode: 'explainer' as const };
+		const result = applyProfile(profile, brief);
+		expect(result.context).toBe('b-ctx');
+		expect(result.level).toBe('regular');
+		expect(result.mode).toBe('explainer');
+	});
+
+	it('profile fills gaps when brief omits fields', () => {
+		const profile: LearnerProfile = { context: 'p-ctx', level: 'practitioner', mode: 'build' };
+		const result = applyProfile(profile, {});
+		expect(result.context).toBe('p-ctx');
+		expect(result.level).toBe('practitioner');
+		expect(result.mode).toBe('build');
+	});
+
+	it('defaults fill remaining gaps', () => {
+		const result = applyProfile({}, {});
+		expect(result.level).toBe(DEFAULT_LEVEL);
+		expect(result.mode).toBe(DEFAULT_MODE);
+		expect(result.context).toBeUndefined();
+	});
+
+	it('goal and scope pass through unchanged', () => {
+		const profile: LearnerProfile = { context: 'x', level: 'novice', mode: 'build' };
+		const brief = { goal: 'my goal', scope: 'my scope' };
+		const result = applyProfile(profile, brief);
+		expect(result.goal).toBe('my goal');
+		expect(result.scope).toBe('my scope');
+	});
+
+	it('empty brief + empty profile yields defaults', () => {
+		const result = applyProfile({}, {});
+		expect(result).toEqual({
+			goal: undefined,
+			context: undefined,
+			level: DEFAULT_LEVEL,
+			mode: DEFAULT_MODE,
+			scope: undefined
+		});
+	});
+
+	it('level and mode are always present', () => {
+		const partial: Partial<LearningBrief> = { goal: 'g' };
+		const result = applyProfile({}, partial);
+		expect(result.level).toBeDefined();
+		expect(result.mode).toBeDefined();
 	});
 });

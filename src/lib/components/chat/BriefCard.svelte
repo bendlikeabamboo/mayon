@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { Check, ChevronDown, MessageSquare } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
+		applyProfile,
 		DEFAULT_LEVEL,
 		DEFAULT_MODE,
 		LEVEL_LABELS,
@@ -11,6 +12,7 @@
 		MODE_OPTIONS,
 		type LearningBrief
 	} from '$lib/chat/brief';
+	import { getLearnerProfile } from '$lib/chat/profile';
 
 	/**
 	 * Learning Brief intake / edit card.
@@ -50,6 +52,21 @@
 	let level = $state(untrack(() => brief?.level ?? DEFAULT_LEVEL));
 	let scopeState = $state(untrack(() => brief?.scope ?? ''));
 	let modeVal = $state(untrack(() => brief?.mode ?? DEFAULT_MODE));
+
+	onMount(async () => {
+		if (mode !== 'intake') return;
+		try {
+			const profile = await getLearnerProfile();
+			const seed = applyProfile(profile, brief ?? {});
+			goal = seed.goal ?? '';
+			level = seed.level;
+			modeVal = seed.mode;
+			context = seed.context ?? '';
+			scopeState = seed.scope ?? '';
+		} catch {
+			// Best-effort: fall back to existing defaults
+		}
+	});
 
 	const canSubmit = $derived(goal.trim().length > 0);
 

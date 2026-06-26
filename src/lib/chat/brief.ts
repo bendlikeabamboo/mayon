@@ -67,6 +67,47 @@ const MODE_INSTRUCTIONS: Record<BriefMode, string> = {
 export const DEFAULT_LEVEL: BriefLevel = 'some';
 export const DEFAULT_MODE: BriefMode = 'socratic';
 
+/** Topic-agnostic defaults reused across chats; snapshotted into a brief at intake. */
+export interface LearnerProfile {
+	context?: string;
+	level?: BriefLevel;
+	mode?: BriefMode;
+}
+
+export const DEFAULT_PROFILE: LearnerProfile = { level: 'some', mode: 'socratic' };
+
+/**
+ * Resolved brief fields after applying a profile. `level`/`mode` are always
+ * present (precedence: brief > profile > defaults); `goal`/`scope`/`context`
+ * pass through from `brief` unchanged.
+ */
+export interface ResolvedBriefFields {
+	goal?: string;
+	context?: string;
+	level: BriefLevel;
+	mode: BriefMode;
+	scope?: string;
+}
+
+/**
+ * Fill `context`/`level`/`mode` from `profile` where `brief` omits them, then
+ * fill any still-missing level/mode with the defaults. Explicit `brief` fields
+ * ALWAYS win; the profile only fills gaps; defaults fill the rest. `goal` and
+ * `scope` are passed through untouched (not profile fields).
+ */
+export function applyProfile(
+	profile: LearnerProfile,
+	brief: Partial<LearningBrief>
+): ResolvedBriefFields {
+	return {
+		goal: brief.goal,
+		context: brief.context ?? profile.context,
+		level: brief.level ?? profile.level ?? DEFAULT_LEVEL,
+		mode: brief.mode ?? profile.mode ?? DEFAULT_MODE,
+		scope: brief.scope
+	};
+}
+
 /** Max length of the goal fragment shown in the collapsed summary chip. */
 const SUMMARY_GOAL_MAX = 60;
 

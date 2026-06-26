@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
 import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
+import { DEFAULT_PROFILE } from '$lib/chat/brief';
+import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
 
 beforeEach(async () => {
 	// Fresh in-memory DB per test; repositories resolve the live db via getDb().
@@ -87,6 +89,28 @@ describe('settings repository', () => {
 		await repos.settings.seedDefaults();
 		await repos.settings.seedDefaults();
 		expect(await repos.settings.get('providers')).toEqual({});
+	});
+
+	it('seeds learnerProfile default on first run', async () => {
+		await repos.settings.seedDefaults();
+		expect(await repos.settings.get('learnerProfile')).toEqual(DEFAULT_PROFILE);
+		await repos.settings.seedDefaults();
+		expect(await repos.settings.get('learnerProfile')).toEqual(DEFAULT_PROFILE);
+	});
+
+	it('round-trips a learner profile', async () => {
+		const profile = { context: 'x', level: 'regular' as const, mode: 'build' as const };
+		await setLearnerProfile(profile);
+		const loaded = await getLearnerProfile();
+		expect(loaded).toEqual(profile);
+	});
+
+	it('drops invalid enum values on read', async () => {
+		await repos.settings.set('learnerProfile', { context: 'x', level: 'expert', mode: 'lecture' });
+		const loaded = await getLearnerProfile();
+		expect(loaded.level).toBeUndefined();
+		expect(loaded.mode).toBeUndefined();
+		expect(loaded.context).toBe('x');
 	});
 });
 
