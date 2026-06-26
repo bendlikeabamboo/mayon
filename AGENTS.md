@@ -23,6 +23,9 @@ in `.kilo/plans/`.
 | `pnpm install`           | Install dependencies.                                                                                                      |
 | `pnpm dev`               | Run the SvelteKit SPA dev server (http://localhost:5173).                                                                  |
 | `pnpm tauri dev`         | Run the Tauri desktop shell (boots `pnpm dev` internally, opens a window).                                                 |
+| `pnpm tauri:dev`         | Run the Tauri desktop shell (`tauri dev`; boots `pnpm dev` internally).                                                    |
+| `pnpm tauri:build`       | Build signed desktop installers (`tauri build`). Needs `TAURI_SIGNING_PRIVATE_KEY` env for updater-signed artifacts.       |
+| `pnpm tauri:icon`        | Regenerate the full icon set in `src-tauri/icons/` from a source PNG (`tauri icon <src.png>`).                             |
 | `pnpm build`             | Build the SPA into `build/` (consumed by Tauri as `frontendDist`).                                                         |
 | `pnpm check`             | Type-check with `svelte-check`.                                                                                            |
 | `pnpm lint`              | ESLint (flat config) + Prettier `--check`.                                                                                 |
@@ -48,6 +51,12 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
 Without these `cargo`/`tauri build` cannot link. macOS/Windows need only the standard
 toolchains.
 
+The OS keychain (`keyring` crate) needs a running Secret Service implementation on Linux —
+install/run `gnome-keyring` (or `kwallet`) and `libsecret-1-0`. Without it, `key_set` /
+`key_has` / `key_delete` surface a clear error instead of silently failing; key-dependent
+providers won't work until a secret service is available (the browser/IndexedDB path is
+unaffected).
+
 ## Architecture boundaries (do not violate)
 
 - **Components/stores call repositories only** — never import `db` directly. The drizzle
@@ -58,9 +67,10 @@ toolchains.
 - **Runtime selection** happens in `src/lib/db/driver/client.ts` via `isTauri()`.
 - **No secrets in `settings`.** Provider config holds non-secret handle fields only; API
   keys are a P1 concern (desktop keychain / browser IndexedDB).
-  > **P1 tradeoff:** as of P1, API keys are stored as **plaintext** in the `settings` KV
-  > under `providerKey:<id>` (see `src/lib/ai/client.ts`, marked `TODO(P5)`). This
-  > knowingly violates the rule above; secure storage ships with the P5 Rust transport.
+  > **P5 (resolved):** secure storage shipped. API keys now live in the OS keychain on
+  > desktop (resolved in Rust via the `keyring` crate; the plaintext never enters the
+  > webview) and in IndexedDB in the browser. A one-time `migrateLegacyKeys()` boot step
+  > moves any legacy `providerKey:<id>` rows out of `settings` into the runtime key store.
 
 ## Manual acceptance gates (P0)
 
@@ -104,3 +114,40 @@ persistence — the real chat lands in P2); `/settings` has the provider config 
 > The streaming transport, adapters, error mapping, and context assembly are covered by
 > the automated Vitest suite (`pnpm test`). Provider keys are never echoed back in the
 > UI after save (the key field is masked with a "replace key" affordance).
+
+## Manual acceptance gates (P5)
+
+P5 ships the installable, offline, secure desktop shell: a Rust LLM transport (no CORS, no
+key in the webview), OS-keychain key storage, hardened native SQLite (WAL), auto-update,
+single-instance, and strict CSP. The browser runtime is unchanged in behavior.
+
+- **Installable + offline:** `pnpm tauri:build` → produces an installer; install it, then run
+  **fully offline** (network off) → app boots, chats/labs/quizzes load (native SQLite WAL),
+  and the theme persists.
+- **Secure key storage:** add a provider + key in Settings → the key is **not** in the
+  `mayon.db` `settings` table (inspect with a SQLite client) and **not** in the webview
+  (DevTools `invoke` returns only `key_has` booleans, never plaintext). It lives in the OS
+  keychain (Keychain Access / Credential Manager / `secret-tool lookup service Mayon`).
+  Streaming works for **all** providers including Anthropic (no CORS, no
+  `dangerous-direct-browser-access` needed).
+- **Migration:** with a pre-P5 DB containing `providerKey:<id>` rows, the first P5 boot moves
+  them to the keychain and removes the rows; streaming still works afterward.
+- **Streaming + provider switch + abort:** stream a reply; add a second provider, **Set
+  active**, stream again; **Stop** aborts cleanly (`llm_stream_cancel` fires).
+- **Update:** with a staged signed `latest.json` at a higher version → boot banner →
+  download + progress → install → relaunch lands on the new version.
+- **Single instance:** launch a second time → focuses the existing window (no second instance
+  / DB lock).
+- **CSP:** DevTools shows no CSP violations; no cross-origin provider requests (all via
+  `invoke`).
+
+> The desktop build needs the GTK/WebKit dev libs + a running secret service on Linux
+> (above). It cannot be compiled or run in the headless CI sandbox; verify it on a real
+> machine. The transport bridge, keychain wrappers, and migration are covered by the
+> automated Vitest suite (`pnpm test`); the real Rust transport/keychain/updater are
+> manual/desktop-only gates.
+
+> The updater `endpoints` in `tauri.conf.json` must point at the real GitHub Release
+> `latest.json` (currently a placeholder owner/repo). The `TAURI_SIGNING_PRIVATE_KEY` (and
+> its password) is an env-only secret (never committed) required for signed releases —
+> without it, `pnpm tauri:build` cannot emit updater-signed artifacts.

@@ -5,8 +5,9 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
 	import {
+		deleteProviderKey,
 		getActiveProviderId,
-		getProviderKey,
+		hasProviderKey,
 		kindRequiresKey,
 		listProviders,
 		saveProviders,
@@ -16,9 +17,10 @@
 	import type { ProviderConfig } from '$lib/ai/types';
 	import { uuid } from '$lib/db/ids';
 
-	// NOTE(P1 tradeoff): keys are stored as plaintext in the settings KV. The
-	// "replace key" affordance below never echoes the stored key back; it only
-	// writes. See the TODO(P5) marker in client.ts.
+	// API keys live in the runtime KeyStore — the OS keychain on desktop (plaintext
+	// never enters JS), IndexedDB in the browser — not the local settings store.
+	// The "replace key" affordance below never echoes a stored key back; it only
+	// writes/deletes.
 
 	// Optional extra sections rendered inside the page's column (e.g. the lab
 	// prompt override). Keeps the page chrome (title + max-width + padding) in
@@ -47,7 +49,7 @@
 		activeId = await getActiveProviderId();
 		keyFlags = {};
 		for (const p of providers) {
-			if (kindRequiresKey(p)) keyFlags[p.id] = (await getProviderKey(p.id)) != null;
+			if (kindRequiresKey(p)) keyFlags[p.id] = await hasProviderKey(p.id);
 		}
 		loading = false;
 	}
@@ -105,8 +107,14 @@
 	}
 
 	async function saveKey(id: string, raw: string) {
-		await setProviderKey(id, raw || null);
-		keyFlags = { ...keyFlags, [id]: raw.trim().length > 0 };
+		const trimmed = raw.trim();
+		if (trimmed) {
+			await setProviderKey(id, trimmed);
+			keyFlags = { ...keyFlags, [id]: true };
+		} else {
+			await deleteProviderKey(id);
+			keyFlags = { ...keyFlags, [id]: false };
+		}
 		keyDrafts = { ...keyDrafts, [id]: '' };
 		status = 'Key saved.';
 	}
@@ -118,7 +126,7 @@
 	}
 
 	async function remove(id: string) {
-		await setProviderKey(id, null);
+		await deleteProviderKey(id);
 		const next = providers.filter((p) => p.id !== id);
 		await persist(next);
 		// Drop any cached key state for the removed provider.
@@ -143,8 +151,8 @@
 	<div class="space-y-1">
 		<h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
 		<p class="text-sm text-muted-foreground">
-			Configure AI providers. Provider handles persist locally; API keys are stored in the local
-			settings store (P1) and will move to secure storage in P5.
+			Configure AI providers. Provider handles persist locally; API keys are stored in the OS
+			keychain (desktop) or IndexedDB (browser), never in the local settings store.
 		</p>
 	</div>
 

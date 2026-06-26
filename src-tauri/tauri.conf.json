@@ -12,21 +12,35 @@
 	"app": {
 		"windows": [
 			{
+				"label": "main",
 				"title": "Mayon",
+				"center": true,
 				"width": 1280,
 				"height": 800,
 				"minWidth": 900,
 				"minHeight": 600,
 				"resizable": true,
-				"fullscreen": false
+				"fullscreen": false,
+				"decorations": true
 			}
 		],
 		"security": {
-			"csp": null
+			"csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; frame-src 'self'"
+		}
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZBODE3QTkwNEE1RDRDRDgKUldUWVRGMUtrSHFCK2oyL2k0d3JPWFI3TXNFZytsWE0zRnRQZ0ZlclM3amCwY1YwSmVlMFQzc1YK",
+			"endpoints": ["https://github.com/mayon-app/mayon/releases/latest/download/latest.json"]
 		}
 	},
 	"bundle": {
 		"active": true,
+		"publisher": "Mayon",
+		"category": "Education",
+		"copyright": "© 2026 Mayon",
+		"shortDescription": "Mayon — local-first learning app",
+		"longDescription": "Mayon is a local-first learning app built around a branchable chat graph, with hands-on labs, quizzes, and offline AI providers.",
 		"targets": "all",
 		"icon": [
 			"icons/32x32.png",
@@ -37,6 +51,19 @@
 		],
 		"android": {
 			"debugApplicationIdSuffix": ".debug"
+		},
+		"macOS": {
+			"minimumSystemVersion": "10.15"
+		},
+		"windows": {
+			"nsis": {
+				"installMode": "currentUser"
+			}
+		},
+		"linux": {
+			"deb": {
+				"depends": []
+			}
 		}
 	}
 }

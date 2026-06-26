@@ -1,6 +1,10 @@
 /**
- * Shared streaming transport for all provider adapters. One `fetch`-based SSE
- * parser; adapters feed it URL/headers/body and decode their own event payloads.
+ * Shared streaming transport for all provider adapters. `streamSse` /
+ * `streamNdjson` obtain the response body via the `HttpStreamTransport` seam
+ * (`getHttpTransport()` picks `fetch` in the browser vs the Rust reqwest bridge
+ * on desktop), then feed it to the pure parsers below. Adapters supply URL +
+ * non-secret headers + body + an `auth` descriptor; the transport resolves the
+ * secret into the header (never into JS on desktop).
  *
  * The parser is intentionally tolerant of:
  *   - chunks splitting a frame across multiple reads,
@@ -13,43 +17,32 @@
  *
  * For providers that stream NDJSON instead of SSE (Ollama), use `streamNdjson`.
  */
-import { classifyFetchError, httpStatusToError } from './errors';
+import { getHttpTransport } from './http-transport';
 
 export interface StreamInit {
 	method?: string;
 	headers?: Record<string, string>;
-	body?: BodyInit;
+	body?: string;
+	/** Secret descriptor; the transport resolves it into `auth.header`. */
+	auth?: { header: string; keyId: string; scheme?: string };
 }
 
 /**
  * Stream Server-Sent-Events from `url`. Yields the fully-joined `data` payload
  * of each event (the part after `data: `), minus the `[DONE]` sentinel which is
  * consumed (and stops the stream). Throws a typed provider error on non-2xx or
- * network failure (see `errors.ts`).
+ * network failure (the transport owns the fetch handshake; see `errors.ts`).
  */
 export async function* streamSse(
 	url: string,
 	init: StreamInit = {},
 	signal?: AbortSignal
 ): AsyncIterable<string> {
-	let res: Response;
-	try {
-		res = await fetch(url, {
-			method: init.method ?? 'POST',
-			headers: init.headers,
-			body: init.body,
-			signal,
-			cache: 'no-store'
-		});
-	} catch (err) {
-		throw classifyFetchError(err, url);
-	}
-
-	if (!res.ok || !res.body) {
-		throw await httpStatusToError(res);
-	}
-
-	yield* parseSseStream(res.body, signal);
+	const body = await getHttpTransport().request(
+		{ url, method: init.method, headers: init.headers, body: init.body, auth: init.auth },
+		signal
+	);
+	yield* parseSseStream(body, signal);
 }
 
 /**
@@ -130,31 +123,19 @@ function parseFrameData(frame: string): string | null {
 
 /**
  * Stream newline-delimited JSON objects. Each non-empty line is yielded as the
- * raw JSON string; the adapter parses it. Same fetch error handling as `streamSse`.
+ * raw JSON string; the adapter parses it. Same transport + error handling as
+ * `streamSse` (the seam owns the fetch handshake).
  */
 export async function* streamNdjson(
 	url: string,
 	init: StreamInit = {},
 	signal?: AbortSignal
 ): AsyncIterable<string> {
-	let res: Response;
-	try {
-		res = await fetch(url, {
-			method: init.method ?? 'POST',
-			headers: init.headers,
-			body: init.body,
-			signal,
-			cache: 'no-store'
-		});
-	} catch (err) {
-		throw classifyFetchError(err, url);
-	}
-
-	if (!res.ok || !res.body) {
-		throw await httpStatusToError(res);
-	}
-
-	yield* parseNdjsonStream(res.body, signal);
+	const body = await getHttpTransport().request(
+		{ url, method: init.method, headers: init.headers, body: init.body, auth: init.auth },
+		signal
+	);
+	yield* parseNdjsonStream(body, signal);
 }
 
 /** NDJSON line parser, exported for unit tests. */

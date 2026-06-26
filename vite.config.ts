@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig, type PluginOption } from 'vite';
 
 /**
@@ -19,7 +20,11 @@ import { defineConfig, type PluginOption } from 'vite';
 const COOP = 'same-origin';
 const COEP = 'credentialless';
 function crossOriginIsolation(): PluginOption {
-	const apply = (server: { middlewares: { use: (fn: (req: any, res: any, next: any) => void) => void } }) => {
+	const apply = (server: {
+		middlewares: {
+			use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void;
+		};
+	}) => {
 		server.middlewares.use((_req, res, next) => {
 			res.setHeader('Cross-Origin-Opener-Policy', COOP);
 			res.setHeader('Cross-Origin-Embedder-Policy', COEP);

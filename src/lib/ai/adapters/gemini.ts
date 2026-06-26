@@ -25,7 +25,7 @@ interface GeminiStreamChunk {
 }
 
 export interface GeminiAdapterDeps {
-	getKey: () => Promise<string | null>;
+	hasKey: () => Promise<boolean>;
 }
 
 export function createGeminiAdapter(config: ProviderConfig, deps: GeminiAdapterDeps): Provider {
@@ -34,8 +34,8 @@ export function createGeminiAdapter(config: ProviderConfig, deps: GeminiAdapterD
 		config,
 
 		async *chatStream(messages: ChatMessage[], opts: ChatStreamOptions = {}): AsyncIterable<Token> {
-			const key = await deps.getKey();
-			if (!key) throw new MissingKeyError(undefined, config.id);
+			const hasKey = await deps.hasKey();
+			if (!hasKey) throw new MissingKeyError(undefined, config.id);
 
 			const model = opts.model ?? config.defaultModel;
 			const endpoint = joinUrl(
@@ -77,10 +77,8 @@ export function createGeminiAdapter(config: ProviderConfig, deps: GeminiAdapterD
 				endpoint,
 				{
 					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'x-goog-api-key': key
-					},
+					headers: { 'Content-Type': 'application/json' },
+					auth: { header: 'x-goog-api-key', keyId: config.id },
 					body
 				},
 				opts.signal

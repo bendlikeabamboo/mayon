@@ -45,7 +45,7 @@ export type { GeneratedQuiz, GradedAnswer };
 /**
  * Static, non-secret configuration for a configured provider. Stored under the
  * `providers` settings key as `{[id]: ProviderConfig}`. API keys live separately
- * under `providerKey:<id>` (see `client.ts`).
+ * in the runtime `KeyStore` (see `client.ts`); nothing secret is stored here.
  */
 export interface ProviderConfig {
 	id: string;

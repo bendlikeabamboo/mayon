@@ -30,7 +30,7 @@ interface AnthropicDelta {
 }
 
 export interface AnthropicAdapterDeps {
-	getKey: () => Promise<string | null>;
+	hasKey: () => Promise<boolean>;
 }
 
 export function createAnthropicAdapter(
@@ -44,8 +44,8 @@ export function createAnthropicAdapter(
 		config,
 
 		async *chatStream(messages: ChatMessage[], opts: ChatStreamOptions = {}): AsyncIterable<Token> {
-			const key = await deps.getKey();
-			if (!key) throw new MissingKeyError(undefined, config.id);
+			const hasKey = await deps.hasKey();
+			if (!hasKey) throw new MissingKeyError(undefined, config.id);
 
 			// Split system messages out: Anthropic puts them in a top-level field.
 			const systemParts: string[] = [];
@@ -77,11 +77,11 @@ export function createAnthropicAdapter(
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						'x-api-key': key,
 						'anthropic-version': ANTHROPIC_VERSION,
-						// Required for browser-origin calls; a no-op in the desktop shell.
+						// Required for browser-origin calls; harmless noise on desktop.
 						'anthropic-dangerous-direct-browser-access': 'true'
 					},
+					auth: { header: 'x-api-key', keyId: config.id },
 					body
 				},
 				opts.signal

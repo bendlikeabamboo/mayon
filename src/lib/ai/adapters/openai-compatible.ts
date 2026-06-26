@@ -22,8 +22,8 @@ interface OpenAiStreamChunk {
 }
 
 export interface OpenAICompatibleAdapterDeps {
-	/** Returns the API key (read lazily so a key saved after adapter creation works). */
-	getKey: () => Promise<string | null>;
+	/** True if an API key is configured (probed lazily so a late save is noticed). */
+	hasKey: () => Promise<boolean>;
 }
 
 export function createOpenAICompatibleAdapter(
@@ -37,10 +37,11 @@ export function createOpenAICompatibleAdapter(
 		config,
 
 		async *chatStream(messages: ChatMessage[], opts: ChatStreamOptions = {}): AsyncIterable<Token> {
-			const key = await deps.getKey();
+			const hasKey = await deps.hasKey();
 			// OpenAI-compatible endpoints require a bearer key. Missing key is a
-			// typed, user-actionable error (the UI prompts to add one).
-			if (!key) throw new MissingKeyError(undefined, config.id);
+			// typed, user-actionable error (the UI prompts to add one). The secret
+			// itself is resolved into the header by the transport, not here.
+			if (!hasKey) throw new MissingKeyError(undefined, config.id);
 
 			const model = opts.model ?? config.defaultModel;
 			const body = JSON.stringify({
@@ -53,10 +54,8 @@ export function createOpenAICompatibleAdapter(
 				endpoint,
 				{
 					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${key}`
-					},
+					headers: { 'Content-Type': 'application/json' },
+					auth: { header: 'Authorization', scheme: 'Bearer', keyId: config.id },
 					body
 				},
 				opts.signal

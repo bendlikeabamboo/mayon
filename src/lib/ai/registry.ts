@@ -13,28 +13,29 @@ import { createOpenAICompatibleAdapter } from './adapters/openai-compatible';
 import type { Provider, ProviderConfig, ProviderKind } from './types';
 
 /**
- * Lazy key accessor. Adapters call this per request so a key saved after the
- * adapter was constructed still applies (and a deleted key is noticed).
+ * Lazy key probe. Adapters call `hasKey` per request so a key saved after the
+ * adapter was constructed is noticed (and a deleted key is noticed too). Returns
+ * a boolean only — the secret itself is resolved by the transport, never read
+ * here (on desktop it never even enters JS).
  */
 export interface ProviderKeyAccessor {
-	/** Returns the API key for `providerId`, or null if none is set. */
-	getKey(providerId: string): Promise<string | null>;
+	/** True if an API key is configured for `providerId`. */
+	hasKey(providerId: string): Promise<boolean>;
 }
 
 /**
  * Build the right adapter for a `ProviderConfig`. Ollama takes no key (local
- * server); the others receive the lazy key accessor.
+ * server); the others receive the lazy `hasKey` probe (the secret is resolved by
+ * the transport, not handed to the adapter).
  */
 export function buildProvider(config: ProviderConfig, keys: ProviderKeyAccessor): Provider {
 	switch (config.kind) {
 		case 'openai-compatible':
-			return createOpenAICompatibleAdapter(config, {
-				getKey: () => keys.getKey(config.id)
-			});
+			return createOpenAICompatibleAdapter(config, { hasKey: () => keys.hasKey(config.id) });
 		case 'anthropic':
-			return createAnthropicAdapter(config, { getKey: () => keys.getKey(config.id) });
+			return createAnthropicAdapter(config, { hasKey: () => keys.hasKey(config.id) });
 		case 'gemini':
-			return createGeminiAdapter(config, { getKey: () => keys.getKey(config.id) });
+			return createGeminiAdapter(config, { hasKey: () => keys.hasKey(config.id) });
 		case 'ollama':
 			return createOllamaAdapter(config);
 	}

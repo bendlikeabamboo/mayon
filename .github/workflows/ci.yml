@@ -1,0 +1,29 @@
+# Web-only CI for Mayon: lint, type-check, and unit-test the SvelteKit SPA on every
+# push (main/master) and pull request. The Tauri desktop build is intentionally excluded
+# here — it cannot link in the headless sandbox without the GTK/WebKit dev libs (AGENTS.md).
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm check
+      - run: pnpm test

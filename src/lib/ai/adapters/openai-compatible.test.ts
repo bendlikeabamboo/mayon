@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFetchTransport, setHttpTransport } from '../http-transport';
+import type { BrowserKeyStore } from '../keystore/browser';
 import { createOpenAICompatibleAdapter } from './openai-compatible';
-import { RateLimitError } from '../types';
+import { MissingKeyError, RateLimitError } from '../types';
 import type { ProviderConfig } from '../types';
 
 const config: ProviderConfig = {
@@ -37,33 +39,65 @@ async function collectTokens(
 	return out;
 }
 
+/**
+ * In-memory fake keystore (browser shape, incl. `get`) so the real fetch
+ * transport can resolve `auth` without IndexedDB. Typed against `BrowserKeyStore`
+ * — no `any`.
+ */
+function makeFakeStore(seed: Record<string, string> = {}): BrowserKeyStore {
+	const map: Record<string, string> = { ...seed };
+	const store: BrowserKeyStore = {
+		get: async (id) => map[id] ?? null,
+		has: async (id) => id in map,
+		set: async (id, key) => {
+			map[id] = key;
+		},
+		delete: async (id) => {
+			delete map[id];
+		}
+	};
+	return store;
+}
+
 describe('createOpenAICompatibleAdapter', () => {
 	const originalFetch = globalThis.fetch;
+	let fakeKeyStore: BrowserKeyStore;
 
 	beforeEach(() => {
 		// Default: no network. Individual tests override fetch.
 		globalThis.fetch = vi.fn();
+		// Wire the adapter's `streamSse` to a transport that resolves the key from
+		// the in-memory fake keystore (mirrors the browser path end-to-end).
+		fakeKeyStore = makeFakeStore();
+		setHttpTransport(createFetchTransport(fakeKeyStore));
 	});
 
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
+		setHttpTransport(null);
 		vi.restoreAllMocks();
 	});
 
 	it('streams concatenated content deltas', async () => {
+		await fakeKeyStore.set(config.id, 'secret');
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
 			cannedResponse(openaiSse(['Hel', 'lo', ' world']))
 		);
-		const provider = createOpenAICompatibleAdapter(config, { getKey: async () => 'k' });
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
 		const text = await collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }]));
 		expect(text).toBe('Hello world');
 	});
 
 	it('posts to <baseUrl>/chat/completions with bearer auth and stream body', async () => {
+		await fakeKeyStore.set(config.id, 'secret');
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
 			cannedResponse(openaiSse(['ok']))
 		);
-		const provider = createOpenAICompatibleAdapter(config, { getKey: async () => 'secret' });
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
 		await collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }]));
 
 		expect(globalThis.fetch).toHaveBeenCalledOnce();
@@ -77,18 +111,25 @@ describe('createOpenAICompatibleAdapter', () => {
 	});
 
 	it('throws MissingKeyError when no key is configured', async () => {
-		const provider = createOpenAICompatibleAdapter(config, { getKey: async () => null });
-		await expect(
-			collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }]))
-		).rejects.toThrow(/No API key/);
-		expect(globalThis.fetch).not.toHaveBeenCalled();
+		// Keystore left empty.
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
+		const err = await collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }])).catch(
+			(e) => e
+		);
+		expect(err).toBeInstanceOf(MissingKeyError);
+		expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
 	});
 
 	it('maps a 429 response to RateLimitError', async () => {
+		await fakeKeyStore.set(config.id, 'k');
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
 			cannedResponse('rate limited', { status: 429, headers: { 'retry-after': '12' } })
 		);
-		const provider = createOpenAICompatibleAdapter(config, { getKey: async () => 'k' });
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
 		const err = await collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }])).catch(
 			(e) => e
 		);
@@ -97,21 +138,24 @@ describe('createOpenAICompatibleAdapter', () => {
 	});
 
 	it('reads the key lazily per request (key added later still applies)', async () => {
-		let key: string | null = null;
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
 			cannedResponse(openaiSse(['x']))
 		);
-		const provider = createOpenAICompatibleAdapter(config, { getKey: async () => key });
+		const provider = createOpenAICompatibleAdapter(config, {
+			hasKey: () => fakeKeyStore.has(config.id)
+		});
 
-		// First call: no key yet → MissingKeyError.
-		await expect(
-			collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }]))
-		).rejects.toThrow(/No API key/);
+		// First call: no key yet → MissingKeyError (transport never reached).
+		const firstErr = await collectTokens(
+			provider.chatStream([{ role: 'user', content: 'hi' }])
+		).catch((e) => e);
+		expect(firstErr).toBeInstanceOf(MissingKeyError);
 
 		// Key added afterward → works without rebuilding the adapter.
-		key = 'late-key';
+		await fakeKeyStore.set(config.id, 'late-key');
 		const text = await collectTokens(provider.chatStream([{ role: 'user', content: 'hi' }]));
 		expect(text).toBe('x');
+		expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
 		const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
 		expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer late-key');
 	});

@@ -31,9 +31,7 @@ describe('GeneratedLabSchema (strict)', () => {
 	});
 
 	it('rejects an extra (unknown) field', () => {
-		expect(() =>
-			GeneratedLabSchema.parse({ ...validLab, surprise: 'no' })
-		).toThrow();
+		expect(() => GeneratedLabSchema.parse({ ...validLab, surprise: 'no' })).toThrow();
 	});
 
 	it('rejects a missing field', () => {
@@ -51,9 +49,7 @@ describe('GeneratedLabSchema (strict)', () => {
 	});
 
 	it('rejects a checklist item without text', () => {
-		expect(() =>
-			GeneratedLabSchema.parse({ ...validLab, checklist: [{ done: true }] })
-		).toThrow();
+		expect(() => GeneratedLabSchema.parse({ ...validLab, checklist: [{ done: true }] })).toThrow();
 	});
 
 	it('coerces bare-string checklist items into {text} (models emit this)', () => {

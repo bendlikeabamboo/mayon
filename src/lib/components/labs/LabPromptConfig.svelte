@@ -67,10 +67,9 @@
 		<textarea
 			class={textareaClass}
 			placeholder={DEFAULT_LAB_PROMPT}
-			value={value}
+			{value}
 			oninput={(e) => (value = e.currentTarget.value)}
-			onblur={save}
-		></textarea>
+			onblur={save}></textarea>
 
 		{#if status}
 			<p class="text-xs text-muted-foreground" role="status">{status}</p>
@@ -81,7 +80,8 @@
 				<summary class="cursor-pointer text-xs font-medium text-muted-foreground">
 					Default prompt (currently in use)
 				</summary>
-				<pre class="mt-2 whitespace-pre-wrap font-mono text-xs text-muted-foreground">{DEFAULT_LAB_PROMPT}</pre>
+				<pre
+					class="mt-2 whitespace-pre-wrap font-mono text-xs text-muted-foreground">{DEFAULT_LAB_PROMPT}</pre>
 			</details>
 		{/if}
 	{/if}

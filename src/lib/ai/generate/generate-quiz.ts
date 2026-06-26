@@ -123,7 +123,7 @@ const GRADE_EXAMPLE = [
  * is the exact {@link GradedAnswer} shape inside a ```json fence.
  */
 export const DEFAULT_GRADE_PROMPT = [
-	'You grade a learner\'s short answer against a rubric, using the provided source conversation as grounding.',
+	"You grade a learner's short answer against a rubric, using the provided source conversation as grounding.",
 	'',
 	`Reply with ONLY a single JSON object wrapped in one ${FENCE}json fenced block. No prose before or after the block. The JSON must have EXACTLY these two fields:`,
 	'',
@@ -139,7 +139,7 @@ export const DEFAULT_GRADE_PROMPT = [
 	'Critical rules:',
 	`- Output ONE ${FENCE}json block containing ONE JSON object {"isCorrect": boolean, "feedback": string} and nothing else.`,
 	`- Every backtick and newline inside the feedback string MUST be escaped (backtick as backslash-${EXAMPLE_BACKTICK}, newline as backslash-n) so the whole block stays valid JSON.`,
-	'- Be lenient on phrasing and word choice; grade on whether the rubric\'s substance is present, not exact wording.'
+	"- Be lenient on phrasing and word choice; grade on whether the rubric's substance is present, not exact wording."
 ].join('\n');
 
 /** The corrective instruction appended on a quiz retry. */
@@ -311,10 +311,10 @@ function gradeUserBlock(input: GradeShortAnswerInput): string {
 		'Rubric:',
 		input.rubric,
 		'',
-		'Learner\'s answer:',
+		"Learner's answer:",
 		input.answer,
 		'',
-		'Grade the learner\'s answer against the rubric (use the conversation above as grounding).'
+		"Grade the learner's answer against the rubric (use the conversation above as grounding)."
 	].join('\n');
 }
 

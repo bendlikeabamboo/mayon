@@ -44,9 +44,7 @@
 	<!-- Interactive checklist -->
 	<section class="space-y-2 rounded-lg border border-border bg-card p-4">
 		<div class="flex items-center justify-between">
-			<h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-				Checklist
-			</h2>
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Checklist</h2>
 			{#if items.length > 0}
 				<span class="text-xs text-muted-foreground">{doneCount}/{items.length} done</span>
 			{/if}
@@ -59,9 +57,7 @@
 		{:else}
 			<ul class="space-y-1">
 				{#each items as item (item.id)}
-					{@const labelClass = item.done
-						? 'line-through text-muted-foreground'
-						: 'text-foreground'}
+					{@const labelClass = item.done ? 'line-through text-muted-foreground' : 'text-foreground'}
 					<li class="flex items-start gap-2">
 						<input
 							type="checkbox"

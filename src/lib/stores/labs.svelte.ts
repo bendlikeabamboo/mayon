@@ -85,10 +85,7 @@ class LabsState {
 		this.controller = new AbortController();
 
 		try {
-			const [ctx, provider] = await Promise.all([
-				assembleContext(chatId),
-				getActiveProvider()
-			]);
+			const [ctx, provider] = await Promise.all([assembleContext(chatId), getActiveProvider()]);
 			const generated = await provider.generateLab(ctx, { signal: this.controller.signal });
 			const { title, content, checklist } = toLabContent(generated);
 			const lab = await repos.labs.create({

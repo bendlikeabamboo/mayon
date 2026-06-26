@@ -57,8 +57,7 @@
 		placeholder="Type your answer…"
 		value={displayText}
 		disabled={grading || readonly || answer != null}
-		oninput={(e) => (text = e.currentTarget.value)}
-	></textarea>
+		oninput={(e) => (text = e.currentTarget.value)}></textarea>
 
 	{#if grading}
 		<p class="flex items-center gap-2 text-xs text-muted-foreground">
