@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { Plus } from '@lucide/svelte';
+	import { Plus, Trash2 } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, listRootChats } from '$lib/stores/chat.svelte';
 	import type { Chat } from '$lib/db/schema';
@@ -9,6 +9,7 @@
 	let roots = $state<Chat[]>([]);
 	let loading = $state(true);
 	let creating = $state(false);
+	let deletingId = $state<string | null>(null);
 
 	onMount(async () => {
 		roots = await listRootChats();
@@ -22,6 +23,21 @@
 			await goto(`/chat/${id}`);
 		} finally {
 			creating = false;
+		}
+	}
+
+	async function deleteChat(chat: Chat) {
+		const msg =
+			chat.title === 'New chat'
+				? 'Delete this chat and all its branches?'
+				: `Delete "${chat.title}" and all its branches?`;
+		if (!confirm(msg)) return;
+		deletingId = chat.id;
+		try {
+			await chatStore.deleteChat(chat.id);
+			roots = await listRootChats();
+		} finally {
+			deletingId = null;
 		}
 	}
 
@@ -62,11 +78,8 @@
 	{:else}
 		<ul class="space-y-2">
 			{#each roots as chat (chat.id)}
-				<li>
-					<a
-						href="/chat/{chat.id}"
-						class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-					>
+				<li class="group flex items-center gap-2 rounded-lg border border-border bg-card p-3 pr-2 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+					<a href="/chat/{chat.id}" class="flex min-w-0 flex-1 items-center justify-between gap-3">
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium">{chat.title}</p>
 							{#if chat.provider}
@@ -75,6 +88,17 @@
 						</div>
 						<span class="shrink-0 text-xs text-muted-foreground">{timeAgo(chat.updatedAt)}</span>
 					</a>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-8 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+						title="Delete this chat and its branches"
+						aria-label="Delete chat"
+						disabled={deletingId === chat.id}
+						onclick={() => deleteChat(chat)}
+					>
+						<Trash2 class="size-4" />
+					</Button>
 				</li>
 			{/each}
 		</ul>

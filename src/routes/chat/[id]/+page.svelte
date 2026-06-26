@@ -4,13 +4,15 @@
 	import { goto } from '$app/navigation';
 	import { FlaskConical, ListChecks, Network } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { chatStore } from '$lib/stores/chat.svelte';
+	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
 	import { quizzesStore } from '$lib/stores/quizzes.svelte';
 	import { repos } from '$lib/db';
 	import { breadcrumbToRoot } from '$lib/chat/tree';
+	import { buildExpoundPrompt } from '$lib/chat/expound';
 	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
+	import type { ExpoundOptions } from '$lib/chat/expound';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
@@ -43,6 +45,13 @@
 	async function loadAll(chatId: string) {
 		await chatStore.load(chatId);
 		if (chatStore.chat) await loadNav(chatStore.chat);
+		// Drain a staged expound prompt: auto-send + auto-stream the first turn
+		// on the freshly-opened branch. Sent once, after the branch is loaded.
+		if (chatStore.pendingPrompt) {
+			const p = chatStore.pendingPrompt;
+			chatStore.clearPendingPrompt();
+			void chatStore.send(p);
+		}
 	}
 
 	onMount(() => {
@@ -64,9 +73,33 @@
 		await chatStore.send(text);
 	}
 
-	async function onBranchSelection(messageId: string, raw: string, sel: SelectionInput) {
-		const childId = await chatStore.branchFromSelection(messageId, raw, sel);
-		await goto(`/chat/${childId}`);
+	async function onExpound(
+		messageId: string,
+		raw: string,
+		sel: SelectionInput,
+		opts: ExpoundOptions
+	) {
+		const prompt = buildExpoundPrompt(opts);
+		try {
+			const childId = await chatStore.createExpoundBranch(messageId, raw, sel, prompt);
+			await goto(`/chat/${childId}`);
+		} catch (err) {
+			if (err instanceof ExcerptOverlapError) {
+				chatStore.error = {
+					title: 'Excerpt already expounded',
+					message: 'That excerpt already belongs to an expound branch. Pick a different span.'
+				};
+			} else {
+				chatStore.error = {
+					title: 'Could not expound',
+					message: err instanceof Error ? err.message : String(err)
+				};
+			}
+		}
+	}
+
+	function onCopy(text: string) {
+		void navigator.clipboard?.writeText(text);
 	}
 
 	async function onBranchWhole(messageId: string) {
@@ -157,7 +190,8 @@
 			messages={chatStore.messages}
 			streaming={chatStore.streaming}
 			streamBuffer={chatStore.streamBuffer}
-			{onBranchSelection}
+			{onExpound}
+			{onCopy}
 			{onBranchWhole}
 		/>
 

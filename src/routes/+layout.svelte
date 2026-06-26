@@ -1,4 +1,7 @@
 <script lang="ts">
+	import '@fontsource/newsreader/400.css';
+	import '@fontsource/newsreader/400-italic.css';
+	import '@fontsource/newsreader/600.css';
 	import '../app.css';
 	import { migrateLegacyKeys } from '$lib/ai/keystore/migrate';
 	import AppShell from '$lib/components/AppShell.svelte';

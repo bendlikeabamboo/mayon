@@ -5,23 +5,27 @@
 	import Highlighter from './Highlighter.svelte';
 	import type { Message } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
+	import type { ExpoundOptions } from '$lib/chat/expound';
 
 	/**
 	 * A single message row. User/system rows render read-only markdown. Assistant
-	 * rows wrap their content in a `<Highlighter>` so the user can select a span
-	 * and branch a child conversation grounded in that excerpt.
+	 * rows wrap their content in a `<Highlighter>` so the user can select a span,
+	 * right-click, and expound a child conversation grounded in that excerpt.
 	 */
 	let {
 		message,
-		onBranchSelection,
+		onExpound,
+		onCopy,
 		onBranchWhole
 	}: {
 		message: Message;
-		onBranchSelection: (
+		onExpound: (
 			messageId: string,
 			raw: string,
-			sel: SelectionInput
+			sel: SelectionInput,
+			opts: ExpoundOptions
 		) => void | Promise<void>;
+		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
 	} = $props();
 
@@ -32,8 +36,8 @@
 	};
 
 	const bubbleClass: Record<Message['role'], string> = {
-		user: 'bg-primary text-primary-foreground',
-		assistant: 'bg-muted text-foreground',
+		user: 'bg-[var(--highlight)] text-white dark:bg-primary dark:text-primary-foreground',
+		assistant: 'border border-border bg-background text-foreground',
 		system: 'bg-amber-500/10 text-amber-900 dark:text-amber-200 italic'
 	};
 </script>
@@ -59,7 +63,9 @@
 		{#if message.role === 'assistant'}
 			<Highlighter
 				raw={message.content}
-				onBranch={(raw, sel) => onBranchSelection(message.id, raw, sel)}
+				messageId={message.id}
+				onExpound={(raw, sel, opts) => onExpound(message.id, raw, sel, opts)}
+				{onCopy}
 			>
 				<Markdown raw={message.content} />
 			</Highlighter>

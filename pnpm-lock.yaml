@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/newsreader':
+        specifier: ^5.2.10
+        version: 5.2.10
       '@lucide/svelte':
         specifier: ^1.21.0
         version: 1.21.0(svelte@5.56.4(@typescript-eslint/types@8.62.0))
@@ -682,6 +685,9 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@fontsource/newsreader@5.2.10':
+    resolution: {integrity: sha512-TFaYzoFhDqarUyV2yYjgZZEwT4bpaj6sGBnXSnFknQ/QB8/9LzfY6IO9+inHOX4zzPp87Z7/KuG1OI5gr91Q3A==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -3082,6 +3088,8 @@ snapshots:
       '@floating-ui/utils': 0.2.11
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@fontsource/newsreader@5.2.10': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

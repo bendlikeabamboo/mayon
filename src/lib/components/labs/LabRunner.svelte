@@ -62,7 +62,8 @@
 						<input
 							type="checkbox"
 							id={`item-${item.id}`}
-							class="mt-0.5 size-4 shrink-0 cursor-pointer accent-emerald-600"
+							class="mt-0.5 size-4 shrink-0 cursor-pointer"
+							style="accent-color: var(--highlight)"
 							checked={item.done}
 							onchange={() => labsStore.toggleItem(lab.id, item.id)}
 						/>

@@ -58,7 +58,8 @@
 					<input
 						type="radio"
 						name={q.id}
-						class="size-4 accent-emerald-600"
+						class="size-4"
+						style="accent-color: var(--highlight)"
 						checked={i === selected}
 						disabled={locked}
 						onchange={() => choose(i)}

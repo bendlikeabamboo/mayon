@@ -49,6 +49,7 @@
 
 <style>
 	:global(.markdown-body) {
+		font-family: var(--font-serif);
 		font-size: 0.875rem;
 		line-height: 1.65;
 		word-wrap: break-word;

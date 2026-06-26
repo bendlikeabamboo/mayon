@@ -1,6 +1,6 @@
 import { asc, desc, eq, isNull } from 'drizzle-orm';
 import { chats, type Chat, type NewChat } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
+import { awaitDb, getDriver } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 
 async function insertChat(input: NewChat): Promise<Chat> {
@@ -107,5 +107,61 @@ export const chatsRepo = {
 
 	async delete(id: string): Promise<void> {
 		await (await awaitDb()).delete(chats).where(eq(chats.id, id)).run();
+	}
+
+	/**
+	 * Delete an entire conversation tree (root + all descendants) and every
+	 * artifact attached to it: messages, branch_sources, labs, quizzes (+ their
+	 * questions/attempts/answers), and cross_links. Run as one batched
+	 * transaction in leaf→root dependency order so the `ON DELETE NO ACTION` FKs
+	 * never trip. `rootId` is the conversation root (for a root chat, its own id).
+	 */
+	async deleteSubtree(rootId: string): Promise<void> {
+		const driver = getDriver();
+		await driver.batch([
+			// Quizzes: answers → attempts → questions → quizzes.
+			{
+				sql: 'DELETE FROM quiz_answers WHERE question_id IN (SELECT qq.id FROM quiz_questions qq JOIN quizzes qz ON qz.id = qq.quiz_id JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM quiz_attempts WHERE quiz_id IN (SELECT qz.id FROM quizzes qz JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM quiz_questions WHERE quiz_id IN (SELECT qz.id FROM quizzes qz JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM quizzes WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM labs WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId]
+			},
+			// branch_sources reference both a message and a chat in the subtree.
+			{
+				sql: 'DELETE FROM branch_sources WHERE branch_chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM branch_sources WHERE source_message_id IN (SELECT m.id FROM messages m JOIN chats c ON c.id = m.chat_id WHERE c.root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM messages WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId]
+			},
+			{
+				sql: 'DELETE FROM cross_links WHERE from_chat_id IN (SELECT id FROM chats WHERE root_id = ?) OR to_chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId, rootId]
+			},
+			// Chats last (after every FK that points at them is gone).
+			{
+				sql: 'DELETE FROM chats WHERE root_id = ?',
+				params: [rootId]
+			}
+		]);
 	}
 };

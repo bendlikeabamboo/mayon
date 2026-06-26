@@ -3,6 +3,7 @@
 	import MessageRow from './MessageRow.svelte';
 	import type { Message } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
+	import type { ExpoundOptions } from '$lib/chat/expound';
 
 	/**
 	 * Renders the persisted messages plus, while streaming, a trailing
@@ -12,28 +13,32 @@
 		messages,
 		streaming = false,
 		streamBuffer = '',
-		onBranchSelection,
+		onExpound,
+		onCopy,
 		onBranchWhole
 	}: {
 		messages: Message[];
 		streaming?: boolean;
 		streamBuffer?: string;
-		onBranchSelection: (
+		onExpound: (
 			messageId: string,
 			raw: string,
-			sel: SelectionInput
+			sel: SelectionInput,
+			opts: ExpoundOptions
 		) => void | Promise<void>;
+		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
 	} = $props();
 
 	let viewport = $state<HTMLDivElement | null>(null);
 
-	// Auto-scroll to the bottom when new content arrives.
+	// Auto-scroll to the bottom only when a new message is added (a user turn
+	// sent, an assistant turn persisted, or a different chat loaded). While
+	// tokens stream in we intentionally leave `scrollTop` alone so the reader
+	// stays where they are — the growing reply expands freely below the view
+	// instead of yanking focus to each new token.
 	$effect(() => {
-		// Touch reactive deps so the effect re-runs.
 		void messages.length;
-		void streamBuffer.length;
-		void streaming;
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
@@ -46,7 +51,7 @@
 >
 	<div class="flex flex-col gap-4">
 		{#each messages as message (message.id)}
-			<MessageRow {message} {onBranchSelection} {onBranchWhole} />
+			<MessageRow {message} {onExpound} {onCopy} {onBranchWhole} />
 		{/each}
 
 		{#if streaming}
@@ -54,7 +59,7 @@
 				<span class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					Assistant
 				</span>
-				<div class="rounded-lg bg-muted px-4 py-2.5 text-foreground">
+				<div class="rounded-lg border border-border bg-background px-4 py-2.5 text-foreground">
 					{#if streamBuffer}
 						<Markdown raw={streamBuffer} />
 					{:else}

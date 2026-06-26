@@ -5,36 +5,38 @@
 
 :root {
 	--radius: 0.625rem;
-	--background: oklch(1 0 0);
+	--background: oklch(0.955 0.012 90);
 	--foreground: oklch(0.145 0 0);
-	--card: oklch(1 0 0);
+	--card: oklch(0.975 0.008 90);
 	--card-foreground: oklch(0.145 0 0);
-	--popover: oklch(1 0 0);
+	--popover: oklch(0.975 0.008 90);
 	--popover-foreground: oklch(0.145 0 0);
+	--highlight: #a54d27;
 	--primary: oklch(0.205 0 0);
 	--primary-foreground: oklch(0.985 0 0);
-	--secondary: oklch(0.97 0 0);
+	--secondary: oklch(0.97 0.006 90);
 	--secondary-foreground: oklch(0.205 0 0);
-	--muted: oklch(0.97 0 0);
+	--muted: oklch(0.97 0.006 90);
 	--muted-foreground: oklch(0.556 0 0);
-	--accent: oklch(0.97 0 0);
+	--accent: oklch(0.97 0.006 90);
 	--accent-foreground: oklch(0.205 0 0);
 	--destructive: oklch(0.577 0.245 27.325);
-	--border: oklch(0.922 0 0);
-	--input: oklch(0.922 0 0);
+	--border: oklch(0.922 0.006 90);
+	--input: oklch(0.922 0.006 90);
 	--ring: oklch(0.708 0 0);
-	--sidebar: oklch(0.985 0 0);
+	--sidebar: oklch(0.962 0.011 90);
 	--sidebar-foreground: oklch(0.145 0 0);
 	--sidebar-primary: oklch(0.205 0 0);
 	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent: oklch(0.97 0.006 90);
 	--sidebar-accent-foreground: oklch(0.205 0 0);
-	--sidebar-border: oklch(0.922 0 0);
+	--sidebar-border: oklch(0.922 0.006 90);
 	--sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
-	--background: oklch(0.145 0 0);
+	--background: oklch(24.776% 0.00003 271.152);
+	--highlight: oklch(0.85 0 0);
 	--foreground: oklch(0.985 0 0);
 	--card: oklch(0.205 0 0);
 	--card-foreground: oklch(0.985 0 0);
@@ -95,6 +97,7 @@
 	--color-sidebar-ring: var(--sidebar-ring);
 	--font-sans:
 		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	--font-serif: 'Newsreader', Georgia, Cambria, 'Times New Roman', Times, serif;
 }
 
 @layer base {
@@ -107,4 +110,70 @@
 		font-family: var(--font-sans);
 		-webkit-font-smoothing: antialiased;
 	}
+	body::before {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+		mix-blend-mode: soft-light;
+		opacity: 0.85;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+		background-size: 200px 200px;
+	}
+	.dark body::before {
+		opacity: 0.35;
+	}
+	@media (prefers-contrast: more) {
+		body::before {
+			display: none;
+		}
+	}
+
+	/* Subtle scrollbars — track blends into the background, thumb is a faint
+	   neutral that lightens on hover. Tuned per theme so the light-mode thumb
+	   never renders as a dark bar. */
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: oklch(0.7 0 0 / 35%) transparent;
+	}
+	.dark * {
+		scrollbar-color: oklch(1 0 0 / 18%) transparent;
+	}
+	*::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	*::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	*::-webkit-scrollbar-thumb {
+		background-color: oklch(0.7 0 0 / 35%);
+		border: 3px solid transparent;
+		background-clip: padding-box;
+		border-radius: 9999px;
+	}
+	*::-webkit-scrollbar-thumb:hover {
+		background-color: oklch(0.7 0 0 / 55%);
+	}
+	.dark *::-webkit-scrollbar-thumb {
+		background-color: oklch(1 0 0 / 18%);
+	}
+	.dark *::-webkit-scrollbar-thumb:hover {
+		background-color: oklch(1 0 0 / 30%);
+	}
+}
+
+/* Persistent underline marking an excerpt that has been expounded into a
+   branch. Applied via post-render DOM wrapping (Highlighter.svelte), not the
+   markdown sanitize pipeline. Subtle dotted underline + faint accent wash. */
+.expound-mark {
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	text-decoration-color: var(--primary);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+	background-color: color-mix(in oklch, var(--accent) 50%, transparent);
+	border-radius: 2px;
+	cursor: pointer;
 }

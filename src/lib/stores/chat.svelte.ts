@@ -18,11 +18,27 @@ import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
 import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highlight';
+import { selectionOverlapsExisting } from '$lib/chat/expound';
+import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
+import type { Provider } from '$lib/ai/types';
 import { getActiveProvider } from '$lib/ai/client';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
+}
+
+/**
+ * Raised when an expound excerpt overlaps an existing span for the same source
+ * message (a word can't belong to two expounds; one branch per excerpt falls
+ * out of the same check). Defense-in-depth — the context menu already disables
+ * "Expound…". Surfaced by the route via `chatStore.error`.
+ */
+export class ExcerptOverlapError extends Error {
+	constructor(message = 'That excerpt already belongs to an expound branch.') {
+		super(message);
+		this.name = 'ExcerptOverlapError';
+	}
 }
 
 class ChatState {
@@ -34,7 +50,15 @@ class ChatState {
 	error = $state<FormattedProviderError | null>(null);
 	loading = $state(false);
 
+	/**
+	 * A prompt staged to auto-send once the next branch finishes loading. Set by
+	 * `createExpoundBranch`; drained by the route's `loadAll` after navigation so
+	 * the first user message + stream lands on the freshly-opened branch.
+	 */
+	pendingPrompt = $state<string | null>(null);
+
 	private controller: AbortController | null = null;
+	private titling = false;
 
 	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
 	get showLiveBubble(): boolean {
@@ -74,7 +98,7 @@ class ChatState {
 
 	/** Create a fresh root chat and return its id (the caller navigates to it). */
 	async createAndNavigate(title?: string): Promise<string> {
-		const chat = await repos.chats.createRoot({ title: title ?? 'New chat' });
+		const chat = await repos.chats.createRoot({ title: title ?? DEFAULT_TITLE });
 		return chat.id;
 	}
 
@@ -107,6 +131,9 @@ class ChatState {
 				const assistantRow = await repos.messages.append(chatId, 'assistant', this.streamBuffer);
 				this.messages = [...this.messages, assistantRow];
 				await repos.chats.touch(chatId);
+				// After a root's first real exchange, auto-generate a title.
+				// Fire-and-forget: failures are swallowed (never break the chat).
+				void this.autoTitleRoot(provider);
 			}
 		} catch (err) {
 			if (!isAbortError(err)) {
@@ -137,6 +164,53 @@ class ChatState {
 		this.controller?.abort();
 	}
 
+	/** Clear the staged expound prompt (called by the route after draining it). */
+	clearPendingPrompt(): void {
+		this.pendingPrompt = null;
+	}
+
+	/**
+	 * Delete a conversation tree rooted at `chatId` (root + all descendants + all
+	 * attached artifacts). Clears the active view if it was pointing into the
+	 * deleted tree.
+	 */
+	async deleteChat(chatId: string): Promise<void> {
+		await repos.chats.deleteSubtree(chatId);
+		if (this.chat && (this.chat.id === chatId || this.chat.rootId === chatId)) {
+			this.chat = null;
+			this.chatId = null;
+			this.messages = [];
+			this.error = null;
+			this.streamBuffer = '';
+			this.streaming = false;
+		}
+	}
+
+	/**
+	 * Best-effort: after a root chat's first exchange, ask the active provider for
+	 * a concise title and persist it (replacing the {@link DEFAULT_TITLE}
+	 * placeholder). Swallows every error so title generation can never break the
+	 * chat; `titling` guards against re-entrancy while the async gen is in flight.
+	 */
+	private async autoTitleRoot(provider: Provider): Promise<void> {
+		const chat = this.chat;
+		if (!chat || chat.parentId !== null || chat.title !== DEFAULT_TITLE) return;
+		if (this.titling) return;
+		this.titling = true;
+		try {
+			const ctx = await assembleContext(chat.id);
+			const title = await generateTitle(provider, ctx);
+			// Re-check: a retitle (or a concurrent auto-title) may have landed.
+			if (!this.chat || this.chat.id !== chat.id || this.chat.title !== DEFAULT_TITLE) return;
+			await repos.chats.updateTitle(chat.id, title);
+			this.chat = { ...this.chat, title };
+		} catch {
+			/* best-effort; leave the placeholder title in place */
+		} finally {
+			this.titling = false;
+		}
+	}
+
 	/**
 	 * Branch a child off `messageId` grounded in a highlighted span. Resolves
 	 * raw offsets via `resolveSelectionOffsets`, falling back to the full
@@ -153,6 +227,40 @@ class ChatState {
 			({ startChar: 0, endChar: excerpt.length, excerpt } as const);
 
 		return this.createBranchChild(messageId, resolved.startChar, resolved.endChar, excerpt);
+	}
+
+	/**
+	 * Branch a child off `messageId` grounded in a highlighted excerpt, then
+	 * stage `prompt` for auto-send on the new branch. Enforces one branch per
+	 * excerpt / no overlapping spans (defense-in-depth; the menu already
+	 * disables). Throws {@link ExcerptOverlapError} on conflict — creates no
+	 * chat/branch_source row in that case. Returns the child chat id.
+	 */
+	async createExpoundBranch(
+		messageId: string,
+		rawContent: string,
+		selection: SelectionInput,
+		prompt: string
+	): Promise<string> {
+		const excerpt = selection.excerpt;
+		const resolved =
+			resolveSelectionOffsets(rawContent, selection) ??
+			({ startChar: 0, endChar: excerpt.length, excerpt } as const);
+
+		// Overlap guard: an exact-span re-select overlaps itself.
+		const existing = await repos.branchSources.listBySourceMessage(messageId);
+		if (selectionOverlapsExisting(resolved, existing)) {
+			throw new ExcerptOverlapError();
+		}
+
+		const childId = await this.createBranchChild(
+			messageId,
+			resolved.startChar,
+			resolved.endChar,
+			excerpt
+		);
+		this.pendingPrompt = prompt;
+		return childId;
 	}
 
 	/** Branch a child off a whole message (no span / no branch_source row). */

@@ -33,6 +33,7 @@
 		"bundle:migrations": "tsx src/lib/db/driver/bundle-migrations.ts"
 	},
 	"dependencies": {
+		"@fontsource/newsreader": "^5.2.10",
 		"@lucide/svelte": "^1.21.0",
 		"@sqlite.org/sqlite-wasm": "3.53.0-build1",
 		"@sveltejs/kit": "^2.68.0",
