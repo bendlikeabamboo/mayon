@@ -25,6 +25,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Schema } from 'hast-util-sanitize';
 import rehypeStringify from 'rehype-stringify';
+import { admonition } from './admonition';
 
 /**
  * Sanitize schema: GitHub-default, extended to keep the classes the pipeline
@@ -53,9 +54,10 @@ const sanitizeSchema: Schema = {
 		],
 		div: [
 			...(defaultSchema.attributes?.div ?? []),
-			// KaTeX block containers.
-			['className', /^katex$/, /^katex-display$/, /^katex-display$/]
-		]
+			// KaTeX block containers + admonition callouts (LS2).
+			['className', /^katex$/, /^katex-display$/, /^callout$/, /^callout-./]
+		],
+		p: [['className', /^callout-title$/]]
 	},
 	tagNames: [...(defaultSchema.tagNames ?? []), 'math', 'semantics', 'annotation']
 } satisfies Schema;
@@ -67,6 +69,7 @@ const processor = unified()
 	.use(remarkRehype)
 	.use(rehypeKatex)
 	.use(rehypeHighlight)
+	.use(admonition)
 	.use(rehypeSanitize, sanitizeSchema)
 	.use(rehypeStringify);
 

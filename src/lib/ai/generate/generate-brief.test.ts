@@ -48,6 +48,7 @@ const validBrief: GeneratedBrief = {
 	context: 'engineer',
 	level: 'some',
 	mode: 'socratic',
+	scopeStrategy: 'guided-inquiry',
 	scope: '30 min'
 };
 const validJson = JSON.stringify(validBrief);
@@ -65,6 +66,17 @@ describe('GeneratedBriefSchema (strict)', () => {
 	it('accepts goal-only (missing optionals)', () => {
 		const out = GeneratedBriefSchema.parse({ goal: 'learn rust' });
 		expect(out).toEqual({ goal: 'learn rust' });
+	});
+
+	it('accepts scopeStrategy', () => {
+		const out = GeneratedBriefSchema.parse({ goal: 'learn rust', scopeStrategy: 'deep-dive' });
+		expect(out).toEqual({ goal: 'learn rust', scopeStrategy: 'deep-dive' });
+	});
+
+	it('rejects unknown scopeStrategy', () => {
+		expect(() =>
+			GeneratedBriefSchema.parse({ ...validBrief, scopeStrategy: 'nonexistent' })
+		).toThrow();
 	});
 
 	it('rejects an extra (unknown) field', () => {
@@ -197,5 +209,6 @@ describe('DEFAULT_BRIEF_PROMPT', () => {
 		expect(DEFAULT_BRIEF_PROMPT).toContain('goal');
 		expect(DEFAULT_BRIEF_PROMPT).toContain('level');
 		expect(DEFAULT_BRIEF_PROMPT).toContain('mode');
+		expect(DEFAULT_BRIEF_PROMPT).toContain('scopeStrategy');
 	});
 });

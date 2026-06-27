@@ -11,6 +11,21 @@
  * `assembleContext` (no re-intake, no per-branch storage).
  */
 import type { ChatMessage } from '$lib/ai/types';
+import {
+	type ScopeStrategyId,
+	isScopeStrategyId,
+	resolveStrategy,
+	strategyForBrief
+} from './strategies';
+
+export type { ScopeStrategy, ScopeStrategyId } from './strategies';
+export {
+	SCOPE_STRATEGIES,
+	strategiesForMode,
+	defaultStrategyFor,
+	resolveStrategy,
+	strategyForBrief
+} from './strategies';
 
 // ─────────────────────────── types ────────────────────────────
 
@@ -36,6 +51,8 @@ export interface LearningBrief {
 	mode?: BriefMode;
 	/** Depth / time budget ("orient me in 10 min", "mastery over days"). */
 	scope?: string;
+	/** Teaching structure. Defaults to {@link defaultStrategyFor} for the mode. */
+	scopeStrategy?: ScopeStrategyId;
 }
 
 // ─────────────────────────── consts ───────────────────────────
@@ -57,13 +74,6 @@ export const MODE_LABELS: Record<BriefMode, string> = {
 	build: 'Build together — work side-by-side'
 };
 
-/** Mode-specific teaching guidance, embedded verbatim in the system note. */
-const MODE_INSTRUCTIONS: Record<BriefMode, string> = {
-	socratic: 'prefer questioning and active recall over lectures',
-	explainer: 'explain directly and clearly in your own words',
-	build: 'work side-by-side with the learner, building toward the goal'
-};
-
 export const DEFAULT_LEVEL: BriefLevel = 'some';
 export const DEFAULT_MODE: BriefMode = 'socratic';
 
@@ -72,6 +82,7 @@ export interface LearnerProfile {
 	context?: string;
 	level?: BriefLevel;
 	mode?: BriefMode;
+	scopeStrategy?: ScopeStrategyId;
 }
 
 export const DEFAULT_PROFILE: LearnerProfile = { level: 'some', mode: 'socratic' };
@@ -87,6 +98,7 @@ export interface ResolvedBriefFields {
 	level: BriefLevel;
 	mode: BriefMode;
 	scope?: string;
+	scopeStrategy: ScopeStrategyId;
 }
 
 /**
@@ -99,12 +111,15 @@ export function applyProfile(
 	profile: LearnerProfile,
 	brief: Partial<LearningBrief>
 ): ResolvedBriefFields {
+	const level = brief.level ?? profile.level ?? DEFAULT_LEVEL;
+	const mode = brief.mode ?? profile.mode ?? DEFAULT_MODE;
 	return {
 		goal: brief.goal,
 		context: brief.context ?? profile.context,
-		level: brief.level ?? profile.level ?? DEFAULT_LEVEL,
-		mode: brief.mode ?? profile.mode ?? DEFAULT_MODE,
-		scope: brief.scope
+		level,
+		mode,
+		scope: brief.scope,
+		scopeStrategy: resolveStrategy({ ...brief, mode }, profile).id
 	};
 }
 
@@ -150,6 +165,7 @@ export function parseBrief(raw: string | null | undefined): LearningBrief | null
 	}
 	if (isBriefLevel(obj.level)) brief.level = obj.level;
 	if (isBriefMode(obj.mode)) brief.mode = obj.mode;
+	if (isScopeStrategyId(obj.scopeStrategy)) brief.scopeStrategy = obj.scopeStrategy;
 	return brief;
 }
 
@@ -169,15 +185,30 @@ export function buildBriefSystemNote(brief: LearningBrief): ChatMessage {
 		brief.context && brief.context.trim().length > 0 ? brief.context.trim() : '(not given)';
 	const scope = brief.scope && brief.scope.trim().length > 0 ? brief.scope.trim() : '(open)';
 
-	const content = [
+	const strat = strategyForBrief(brief);
+
+	const lines: string[] = [
 		"You are a personal learning tutor. Calibrate to this learner's brief:",
 		`- Goal: ${brief.goal}`,
 		`- Level: ${level}  · Context: ${context}  · Mode: ${mode}  · Scope: ${scope}`,
-		`Teach to the goal at the stated level; in ${mode} mode ${MODE_INSTRUCTIONS[mode]}; stay within scope.`,
-		'When the learner can do the goal, say so.'
-	].join('\n');
+		`- Structure: ${strat.label}  (unless scope overrides the budget)`
+	];
 
-	return { role: 'system', content };
+	if (brief.scope && brief.scope.trim().length > 0) {
+		lines.push(
+			`The learner set this budget: ${brief.scope.trim()}. Honor it when it tightens density or unit count below the structure's defaults.`
+		);
+	}
+
+	lines.push(
+		'',
+		strat.block,
+		'',
+		'Teach to the goal at the stated level; stay within scope.',
+		'When the learner can do the goal, say so.'
+	);
+
+	return { role: 'system', content: lines.join('\n') };
 }
 
 // ─────────────────────────── summary ──────────────────────────

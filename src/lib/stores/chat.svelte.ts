@@ -192,6 +192,36 @@ class ChatState {
 				const assistantRow = await repos.messages.append(chatId, 'assistant', this.streamBuffer);
 				this.messages = [...this.messages, assistantRow];
 				await repos.chats.touch(chatId);
+
+				if (import.meta.env.DEV) {
+					try {
+						const rootBrief = parseBrief(chat && chat.parentId === null ? chat.brief : null);
+						if (rootBrief) {
+							const { strategyForBrief } = await import('$lib/chat/brief');
+							const { lintTurn } = await import('$lib/dev/strategy-lint');
+							const strat = strategyForBrief(rootBrief);
+							const result = lintTurn(strat.id, this.streamBuffer);
+							if (result.pass) {
+								console.info('[strategy-lint]', result.strategy, 'PASS', result.words, 'words');
+							} else {
+								const failures = result.checks
+									.filter((c) => !c.ok)
+									.map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ''}`)
+									.join(', ');
+								console.warn(
+									'[strategy-lint]',
+									result.strategy,
+									'FAIL',
+									result.words,
+									'words —',
+									failures
+								);
+							}
+						}
+					} catch {
+						/* best-effort; never throws into the chat path */
+					}
+				}
 			}
 		} catch (err) {
 			if (!isAbortError(err)) {

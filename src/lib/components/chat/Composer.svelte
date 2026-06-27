@@ -17,11 +17,13 @@
 	let {
 		streaming = $bindable(false),
 		onSend,
-		onStop
+		onStop,
+		suggestedReplies
 	}: {
 		streaming?: boolean;
 		onSend: (text: string, reasoning: ReasoningMode) => void | Promise<void>;
 		onStop: () => void | Promise<void>;
+		suggestedReplies?: string[];
 	} = $props();
 
 	let prompt = $state('');
@@ -29,6 +31,9 @@
 	let thinkingOn = $state(true);
 	const reasoning = $derived<ReasoningMode>(thinkingOn ? 'auto' : 'disabled');
 	const canSend = $derived(prompt.trim().length > 0 && !streaming);
+	const showChips = $derived(
+		!!suggestedReplies?.length && !streaming && prompt.trim().length === 0
+	);
 
 	onMount(async () => {
 		const stored = await repos.settings.get<boolean>('reasoningEnabled');
@@ -40,6 +45,11 @@
 		if (streaming) return;
 		thinkingOn = !thinkingOn;
 		await repos.settings.set('reasoningEnabled', thinkingOn);
+	}
+
+	function sendChip(text: string) {
+		prompt = '';
+		void onSend(text, reasoning);
 	}
 
 	function send() {
@@ -57,40 +67,51 @@
 	}
 </script>
 
-<div class="flex items-end gap-2">
-	<textarea
-		bind:value={prompt}
-		onkeydown={onKeydown}
-		rows="2"
-		placeholder="Message the active provider…  (⌘/Ctrl+Enter to send)"
-		class="min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		disabled={streaming}></textarea>
-	<Button
-		variant={thinkingOn ? 'secondary' : 'outline'}
-		size="icon"
-		onclick={toggleThinking}
-		disabled={streaming}
-		title={thinkingOn
-			? 'Thinking: on — tap to disable reasoning'
-			: 'Thinking: off — tap to enable reasoning'}
-		aria-label={thinkingOn ? 'Thinking on' : 'Thinking off'}
-		aria-pressed={thinkingOn}
-	>
-		<Brain class="size-4" />
-	</Button>
-	{#if streaming}
-		<Button
-			variant="destructive"
-			size="icon"
-			onclick={() => void onStop()}
-			title="Stop"
-			aria-label="Stop"
-		>
-			<Square />
-		</Button>
-	{:else}
-		<Button size="icon" onclick={send} disabled={!canSend} title="Send" aria-label="Send">
-			<Send />
-		</Button>
+<div class="flex flex-col gap-2">
+	{#if showChips}
+		<div class="flex flex-wrap gap-1.5">
+			{#each suggestedReplies as chip (chip)}
+				<Button variant="outline" size="sm" onclick={() => sendChip(chip)}>
+					{chip}
+				</Button>
+			{/each}
+		</div>
 	{/if}
+	<div class="flex items-end gap-2">
+		<textarea
+			bind:value={prompt}
+			onkeydown={onKeydown}
+			rows="2"
+			placeholder="Message the active provider…  (⌘/Ctrl+Enter to send)"
+			class="min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			disabled={streaming}></textarea>
+		<Button
+			variant={thinkingOn ? 'secondary' : 'outline'}
+			size="icon"
+			onclick={toggleThinking}
+			disabled={streaming}
+			title={thinkingOn
+				? 'Thinking: on — tap to disable reasoning'
+				: 'Thinking: off — tap to enable reasoning'}
+			aria-label={thinkingOn ? 'Thinking on' : 'Thinking off'}
+			aria-pressed={thinkingOn}
+		>
+			<Brain class="size-4" />
+		</Button>
+		{#if streaming}
+			<Button
+				variant="destructive"
+				size="icon"
+				onclick={() => void onStop()}
+				title="Stop"
+				aria-label="Stop"
+			>
+				<Square />
+			</Button>
+		{:else}
+			<Button size="icon" onclick={send} disabled={!canSend} title="Send" aria-label="Send">
+				<Send />
+			</Button>
+		{/if}
+	</div>
 </div>

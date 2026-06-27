@@ -10,7 +10,10 @@
 		LEVEL_OPTIONS,
 		MODE_LABELS,
 		MODE_OPTIONS,
-		type LearningBrief
+		defaultStrategyFor,
+		strategiesForMode,
+		type LearningBrief,
+		type ScopeStrategyId
 	} from '$lib/chat/brief';
 	import { getLearnerProfile } from '$lib/chat/profile';
 
@@ -52,6 +55,17 @@
 	let level = $state(untrack(() => brief?.level ?? DEFAULT_LEVEL));
 	let scopeState = $state(untrack(() => brief?.scope ?? ''));
 	let modeVal = $state(untrack(() => brief?.mode ?? DEFAULT_MODE));
+	let scopeStrategy = $state<ScopeStrategyId>(
+		untrack(() => brief?.scopeStrategy ?? defaultStrategyFor(DEFAULT_MODE))
+	);
+
+	let modeStrategies = $derived(strategiesForMode(modeVal));
+
+	$effect(() => {
+		if (!modeStrategies.find((s) => s.id === scopeStrategy)) {
+			scopeStrategy = defaultStrategyFor(modeVal);
+		}
+	});
 
 	onMount(async () => {
 		if (mode !== 'intake') return;
@@ -63,6 +77,7 @@
 			modeVal = seed.mode;
 			context = seed.context ?? '';
 			scopeState = seed.scope ?? '';
+			scopeStrategy = seed.scopeStrategy;
 		} catch {
 			// Best-effort: fall back to existing defaults
 		}
@@ -75,7 +90,7 @@
 	const labelClass = 'block text-xs font-medium text-muted-foreground';
 
 	function buildBrief(): LearningBrief {
-		const b: LearningBrief = { goal: goal.trim(), level, mode: modeVal };
+		const b: LearningBrief = { goal: goal.trim(), level, mode: modeVal, scopeStrategy };
 		const ctx = context.trim();
 		if (ctx.length > 0) b.context = ctx;
 		const scp = scopeState.trim();
@@ -160,6 +175,21 @@
 				{/each}
 			</select>
 		</div>
+	</div>
+
+	<!-- Structure (derived from mode) -->
+	<div class="space-y-1">
+		<label class={labelClass} for="brief-strategy">Structure</label>
+		<select id="brief-strategy" bind:value={scopeStrategy} class={inputClass}>
+			{#each modeStrategies as s (s.id)}
+				<option value={s.id}>{s.label}</option>
+			{/each}
+		</select>
+		{#if modeStrategies.find((s) => s.id === scopeStrategy)}
+			<p class="text-xs text-muted-foreground">
+				{modeStrategies.find((s) => s.id === scopeStrategy)?.hint}
+			</p>
+		{/if}
 	</div>
 
 	<!-- Context + Scope (optional) -->

@@ -130,4 +130,31 @@
 		border-top: 1px solid var(--border);
 		margin: 1em 0;
 	}
+	:global(.markdown-body .callout) {
+		border-left: 3px solid var(--callout-info);
+		padding: 0.5em 0.75em;
+		margin: 0.5em 0;
+		border-radius: var(--radius-sm);
+		background: color-mix(in oklch, var(--callout-info) 12%, var(--card));
+	}
+	:global(.markdown-body .callout.callout-warning) {
+		border-left-color: var(--callout-warn);
+		background: color-mix(in oklch, var(--callout-warn) 12%, var(--card));
+	}
+	:global(.markdown-body .callout.callout-concept) {
+		border-left-color: var(--callout-concept);
+		background: color-mix(in oklch, var(--callout-concept) 12%, var(--card));
+	}
+	:global(.markdown-body .callout-title) {
+		font-weight: 600;
+		font-size: 0.9em;
+		margin: 0 0 0.25em;
+		color: var(--callout-info);
+	}
+	:global(.markdown-body .callout.callout-warning .callout-title) {
+		color: var(--callout-warn);
+	}
+	:global(.markdown-body .callout.callout-concept .callout-title) {
+		color: var(--callout-concept);
+	}
 </style>

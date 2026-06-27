@@ -1,4 +1,5 @@
 import { DEFAULT_PROFILE, LEVEL_OPTIONS, MODE_OPTIONS, type LearnerProfile } from './brief';
+import { isScopeStrategyId } from './strategies';
 
 const PROFILE_KEY = 'learnerProfile';
 
@@ -12,6 +13,7 @@ export async function getLearnerProfile(): Promise<LearnerProfile> {
 		profile.context = raw.context;
 	if (LEVEL_OPTIONS.includes(raw.level as never)) profile.level = raw.level;
 	if (MODE_OPTIONS.includes(raw.mode as never)) profile.mode = raw.mode;
+	if (isScopeStrategyId(raw.scopeStrategy)) profile.scopeStrategy = raw.scopeStrategy;
 	return profile;
 }
 

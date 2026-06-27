@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from './Markdown.svelte';
 	import Highlighter from './Highlighter.svelte';
+	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
@@ -61,13 +62,14 @@
 	</div>
 	<div class="rounded-lg px-4 py-2.5 {bubbleClass[message.role]}">
 		{#if message.role === 'assistant'}
+			{@const visible = stripGateFence(message.content)}
 			<Highlighter
-				raw={message.content}
+				raw={visible}
 				messageId={message.id}
 				onExpound={(raw, sel, opts) => onExpound(message.id, raw, sel, opts)}
 				{onCopy}
 			>
-				<Markdown raw={message.content} />
+				<Markdown raw={visible} />
 			</Highlighter>
 		{:else}
 			<Markdown raw={message.content} />

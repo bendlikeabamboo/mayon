@@ -32,6 +32,9 @@
 	--sidebar-accent-foreground: oklch(0.205 0 0);
 	--sidebar-border: oklch(0.922 0.006 90);
 	--sidebar-ring: oklch(0.708 0 0);
+	--callout-info: oklch(0.55 0.12 250);
+	--callout-warn: oklch(0.68 0.15 70);
+	--callout-concept: oklch(0.55 0.16 300);
 }
 
 .dark {
@@ -62,6 +65,9 @@
 	--sidebar-accent-foreground: oklch(0.985 0 0);
 	--sidebar-border: oklch(1 0 0 / 10%);
 	--sidebar-ring: oklch(0.556 0 0);
+	--callout-info: oklch(0.7 0.13 250);
+	--callout-warn: oklch(0.78 0.15 75);
+	--callout-concept: oklch(0.72 0.15 305);
 }
 
 @theme inline {

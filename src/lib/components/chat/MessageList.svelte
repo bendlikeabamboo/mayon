@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Markdown from './Markdown.svelte';
 	import MessageRow from './MessageRow.svelte';
+	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
@@ -61,7 +62,7 @@
 				</span>
 				<div class="rounded-lg border border-border bg-background px-4 py-2.5 text-foreground">
 					{#if streamBuffer}
-						<Markdown raw={streamBuffer} />
+						<Markdown raw={stripGateFence(streamBuffer)} />
 					{:else}
 						<p class="text-sm text-muted-foreground">Waiting for the first token…</p>
 					{/if}

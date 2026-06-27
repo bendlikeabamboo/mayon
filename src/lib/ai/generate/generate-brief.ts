@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ChatMessage, ChatStreamOptions, Provider } from '../types';
 import { LEVEL_OPTIONS, MODE_OPTIONS, type LearningBrief } from '$lib/chat/brief';
+import { SCOPE_STRATEGY_IDS } from '$lib/chat/strategies';
 import { extractFencedJson } from './fence';
 
 export { extractFencedJson } from './fence';
@@ -18,21 +19,25 @@ export const DEFAULT_BRIEF_PROMPT = [
 	'- "context": string (optional) — role / situation.',
 	'- "level": string (optional) — one of: novice, some, regular, practitioner.',
 	'- "mode": string (optional) — one of: socratic, explainer, build.',
+	'- "scopeStrategy": string (optional) — one of: guided-curriculum, deep-dive, quick-orientation, reference-manual, guided-inquiry, devils-advocate, case-based, workshop, tutorial, pair-programming. Pick a strategy consistent with the inferred mode.',
 	'- "scope": string (optional) — depth / time budget.',
 	'',
 	'Example:',
 	'',
 	`${FENCE}json`,
-	'{"goal": "be able to write a basic Makefile", "context": "software engineer", "level": "some", "mode": "explainer", "scope": "30 min"}',
+	'{"goal": "be able to write a basic Makefile", "context": "software engineer", "level": "some", "mode": "explainer", "scopeStrategy": "guided-curriculum", "scope": "30 min"}',
 	FENCE,
 	'',
-	`Output ONE ${FENCE}json block. Do not include any fields other than goal, context, level, mode, scope.`
+	`Output ONE ${FENCE}json block. Do not include any fields other than goal, context, level, mode, scopeStrategy, scope.`
 ].join('\n');
 
 const CORRECTION_INSTRUCTION =
-	'That was not valid JSON matching the brief schema. Output ONLY one ```json block with {goal, context?, level?, mode?, scope?} and nothing else. level must be one of: novice, some, regular, practitioner. mode must be one of: socratic, explainer, build.';
+	'That was not valid JSON matching the brief schema. Output ONLY one ```json block with {goal, context?, level?, mode?, scopeStrategy?, scope?} and nothing else. level must be one of: novice, some, regular, practitioner. mode must be one of: socratic, explainer, build. scopeStrategy must be one of: guided-curriculum, deep-dive, quick-orientation, reference-manual, guided-inquiry, devils-advocate, case-based, workshop, tutorial, pair-programming.';
 
-export type GeneratedBrief = Pick<LearningBrief, 'goal' | 'context' | 'level' | 'mode' | 'scope'>;
+export type GeneratedBrief = Pick<
+	LearningBrief,
+	'goal' | 'context' | 'level' | 'mode' | 'scopeStrategy' | 'scope'
+>;
 
 export const GeneratedBriefSchema: z.ZodType<GeneratedBrief> = z
 	.object({
@@ -40,6 +45,7 @@ export const GeneratedBriefSchema: z.ZodType<GeneratedBrief> = z
 		context: z.string().optional(),
 		level: z.enum(LEVEL_OPTIONS).optional(),
 		mode: z.enum(MODE_OPTIONS).optional(),
+		scopeStrategy: z.enum(SCOPE_STRATEGY_IDS).optional(),
 		scope: z.string().optional()
 	})
 	.strict();

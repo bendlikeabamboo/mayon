@@ -49,4 +49,30 @@ describe('renderMarkdown', () => {
 		expect(html).not.toContain('<script>');
 		expect(html).toContain('plain text');
 	});
+
+	it('renders [!WARNING] as a callout div (not a blockquote)', () => {
+		const md = '> [!WARNING]\n> Never commit the state file.';
+		const html = renderMarkdown(md);
+		expect(html).toContain('class="callout callout-warning"');
+		expect(html).toContain('class="callout-title"');
+		expect(html).toContain('>Warning</');
+		expect(html).toContain('Never commit the state file.');
+		expect(html).not.toContain('<blockquote');
+	});
+
+	it('renders same-line body [!NOTE] callout correctly', () => {
+		const md = '> [!NOTE] Terraform is declarative — you describe desired state.';
+		const html = renderMarkdown(md);
+		expect(html).toContain('class="callout callout-note"');
+		expect(html).toContain('>Note</');
+		expect(html).toContain('Terraform is declarative');
+		expect(html).not.toContain('[!NOTE]');
+	});
+
+	it('leaves a plain blockquote unchanged', () => {
+		const md = '> just a quote';
+		const html = renderMarkdown(md);
+		expect(html).toContain('<blockquote');
+		expect(html).not.toContain('callout');
+	});
 });

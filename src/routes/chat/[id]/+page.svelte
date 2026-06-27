@@ -10,7 +10,13 @@
 	import { repos } from '$lib/db';
 	import { breadcrumbToRoot } from '$lib/chat/tree';
 	import { buildExpoundPrompt } from '$lib/chat/expound';
-	import { parseBrief, summarizeBrief, type LearningBrief } from '$lib/chat/brief';
+	import {
+		parseBrief,
+		summarizeBrief,
+		strategyForBrief,
+		type LearningBrief
+	} from '$lib/chat/brief';
+	import { extractGateBlock } from '$lib/ai/generate/generate-gate';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
@@ -31,10 +37,15 @@
 	/** When true, the intake card on this chat is dismissed for the session. */
 	let intakeDismissed = $state(false);
 	let editingInferred = $state(false);
+	let rootChat = $state<Chat | null>(null);
 
 	/** The parsed brief for the ROOT of this chat's tree (inherited by branches). */
 	const rootBrief = $derived<LearningBrief | null>(
-		chatStore.chat ? parseBrief(chatStore.chat.brief) : null
+		chatStore.chat
+			? parseBrief(
+					chatStore.chat.parentId === null ? chatStore.chat.brief : (rootChat?.brief ?? null)
+				)
+			: null
 	);
 
 	/**
@@ -51,9 +62,23 @@
 			rootBrief === null
 	);
 
+	const activeStrategy = $derived(rootBrief ? strategyForBrief(rootBrief) : null);
+
+	const lastAssistantRaw = $derived(() => {
+		for (let i = chatStore.messages.length - 1; i >= 0; i--) {
+			if (chatStore.messages[i].role === 'assistant') return chatStore.messages[i].content;
+		}
+		return '';
+	});
+
+	const gate = $derived(activeStrategy?.gated ? extractGateBlock(lastAssistantRaw()) : null);
+
+	const suggestedReplies = $derived(gate?.options ?? activeStrategy?.replies);
+
 	async function loadNav(chat: Chat) {
 		const subtree = await repos.chats.listSubtree(chat.rootId);
 		const byId = new Map(subtree.map((c) => [c.id, c]));
+		rootChat = byId.get(chat.rootId) ?? chat;
 		breadcrumb = breadcrumbToRoot(chat, byId);
 		// Children: direct descendants of the current chat.
 		children = await repos.chats.listChildren(chat.id);
@@ -73,6 +98,7 @@
 		editingBrief = false;
 		intakeDismissed = false;
 		editingInferred = false;
+		rootChat = null;
 		await chatStore.load(chatId);
 		if (chatStore.chat) await loadNav(chatStore.chat);
 		// Drain a staged expound prompt: auto-send + auto-stream the first turn
@@ -360,10 +386,15 @@
 			</div>
 		{/if}
 
+		{#if gate?.progress}
+			<p class="text-xs font-medium text-muted-foreground">{gate.progress}</p>
+		{/if}
+
 		<Composer
 			bind:streaming={chatStore.streaming}
 			{onSend}
 			onStop={chatStore.stop.bind(chatStore)}
+			{suggestedReplies}
 		/>
 
 		<!-- Children + siblings + labs + quizzes under the composer -->

@@ -7,7 +7,8 @@ import {
 	parseBrief,
 	summarizeBrief,
 	type LearningBrief,
-	type LearnerProfile
+	type LearnerProfile,
+	type ScopeStrategyId
 } from './brief';
 
 describe('parseBrief', () => {
@@ -69,6 +70,21 @@ describe('parseBrief', () => {
 		const parsed = parseBrief(JSON.stringify({ goal: 'g', context: '   ', scope: '\t' }));
 		expect(parsed).toEqual({ goal: 'g' });
 	});
+
+	it('round-trips scopeStrategy', () => {
+		const raw = JSON.stringify({ goal: 'g', scopeStrategy: 'guided-curriculum' });
+		expect(parseBrief(raw)?.scopeStrategy).toBe('guided-curriculum');
+	});
+
+	it('drops an invalid scopeStrategy but keeps a valid goal', () => {
+		const raw = JSON.stringify({ goal: 'g', scopeStrategy: 'nonexistent-strategy' });
+		expect(parseBrief(raw)?.scopeStrategy).toBeUndefined();
+	});
+
+	it('drops a scopeStrategy that is a valid string but not in the enum', () => {
+		const raw = JSON.stringify({ goal: 'g', scopeStrategy: 'lecture' });
+		expect(parseBrief(raw)?.scopeStrategy).toBeUndefined();
+	});
 });
 
 describe('buildBriefSystemNote', () => {
@@ -104,19 +120,59 @@ describe('buildBriefSystemNote', () => {
 		expect(note.content).toContain('Scope: (open)');
 	});
 
-	it('uses mode-specific teaching guidance', () => {
+	it('emits the strategy block for each mode', () => {
 		const socratic = buildBriefSystemNote({ goal: 'g', mode: 'socratic' }).content;
 		const explainer = buildBriefSystemNote({ goal: 'g', mode: 'explainer' }).content;
 		const build = buildBriefSystemNote({ goal: 'g', mode: 'build' }).content;
-		expect(socratic).toContain('questioning and active recall');
-		expect(explainer).toContain('explain directly and clearly');
-		expect(build).toContain('side-by-side');
+		expect(explainer).toContain('GUIDED CURRICULUM');
+		expect(socratic).toContain('NUANCED INQUIRY');
+		expect(build).toContain('WORKSHOP mode');
+	});
+
+	it('does not contain the old mode one-liners', () => {
+		const socratic = buildBriefSystemNote({ goal: 'g', mode: 'socratic' }).content;
+		const explainer = buildBriefSystemNote({ goal: 'g', mode: 'explainer' }).content;
+		const build = buildBriefSystemNote({ goal: 'g', mode: 'build' }).content;
+		expect(socratic).not.toContain('questioning and active recall');
+		expect(explainer).not.toContain('explain directly and clearly');
+		expect(build).not.toContain('side-by-side');
 	});
 
 	it('tells the tutor to announce goal mastery', () => {
 		expect(buildBriefSystemNote({ goal: 'g' }).content).toContain(
 			'When the learner can do the goal'
 		);
+	});
+
+	it('explicit scopeStrategy overrides the mode-default block when mode-matched', () => {
+		const note = buildBriefSystemNote({
+			goal: 'g',
+			mode: 'socratic',
+			scopeStrategy: 'devils-advocate'
+		});
+		expect(note.content).toContain("DEVIL'S ADVOCATE");
+		expect(note.content).not.toContain('NUANCED INQUIRY');
+	});
+
+	it('cross-mode scopeStrategy falls back to mode-default block', () => {
+		const note = buildBriefSystemNote({ goal: 'g', mode: 'socratic', scopeStrategy: 'workshop' });
+		expect(note.content).toContain('NUANCED INQUIRY');
+		expect(note.content).not.toContain('WORKSHOP');
+	});
+
+	it('a legacy brief with no scopeStrategy still emits a mode-default block', () => {
+		const note = buildBriefSystemNote({ goal: 'g', mode: 'explainer' });
+		expect(note.content).toContain('GUIDED CURRICULUM');
+	});
+
+	it('includes the budget line when scope is set', () => {
+		const note = buildBriefSystemNote({ goal: 'g', scope: 'orient me in 10 min' });
+		expect(note.content).toContain('The learner set this budget: orient me in 10 min');
+	});
+
+	it('omits the budget line when scope is empty', () => {
+		const note = buildBriefSystemNote({ goal: 'g' });
+		expect(note.content).not.toContain('The learner set this budget');
 	});
 });
 
@@ -149,21 +205,38 @@ describe('summarizeBrief', () => {
 });
 
 describe('applyProfile', () => {
-	it('brief fields win over profile fields', () => {
-		const profile: LearnerProfile = { context: 'p-ctx', level: 'novice', mode: 'build' };
-		const brief = { context: 'b-ctx', level: 'regular' as const, mode: 'explainer' as const };
+	it('brief scopeStrategy wins over profile scopeStrategy', () => {
+		const profile: LearnerProfile = {
+			context: 'p-ctx',
+			level: 'novice',
+			mode: 'build',
+			scopeStrategy: 'guided-inquiry'
+		};
+		const brief = {
+			context: 'b-ctx',
+			level: 'regular' as const,
+			mode: 'explainer' as const,
+			scopeStrategy: 'guided-curriculum' as ScopeStrategyId
+		};
 		const result = applyProfile(profile, brief);
 		expect(result.context).toBe('b-ctx');
 		expect(result.level).toBe('regular');
 		expect(result.mode).toBe('explainer');
+		expect(result.scopeStrategy).toBe('guided-curriculum');
 	});
 
 	it('profile fills gaps when brief omits fields', () => {
-		const profile: LearnerProfile = { context: 'p-ctx', level: 'practitioner', mode: 'build' };
+		const profile: LearnerProfile = {
+			context: 'p-ctx',
+			level: 'practitioner',
+			mode: 'build',
+			scopeStrategy: 'workshop'
+		};
 		const result = applyProfile(profile, {});
 		expect(result.context).toBe('p-ctx');
 		expect(result.level).toBe('practitioner');
 		expect(result.mode).toBe('build');
+		expect(result.scopeStrategy).toBe('workshop');
 	});
 
 	it('defaults fill remaining gaps', () => {
@@ -188,14 +261,16 @@ describe('applyProfile', () => {
 			context: undefined,
 			level: DEFAULT_LEVEL,
 			mode: DEFAULT_MODE,
-			scope: undefined
+			scope: undefined,
+			scopeStrategy: 'guided-inquiry'
 		});
 	});
 
-	it('level and mode are always present', () => {
+	it('level, mode, and scopeStrategy are always present', () => {
 		const partial: Partial<LearningBrief> = { goal: 'g' };
 		const result = applyProfile({}, partial);
 		expect(result.level).toBeDefined();
 		expect(result.mode).toBeDefined();
+		expect(result.scopeStrategy).toBeDefined();
 	});
 });

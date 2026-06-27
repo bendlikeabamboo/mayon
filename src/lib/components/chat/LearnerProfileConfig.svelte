@@ -7,18 +7,29 @@
 		LEVEL_OPTIONS,
 		MODE_LABELS,
 		MODE_OPTIONS,
+		strategiesForMode,
 		type BriefLevel,
 		type BriefMode,
-		type LearnerProfile
+		type LearnerProfile,
+		type ScopeStrategyId
 	} from '$lib/chat/brief';
 	import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
 
 	let context = $state('');
 	let level = $state<BriefLevel>(DEFAULT_PROFILE.level!);
 	let modeVal = $state<BriefMode>(DEFAULT_PROFILE.mode!);
+	let scopeStrategy = $state<ScopeStrategyId | undefined>(undefined);
 	let loading = $state(true);
 	let status = $state<string | null>(null);
 	let isDefault = $state(true);
+
+	let modeStrategies = $derived(strategiesForMode(modeVal));
+
+	$effect(() => {
+		if (scopeStrategy !== undefined && !modeStrategies.find((s) => s.id === scopeStrategy)) {
+			scopeStrategy = undefined;
+		}
+	});
 
 	onMount(async () => {
 		try {
@@ -26,8 +37,12 @@
 			context = profile.context ?? '';
 			level = profile.level ?? DEFAULT_PROFILE.level!;
 			modeVal = profile.mode ?? DEFAULT_PROFILE.mode!;
+			scopeStrategy = profile.scopeStrategy;
 			isDefault =
-				context === '' && level === DEFAULT_PROFILE.level && modeVal === DEFAULT_PROFILE.mode;
+				context === '' &&
+				level === DEFAULT_PROFILE.level &&
+				modeVal === DEFAULT_PROFILE.mode &&
+				scopeStrategy === undefined;
 		} catch {
 			// fall back to defaults
 		}
@@ -38,11 +53,13 @@
 		const clean: LearnerProfile = { level, mode: modeVal };
 		const ctx = context.trim();
 		if (ctx.length > 0) clean.context = ctx;
+		if (scopeStrategy !== undefined) clean.scopeStrategy = scopeStrategy;
 		await setLearnerProfile(clean);
 		isDefault =
 			clean.context === undefined &&
 			clean.level === DEFAULT_PROFILE.level &&
-			clean.mode === DEFAULT_PROFILE.mode;
+			clean.mode === DEFAULT_PROFILE.mode &&
+			clean.scopeStrategy === undefined;
 		status = 'Learner profile saved.';
 	}
 
@@ -50,6 +67,7 @@
 		context = '';
 		level = DEFAULT_PROFILE.level!;
 		modeVal = DEFAULT_PROFILE.mode!;
+		scopeStrategy = undefined;
 		await setLearnerProfile({ ...DEFAULT_PROFILE });
 		isDefault = true;
 		status = 'Reset to default profile.';
@@ -109,6 +127,22 @@
 					{/each}
 				</select>
 			</div>
+		</div>
+
+		<!-- Structure -->
+		<div class="space-y-1">
+			<label class={labelClass} for="profile-strategy">Structure</label>
+			<select id="profile-strategy" bind:value={scopeStrategy} class={inputClass}>
+				<option value={undefined as unknown as string}>(mode default)</option>
+				{#each modeStrategies as s (s.id)}
+					<option value={s.id}>{s.label}</option>
+				{/each}
+			</select>
+			{#if modeStrategies.find((s) => s.id === scopeStrategy)}
+				<p class="text-xs text-muted-foreground">
+					{modeStrategies.find((s) => s.id === scopeStrategy)?.hint}
+				</p>
+			{/if}
 		</div>
 
 		<div class="flex items-center gap-2 pt-1">
