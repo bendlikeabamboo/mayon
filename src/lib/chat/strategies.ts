@@ -66,7 +66,7 @@ EACH UNIT — ONE PER TURN, self-contained and dense:
   1. Concept in your own words (no hand-waving, define every term on first use).
   2. At least one concrete example or worked instance tied to the learner's context.
   3. One line tying the unit back to the goal.
-  • Density target: ~250–400 words per unit. Never under-fill a unit.
+  • Density target: ~600–800 words per unit. Never under-fill a unit.
 
 PACING GATE (end of EVERY unit and of the orientation):
   End the turn with exactly:

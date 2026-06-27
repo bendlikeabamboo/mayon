@@ -50,9 +50,12 @@
 <style>
 	:global(.markdown-body) {
 		font-family: var(--font-serif);
-		font-size: 0.875rem;
+		font-size: 0.9375rem;
+		font-weight: 400;
 		line-height: 1.65;
 		word-wrap: break-word;
+		-webkit-font-smoothing: auto;
+		-moz-osx-font-smoothing: auto;
 	}
 	:global(.markdown-body p) {
 		margin: 0.5em 0;
