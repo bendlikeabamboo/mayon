@@ -31,9 +31,13 @@ import { repos } from '$lib/db';
 import type { McqPayload, ShortPayload } from '$lib/db';
 import type { Quiz, QuizAnswer, QuizAttempt, QuizQuestion } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
-import { getActiveProvider } from '$lib/ai/client';
+import { getActiveSdkProvider } from '$lib/ai/client';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
-import { QuizGenerationError } from '$lib/ai/generate/generate-quiz';
+import {
+	QuizGenerationError,
+	generateQuiz,
+	gradeShortAnswer
+} from '$lib/ai/generate/generate-quiz';
 import { toQuizQuestions } from '$lib/ai/generate/quiz';
 
 function isAbortError(err: unknown): boolean {
@@ -151,10 +155,13 @@ class QuizzesState {
 		this.controller = new AbortController();
 
 		try {
-			const [ctx, provider] = await Promise.all([assembleContext(chatId), getActiveProvider()]);
-			const generated = await provider.generateQuiz(ctx, { signal: this.controller!.signal });
+			const [ctx, { model, config }] = await Promise.all([
+				assembleContext(chatId),
+				getActiveSdkProvider()
+			]);
+			const generated = await generateQuiz(model, ctx, { signal: this.controller!.signal });
 			const items = toQuizQuestions(generated);
-			const quiz = await repos.quizzes.create({ chatId, model: provider.config.defaultModel });
+			const quiz = await repos.quizzes.create({ chatId, model: config.defaultModel });
 			for (const it of items) {
 				await repos.quizQuestions.add({
 					quizId: quiz.id,
@@ -325,11 +332,11 @@ class QuizzesState {
 		const attemptId = this.activeAttempt.id;
 		try {
 			const ctx = await assembleContext(this.current!.chatId);
-			const provider = await getActiveProvider();
+			const { model } = await getActiveSdkProvider();
 			const question = this.questions.find((q) => q.id === questionId);
 			if (!question) return;
 			const payload = repos.quizQuestions.parsePayload<ShortPayload>(question.payload);
-			const graded = await provider.gradeShortAnswer({
+			const graded = await gradeShortAnswer(model, {
 				prompt: question.prompt,
 				rubric: payload.rubric,
 				answer: answerText,

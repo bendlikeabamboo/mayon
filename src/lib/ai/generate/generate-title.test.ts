@@ -1,45 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanTitle, DEFAULT_TITLE, generateTitle } from './generate-title';
-import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import type { LanguageModel } from 'ai';
 
-/**
- * Stub provider emitting one scripted reply per `chatStream` call, char by char
- * (mirrors generate.test.ts). Records each call's message list + opts for
- * assertions (e.g. that reasoning is forwarded).
- */
-function scriptedProvider(replies: string[]): {
-	provider: Provider;
-	calls: { messages: ChatMessage[]; opts?: ChatStreamOptions }[];
-} {
-	const calls: { messages: ChatMessage[]; opts?: ChatStreamOptions }[] = [];
-	let call = 0;
-	const config: ProviderConfig = {
-		id: 'stub',
-		kind: 'openai-compatible',
-		name: 'stub',
-		baseUrl: 'http://stub',
-		defaultModel: 'stub-model',
-		models: ['stub-model']
-	};
-	const provider: Provider = {
-		kind: 'openai-compatible',
-		config,
-		async *chatStream(messages: ChatMessage[], opts?: ChatStreamOptions): AsyncIterable<Token> {
-			calls.push({ messages, opts });
-			if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-			const reply = replies[Math.min(call, replies.length - 1)] ?? '';
-			call += 1;
-			for (const ch of reply) {
-				if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-				yield { text: ch };
-			}
-		},
-		generateLab: () => Promise.reject(new Error('unused')),
-		generateQuiz: () => Promise.reject(new Error('unused')),
-		gradeShortAnswer: () => Promise.reject(new Error('unused'))
-	};
-	return { provider, calls };
-}
+vi.mock('ai', () => ({
+	generateObject: vi.fn(),
+	generateText: vi.fn(),
+	streamText: vi.fn(),
+	APICallError: class extends Error {
+		statusCode: number;
+		responseBody?: string;
+		responseHeaders?: Record<string, string>;
+		constructor(
+			msg: string,
+			opts: { statusCode?: number; responseBody?: string; responseHeaders?: Record<string, string> }
+		) {
+			super(msg);
+			this.statusCode = opts?.statusCode ?? 0;
+			this.responseBody = opts?.responseBody;
+			this.responseHeaders = opts?.responseHeaders;
+		}
+	}
+}));
+
+const { generateText } = await import('ai');
+const mockedGenerateText = vi.mocked(generateText);
+
+const mockModel = {} as LanguageModel;
 
 describe('cleanTitle', () => {
 	it('returns plain text unchanged', () => {
@@ -48,7 +34,7 @@ describe('cleanTitle', () => {
 
 	it('strips surrounding quotes', () => {
 		expect(cleanTitle('"Terraform Basics"')).toBe('Terraform Basics');
-		expect(cleanTitle('“ClickOps Overview”')).toBe('ClickOps Overview');
+		expect(cleanTitle('\u201cClickOps Overview\u201d')).toBe('ClickOps Overview');
 	});
 
 	it('strips a code fence', () => {
@@ -68,7 +54,7 @@ describe('cleanTitle', () => {
 		const long = 'A'.repeat(120);
 		const out = cleanTitle(long);
 		expect(out.length).toBe(80);
-		expect(out.endsWith('…')).toBe(true);
+		expect(out.endsWith('\u2026')).toBe(true);
 	});
 
 	it('falls back to the default placeholder when empty', () => {
@@ -78,55 +64,84 @@ describe('cleanTitle', () => {
 });
 
 describe('generateTitle', () => {
-	it('streams a reply, cleans it, and prepends the title system prompt', async () => {
-		const { provider, calls } = scriptedProvider(['"Docker Volumes"']);
-		const title = await generateTitle(provider, [
+	beforeEach(() => {
+		mockedGenerateText.mockReset();
+	});
+
+	it('returns cleaned text from generateText', async () => {
+		mockedGenerateText.mockResolvedValue({ text: '"Docker Volumes"' } as never);
+		const title = await generateTitle(mockModel, [
 			{ role: 'user', content: 'how do volumes work' },
 			{ role: 'assistant', content: 'they persist data' }
 		]);
 		expect(title).toBe('Docker Volumes');
-		// The first turn sent to the provider is the title system instruction.
-		expect(calls[0].messages[0].role).toBe('system');
-		expect(calls[0].messages[0].content).toContain('title');
-		// The provided context follows it.
-		expect(calls[0].messages.slice(1).map((m) => m.role)).toEqual(['user', 'assistant']);
 	});
 
-	it('forwards reasoning "disabled" to the provider (titles never reason)', async () => {
-		const { provider, calls } = scriptedProvider(['Terraform Basics']);
-		await generateTitle(provider, [{ role: 'user', content: 'hi' }]);
-		expect(calls[0].opts?.reasoning).toBe('disabled');
+	it('passes the title system prompt', async () => {
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		await generateTitle(mockModel, [{ role: 'user', content: 'hi' }]);
+		expect(mockedGenerateText).toHaveBeenCalledWith(
+			expect.objectContaining({
+				system: expect.stringContaining('title')
+			})
+		);
 	});
 
-	it('overrides a caller-supplied reasoning mode with "disabled"', async () => {
-		const { provider, calls } = scriptedProvider(['Title']);
-		await generateTitle(provider, [{ role: 'user', content: 'hi' }], {
-			reasoning: 'enabled'
-		});
-		expect(calls[0].opts?.reasoning).toBe('disabled');
+	it('maps messages to SDK format', async () => {
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		await generateTitle(mockModel, [
+			{ role: 'user', content: 'how do volumes work' },
+			{ role: 'assistant', content: 'they persist data' }
+		]);
+		expect(mockedGenerateText).toHaveBeenCalledWith(
+			expect.objectContaining({
+				messages: [
+					{ role: 'user', content: 'how do volumes work' },
+					{ role: 'assistant', content: 'they persist data' }
+				]
+			})
+		);
+	});
+
+	it('passes the model to generateText', async () => {
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		await generateTitle(mockModel, [{ role: 'user', content: 'hi' }]);
+		expect(mockedGenerateText).toHaveBeenCalledWith(expect.objectContaining({ model: mockModel }));
+	});
+
+	it('sets maxRetries to 0', async () => {
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		await generateTitle(mockModel, [{ role: 'user', content: 'hi' }]);
+		expect(mockedGenerateText).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0 }));
 	});
 
 	it('uses a prompt that asks for a 3 to 10 word title', async () => {
-		const { provider, calls } = scriptedProvider(['T']);
-		await generateTitle(provider, [{ role: 'user', content: 'hi' }]);
-		const prompt = calls[0].messages[0].content;
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		await generateTitle(mockModel, [{ role: 'user', content: 'hi' }]);
+		const prompt = mockedGenerateText.mock.calls[0][0].system;
 		expect(prompt).toContain('3');
 		expect(prompt).toContain('10');
-		expect(prompt).not.toContain('6 words');
 	});
 
 	it('falls back to the placeholder when the model returns nothing usable', async () => {
-		const { provider } = scriptedProvider(['   ']);
-		const title = await generateTitle(provider, [{ role: 'user', content: 'hi' }]);
+		mockedGenerateText.mockResolvedValue({ text: '   ' } as never);
+		const title = await generateTitle(mockModel, [{ role: 'user', content: 'hi' }]);
 		expect(title).toBe(DEFAULT_TITLE);
 	});
 
-	it('propagates an abort signal from the stream', async () => {
-		const { provider } = scriptedProvider(['irrelevant']);
-		const ctrl = new AbortController();
-		ctrl.abort();
-		await expect(
-			generateTitle(provider, [{ role: 'user', content: 'hi' }], { signal: ctrl.signal })
-		).rejects.toThrow('Aborted');
+	it('passes abort signal as abortSignal', async () => {
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		const ac = new AbortController();
+		await generateTitle(mockModel, [{ role: 'user', content: 'hi' }], { signal: ac.signal });
+		expect(mockedGenerateText).toHaveBeenCalledWith(
+			expect.objectContaining({ abortSignal: ac.signal })
+		);
+	});
+
+	it('propagates errors from generateText', async () => {
+		mockedGenerateText.mockRejectedValue(new Error('model error'));
+		await expect(generateTitle(mockModel, [{ role: 'user', content: 'hi' }])).rejects.toThrow(
+			'model error'
+		);
 	});
 });

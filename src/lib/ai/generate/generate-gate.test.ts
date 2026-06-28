@@ -115,8 +115,7 @@ describe('stripGateFence', () => {
 	});
 
 	it('prefers fenced gate strip over bare JSON fallback', () => {
-		const raw =
-			'Content.\n\n```gate\n{"nextUnit":"A","options":[],"progress":"1/2"}\n```';
+		const raw = 'Content.\n\n```gate\n{"nextUnit":"A","options":[],"progress":"1/2"}\n```';
 		expect(stripGateFence(raw)).toBe('Content.');
 	});
 

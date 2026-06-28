@@ -18,9 +18,9 @@ import { browser } from '$app/environment';
 import { repos } from '$lib/db';
 import type { Lab } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
-import { getActiveProvider } from '$lib/ai/client';
+import { getActiveSdkProvider } from '$lib/ai/client';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
-import { LabGenerationError } from '$lib/ai/generate/generate';
+import { generateLab, LabGenerationError } from '$lib/ai/generate/generate';
 import { toLabContent } from '$lib/ai/generate/lab';
 
 function isAbortError(err: unknown): boolean {
@@ -85,15 +85,18 @@ class LabsState {
 		this.controller = new AbortController();
 
 		try {
-			const [ctx, provider] = await Promise.all([assembleContext(chatId), getActiveProvider()]);
-			const generated = await provider.generateLab(ctx, { signal: this.controller.signal });
+			const [ctx, { model, config }] = await Promise.all([
+				assembleContext(chatId),
+				getActiveSdkProvider()
+			]);
+			const generated = await generateLab(model, ctx, { signal: this.controller.signal });
 			const { title, content, checklist } = toLabContent(generated);
 			const lab = await repos.labs.create({
 				chatId,
 				title,
 				content,
 				checklist,
-				model: provider.config.defaultModel
+				model: config.defaultModel
 			});
 			// Keep the list in sync if it was already loaded.
 			this.list = [lab, ...this.list];

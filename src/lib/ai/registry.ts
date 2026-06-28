@@ -6,40 +6,7 @@
  * the GLM model list (glm-5.2 / glm-5.1 / glm-5-turbo / glm-4.7 / glm-4.5-air),
  * and is served by the same `openai-compatible` adapter as OpenAI.
  */
-import { createAnthropicAdapter } from './adapters/anthropic';
-import { createGeminiAdapter } from './adapters/gemini';
-import { createOllamaAdapter } from './adapters/ollama';
-import { createOpenAICompatibleAdapter } from './adapters/openai-compatible';
-import type { Provider, ProviderConfig, ProviderKind } from './types';
-
-/**
- * Lazy key probe. Adapters call `hasKey` per request so a key saved after the
- * adapter was constructed is noticed (and a deleted key is noticed too). Returns
- * a boolean only — the secret itself is resolved by the transport, never read
- * here (on desktop it never even enters JS).
- */
-export interface ProviderKeyAccessor {
-	/** True if an API key is configured for `providerId`. */
-	hasKey(providerId: string): Promise<boolean>;
-}
-
-/**
- * Build the right adapter for a `ProviderConfig`. Ollama takes no key (local
- * server); the others receive the lazy `hasKey` probe (the secret is resolved by
- * the transport, not handed to the adapter).
- */
-export function buildProvider(config: ProviderConfig, keys: ProviderKeyAccessor): Provider {
-	switch (config.kind) {
-		case 'openai-compatible':
-			return createOpenAICompatibleAdapter(config, { hasKey: () => keys.hasKey(config.id) });
-		case 'anthropic':
-			return createAnthropicAdapter(config, { hasKey: () => keys.hasKey(config.id) });
-		case 'gemini':
-			return createGeminiAdapter(config, { hasKey: () => keys.hasKey(config.id) });
-		case 'ollama':
-			return createOllamaAdapter(config);
-	}
-}
+import type { ProviderKind } from './types';
 
 /** The set of kinds selectable in the Settings UI. */
 export function listProviderKinds(): ProviderKind[] {

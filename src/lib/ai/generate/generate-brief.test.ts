@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	DEFAULT_BRIEF_PROMPT,
 	BriefGenerationError,
@@ -8,40 +8,34 @@ import {
 	parseGeneratedBrief,
 	type GenerateBriefOptions
 } from './generate-brief';
-import type { ChatMessage, ChatStreamOptions, Provider, ProviderConfig, Token } from '../types';
+import type { ChatMessage } from '../types';
 import type { GeneratedBrief } from './generate-brief';
+import type { LanguageModel } from 'ai';
 
-function scriptedProvider(replies: string[]): Provider {
-	let call = 0;
-	const calls: ChatMessage[][] = [];
-	const config: ProviderConfig = {
-		id: 'stub',
-		kind: 'openai-compatible',
-		name: 'stub',
-		baseUrl: 'http://stub',
-		defaultModel: 'stub-model',
-		models: ['stub-model']
-	};
-	return {
-		kind: 'openai-compatible',
-		config,
-		async *chatStream(messages: ChatMessage[], opts?: ChatStreamOptions): AsyncIterable<Token> {
-			calls.push(messages);
-			if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-			const reply = replies[Math.min(call, replies.length - 1)] ?? '';
-			call += 1;
-			for (const ch of reply) {
-				if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-				yield { text: ch };
-			}
-		},
-		generateLab: () => {
-			throw new Error('unused');
-		},
-		generateQuiz: () => Promise.reject(new Error('unused')),
-		gradeShortAnswer: () => Promise.reject(new Error('unused'))
-	};
-}
+vi.mock('ai', () => ({
+	generateObject: vi.fn(),
+	generateText: vi.fn(),
+	streamText: vi.fn(),
+	APICallError: class extends Error {
+		statusCode: number;
+		responseBody?: string;
+		responseHeaders?: Record<string, string>;
+		constructor(
+			msg: string,
+			opts: { statusCode?: number; responseBody?: string; responseHeaders?: Record<string, string> }
+		) {
+			super(msg);
+			this.statusCode = opts?.statusCode ?? 0;
+			this.responseBody = opts?.responseBody;
+			this.responseHeaders = opts?.responseHeaders;
+		}
+	}
+}));
+
+const { generateObject } = await import('ai');
+const mockedGenerateObject = vi.mocked(generateObject);
+
+const mockModel = {} as LanguageModel;
 
 const validBrief: GeneratedBrief = {
 	goal: 'be able to write a Makefile',
@@ -57,6 +51,8 @@ const fencedValid = '```json\n' + validJson + '\n```';
 function optsWith(prompt: string): GenerateBriefOptions {
 	return { prompt };
 }
+
+const messages: ChatMessage[] = [{ role: 'user', content: 'go' }];
 
 describe('GeneratedBriefSchema (strict)', () => {
 	it('accepts a well-formed brief', () => {
@@ -124,82 +120,82 @@ describe('parseGeneratedBrief', () => {
 });
 
 describe('generateBrief', () => {
-	it('parses a valid fenced reply on the first attempt', async () => {
-		const provider = scriptedProvider([fencedValid]);
-		const brief = await generateBrief(provider, [{ role: 'user', content: 'go' }], optsWith('p'));
+	beforeEach(() => {
+		mockedGenerateObject.mockReset();
+	});
+
+	it('returns the parsed brief on success', async () => {
+		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		const brief = await generateBrief(mockModel, messages, optsWith('p'));
 		expect(brief).toEqual(validBrief);
 	});
 
-	it('retries once and succeeds when the second reply is valid', async () => {
-		const provider = scriptedProvider(['garbage', fencedValid]);
-		const brief = await generateBrief(provider, [{ role: 'user', content: 'x' }], optsWith('p'));
-		expect(brief).toEqual(validBrief);
+	it('passes the prompt as the system instruction', async () => {
+		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		await generateBrief(mockModel, messages, optsWith('MY PROMPT'));
+		expect(mockedGenerateObject).toHaveBeenCalledWith(
+			expect.objectContaining({ system: 'MY PROMPT' })
+		);
 	});
 
-	it('feeds the bad output back as an assistant turn + correction on retry', async () => {
-		const provider = scriptedProvider(['garbage', fencedValid]);
-		const seen: ChatMessage[][] = [];
-		const orig = provider.chatStream.bind(provider);
-		provider.chatStream = async function* (messages: ChatMessage[], o?: ChatStreamOptions) {
-			seen.push(messages);
-			yield* orig(messages, o);
-		};
-		await generateBrief(provider, [{ role: 'user', content: 'x' }], optsWith('p'));
-		const second = seen[1];
-		expect(second.at(-2)).toEqual({ role: 'assistant', content: 'garbage' });
-		expect(second.at(-1)?.role).toBe('user');
-		expect(second.at(-1)?.content).toContain('not valid JSON');
-	});
-
-	it('throws BriefGenerationError (with raw) after exhausting retries', async () => {
-		const provider = scriptedProvider(['bad1', 'bad2', 'bad3']);
-		let err: unknown;
-		try {
-			await generateBrief(provider, [{ role: 'user', content: 'x' }], optsWith('p'));
-		} catch (e) {
-			err = e;
-		}
-		expect(err).toBeInstanceOf(BriefGenerationError);
-		expect((err as BriefGenerationError).raw).toBe('bad3');
-	});
-
-	it('propagates AbortError from the stream (does not retry)', async () => {
-		const provider = scriptedProvider([fencedValid]);
-		const ac = new AbortController();
-		ac.abort();
-		await expect(
-			generateBrief(provider, [{ role: 'user', content: 'x' }], {
-				...optsWith('p'),
-				signal: ac.signal
+	it('maps messages to SDK format', async () => {
+		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		await generateBrief(mockModel, messages, optsWith('p'));
+		expect(mockedGenerateObject).toHaveBeenCalledWith(
+			expect.objectContaining({
+				messages: [{ role: 'user', content: 'go' }]
 			})
-		).rejects.toThrow(/Aborted/);
+		);
 	});
 
-	it('does not retry on a non-parse stream error (propagates)', async () => {
-		const provider: Provider = {
-			...scriptedProvider([fencedValid]),
-			chatStream(): AsyncIterable<Token> {
-				// eslint-disable-next-line require-yield -- intentionally throws before yielding
-				return (async function* () {
-					throw new Error('network down');
-				})();
-			}
-		};
-		await expect(
-			generateBrief(provider, [{ role: 'user', content: 'x' }], optsWith('p'))
-		).rejects.toThrow('network down');
+	it('passes abort signal as abortSignal', async () => {
+		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		const ac = new AbortController();
+		await generateBrief(mockModel, messages, { prompt: 'p', signal: ac.signal });
+		expect(mockedGenerateObject).toHaveBeenCalledWith(
+			expect.objectContaining({ abortSignal: ac.signal })
+		);
 	});
 
-	it('forces reasoning disabled', async () => {
-		const provider = scriptedProvider([fencedValid]);
-		const seen: { opts?: ChatStreamOptions }[] = [];
-		const orig = provider.chatStream.bind(provider);
-		provider.chatStream = async function* (messages: ChatMessage[], o?: ChatStreamOptions) {
-			seen.push({ opts: o });
-			yield* orig(messages, o);
-		};
-		await generateBrief(provider, [{ role: 'user', content: 'x' }], optsWith('p'));
-		expect(seen[0].opts?.reasoning).toBe('disabled');
+	it('sets maxRetries to 2', async () => {
+		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		await generateBrief(mockModel, messages, optsWith('p'));
+		expect(mockedGenerateObject).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 2 }));
+	});
+
+	it('wraps errors in BriefGenerationError', async () => {
+		mockedGenerateObject.mockRejectedValue(new Error('boom'));
+		await expect(generateBrief(mockModel, messages, optsWith('p'))).rejects.toThrow(
+			BriefGenerationError
+		);
+	});
+
+	it('carries raw message in BriefGenerationError', async () => {
+		mockedGenerateObject.mockRejectedValue(new Error('parse fail'));
+		try {
+			await generateBrief(mockModel, messages, optsWith('p'));
+		} catch (e) {
+			expect(e).toBeInstanceOf(BriefGenerationError);
+			expect((e as BriefGenerationError).raw).toBe('parse fail');
+		}
+	});
+
+	it('carries responseBody from APICallError as raw', async () => {
+		const { APICallError } = await import('ai');
+		const apiErr = new (APICallError as unknown as new (
+			msg: string,
+			opts: { statusCode?: number; responseBody?: string; responseHeaders?: Record<string, string> }
+		) => InstanceType<typeof APICallError>)('fail', {
+			statusCode: 500,
+			responseBody: 'raw brief body'
+		});
+		mockedGenerateObject.mockRejectedValue(apiErr);
+		try {
+			await generateBrief(mockModel, messages, optsWith('p'));
+		} catch (e) {
+			expect(e).toBeInstanceOf(BriefGenerationError);
+			expect((e as BriefGenerationError).raw).toBe('raw brief body');
+		}
 	});
 });
 

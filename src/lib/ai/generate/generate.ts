@@ -1,28 +1,14 @@
 /**
  * Lab generation orchestrator (architecture.md §7, P3).
  *
- * Provider-agnostic: lives outside the adapters because lab generation is
- * prompt-driven (no per-adapter wire support for JSON mode). Every adapter's
- * `generateLab` method is a thin wrapper that calls {@link generateLab} here.
- *
- * Flow:
- *   1. Prepend the lab prompt as a leading `system` message.
- *   2. Stream the reply via `provider.chatStream`, accumulating tokens into a
- *      string (same loop as `chatStore.send`).
- *   3. `parseGeneratedLab` the result.
- *   4. On `LabParseError`, retry up to 2× total: feed the model its own bad
- *      output back as an assistant turn plus a corrective user instruction,
- *      then re-stream. After max attempts, throw {@link LabGenerationError}
- *      carrying the last raw text so the caller can offer "save raw anyway".
- *
- * Abort handling mirrors `chatStore.send`: an `AbortError` from the stream is
- * propagated unchanged for the store to swallow.
+ * Uses the Vercel AI SDK's `generateObject` with a Zod schema to produce
+ * structured lab output. Retry logic is handled internally by the SDK via
+ * `maxRetries`.
  */
-import type { ChatMessage, ChatStreamOptions, Provider } from '../types';
-import { parseGeneratedLab, type GeneratedLab } from './lab';
-
-/** Max total attempts (initial + retries). Capped at 3 so retry cost is bounded. */
-const MAX_ATTEMPTS = 3;
+import { generateObject, APICallError } from 'ai';
+import type { LanguageModel } from 'ai';
+import type { ChatMessage } from '../types';
+import { GeneratedLabSchema, type GeneratedLab } from './lab';
 
 /**
  * The default system prompt instructing the model to emit the exact JSON shape
@@ -85,10 +71,6 @@ export const DEFAULT_LAB_PROMPT = [
 	'- steps and checklist are non-empty arrays.'
 ].join('\n');
 
-/** The corrective instruction appended on a retry. */
-const CORRECTION_INSTRUCTION =
-	'That was not valid JSON matching the schema. Common causes: (a) a code fence opened inside a JSON string — escape backticks as backslash-backtick instead; (b) a bare-string checklist item — wrap each in {"text": "..."}; (c) unescaped newlines/backticks. Output ONLY one ```json block with {title, intro, steps[], checklist[]} (checklist items are {"text":"..."}) and nothing else.';
-
 /**
  * Raised when generation exhausts its retries. Carries the last raw model
  * output so the caller (labs store) can offer to persist it as a raw lab.
@@ -116,67 +98,38 @@ export async function readLabPrompt(): Promise<string> {
 	return override && override.trim().length > 0 ? override : DEFAULT_LAB_PROMPT;
 }
 
-export interface GenerateLabOptions extends ChatStreamOptions {
-	/** The prompt prepended as a leading system message (defaults via readLabPrompt). */
+export interface GenerateLabOptions {
 	prompt?: string;
+	signal?: AbortSignal;
 }
 
-/**
- * Generate a lab from `messages` (the chat context). Streams tokens from
- * `provider.chatStream`, parses the fenced JSON, and retries on parse failure.
- *
- * `AbortError` from the underlying stream propagates unchanged.
- */
+function extractRaw(err: unknown): string {
+	if (err instanceof APICallError) {
+		return err.responseBody ?? err.message ?? '';
+	}
+	if (err instanceof Error) {
+		return err.message;
+	}
+	return String(err);
+}
+
 export async function generateLab(
-	provider: Provider,
+	model: LanguageModel,
 	messages: ChatMessage[],
 	opts: GenerateLabOptions = {}
 ): Promise<GeneratedLab> {
 	const prompt = opts.prompt ?? (await readLabPrompt());
-	const signal = opts.signal;
-
-	let attempt = 0;
-	// The running message list: starts with [system:prompt, ...messages]; on a
-	// retry we append the bad assistant output + a corrective user turn.
-	const turns: ChatMessage[] = [{ role: 'system', content: prompt }, ...messages];
-
-	let lastRaw = '';
-	while (attempt < MAX_ATTEMPTS) {
-		attempt += 1;
-		lastRaw = await accumulate(provider, turns, signal);
-
-		try {
-			return parseGeneratedLab(lastRaw);
-		} catch (err) {
-			// Only retry on a parse failure; anything else (transport error,
-			// AbortError) propagates immediately.
-			if (!(err instanceof Error && err.name === 'LabParseError')) throw err;
-			if (attempt >= MAX_ATTEMPTS) break;
-			// Feed the model its previous output + the correction, then loop.
-			turns.push({ role: 'assistant', content: lastRaw });
-			turns.push({ role: 'user', content: CORRECTION_INSTRUCTION });
-		}
+	try {
+		const result = await generateObject({
+			model,
+			schema: GeneratedLabSchema,
+			system: prompt,
+			messages: messages.map((m) => ({ role: m.role, content: m.content })),
+			abortSignal: opts.signal,
+			maxRetries: 2
+		});
+		return result.object;
+	} catch (err) {
+		throw new LabGenerationError('Lab generation failed.', extractRaw(err));
 	}
-
-	throw new LabGenerationError(
-		`Lab generation failed after ${MAX_ATTEMPTS} attempts; the model output never matched the schema.`,
-		lastRaw
-	);
-}
-
-/**
- * Stream a full reply from `provider` into a string. Same token-accumulation
- * loop as `chatStore.send`: reads `token.text ?? token.delta ?? ''` per chunk.
- * `AbortError` and transport errors propagate to the caller.
- */
-async function accumulate(
-	provider: Provider,
-	turns: ChatMessage[],
-	signal?: AbortSignal
-): Promise<string> {
-	let buffer = '';
-	for await (const token of provider.chatStream(turns, { signal })) {
-		buffer += token.text ?? token.delta ?? '';
-	}
-	return buffer;
 }

@@ -1,10 +1,12 @@
 import { z } from 'zod';
-import type { ChatMessage, ChatStreamOptions, Provider } from '../types';
+import { generateObject, APICallError } from 'ai';
+import type { LanguageModel } from 'ai';
+import type { ChatMessage } from '../types';
 import { LEVEL_OPTIONS, MODE_OPTIONS, type LearningBrief } from '$lib/chat/brief';
 import { SCOPE_STRATEGY_IDS } from '$lib/chat/strategies';
-import { extractFencedJson } from './fence';
+import { extractFencedJson } from './generate-gate';
 
-export { extractFencedJson } from './fence';
+export { extractFencedJson } from './generate-gate';
 
 const BT = String.fromCharCode(96);
 const FENCE = BT.repeat(3);
@@ -30,9 +32,6 @@ export const DEFAULT_BRIEF_PROMPT = [
 	'',
 	`Output ONE ${FENCE}json block. Do not include any fields other than goal, context, level, mode, scopeStrategy, scope.`
 ].join('\n');
-
-const CORRECTION_INSTRUCTION =
-	'That was not valid JSON matching the brief schema. Output ONLY one ```json block with {goal, context?, level?, mode?, scopeStrategy?, scope?} and nothing else. level must be one of: novice, some, regular, practitioner. mode must be one of: socratic, explainer, build. scopeStrategy must be one of: guided-curriculum, deep-dive, quick-orientation, reference-manual, guided-inquiry, devils-advocate, case-based, workshop, tutorial, pair-programming.';
 
 export type GeneratedBrief = Pick<
 	LearningBrief,
@@ -81,8 +80,6 @@ export function parseGeneratedBrief(raw: string): GeneratedBrief {
 	return result.data;
 }
 
-const MAX_ATTEMPTS = 3;
-
 export class BriefGenerationError extends Error {
 	constructor(
 		message: string,
@@ -99,50 +96,38 @@ export async function readBriefPrompt(): Promise<string> {
 	return override && override.trim().length > 0 ? override : DEFAULT_BRIEF_PROMPT;
 }
 
-async function accumulate(
-	provider: Provider,
-	turns: ChatMessage[],
-	signal?: AbortSignal
-): Promise<string> {
-	let buffer = '';
-	for await (const token of provider.chatStream(turns, { signal, reasoning: 'disabled' })) {
-		buffer += token.text ?? token.delta ?? '';
-	}
-	return buffer;
+export interface GenerateBriefOptions {
+	prompt?: string;
+	signal?: AbortSignal;
 }
 
-export interface GenerateBriefOptions extends ChatStreamOptions {
-	prompt?: string;
+function extractRaw(err: unknown): string {
+	if (err instanceof APICallError) {
+		return err.responseBody ?? err.message ?? '';
+	}
+	if (err instanceof Error) {
+		return err.message;
+	}
+	return String(err);
 }
 
 export async function generateBrief(
-	provider: Provider,
+	model: LanguageModel,
 	messages: ChatMessage[],
 	opts?: GenerateBriefOptions
 ): Promise<GeneratedBrief> {
 	const prompt = opts?.prompt ?? (await readBriefPrompt());
-	const signal = opts?.signal;
-
-	let attempt = 0;
-	const turns: ChatMessage[] = [{ role: 'system', content: prompt }, ...messages];
-
-	let lastRaw = '';
-	while (attempt < MAX_ATTEMPTS) {
-		attempt += 1;
-		lastRaw = await accumulate(provider, turns, signal);
-
-		try {
-			return parseGeneratedBrief(lastRaw);
-		} catch (err) {
-			if (!(err instanceof Error && err.name === 'BriefParseError')) throw err;
-			if (attempt >= MAX_ATTEMPTS) break;
-			turns.push({ role: 'assistant', content: lastRaw });
-			turns.push({ role: 'user', content: CORRECTION_INSTRUCTION });
-		}
+	try {
+		const result = await generateObject({
+			model,
+			schema: GeneratedBriefSchema,
+			system: prompt,
+			messages: messages.map((m) => ({ role: m.role, content: m.content })),
+			abortSignal: opts?.signal,
+			maxRetries: 2
+		});
+		return result.object;
+	} catch (err) {
+		throw new BriefGenerationError('Brief generation failed.', extractRaw(err));
 	}
-
-	throw new BriefGenerationError(
-		`Brief generation failed after ${MAX_ATTEMPTS} attempts; the model output never matched the schema.`,
-		lastRaw
-	);
 }

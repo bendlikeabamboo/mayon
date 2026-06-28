@@ -33,6 +33,9 @@
 		"bundle:migrations": "tsx src/lib/db/driver/bundle-migrations.ts"
 	},
 	"dependencies": {
+		"@ai-sdk/anthropic": "^4.0.1",
+		"@ai-sdk/google": "^4.0.2",
+		"@ai-sdk/openai": "^4.0.2",
 		"@fontsource/newsreader": "^5.2.10",
 		"@lucide/svelte": "^1.21.0",
 		"@sqlite.org/sqlite-wasm": "3.53.0-build1",
@@ -42,6 +45,7 @@
 		"@tauri-apps/plugin-process": "^2",
 		"@tauri-apps/plugin-sql": "^2.4.0",
 		"@tauri-apps/plugin-updater": "^2",
+		"ai": "^7.0.4",
 		"bits-ui": "^2.18.1",
 		"clsx": "^2.1.1",
 		"drizzle-orm": "^0.45.2",
@@ -49,6 +53,7 @@
 		"highlight.js": "^11.11.1",
 		"katex": "0.16.11",
 		"mermaid": "^11.16.0",
+		"ollama-ai-provider-v2": "^3.6.0",
 		"rehype-highlight": "^7.0.2",
 		"rehype-katex": "^7.0.1",
 		"rehype-sanitize": "^6.0.0",

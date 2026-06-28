@@ -21,10 +21,13 @@ import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highligh
 import { selectionOverlapsExisting } from '$lib/chat/expound';
 import type { LearningBrief } from '$lib/chat/brief';
 import { parseBrief } from '$lib/chat/brief';
+import { streamText, type LanguageModel } from 'ai';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 import { generateBrief } from '$lib/ai/generate/generate-brief';
-import type { ChatMessage, Provider, ReasoningMode } from '$lib/ai/types';
-import { getActiveProvider } from '$lib/ai/client';
+import type { ChatMessage, ReasoningMode } from '$lib/ai/types';
+import { getActiveSdkProvider } from '$lib/ai/client';
+import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
+import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 
 function isAbortError(err: unknown): boolean {
@@ -165,26 +168,39 @@ class ChatState {
 		this.controller = new AbortController();
 
 		try {
-			const [ctx, provider] = await Promise.all([assembleContext(chatId), getActiveProvider()]);
+			const [ctx, { model, config }] = await Promise.all([
+				assembleContext(chatId),
+				getActiveSdkProvider()
+			]);
 
 			// 3) Fire the parallel title request (first message only). Not awaited:
 			// the title lands before the main reply finishes; failures are swallowed.
 			if (isFirstRootTurn) {
-				void this.autoTitleRoot(provider, prompt);
+				void this.autoTitleRoot(model, prompt);
 			}
 
 			const shouldInferBrief =
 				chat && chat.parentId === null && parseBrief(chat.brief) === null && !this.inferDismissed;
 			if (shouldInferBrief) {
-				void this.inferBriefRoot(provider, ctx);
+				void this.inferBriefRoot(model, ctx);
 			}
 
 			// 4) Stream the main assistant reply, honoring the composer reasoning.
-			for await (const token of provider.chatStream(ctx, {
-				signal: this.controller.signal,
-				reasoning
-			})) {
-				this.streamBuffer += token.text ?? token.delta ?? '';
+			// System messages must go in the `system` option (SDK rejects them
+			// inside the `messages` array for OpenAI-compatible providers).
+			const systemParts = ctx.filter((m) => m.role === 'system').map((m) => m.content);
+			const nonSystem = ctx.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }));
+
+			const result = streamText({
+				model,
+				system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
+				messages: nonSystem,
+				abortSignal: this.controller.signal,
+				providerOptions: providerOptionsForReasoning(config.kind, reasoning) as never
+			});
+
+			for await (const delta of result.textStream) {
+				this.streamBuffer += delta;
 			}
 
 			// 5) Persist the assistant turn (only if anything was produced).
@@ -225,7 +241,7 @@ class ChatState {
 			}
 		} catch (err) {
 			if (!isAbortError(err)) {
-				this.error = formatProviderError(err);
+				this.error = formatProviderError(mapSdkError(err));
 			}
 			// Even on error, persist whatever partial buffer we collected so the
 			// turn isn't lost (matches the "assistant row appended on finish/stop"
@@ -293,7 +309,7 @@ class ChatState {
 	 * against re-entrancy while the async gen is in flight. Its own
 	 * `titleController` is aborted by `load`/`deleteChat` (not by `stop`).
 	 */
-	private async autoTitleRoot(provider: Provider, firstMessage: string): Promise<void> {
+	private async autoTitleRoot(model: LanguageModel, firstMessage: string): Promise<void> {
 		const chat = this.chat;
 		if (!chat || chat.parentId !== null || chat.title !== DEFAULT_TITLE) return;
 		if (this.titling) return;
@@ -301,7 +317,7 @@ class ChatState {
 		this.titleController = new AbortController();
 		try {
 			const ctx: ChatMessage[] = [{ role: 'user', content: firstMessage }];
-			const title = await generateTitle(provider, ctx, {
+			const title = await generateTitle(model, ctx, {
 				signal: this.titleController.signal
 			});
 			// Re-check: a retitle (or a concurrent auto-title) may have landed.
@@ -332,14 +348,14 @@ class ChatState {
 		this.inferredBrief = null;
 	}
 
-	private async inferBriefRoot(provider: Provider, ctx: ChatMessage[]): Promise<void> {
+	private async inferBriefRoot(model: LanguageModel, ctx: ChatMessage[]): Promise<void> {
 		const chat = this.chat;
 		if (!chat || chat.parentId !== null || parseBrief(chat.brief) !== null) return;
 		if (this.inferring || this.inferDismissed) return;
 		this.inferring = true;
 		this.inferController = new AbortController();
 		try {
-			const brief = await generateBrief(provider, ctx, {
+			const brief = await generateBrief(model, ctx, {
 				signal: this.inferController.signal
 			});
 			if (!this.inferDismissed) {

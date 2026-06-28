@@ -1,15 +1,12 @@
 /**
  * Title generation (auto-title root chats).
  *
- * Provider-agnostic orchestrator mirroring `generate/generate.ts`: prepends a
- * system instruction, streams a reply via `provider.chatStream`, then normalizes
- * the raw output into a clean title. No JSON to parse, so there are no retries —
- * a malformed/empty result just falls back to the placeholder.
- *
- * Called best-effort by `chatStore.autoTitleRoot` after a root's first exchange;
- * title failures must never break the chat.
+ * Uses the Vercel AI SDK's `generateText` to produce a concise title.
+ * Failures are not caught here — the caller wraps in best-effort semantics.
  */
-import type { ChatMessage, ChatStreamOptions, Provider } from '../types';
+import { generateText } from 'ai';
+import type { LanguageModel } from 'ai';
+import type { ChatMessage } from '../types';
 
 const TITLE_PROMPT = [
 	'You generate a short title for a conversation.',
@@ -19,34 +16,27 @@ const TITLE_PROMPT = [
 	'- Plain text; nothing else.'
 ].join('\n');
 
-/** The placeholder a fresh root chat starts with (matched to reset it on failure). */
 export const DEFAULT_TITLE = 'New chat';
 
-/**
- * Generate a concise title for `messages` (the chat context). Streams tokens via
- * `provider.chatStream`, accumulates, and normalizes via {@link cleanTitle}.
- * `AbortError` and transport errors propagate to the caller.
- */
-export async function generateTitle(
-	provider: Provider,
-	messages: ChatMessage[],
-	opts?: ChatStreamOptions
-): Promise<string> {
-	const turns: ChatMessage[] = [{ role: 'system', content: TITLE_PROMPT }, ...messages];
-	let buffer = '';
-	// Titles are always generated with reasoning OFF: it's a tiny, fast call
-	// that should never reason. A caller `signal` still propagates.
-	for await (const token of provider.chatStream(turns, { ...opts, reasoning: 'disabled' })) {
-		buffer += token.text ?? token.delta ?? '';
-	}
-	return cleanTitle(buffer);
+export interface GenerateTitleOptions {
+	signal?: AbortSignal;
 }
 
-/**
- * Normalize a raw model title into a clean single line: strip code fences,
- * surrounding quotes, trailing punctuation, collapse whitespace, and clamp to a
- * sane length. Falls back to {@link DEFAULT_TITLE} when nothing usable remains.
- */
+export async function generateTitle(
+	model: LanguageModel,
+	messages: ChatMessage[],
+	opts?: GenerateTitleOptions
+): Promise<string> {
+	const result = await generateText({
+		model,
+		system: TITLE_PROMPT,
+		messages: messages.map((m) => ({ role: m.role, content: m.content })),
+		abortSignal: opts?.signal,
+		maxRetries: 0
+	});
+	return cleanTitle(result.text);
+}
+
 export function cleanTitle(raw: string): string {
 	let t = raw.trim();
 	t = t.replace(/^```[a-zA-Z]*\s*/i, '').replace(/```\s*$/, '');

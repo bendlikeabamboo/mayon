@@ -13,9 +13,9 @@
 import { z } from 'zod';
 import { uuid } from '$lib/db/ids';
 import type { LabChecklistItem } from '$lib/db/repositories/labs';
-import { extractFencedJson } from './fence';
+import { extractFencedJson } from './generate-gate';
 
-export { extractFencedJson } from './fence';
+export { extractFencedJson } from './generate-gate';
 
 /**
  * The shape we ask the model to emit. `checklist` items carry only `{ text }`;

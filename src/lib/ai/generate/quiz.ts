@@ -12,7 +12,7 @@
  * in `generate.ts`, which calls `parseGeneratedQuiz` / `parseGradedAnswer` here.
  */
 import { z } from 'zod';
-import { extractFencedJson } from './fence';
+import { extractFencedJson } from './generate-gate';
 import type { QuizQuestionType } from '$lib/db/schema';
 import type { QuizPayload } from '$lib/db/repositories/quizzes';
 

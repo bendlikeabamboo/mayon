@@ -3,82 +3,51 @@ import { bootstrapWithDriver } from '$lib/db/driver/client';
 import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
 import type { McqPayload, FlashcardPayload, ShortPayload } from '$lib/db';
-import type { Provider } from '$lib/ai/types';
+import type { ProviderConfig } from '$lib/ai/types';
 import type { GeneratedQuiz, GradedAnswer } from '$lib/ai/generate/quiz';
-import { QuizGenerationError, GradeError } from '$lib/ai/generate/generate-quiz';
+import type { LanguageModel } from 'ai';
 
-/**
- * quizzesStore tests. The store calls `getActiveProvider()` (which reads
- * settings), so we mock `$lib/ai/client` to hand back a controllable stub
- * provider. DB state is real (in-memory driver), so persistence, auto-scoring,
- * AI grading, and attempt finalisation are exercised end-to-end through the
- * repository layer.
- */
+vi.mock('$lib/ai/client', () => ({
+	getActiveSdkProvider: vi.fn()
+}));
 
-// --- Stub provider -----------------------------------------------------------
-// The store calls `provider.generateQuiz(...)` (generation) and
-// `provider.gradeShortAnswer(...)` (short-answer grading). In real adapters both
-// delegate to the orchestrator; in these store tests we control the outcome
-// directly — returning a GeneratedQuiz / GradedAnswer, or throwing a typed
-// generation/grade error — so we cover the store's success / error / ungraded
-// branches without re-testing the orchestrator (covered in generate-quiz tests).
-function baseProvider(
-	generateQuizImpl: () => Promise<GeneratedQuiz>,
-	gradeShortAnswerImpl: () => Promise<GradedAnswer>
-): Provider {
-	return {
-		kind: 'openai-compatible',
-		config: {
-			id: 'stub',
-			kind: 'openai-compatible',
-			name: 'stub',
-			baseUrl: 'http://stub',
-			defaultModel: 'stub-model',
-			models: ['stub-model']
-		},
-		// Unused by the store path, but required by the interface.
-		async *chatStream() {
-			yield { text: '' };
-		},
-		generateLab: () => Promise.reject(new Error('not used')),
-		generateQuiz: generateQuizImpl,
-		gradeShortAnswer: gradeShortAnswerImpl
-	};
-}
+vi.mock('ai', () => ({
+	generateObject: vi.fn(),
+	generateText: vi.fn(),
+	streamText: vi.fn(),
+	APICallError: class extends Error {
+		statusCode: number;
+		responseBody?: string;
+		responseHeaders?: Record<string, string>;
+		constructor(
+			msg: string,
+			opts: { statusCode?: number; responseBody?: string; responseHeaders?: Record<string, string> }
+		) {
+			super(msg);
+			this.statusCode = opts?.statusCode ?? 0;
+			this.responseBody = opts?.responseBody;
+			this.responseHeaders = opts?.responseHeaders;
+		}
+	}
+}));
 
-/** Provider whose `generateQuiz` returns `quiz` (grading unused). */
-function providerReturningQuiz(quiz: GeneratedQuiz): Provider {
-	return baseProvider(
-		async () => quiz,
-		async () => Promise.reject(new Error('grade not used'))
-	);
-}
+const { getActiveSdkProvider } = await import('$lib/ai/client');
+const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
-/** Provider whose `generateQuiz` throws `err` (generation failure). */
-function providerQuizError(err: Error): Provider {
-	return baseProvider(
-		async () => Promise.reject(err),
-		async () => Promise.reject(new Error('grade not used'))
-	);
-}
+const { generateObject } = await import('ai');
+const mockedGenerateObject = vi.mocked(generateObject);
 
-/** Provider whose `generateQuiz` returns `quiz` and `gradeShortAnswer` returns `grade`. */
-function providerQuizAndGrade(quiz: GeneratedQuiz, grade: GradedAnswer): Provider {
-	return baseProvider(
-		async () => quiz,
-		async () => grade
-	);
-}
+import { quizzesStore } from './quizzes.svelte';
 
-/** Provider whose `generateQuiz` returns `quiz` and `gradeShortAnswer` throws `err`. */
-function providerGradeError(quiz: GeneratedQuiz, err: Error): Provider {
-	return baseProvider(
-		async () => quiz,
-		async () => Promise.reject(err)
-	);
-}
+const stubConfig: ProviderConfig = {
+	id: 'stub',
+	kind: 'openai-compatible',
+	name: 'stub',
+	baseUrl: 'http://stub',
+	defaultModel: 'stub-model',
+	models: ['stub-model']
+};
 
-// --- Fixtures ----------------------------------------------------------------
 const validQuiz: GeneratedQuiz = {
 	questions: [
 		{ type: 'mcq', prompt: '2+2?', payload: { options: ['3', '4', '5'], answerIndex: 1 } },
@@ -99,30 +68,12 @@ const oneShortQuiz: GeneratedQuiz = {
 
 const gradedCorrect: GradedAnswer = { isCorrect: true, feedback: 'good' };
 
-// --- Mocks -------------------------------------------------------------------
-// `assembleContext` is real (reads messages) but we only need it to return a
-// non-empty list; seed a chat with one message to satisfy it.
-vi.mock('$lib/ai/client', () => ({
-	getActiveProvider: vi.fn()
-}));
-
-// Pull the mocked fn after mock registration.
-const { getActiveProvider } = await import('$lib/ai/client');
-const mockedGetActiveProvider = vi.mocked(getActiveProvider);
-
-// The store module imports `$app/environment` (for `browser` guards). Vitest
-// resolves it via the svelte vite config; in the test env `browser` is false,
-// which makes loadList/loadQuiz no-op. We import the store fresh and set up
-// state by exercising `generate`/`startAttempt`/`answer*`, which do not guard
-// on `browser`.
-import { quizzesStore } from './quizzes.svelte';
-
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 beforeEach(async () => {
 	await bootstrapWithDriver(await createMemoryDriver());
-	mockedGetActiveProvider.mockReset();
-	// Reset singleton state between tests.
+	mockedGetActiveSdkProvider.mockReset();
+	mockedGenerateObject.mockReset();
 	quizzesStore.list = [];
 	quizzesStore.current = null;
 	quizzesStore.questions = [];
@@ -141,9 +92,18 @@ async function seedChat(): Promise<string> {
 	return chat.id;
 }
 
+function mockProviderReturningQuiz(_quiz: GeneratedQuiz) {
+	mockedGetActiveSdkProvider.mockResolvedValue({ model: {} as LanguageModel, config: stubConfig });
+}
+
+function mockGenerateReturningQuiz(quiz: GeneratedQuiz) {
+	mockedGenerateObject.mockResolvedValue({ object: quiz } as never);
+}
+
 describe('quizzesStore.generate', () => {
 	it('persists a generated quiz and its questions, returning the id', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(validQuiz));
+		mockProviderReturningQuiz(validQuiz);
+		mockGenerateReturningQuiz(validQuiz);
 		const chatId = await seedChat();
 
 		const id = await quizzesStore.generate(chatId);
@@ -169,9 +129,8 @@ describe('quizzesStore.generate', () => {
 	});
 
 	it('sets a typed error and persists nothing on QuizGenerationError', async () => {
-		mockedGetActiveProvider.mockResolvedValue(
-			providerQuizError(new QuizGenerationError('bad', 'raw'))
-		);
+		mockProviderReturningQuiz(validQuiz);
+		mockedGenerateObject.mockRejectedValue(new Error('generation failed'));
 		const chatId = await seedChat();
 
 		const id = await quizzesStore.generate(chatId);
@@ -184,7 +143,7 @@ describe('quizzesStore.generate', () => {
 
 	it('surfaces a formatted error when there is no active provider', async () => {
 		const { MissingKeyError } = await import('$lib/ai/types');
-		mockedGetActiveProvider.mockRejectedValue(new MissingKeyError('no provider'));
+		mockedGetActiveSdkProvider.mockRejectedValue(new MissingKeyError('no provider'));
 		const chatId = await seedChat();
 
 		const id = await quizzesStore.generate(chatId);
@@ -195,7 +154,8 @@ describe('quizzesStore.generate', () => {
 	});
 
 	it('is a no-op while already generating', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(validQuiz));
+		mockProviderReturningQuiz(validQuiz);
+		mockGenerateReturningQuiz(validQuiz);
 		const chatId = await seedChat();
 		quizzesStore.generating = true;
 		const id = await quizzesStore.generate(chatId);
@@ -205,7 +165,8 @@ describe('quizzesStore.generate', () => {
 
 describe('quizzesStore.startAttempt + answerMcq', () => {
 	it('starts an attempt (empty answers, history grows) and auto-scores a correct mcq', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(validQuiz));
+		mockProviderReturningQuiz(validQuiz);
+		mockGenerateReturningQuiz(validQuiz);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -224,7 +185,8 @@ describe('quizzesStore.startAttempt + answerMcq', () => {
 	});
 
 	it('auto-scores an incorrect mcq pick as wrong', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(oneMcqQuiz));
+		mockProviderReturningQuiz(oneMcqQuiz);
+		mockGenerateReturningQuiz(oneMcqQuiz);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -240,7 +202,8 @@ describe('quizzesStore.startAttempt + answerMcq', () => {
 
 describe('quizzesStore.answerFlashcard', () => {
 	it('self-marks got/missed', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(validQuiz));
+		mockProviderReturningQuiz(validQuiz);
+		mockGenerateReturningQuiz(validQuiz);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -259,7 +222,10 @@ describe('quizzesStore.answerFlashcard', () => {
 
 describe('quizzesStore.answerShort', () => {
 	it('records the answer and applies the AI grade', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerQuizAndGrade(validQuiz, gradedCorrect));
+		mockProviderReturningQuiz(validQuiz);
+		mockedGenerateObject
+			.mockResolvedValueOnce({ object: validQuiz } as never)
+			.mockResolvedValueOnce({ object: gradedCorrect } as never);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -272,7 +238,6 @@ describe('quizzesStore.answerShort', () => {
 		expect(quizzesStore.answers[shortId]).toBeDefined();
 		expect(quizzesStore.answers[shortId].isCorrect).toBe(1);
 		expect(quizzesStore.answers[shortId].aiFeedback).toBe('good');
-		// Persisted to the row.
 		const rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
 		const row = rows.find((r) => r.questionId === shortId);
 		expect(row).toBeDefined();
@@ -281,9 +246,10 @@ describe('quizzesStore.answerShort', () => {
 	});
 
 	it('leaves the answer ungraded with a message when grading fails', async () => {
-		mockedGetActiveProvider.mockResolvedValue(
-			providerGradeError(oneShortQuiz, new GradeError('nope', 'raw'))
-		);
+		mockProviderReturningQuiz(oneShortQuiz);
+		mockedGenerateObject
+			.mockResolvedValueOnce({ object: oneShortQuiz } as never)
+			.mockRejectedValueOnce(new Error('grade failed'));
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -296,28 +262,21 @@ describe('quizzesStore.answerShort', () => {
 		expect(quizzesStore.answers[shortId]).toBeDefined();
 		expect(quizzesStore.answers[shortId].isCorrect).toBeNull();
 		expect(quizzesStore.answers[shortId].aiFeedback).toContain('Grading failed');
-		// The DB row is ungraded.
 		const rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
 		const row = rows.find((r) => r.questionId === shortId);
 		expect(row).toBeDefined();
 		expect(row!.isCorrect).toBeNull();
-		// Excluded from the score, and the attempt is NOT auto-finalised.
 		expect(quizzesStore.score).toBe(0);
 		expect(quizzesStore.isComplete).toBe(false);
 		expect(quizzesStore.error).toBeNull();
 	});
 
 	it('re-grades a previously failed answer on regrade()', async () => {
-		// generate (call 1): succeeds.
-		mockedGetActiveProvider.mockResolvedValueOnce(providerReturningQuiz(oneShortQuiz));
-		// answerShort grading (call 2): fails.
-		mockedGetActiveProvider.mockResolvedValueOnce(
-			providerGradeError(oneShortQuiz, new GradeError('nope', 'raw'))
-		);
-		// regrade grading (call 3): succeeds.
-		mockedGetActiveProvider.mockResolvedValueOnce(
-			providerQuizAndGrade(oneShortQuiz, gradedCorrect)
-		);
+		mockProviderReturningQuiz(oneShortQuiz);
+		mockedGenerateObject
+			.mockResolvedValueOnce({ object: oneShortQuiz } as never)
+			.mockRejectedValueOnce(new Error('grade failed'))
+			.mockResolvedValueOnce({ object: gradedCorrect } as never);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -336,7 +295,8 @@ describe('quizzesStore.answerShort', () => {
 
 describe('quizzesStore live score + finalisation', () => {
 	it('finalises the attempt with the correct score once all are answered', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(oneMcqQuiz));
+		mockProviderReturningQuiz(oneMcqQuiz);
+		mockGenerateReturningQuiz(oneMcqQuiz);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -356,7 +316,8 @@ describe('quizzesStore live score + finalisation', () => {
 	});
 
 	it('retake starts a fresh attempt that resets answers', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(oneMcqQuiz));
+		mockProviderReturningQuiz(oneMcqQuiz);
+		mockGenerateReturningQuiz(oneMcqQuiz);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -377,7 +338,8 @@ describe('quizzesStore live score + finalisation', () => {
 
 describe('quizzesStore.loadHistory', () => {
 	it('refreshes attempts newest-first', async () => {
-		mockedGetActiveProvider.mockResolvedValue(providerReturningQuiz(oneMcqQuiz));
+		mockProviderReturningQuiz(oneMcqQuiz);
+		mockGenerateReturningQuiz(oneMcqQuiz);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -385,7 +347,6 @@ describe('quizzesStore.loadHistory', () => {
 		await quizzesStore.startAttempt();
 		const first = quizzesStore.activeAttempt!.id;
 		await repos.quizAttempts.finish(first, 1);
-		// Guarantee a later startedAt so newest-first ordering is deterministic.
 		await sleep(5);
 		await quizzesStore.startAttempt();
 		const second = quizzesStore.activeAttempt!.id;

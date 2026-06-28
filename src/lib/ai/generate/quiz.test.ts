@@ -9,7 +9,7 @@ import {
 	toQuizQuestions,
 	type GeneratedQuiz
 } from './quiz';
-import { extractFencedJson } from './fence';
+import { extractFencedJson } from './generate-gate';
 import { extractFencedJson as extractFencedJsonFromLab } from './lab';
 
 const validMcq: GeneratedQuiz['questions'][number] = {

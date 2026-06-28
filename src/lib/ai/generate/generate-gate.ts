@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { extractFencedBlock } from './fence';
 
 export const GateBlockSchema: z.ZodType<GateBlock> = z
 	.object({
@@ -59,7 +58,7 @@ function extractTrailingGateJson(raw: string): unknown {
 }
 
 export function stripGateFence(raw: string): string {
-	let idx = raw.indexOf('```gate');
+	const idx = raw.indexOf('```gate');
 	if (idx !== -1) {
 		return raw.slice(0, idx).trimEnd();
 	}
@@ -101,4 +100,29 @@ function isGateShaped(json: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+export function extractFencedBlock(raw: string, tag?: string): string {
+	const trimmed = raw.trim();
+
+	let openRegex: RegExp;
+	if (tag === 'gate') {
+		openRegex = /```gate\s*\n?/i;
+	} else {
+		openRegex = /```(?:json)?\s*\n?/i;
+	}
+
+	const open = trimmed.match(openRegex);
+	if (!open || open.index === undefined) return trimmed;
+	const start = open.index + open[0].length;
+
+	const closeIdx = trimmed.lastIndexOf('```');
+	if (closeIdx <= start) {
+		return trimmed.slice(start).trim();
+	}
+	return trimmed.slice(start, closeIdx).trim();
+}
+
+export function extractFencedJson(raw: string): string {
+	return extractFencedBlock(raw, 'json');
 }

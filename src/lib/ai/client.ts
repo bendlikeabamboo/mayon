@@ -9,10 +9,10 @@
  * without re-fetching the provider object.
  */
 import { repos } from '$lib/db';
-import { buildProvider, type ProviderKeyAccessor } from './registry';
+import { buildSdkModel, type ActiveProvider } from './sdk-factory';
 import { createKeyStore } from './keystore/client';
 import { discoverModels } from './model-discovery';
-import { MissingKeyError, type Provider, type ProviderConfig } from './types';
+import { MissingKeyError, type ProviderConfig } from './types';
 
 const ACTIVE_KEY = 'activeProvider';
 const PROVIDERS_KEY = 'providers';
@@ -81,18 +81,11 @@ export async function discoverProviderModels(
 	return discoverModels(config, settingsKeyAccessor, signal);
 }
 
-/** The lazy key probe handed to the adapter factory (boolean only — never the secret). */
-const settingsKeyAccessor: ProviderKeyAccessor = {
-	hasKey: (id) => hasProviderKey(id)
+const settingsKeyAccessor = {
+	hasKey: (id: string) => hasProviderKey(id)
 };
 
-/**
- * Build the active provider. Throws a typed `MissingKeyError` if no provider is
- * active, the active id is stale, or a key-requiring provider has no key set.
- *
- * This is the function `StreamDemo` (and, later, the P2 composer) calls.
- */
-export async function getActiveProvider(): Promise<Provider> {
+export async function getActiveSdkProvider(): Promise<ActiveProvider> {
 	const activeId = await getActiveProviderId();
 	if (!activeId) {
 		throw new MissingKeyError('No provider is active. Add one in Settings.');
@@ -101,16 +94,13 @@ export async function getActiveProvider(): Promise<Provider> {
 	const map = await repos.settings.get<Record<string, ProviderConfig>>(PROVIDERS_KEY);
 	const config = map?.[activeId];
 	if (!config) {
-		// Stale active id (provider was deleted). Clear it so the next call errors fast.
 		await setActiveProvider(null);
 		throw new MissingKeyError(`The active provider was removed. Pick one in Settings.`, activeId);
 	}
 
-	// For key-requiring kinds, fail fast here too (the adapter also checks, but a
-	// clear message before any network attempt is friendlier).
 	if (kindRequiresKey(config)) {
 		if (!(await hasProviderKey(activeId))) throw new MissingKeyError(undefined, activeId);
 	}
 
-	return buildProvider(config, settingsKeyAccessor);
+	return buildSdkModel(config, { hasKey: () => hasProviderKey(activeId) });
 }
