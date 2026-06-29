@@ -32,6 +32,13 @@ const migrations: MigrationMeta[] = [
 		],
 		folderMillis: 1782665053149,
 		hash: '9b63a08c69efb7f6b79ca332f7d7c30e7bececc43c8eaf68a42e970d119254b6'
+	},
+	{
+		sql: [
+			'CREATE TABLE `agent_traces` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`chat_id` text NOT NULL,\n\t`assistant_message_id` text,\n\t`model` text,\n\t`config_kind` text NOT NULL,\n\t`reasoning` text NOT NULL,\n\t`created_at` integer NOT NULL,\n\t`duration_ms` integer,\n\t`trace` text NOT NULL,\n\tFOREIGN KEY (`chat_id`) REFERENCES `chats`(`id`) ON UPDATE no action ON DELETE no action,\n\tFOREIGN KEY (`assistant_message_id`) REFERENCES `messages`(`id`) ON UPDATE no action ON DELETE no action\n);'
+		],
+		folderMillis: 1782748702546,
+		hash: '10ed43a27aa8a958a2eaa2d1a0d973ec90d8db37d32a7b29718b61a45e2d2227'
 	}
 ];
 

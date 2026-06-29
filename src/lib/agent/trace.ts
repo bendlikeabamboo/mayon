@@ -1,0 +1,186 @@
+export type TraceEvent =
+	| {
+			kind: 'request';
+			system: string;
+			messages: Array<{ role: string; content: string }>;
+			tools: string[];
+			providerOptions: Record<string, unknown>;
+	  }
+	| { kind: 'part'; type: string; payload?: unknown }
+	| { kind: 'tool-call'; toolCallId: string; toolName: string; args: Record<string, unknown> }
+	| { kind: 'tool-result'; toolCallId: string; summary: string; detail: Record<string, unknown> }
+	| { kind: 'persisted'; messageId: string; finalText: string; empty: boolean }
+	| { kind: 'aborted' }
+	| { kind: 'error'; message: string };
+
+interface TurnTrace {
+	aborted: boolean;
+	error: string | null;
+	iterations: Array<{
+		index: number;
+		request: {
+			system: string;
+			messages: Array<{ role: string; content: string }>;
+			tools: string[];
+			providerOptions: Record<string, unknown>;
+		};
+		partSequence: Array<{ type: string; count: number }>;
+		reasoning: string;
+		receivedText: string;
+		finishReason?: string;
+		toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+		toolResults: Array<{ toolCallId: string; summary: string; detail: Record<string, unknown> }>;
+	}>;
+	finalText: string;
+	persisted: { messageId: string; empty: boolean } | null;
+}
+
+interface IterationState {
+	index: number;
+	request: {
+		system: string;
+		messages: Array<{ role: string; content: string }>;
+		tools: string[];
+		providerOptions: Record<string, unknown>;
+	};
+	partSequence: Array<{ type: string; count: number }>;
+	reasoning: string;
+	receivedText: string;
+	finishReason?: string;
+	toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+	toolResults: Array<{ toolCallId: string; summary: string; detail: Record<string, unknown> }>;
+}
+
+export class TraceBuilder {
+	startTime: number | null = null;
+	private aborted = false;
+	private iterations: IterationState[] = [];
+	private current: IterationState | null = null;
+	private persistedText = '';
+	private persistedInfo: { messageId: string; empty: boolean } | null = null;
+	private errorMessage: string | null = null;
+	private _assistantMessageId: string | null = null;
+	private _empty = false;
+
+	set assistantMessageId(v: string | null) {
+		this._assistantMessageId = v;
+	}
+
+	set empty(v: boolean) {
+		this._empty = v;
+	}
+
+	emit(event: TraceEvent): void {
+		if (this.startTime === null) this.startTime = Date.now();
+
+		switch (event.kind) {
+			case 'request': {
+				const iter: IterationState = {
+					index: this.iterations.length,
+					request: {
+						system: event.system,
+						messages: event.messages,
+						tools: event.tools,
+						providerOptions: event.providerOptions
+					},
+					partSequence: [],
+					reasoning: '',
+					receivedText: '',
+					toolCalls: [],
+					toolResults: []
+				};
+				this.iterations.push(iter);
+				this.current = iter;
+				break;
+			}
+
+			case 'part': {
+				if (!this.current) break;
+
+				const seq = this.current.partSequence;
+				if (seq.length > 0 && seq[seq.length - 1].type === event.type) {
+					seq[seq.length - 1].count++;
+				} else {
+					seq.push({ type: event.type, count: 1 });
+				}
+
+				const payload = event.payload as Record<string, unknown> | undefined;
+
+				if (event.type === 'text-delta' && payload?.text) {
+					this.current.receivedText += String(payload.text);
+				} else if (event.type === 'reasoning-delta' && payload?.text) {
+					this.current.reasoning += String(payload.text);
+				} else if (event.type === 'reasoning' && payload?.text) {
+					this.current.reasoning += String(payload.text);
+				} else if (event.type === 'finish' && payload?.finishReason) {
+					this.current.finishReason = String(payload.finishReason);
+				} else if (event.type === 'tool-call' && payload) {
+					this.current.toolCalls.push({
+						toolCallId: String(payload.toolCallId ?? ''),
+						toolName: String(payload.toolName ?? ''),
+						args: (payload.args as Record<string, unknown>) ?? {}
+					});
+				} else if (event.type === 'tool-result' && payload) {
+					this.current.toolResults.push({
+						toolCallId: String(payload.toolCallId ?? ''),
+						summary: String(payload.summary ?? ''),
+						detail: (payload.detail as Record<string, unknown>) ?? {}
+					});
+				}
+				break;
+			}
+
+			case 'tool-call': {
+				if (this.current) {
+					this.current.toolCalls.push({
+						toolCallId: event.toolCallId,
+						toolName: event.toolName,
+						args: event.args
+					});
+				}
+				break;
+			}
+
+			case 'tool-result': {
+				if (this.current) {
+					this.current.toolResults.push({
+						toolCallId: event.toolCallId,
+						summary: event.summary,
+						detail: event.detail
+					});
+				}
+				break;
+			}
+
+			case 'persisted': {
+				this.persistedText = event.finalText;
+				this.persistedInfo = { messageId: event.messageId, empty: event.empty };
+				break;
+			}
+
+			case 'aborted': {
+				this.aborted = true;
+				break;
+			}
+
+			case 'error': {
+				this.errorMessage = event.message;
+				break;
+			}
+		}
+	}
+
+	toJSON(): string {
+		const finalText = this.persistedText || (this.current ? this.current.receivedText : '');
+
+		const trace: TurnTrace = {
+			aborted: this.aborted,
+			error: this.errorMessage,
+			iterations: this.iterations,
+			finalText,
+			persisted: this.persistedInfo
+		};
+
+		return JSON.stringify(trace);
+	}
+}

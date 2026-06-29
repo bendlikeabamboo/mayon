@@ -2,11 +2,12 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { FlaskConical, ListChecks, Network, Sparkles, Target } from '@lucide/svelte';
+	import { FlaskConical, ListChecks, Network, Sparkles, Target, Wrench } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
 	import { quizzesStore } from '$lib/stores/quizzes.svelte';
+	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 	import { repos } from '$lib/db';
 	import { breadcrumbToRoot } from '$lib/chat/tree';
 	import { buildExpoundPrompt } from '$lib/chat/expound';
@@ -27,6 +28,7 @@
 	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import CrossLinks from '$lib/components/chat/CrossLinks.svelte';
+	import DiagnosticsPanel from '$lib/components/chat/DiagnosticsPanel.svelte';
 
 	let breadcrumb = $state<Chat[]>([]);
 	let children = $state<Chat[]>([]);
@@ -101,7 +103,10 @@
 		editingInferred = false;
 		rootChat = null;
 		await chatStore.load(chatId);
-		if (chatStore.chat) await loadNav(chatStore.chat);
+		if (chatStore.chat) {
+			await loadNav(chatStore.chat);
+			diagnosticsStore.load(chatId);
+		}
 		// Drain a staged expound prompt: auto-send + auto-stream the first turn
 		// on the freshly-opened branch. Sent once, after the branch is loaded.
 		if (chatStore.pendingPrompt) {
@@ -261,6 +266,15 @@
 					title="Open the conversation tree"
 				>
 					<Network class="size-4" /> Tree
+				</Button>
+				<Button
+					variant="ghost"
+					size="icon"
+					title="Diagnostics"
+					aria-label="Diagnostics"
+					onclick={() => diagnosticsStore.toggle()}
+				>
+					<Wrench class="size-4" />
 				</Button>
 			</div>
 		</div>
@@ -494,4 +508,5 @@
 			</div>
 		{/if}
 	{/if}
+	<DiagnosticsPanel chatId={chatStore.chat!.id} />
 </div>

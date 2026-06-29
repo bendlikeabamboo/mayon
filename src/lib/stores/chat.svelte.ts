@@ -24,12 +24,14 @@ import { parseBrief } from '$lib/chat/brief';
 import { getActiveSdkProvider } from '$lib/ai/client';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
-import type { ChatMessage, ReasoningMode } from '$lib/ai/types';
+import type { ChatMessage, ProviderConfig, ReasoningMode } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { runAgentTurn } from '$lib/agent/loop';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 import { generateBrief } from '$lib/ai/generate/generate-brief';
 import { toastState } from '$lib/stores/toasts.svelte';
+import { TraceBuilder } from '$lib/agent/trace';
+import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -180,11 +182,15 @@ class ChatState {
 		this.streamBuffer = '';
 		this.controller = new AbortController();
 
+		const builder = new TraceBuilder();
+		const startTime = Date.now();
+		let model: LanguageModel | undefined;
+		let config: ProviderConfig | undefined;
+
 		try {
-			const [_ctx, { model, config }] = await Promise.all([
-				assembleContext(chatId),
-				getActiveSdkProvider()
-			]);
+			const [_ctx, sdk] = await Promise.all([assembleContext(chatId), getActiveSdkProvider()]);
+			model = sdk.model;
+			config = sdk.config;
 
 			if (isFirstRootTurn) {
 				void this.autoTitleRoot(model, prompt);
@@ -211,6 +217,8 @@ class ChatState {
 					});
 					this.messages = [...this.messages, row];
 					await repos.chats.touch(chatId);
+					builder.assistantMessageId = row.id;
+					builder.empty = !content;
 					return row;
 				},
 				appendAssistantToolCall: async (p) => {
@@ -236,7 +244,11 @@ class ChatState {
 				},
 				reassembleContext: () => assembleContext(chatId),
 				requestApproval: (req) => this.requestApprovalImpl(req),
-				notifyLowRisk: (toolLabel, summary) => this.notifyLowRiskImpl(toolLabel, summary)
+				notifyLowRisk: (toolLabel, summary) => this.notifyLowRiskImpl(toolLabel, summary),
+				onTrace: (e) => {
+					builder.emit(e);
+					diagnosticsStore.liveEmit(e);
+				}
 			});
 
 			if (!aborted && import.meta.env.DEV) {
@@ -274,6 +286,10 @@ class ChatState {
 		} catch (err) {
 			if (!isAbortError(err)) {
 				this.error = formatProviderError(mapSdkError(err));
+				builder.emit({
+					kind: 'error',
+					message: err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+				});
 			}
 		} finally {
 			for (const a of this.pendingApprovals) {
@@ -283,6 +299,22 @@ class ChatState {
 			this.streaming = false;
 			this.streamBuffer = '';
 			this.controller = null;
+			diagnosticsStore.endTurn();
+			try {
+				await repos.agentTraces.create({
+					id: '',
+					createdAt: startTime,
+					chatId,
+					assistantMessageId: builder.assistantMessageId ?? null,
+					model: (model as { modelId?: string } | undefined)?.modelId ?? '',
+					configKind: config?.kind ?? 'openai-compatible',
+					reasoning,
+					durationMs: Date.now() - startTime,
+					trace: builder.toJSON()
+				});
+			} catch {
+				/* best-effort; never surfaces to user */
+			}
 		}
 	}
 

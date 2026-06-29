@@ -57,7 +57,7 @@ function mockStreamReply(tokens: string[]): void {
 			for (const t of tokens) yield t;
 		})(),
 		fullStream: (async function* () {
-			for (const t of tokens) yield { type: 'text-delta', textDelta: t };
+			for (const t of tokens) yield { type: 'text-delta', text: t };
 			yield { type: 'finish', finishReason: 'stop' };
 		})(),
 		text: tokens.join(''),
@@ -409,7 +409,7 @@ describe('chatStore auto-title', () => {
 			})(),
 			fullStream: (async function* () {
 				await streamBlocked2;
-				yield { type: 'text-delta', textDelta: 'main reply' };
+				yield { type: 'text-delta', text: 'main reply' };
 				yield { type: 'finish', finishReason: 'stop' };
 			})(),
 			text: 'main reply',

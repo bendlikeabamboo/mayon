@@ -156,6 +156,22 @@ export const quizAnswers = sqliteTable('quiz_answers', {
 	gradedAt: integer('graded_at')
 });
 
+// ─────────────────────── agent_traces ─────────────────────────────
+// Per-turn diagnostics emitted by the agent runtime.
+export const agentTraces = sqliteTable('agent_traces', {
+	id: text('id').primaryKey(),
+	chatId: text('chat_id')
+		.notNull()
+		.references(() => chats.id),
+	assistantMessageId: text('assistant_message_id').references(() => messages.id),
+	model: text('model'),
+	configKind: text('config_kind').notNull(),
+	reasoning: text('reasoning').notNull(),
+	createdAt: integer('created_at').notNull(),
+	durationMs: integer('duration_ms'),
+	trace: text('trace').notNull()
+});
+
 // ─────────────────────────── settings ────────────────────────────
 // Key/value store; values are JSON strings. NO secrets (keys are P1).
 export const settings = sqliteTable('settings', {
@@ -186,5 +202,8 @@ export type QuizAttempt = typeof quizAttempts.$inferSelect;
 export type NewQuizAttempt = typeof quizAttempts.$inferInsert;
 export type QuizAnswer = typeof quizAnswers.$inferSelect;
 export type NewQuizAnswer = typeof quizAnswers.$inferInsert;
+
+export type AgentTrace = typeof agentTraces.$inferSelect;
+export type NewAgentTrace = typeof agentTraces.$inferInsert;
 
 export type Setting = typeof settings.$inferSelect;

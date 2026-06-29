@@ -8,6 +8,7 @@ import { buildCapabilitiesPreamble } from '$lib/chat/brief';
 import type { ChatMessage, ReasoningMode, ProviderConfig } from '$lib/ai/types';
 import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
 import type { Message } from '$lib/db/schema';
+import type { TraceEvent } from './trace';
 
 const MAX_ITERATIONS = 6;
 const MAX_CORRECTIONS = 2;
@@ -41,6 +42,7 @@ export interface AgentTurnDeps {
 		args: unknown;
 	}) => Promise<{ approved: boolean; aborted?: boolean }>;
 	notifyLowRisk: (toolLabel: string, summary: string) => void;
+	onTrace?: (e: TraceEvent) => void;
 }
 
 interface CollectedToolCall {
@@ -65,19 +67,21 @@ async function consumeStream(
 	fullStream: AsyncIterable<unknown>,
 	signal: AbortSignal,
 	onTextDelta: (text: string) => void,
-	onToolCall: (tc: CollectedToolCall) => void
+	onToolCall: (tc: CollectedToolCall) => void,
+	onTrace?: (e: TraceEvent) => void
 ): Promise<{ finishReason: string }> {
 	let finishReason = '';
 	for await (const part of fullStream) {
 		if (signal.aborted) break;
 		const p = part as Record<string, unknown>;
-		if (p.type === 'text-delta') {
-			onTextDelta(p.textDelta as string);
+		onTrace?.({ kind: 'part', type: p.type as string, payload: p });
+		if (p.type === 'text-delta' && typeof p.text === 'string') {
+			onTextDelta(p.text);
 		} else if (p.type === 'tool-call') {
 			onToolCall({
 				toolCallId: p.toolCallId as string,
 				toolName: p.toolName as string,
-				args: p.args
+				args: p.input ?? p.args
 			});
 		} else if (p.type === 'finish') {
 			finishReason = p.finishReason as string;
@@ -121,7 +125,7 @@ async function runCriticPhase(
 			if (deps.signal.aborted) break;
 			const p = part as Record<string, unknown>;
 			if (p.type === 'text-delta') {
-				freshBuf += p.textDelta as string;
+				freshBuf += p.text as string;
 				deps.updateStreamBuffer(freshBuf);
 			} else if (p.type === 'error') {
 				throw p.error as Error;
@@ -157,7 +161,11 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
 			if (deps.signal.aborted) {
-				if (buf) await deps.appendAssistantText(buf);
+				if (buf) {
+					const msg = await deps.appendAssistantText(buf);
+					deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+				}
+				deps.onTrace?.({ kind: 'aborted' });
 				return { aborted: true };
 			}
 
@@ -169,21 +177,43 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 			const messages = toCoreMessages(ctx);
 
+			const system = sysParts.join('\n\n');
+			const pOpts = providerOptionsForReasoning(deps.config.kind, deps.reasoning);
+			const toolNames = toolsEnabled ? getToolDefinitions().map((d) => d.id) : [];
+			deps.onTrace?.({
+				kind: 'request',
+				system,
+				messages: ctx.map((m) => ({
+					role: m.role,
+					content: typeof m.content === 'string' ? m.content : String(m.content)
+				})),
+				tools: toolNames,
+				providerOptions: pOpts as Record<string, unknown>
+			});
+
 			let result;
 			try {
 				result = streamText({
 					model: deps.model,
-					system: sysParts.join('\n\n') || undefined,
+					system: system || undefined,
 					messages,
 					tools: buildSdkTools(toolsEnabled),
 					abortSignal: deps.signal,
-					providerOptions: providerOptionsForReasoning(deps.config.kind, deps.reasoning) as never
+					providerOptions: pOpts as never
 				});
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {
-					if (buf) await deps.appendAssistantText(buf);
+					if (buf) {
+						const msg = await deps.appendAssistantText(buf);
+						deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+					}
+					deps.onTrace?.({ kind: 'aborted' });
 					return { aborted: true };
 				}
+				deps.onTrace?.({
+					kind: 'error',
+					message: err instanceof Error ? err.message : String(err)
+				});
 				throw err;
 			}
 
@@ -199,29 +229,49 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						buf += text;
 						deps.updateStreamBuffer(buf);
 					},
-					(tc) => toolCalls.push(tc)
+					(tc) => toolCalls.push(tc),
+					deps.onTrace
 				));
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {
-					if (buf) await deps.appendAssistantText(buf);
+					if (buf) {
+						const msg = await deps.appendAssistantText(buf);
+						deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+					}
+					deps.onTrace?.({ kind: 'aborted' });
 					return { aborted: true };
 				}
+				deps.onTrace?.({
+					kind: 'error',
+					message: err instanceof Error ? err.message : String(err)
+				});
 				throw err;
 			}
 
 			if (deps.signal.aborted) {
-				if (buf) await deps.appendAssistantText(buf);
+				if (buf) {
+					const msg = await deps.appendAssistantText(buf);
+					deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+				}
+				deps.onTrace?.({ kind: 'aborted' });
 				return { aborted: true };
 			}
 
 			if (finishReason !== 'tool-calls' || toolCalls.length === 0) {
 				const finalBuf = await runCriticPhase(buf, deps, ctx);
-				await deps.appendAssistantText(finalBuf);
+				const msg = await deps.appendAssistantText(finalBuf);
+				deps.onTrace?.({
+					kind: 'persisted',
+					messageId: msg.id,
+					finalText: finalBuf,
+					empty: !finalBuf
+				});
 				return { aborted: false };
 			}
 
 			if (buf) {
-				await deps.appendAssistantText(buf);
+				const msg = await deps.appendAssistantText(buf);
+				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
 			}
 
 			for (const tc of toolCalls) {
@@ -258,6 +308,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 							results.push({ tc, result: { ok: false, summary: 'aborted' } });
 							break;
 						}
+						deps.onTrace?.({
+							kind: 'tool-call',
+							toolCallId: tc.toolCallId,
+							toolName: tc.toolName,
+							args: tc.args as Record<string, unknown>
+						});
 						const r = await toolsRun(tc.toolName, tc.args, {
 							chatId: deps.chatId,
 							rootChatId: deps.rootChatId,
@@ -312,6 +368,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 								continue;
 							}
 							if (def?.generative) turnBudget.subCalls++;
+							deps.onTrace?.({
+								kind: 'tool-call',
+								toolCallId: tc.toolCallId,
+								toolName: tc.toolName,
+								args: tc.args as Record<string, unknown>
+							});
 							const r = await toolsRun(tc.toolName, tc.args, {
 								chatId: deps.chatId,
 								rootChatId: deps.rootChatId,
@@ -339,18 +401,28 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			for (const tc of toolCalls) {
 				const entry = resultMap.get(tc.toolCallId);
 				if (!entry) continue;
+				const detail = (entry.result as { detail?: unknown }).detail;
 				await deps.appendToolResult({
 					toolCallId: tc.toolCallId,
 					toolName: tc.toolName,
 					summary: entry.result.summary,
-					detail: (entry.result as { detail?: unknown }).detail
+					detail
+				});
+				deps.onTrace?.({
+					kind: 'tool-result',
+					toolCallId: tc.toolCallId,
+					summary: entry.result.summary,
+					detail: (detail as Record<string, unknown>) ?? {}
 				});
 				if (entry.result.summary === 'aborted') {
 					aborted = true;
 				}
 			}
 
-			if (aborted) return { aborted: true };
+			if (aborted) {
+				deps.onTrace?.({ kind: 'aborted' });
+				return { aborted: true };
+			}
 
 			buf = '';
 		}
@@ -358,7 +430,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		const ctx = await deps.reassembleContext();
 		const finalBuf = buf + '\n\n_(…tool budget reached; continuing from here.)_';
 		await runCriticPhase(finalBuf, deps, ctx);
-		await deps.appendAssistantText(finalBuf);
+		const msg = await deps.appendAssistantText(finalBuf);
+		deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: finalBuf, empty: !finalBuf });
 		return { aborted: false };
 	}
 
@@ -366,6 +439,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		try {
 			return await inner(true);
 		} catch (err) {
+			deps.onTrace?.({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
 			const isApiErr =
 				err instanceof APICallError &&
 				(err.statusCode === 400 || /tool|function/i.test(err.message));

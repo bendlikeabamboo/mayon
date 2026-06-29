@@ -220,8 +220,8 @@ describe('runAgentTurn', () => {
 	it('(a) text-only turn finalizes; one assistant text row persisted; no tool rows; buffer set to full text', async () => {
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([
-				{ type: 'text-delta', textDelta: 'Hello' },
-				{ type: 'text-delta', textDelta: ' world' },
+				{ type: 'text-delta', text: 'Hello' },
+				{ type: 'text-delta', text: ' world' },
 				{ type: 'finish', finishReason: 'stop' }
 			])
 		} as never);
@@ -253,7 +253,7 @@ describe('runAgentTurn', () => {
 			} as never)
 			.mockReturnValueOnce({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'You have 1 of 3 done.' },
+					{ type: 'text-delta', text: 'You have 1 of 3 done.' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -317,8 +317,8 @@ describe('runAgentTurn', () => {
 
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([
-				{ type: 'text-delta', textDelta: 'partial' },
-				{ type: 'text-delta', textDelta: ' text' },
+				{ type: 'text-delta', text: 'partial' },
+				{ type: 'text-delta', text: ' text' },
 				{ type: 'finish', finishReason: 'stop' }
 			])
 		} as never);
@@ -372,7 +372,7 @@ describe('runAgentTurn', () => {
 	it('(e) incapable provider: streamText called with tools:{}; text-only response', async () => {
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([
-				{ type: 'text-delta', textDelta: 'Hello' },
+				{ type: 'text-delta', text: 'Hello' },
 				{ type: 'finish', finishReason: 'stop' }
 			])
 		} as never);
@@ -403,13 +403,13 @@ describe('runAgentTurn', () => {
 			mockedStreamText
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: '```mermaid\nbad' },
+						{ type: 'text-delta', text: '```mermaid\nbad' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never)
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: '```mermaid\ngraph TD\nA-->B\n```' },
+						{ type: 'text-delta', text: '```mermaid\ngraph TD\nA-->B\n```' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);
@@ -431,13 +431,13 @@ describe('runAgentTurn', () => {
 			mockedStreamText
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'broken mermaid' },
+						{ type: 'text-delta', text: 'broken mermaid' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never)
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'still broken' },
+						{ type: 'text-delta', text: 'still broken' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);
@@ -454,7 +454,7 @@ describe('runAgentTurn', () => {
 		it('valid turn: zero correction streams', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'valid reply' },
+					{ type: 'text-delta', text: 'valid reply' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -470,7 +470,7 @@ describe('runAgentTurn', () => {
 	it('(n) manifest: when enabled, streamText called with tools containing low+high defs; when disabled, tools:{}', async () => {
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([
-				{ type: 'text-delta', textDelta: 'Hi' },
+				{ type: 'text-delta', text: 'Hi' },
 				{ type: 'finish', finishReason: 'stop' }
 			])
 		} as never);
@@ -505,7 +505,7 @@ describe('runAgentTurn', () => {
 				})
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'fallback text' },
+						{ type: 'text-delta', text: 'fallback text' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);
@@ -557,7 +557,7 @@ describe('runAgentTurn', () => {
 			} as never)
 			.mockReturnValueOnce({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'Branched!' },
+					{ type: 'text-delta', text: 'Branched!' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -601,7 +601,7 @@ describe('runAgentTurn', () => {
 			} as never)
 			.mockReturnValueOnce({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'Okay, continuing.' },
+					{ type: 'text-delta', text: 'Okay, continuing.' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -632,7 +632,7 @@ describe('runAgentTurn', () => {
 			} as never)
 			.mockReturnValueOnce({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'Done' },
+					{ type: 'text-delta', text: 'Done' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -677,7 +677,7 @@ describe('runAgentTurn', () => {
 			} as never)
 			.mockReturnValueOnce({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'Toggled!' },
+					{ type: 'text-delta', text: 'Toggled!' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -710,7 +710,7 @@ describe('runAgentTurn', () => {
 			} as never)
 			.mockReturnValueOnce({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'Oops' },
+					{ type: 'text-delta', text: 'Oops' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -763,7 +763,7 @@ describe('runAgentTurn', () => {
 		it('(o) manifest: create_quiz appears in enabled tools', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
-					{ type: 'text-delta', textDelta: 'Hi' },
+					{ type: 'text-delta', text: 'Hi' },
 					{ type: 'finish', finishReason: 'stop' }
 				])
 			} as never);
@@ -784,7 +784,7 @@ describe('runAgentTurn', () => {
 				} as never)
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'Created!' },
+						{ type: 'text-delta', text: 'Created!' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);
@@ -827,7 +827,7 @@ describe('runAgentTurn', () => {
 				} as never)
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'Only one.' },
+						{ type: 'text-delta', text: 'Only one.' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);
@@ -864,7 +864,7 @@ describe('runAgentTurn', () => {
 				} as never)
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'Continuing without quiz.' },
+						{ type: 'text-delta', text: 'Continuing without quiz.' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);
@@ -895,7 +895,7 @@ describe('runAgentTurn', () => {
 				} as never)
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
-						{ type: 'text-delta', textDelta: 'Done.' },
+						{ type: 'text-delta', text: 'Done.' },
 						{ type: 'finish', finishReason: 'stop' }
 					])
 				} as never);

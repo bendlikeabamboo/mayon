@@ -12,6 +12,7 @@ import { crossLinksRepo } from './repositories/cross-links';
 import { labsRepo } from './repositories/labs';
 import { quizzesRepo, quizQuestionsRepo } from './repositories/quizzes';
 import { quizAttemptsRepo, quizAnswersRepo } from './repositories/quiz-attempts';
+import { agentTracesRepo } from './repositories/agent-traces';
 
 /** Typed repository namespace — the only sanctioned way to touch the database. */
 export const repos = {
@@ -24,7 +25,8 @@ export const repos = {
 	quizzes: quizzesRepo,
 	quizQuestions: quizQuestionsRepo,
 	quizAttempts: quizAttemptsRepo,
-	quizAnswers: quizAnswersRepo
+	quizAnswers: quizAnswersRepo,
+	agentTraces: agentTracesRepo
 };
 
 export type { LabChecklistItem } from './repositories/labs';

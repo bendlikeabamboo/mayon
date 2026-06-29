@@ -185,6 +185,10 @@ export const chatsRepo = {
 				params: [rootId]
 			},
 			{
+				sql: 'DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId]
+			},
+			{
 				sql: 'DELETE FROM cross_links WHERE from_chat_id IN (SELECT id FROM chats WHERE root_id = ?) OR to_chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
 				params: [rootId, rootId]
 			},
