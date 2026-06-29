@@ -24,6 +24,7 @@
 	import type { ReasoningMode } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
+	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import CrossLinks from '$lib/components/chat/CrossLinks.svelte';
 
@@ -335,6 +336,14 @@
 			{onCopy}
 			{onBranchWhole}
 		/>
+
+		{#each chatStore.pendingApprovals as a (a.toolCallId)}
+			<ApprovalCard
+				entry={a}
+				onApprove={() => chatStore.approve(a.toolCallId)}
+				onDecline={() => chatStore.decline(a.toolCallId)}
+			/>
+		{/each}
 
 		{#if chatStore.error}
 			<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">

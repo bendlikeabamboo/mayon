@@ -211,6 +211,23 @@ export function buildBriefSystemNote(brief: LearningBrief): ChatMessage {
 	return { role: 'system', content: lines.join('\n') };
 }
 
+// ─────────────── capabilities preamble (AG3) ──────────────────
+
+/**
+ * Standalone system note appended whenever tools are live. Covers brief-less
+ * "Just start chatting" chats too. Pure string; the loop joins it into `system`.
+ */
+export function buildCapabilitiesPreamble(): string {
+	return [
+		"You have access to tools that let you inspect the learner's context (checklist progress, artifacts, summaries).",
+		'Use them when they clearly help the lesson — e.g. to check where the learner is before giving feedback.',
+		'Prefer continuing the lesson over invoking tools. Use them judiciously, not every turn.',
+		"You can also act on the learner's behalf: branch a deeper dive, adjust the learning brief, draft a lab or quiz skeleton, toggle a checklist step.",
+		"Actions that create or change artifacts require the learner's approval — you will be asked and should wait.",
+		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.'
+	].join('\n');
+}
+
 // ─────────────────────────── summary ──────────────────────────
 
 /**

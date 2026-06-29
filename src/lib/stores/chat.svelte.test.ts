@@ -56,6 +56,10 @@ function mockStreamReply(tokens: string[]): void {
 		textStream: (async function* () {
 			for (const t of tokens) yield t;
 		})(),
+		fullStream: (async function* () {
+			for (const t of tokens) yield { type: 'text-delta', textDelta: t };
+			yield { type: 'finish', finishReason: 'stop' };
+		})(),
 		text: tokens.join(''),
 		response: { id: 'test' }
 	} as never);
@@ -397,10 +401,16 @@ describe('chatStore auto-title', () => {
 		});
 
 		mockDefaultProvider();
+		const streamBlocked2 = streamBlocked;
 		mockedStreamText.mockReturnValue({
 			textStream: (async function* () {
-				await streamBlocked;
+				await streamBlocked2;
 				yield 'main reply';
+			})(),
+			fullStream: (async function* () {
+				await streamBlocked2;
+				yield { type: 'text-delta', textDelta: 'main reply' };
+				yield { type: 'finish', finishReason: 'stop' };
 			})(),
 			text: 'main reply',
 			response: { id: 'test' }
@@ -748,5 +758,75 @@ describe('chatStore inferred brief', () => {
 
 		await chatStore.load(other.id);
 		expect(briefSignal?.aborted).toBe(true);
+	});
+});
+
+describe('chatStore approval flow', () => {
+	beforeEach(() => {
+		chatStore.pendingApprovals = [];
+		chatStore.streaming = false;
+	});
+
+	function getRequestApprovalImpl() {
+		return (
+			chatStore as unknown as {
+				requestApprovalImpl: (req: {
+					toolCallId: string;
+					toolName: string;
+					description: string;
+					args: unknown;
+				}) => Promise<{ approved: boolean; aborted?: boolean }>;
+			}
+		).requestApprovalImpl.bind(chatStore);
+	}
+
+	it('requestApprovalImpl populates pendingApprovals; approve resolves and clears', async () => {
+		const promise = getRequestApprovalImpl()({
+			toolCallId: 'tc1',
+			toolName: 'branch_chat',
+			description: 'Branch a chat',
+			args: { topic: 'X' }
+		});
+		expect(chatStore.pendingApprovals).toHaveLength(1);
+		expect(chatStore.pendingApprovals[0].toolCallId).toBe('tc1');
+
+		chatStore.approve('tc1');
+		const result = await promise;
+		expect(result).toEqual({ approved: true });
+		expect(chatStore.pendingApprovals).toHaveLength(0);
+	});
+
+	it('decline resolves and clears entry', async () => {
+		const promise = getRequestApprovalImpl()({
+			toolCallId: 'tc1',
+			toolName: 'branch_chat',
+			description: 'Branch a chat',
+			args: {}
+		});
+		expect(chatStore.pendingApprovals).toHaveLength(1);
+
+		chatStore.decline('tc1');
+		const result = await promise;
+		expect(result).toEqual({ approved: false });
+		expect(chatStore.pendingApprovals).toHaveLength(0);
+	});
+
+	it('abort resolves pending as aborted', async () => {
+		chatStore.streaming = true;
+		const ac = new AbortController();
+		(chatStore as unknown as { controller: AbortController | null }).controller = ac;
+
+		const promise = getRequestApprovalImpl()({
+			toolCallId: 'tc1',
+			toolName: 'branch_chat',
+			description: 'Branch a chat',
+			args: {}
+		});
+		expect(chatStore.pendingApprovals).toHaveLength(1);
+
+		ac.abort();
+		const result = await promise;
+		expect(result).toEqual({ approved: false, aborted: true });
+		expect(chatStore.pendingApprovals).toHaveLength(0);
 	});
 });

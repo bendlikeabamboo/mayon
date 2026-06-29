@@ -163,18 +163,33 @@ describe('summarize_progress', () => {
 });
 
 describe('getToolDefinitions', () => {
-	it('returns exactly 4 tools, all readonly and non-generative', () => {
+	it('returns 9 tools: 4 readonly + 5 deterministic (low/high)', () => {
 		const defs = getToolDefinitions();
-		expect(defs).toHaveLength(4);
-		for (const d of defs) {
-			expect(d.risk).toBe('readonly');
-			expect(d.generative).toBe(false);
-		}
-		expect(defs.map((d) => d.id).sort()).toEqual([
+		expect(defs).toHaveLength(9);
+
+		const readonly = defs.filter((d) => d.risk === 'readonly');
+		expect(readonly).toHaveLength(4);
+		expect(readonly.map((d) => d.id).sort()).toEqual([
 			'list_artifacts',
 			'read_artifact',
 			'read_checklist',
 			'summarize_progress'
 		]);
+
+		const low = defs.filter((d) => d.risk === 'low');
+		expect(low).toHaveLength(3);
+		expect(low.map((d) => d.id).sort()).toEqual([
+			'draft_lab_skeleton',
+			'draft_quiz_outline',
+			'toggle_checklist_item'
+		]);
+
+		const high = defs.filter((d) => d.risk === 'high');
+		expect(high).toHaveLength(2);
+		expect(high.map((d) => d.id).sort()).toEqual(['branch_chat', 'save_brief']);
+
+		for (const d of defs) {
+			expect(d.generative).toBe(false);
+		}
 	});
 });

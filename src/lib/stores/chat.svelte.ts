@@ -21,18 +21,29 @@ import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highligh
 import { selectionOverlapsExisting } from '$lib/chat/expound';
 import type { LearningBrief } from '$lib/chat/brief';
 import { parseBrief } from '$lib/chat/brief';
-import { streamText, type LanguageModel } from 'ai';
-import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
-import { generateBrief } from '$lib/ai/generate/generate-brief';
-import type { ChatMessage, ReasoningMode } from '$lib/ai/types';
 import { getActiveSdkProvider } from '$lib/ai/client';
-import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
+import type { ChatMessage, ReasoningMode } from '$lib/ai/types';
+import type { LanguageModel } from 'ai';
+import { runAgentTurn } from '$lib/agent/loop';
+import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
+import { generateBrief } from '$lib/ai/generate/generate-brief';
+import { toastState } from '$lib/stores/toasts.svelte';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
 }
+
+export interface ApprovalEntry {
+	toolCallId: string;
+	toolName: string;
+	description: string;
+	args: unknown;
+	resolve: (decision: { approved: boolean; aborted?: boolean }) => void;
+}
+
+export type PublicApprovalEntry = Omit<ApprovalEntry, 'resolve'>;
 
 /**
  * Raised when an expound excerpt overlaps an existing span for the same source
@@ -72,6 +83,8 @@ class ChatState {
 	private inferring = false;
 	private inferDismissed = false;
 	private inferController: AbortController | null = null;
+
+	pendingApprovals = $state<ApprovalEntry[]>([]);
 
 	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
 	get showLiveBubble(): boolean {
@@ -168,13 +181,11 @@ class ChatState {
 		this.controller = new AbortController();
 
 		try {
-			const [ctx, { model, config }] = await Promise.all([
+			const [_ctx, { model, config }] = await Promise.all([
 				assembleContext(chatId),
 				getActiveSdkProvider()
 			]);
 
-			// 3) Fire the parallel title request (first message only). Not awaited:
-			// the title lands before the main reply finishes; failures are swallowed.
 			if (isFirstRootTurn) {
 				void this.autoTitleRoot(model, prompt);
 			}
@@ -182,83 +193,93 @@ class ChatState {
 			const shouldInferBrief =
 				chat && chat.parentId === null && parseBrief(chat.brief) === null && !this.inferDismissed;
 			if (shouldInferBrief) {
-				void this.inferBriefRoot(model, ctx);
+				void this.inferBriefRoot(model, _ctx);
 			}
 
-			// 4) Stream the main assistant reply, honoring the composer reasoning.
-			// System messages must go in the `system` option (SDK rejects them
-			// inside the `messages` array for OpenAI-compatible providers).
-			const systemParts = ctx.filter((m) => m.role === 'system').map((m) => m.content);
-			const nonSystem = ctx
-				.filter((m) => m.role !== 'system' && m.role !== 'tool')
-				.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-
-			const result = streamText({
+			const toolCallCounter = { count: 0 };
+			const { aborted } = await runAgentTurn({
 				model,
-				system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
-				messages: nonSystem,
-				abortSignal: this.controller.signal,
-				providerOptions: providerOptionsForReasoning(config.kind, reasoning) as never
+				config,
+				chatId,
+				rootChatId: chat?.rootId ?? chatId,
+				signal: this.controller.signal,
+				reasoning,
+				updateStreamBuffer: (n) => (this.streamBuffer = n),
+				appendAssistantText: async (content, opts) => {
+					const row = await repos.messages.append(chatId, 'assistant', content, {
+						model: opts?.model
+					});
+					this.messages = [...this.messages, row];
+					await repos.chats.touch(chatId);
+					return row;
+				},
+				appendAssistantToolCall: async (p) => {
+					const row = await repos.messages.append(chatId, 'assistant', '', {
+						toolCallId: p.toolCallId,
+						toolName: p.toolName,
+						metadata: p.args != null ? JSON.stringify(p.args) : undefined
+					});
+					this.messages = [...this.messages, row];
+					await repos.chats.touch(chatId);
+					toolCallCounter.count++;
+					return row;
+				},
+				appendToolResult: async (r) => {
+					const row = await repos.messages.appendToolResult(chatId, r);
+					this.messages = [...this.messages, row];
+					await repos.chats.touch(chatId);
+					if (r.toolName === 'save_brief') {
+						const fresh = await repos.chats.getById(chatId);
+						if (fresh) this.chat = fresh;
+					}
+					return row;
+				},
+				reassembleContext: () => assembleContext(chatId),
+				requestApproval: (req) => this.requestApprovalImpl(req),
+				notifyLowRisk: (toolLabel, summary) => this.notifyLowRiskImpl(toolLabel, summary)
 			});
 
-			for await (const delta of result.textStream) {
-				this.streamBuffer += delta;
-			}
-
-			// 5) Persist the assistant turn (only if anything was produced).
-			if (this.streamBuffer.length > 0) {
-				const assistantRow = await repos.messages.append(chatId, 'assistant', this.streamBuffer);
-				this.messages = [...this.messages, assistantRow];
-				await repos.chats.touch(chatId);
-
-				if (import.meta.env.DEV) {
-					try {
-						const rootBrief = parseBrief(chat && chat.parentId === null ? chat.brief : null);
-						if (rootBrief) {
-							const { strategyForBrief } = await import('$lib/chat/brief');
-							const { lintTurn } = await import('$lib/dev/strategy-lint');
-							const strat = strategyForBrief(rootBrief);
-							const result = lintTurn(strat.id, this.streamBuffer);
-							if (result.pass) {
-								console.info('[strategy-lint]', result.strategy, 'PASS', result.words, 'words');
-							} else {
-								const failures = result.checks
-									.filter((c) => !c.ok)
-									.map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ''}`)
-									.join(', ');
-								console.warn(
-									'[strategy-lint]',
-									result.strategy,
-									'FAIL',
-									result.words,
-									'words —',
-									failures
-								);
-							}
+			if (!aborted && import.meta.env.DEV) {
+				try {
+					const rootBrief = parseBrief(chat && chat.parentId === null ? chat.brief : null);
+					if (rootBrief) {
+						const { strategyForBrief } = await import('$lib/chat/brief');
+						const { lintTurn } = await import('$lib/dev/strategy-lint');
+						const strat = strategyForBrief(rootBrief);
+						const result = lintTurn(strat.id, this.streamBuffer);
+						if (result.pass) {
+							console.info('[strategy-lint]', result.strategy, 'PASS', result.words, 'words');
+						} else {
+							const failures = result.checks
+								.filter((c) => !c.ok)
+								.map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ''}`)
+								.join(', ');
+							console.warn(
+								'[strategy-lint]',
+								result.strategy,
+								'FAIL',
+								result.words,
+								'words —',
+								failures
+							);
 						}
-					} catch {
-						/* best-effort; never throws into the chat path */
 					}
+					if (toolCallCounter.count > 0) {
+						console.info('[agent]', toolCallCounter.count, 'tool calls this turn');
+					}
+				} catch {
+					/* best-effort; never throws into the chat path */
 				}
 			}
 		} catch (err) {
 			if (!isAbortError(err)) {
 				this.error = formatProviderError(mapSdkError(err));
 			}
-			// Even on error, persist whatever partial buffer we collected so the
-			// turn isn't lost (matches the "assistant row appended on finish/stop"
-			// decision — Stop yields an AbortError we swallow, but partial text
-			// may still be worth keeping).
-			if (this.streamBuffer.length > 0) {
-				try {
-					const partial = await repos.messages.append(chatId, 'assistant', this.streamBuffer);
-					this.messages = [...this.messages, partial];
-					await repos.chats.touch(chatId);
-				} catch {
-					/* persistence best-effort; the in-memory buffer is already visible */
-				}
-			}
 		} finally {
+			for (const a of this.pendingApprovals) {
+				a.resolve({ approved: false, aborted: true });
+			}
+			this.pendingApprovals = [];
 			this.streaming = false;
 			this.streamBuffer = '';
 			this.controller = null;
@@ -348,6 +369,47 @@ class ChatState {
 	dismissInferredBrief(): void {
 		this.inferDismissed = true;
 		this.inferredBrief = null;
+	}
+
+	private requestApprovalImpl(req: {
+		toolCallId: string;
+		toolName: string;
+		description: string;
+		args: unknown;
+	}): Promise<{ approved: boolean; aborted?: boolean }> {
+		return new Promise((resolve) => {
+			const entry: ApprovalEntry = {
+				toolCallId: req.toolCallId,
+				toolName: req.toolName,
+				description: req.description,
+				args: req.args,
+				resolve
+			};
+			this.pendingApprovals = [...this.pendingApprovals, entry];
+			const onAbort = () => {
+				resolve({ approved: false, aborted: true });
+				this.pendingApprovals = this.pendingApprovals.filter((a) => a !== entry);
+			};
+			this.controller?.signal.addEventListener('abort', onAbort, { once: true });
+		});
+	}
+
+	approve(toolCallId: string): void {
+		const idx = this.pendingApprovals.findIndex((a) => a.toolCallId === toolCallId);
+		if (idx === -1) return;
+		this.pendingApprovals[idx].resolve({ approved: true });
+		this.pendingApprovals = this.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
+	}
+
+	decline(toolCallId: string): void {
+		const idx = this.pendingApprovals.findIndex((a) => a.toolCallId === toolCallId);
+		if (idx === -1) return;
+		this.pendingApprovals[idx].resolve({ approved: false });
+		this.pendingApprovals = this.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
+	}
+
+	private notifyLowRiskImpl(toolLabel: string, summary: string): void {
+		toastState.push({ title: toolLabel, description: summary });
 	}
 
 	private async inferBriefRoot(model: LanguageModel, ctx: ChatMessage[]): Promise<void> {

@@ -3,6 +3,7 @@
 	import Sidebar from './Sidebar.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import DbStatus from './DbStatus.svelte';
+	import Toaster from './Toaster.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Snippet } from 'svelte';
 
@@ -37,5 +38,7 @@
 		<main class="min-h-0 flex-1 overflow-auto">
 			{@render children()}
 		</main>
+
+		<Toaster />
 	</div>
 </div>

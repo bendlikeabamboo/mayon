@@ -43,6 +43,10 @@ export function getToolDefinitions(): ToolDefinition[] {
 	return [...TOOLS.values()].map((t) => t.def);
 }
 
+export function getToolDefinition(id: string): ToolDefinition | undefined {
+	return TOOLS.get(id)?.def;
+}
+
 export async function toolsRun(id: string, args: unknown, ctx: ToolContext): Promise<ToolResult> {
 	const tool = TOOLS.get(id);
 	if (!tool) {
@@ -223,3 +227,7 @@ registerTool({
 		};
 	}
 });
+
+import { deterministicTools } from './deterministic-tools';
+
+for (const t of deterministicTools) registerTool(t);
