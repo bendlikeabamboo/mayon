@@ -48,11 +48,14 @@ export const messages = sqliteTable('messages', {
 	chatId: text('chat_id')
 		.notNull()
 		.references(() => chats.id),
-	role: text('role', { enum: ['system', 'user', 'assistant'] }).notNull(),
+	role: text('role', { enum: ['system', 'user', 'assistant', 'tool'] }).notNull(),
 	content: text('content').notNull(),
 	ord: integer('ord').notNull(),
 	model: text('model'),
 	tokens: integer('tokens'),
+	toolCallId: text('tool_call_id'),
+	toolName: text('tool_name'),
+	metadata: text('metadata'),
 	createdAt: integer('created_at').notNull()
 });
 

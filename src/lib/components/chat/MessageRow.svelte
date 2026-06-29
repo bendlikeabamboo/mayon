@@ -33,13 +33,15 @@
 	const roleLabel: Record<Message['role'], string> = {
 		user: 'You',
 		assistant: 'Assistant',
-		system: 'System'
+		system: 'System',
+		tool: 'Tool'
 	};
 
 	const bubbleClass: Record<Message['role'], string> = {
 		user: 'bg-[var(--highlight)] text-white dark:bg-primary dark:text-primary-foreground',
 		assistant: 'border border-border bg-background text-foreground',
-		system: 'bg-amber-500/10 text-amber-900 dark:text-amber-200 italic'
+		system: 'bg-amber-500/10 text-amber-900 dark:text-amber-200 italic',
+		tool: 'border border-border bg-muted/50 text-muted-foreground'
 	};
 </script>
 

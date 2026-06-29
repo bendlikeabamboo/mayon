@@ -182,7 +182,7 @@ export async function generateQuiz(
 			model,
 			schema: GeneratedQuizSchema,
 			system: prompt,
-			messages: messages.map((m) => ({ role: m.role, content: m.content })),
+			messages: messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
 			abortSignal: opts.signal,
 			maxRetries: 2
 		});
@@ -204,7 +204,7 @@ export async function gradeShortAnswer(
 			schema: GradedAnswerSchema,
 			system: prompt,
 			messages: [
-				...input.context.map((m) => ({ role: m.role, content: m.content })),
+				...input.context.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
 				{ role: 'user', content: gradeUserBlock(input) }
 			],
 			abortSignal: opts.signal,

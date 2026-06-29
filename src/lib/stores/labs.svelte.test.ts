@@ -75,7 +75,8 @@ describe('labsStore.generate', () => {
 	it('persists a generated lab and returns its id', async () => {
 		mockedGetActiveSdkProvider.mockResolvedValue({
 			model: {} as LanguageModel,
-			config: stubConfig
+			config: stubConfig,
+			toolCapability: true
 		});
 		mockedGenerateObject.mockResolvedValue({ object: validLab } as never);
 		const chatId = await seedChat();
@@ -101,7 +102,8 @@ describe('labsStore.generate', () => {
 	it('sets rawOffer when generation raises LabGenerationError', async () => {
 		mockedGetActiveSdkProvider.mockResolvedValue({
 			model: {} as LanguageModel,
-			config: stubConfig
+			config: stubConfig,
+			toolCapability: true
 		});
 		mockedGenerateObject.mockRejectedValue(new Error('generation failed'));
 		const chatId = await seedChat();
@@ -131,7 +133,8 @@ describe('labsStore.generate', () => {
 	it('is a no-op while already generating', async () => {
 		mockedGetActiveSdkProvider.mockResolvedValue({
 			model: {} as LanguageModel,
-			config: stubConfig
+			config: stubConfig,
+			toolCapability: true
 		});
 		mockedGenerateObject.mockResolvedValue({ object: validLab } as never);
 		const chatId = await seedChat();
@@ -158,7 +161,8 @@ describe('labsStore.toggleItem (optimistic)', () => {
 	it('flips the item immediately and persists the new state', async () => {
 		mockedGetActiveSdkProvider.mockResolvedValue({
 			model: {} as LanguageModel,
-			config: stubConfig
+			config: stubConfig,
+			toolCapability: true
 		});
 		mockedGenerateObject.mockResolvedValue({ object: validLab } as never);
 		const chatId = await seedChat();

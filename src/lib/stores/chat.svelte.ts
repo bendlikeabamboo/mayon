@@ -189,7 +189,9 @@ class ChatState {
 			// System messages must go in the `system` option (SDK rejects them
 			// inside the `messages` array for OpenAI-compatible providers).
 			const systemParts = ctx.filter((m) => m.role === 'system').map((m) => m.content);
-			const nonSystem = ctx.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content }));
+			const nonSystem = ctx
+				.filter((m) => m.role !== 'system' && m.role !== 'tool')
+				.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
 			const result = streamText({
 				model,

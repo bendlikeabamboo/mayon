@@ -129,6 +129,9 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2.11.3
         version: 2.11.3
+      '@types/katex':
+        specifier: ^0.16.8
+        version: 0.16.8
       '@types/node':
         specifier: ^26.0.1
         version: 26.0.1

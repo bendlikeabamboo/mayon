@@ -33,6 +33,11 @@ export interface ProviderTemplate {
 	 * used until discovery completes (and when no key is set yet).
 	 */
 	discoverable?: boolean;
+	/**
+	 * Default tool-capability seed for new providers from this template.
+	 * `'auto'` lets the resolver decide per kind/baseUrl.
+	 */
+	toolCapability?: 'auto' | 'on' | 'off';
 }
 
 /**
@@ -48,7 +53,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'glm-5.2',
 		models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-4.7', 'glm-4.5-air'],
 		requiresKey: true,
-		discoverable: true
+		discoverable: true,
+		toolCapability: 'auto'
 	},
 	{
 		kind: 'openai-compatible',
@@ -59,7 +65,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'z-ai/glm-5.2',
 		models: ['z-ai/glm-5.2', 'anthropic/claude-sonnet-4.5', 'openai/gpt-4o'],
 		requiresKey: true,
-		discoverable: true
+		discoverable: true,
+		toolCapability: 'auto'
 	},
 	{
 		kind: 'openai-compatible',
@@ -76,7 +83,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 			'meta-llama/llama-3.1-8b-instruct'
 		],
 		requiresKey: true,
-		discoverable: true
+		discoverable: true,
+		toolCapability: 'auto'
 	},
 	{
 		kind: 'openai-compatible',
@@ -85,7 +93,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		baseUrl: 'https://api.openai.com/v1',
 		defaultModel: 'gpt-4o',
 		models: ['gpt-4o', 'gpt-4o-mini', 'o1-mini'],
-		requiresKey: true
+		requiresKey: true,
+		toolCapability: 'auto'
 	},
 	{
 		kind: 'anthropic',
@@ -94,7 +103,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		baseUrl: 'https://api.anthropic.com',
 		defaultModel: 'claude-3-5-sonnet-latest',
 		models: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
-		requiresKey: true
+		requiresKey: true,
+		toolCapability: 'auto'
 	},
 	{
 		kind: 'gemini',
@@ -103,7 +113,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		baseUrl: 'https://generativelanguage.googleapis.com',
 		defaultModel: 'gemini-1.5-flash',
 		models: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'],
-		requiresKey: true
+		requiresKey: true,
+		toolCapability: 'auto'
 	},
 	{
 		kind: 'ollama',
@@ -112,7 +123,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		baseUrl: 'http://localhost:11434/api',
 		defaultModel: 'llama3.2',
 		models: ['llama3.2', 'qwen2.5', 'mistral'],
-		requiresKey: false
+		requiresKey: false,
+		toolCapability: 'auto'
 	}
 ];
 

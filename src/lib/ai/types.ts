@@ -13,8 +13,14 @@ export type ProviderKind = 'openai-compatible' | 'anthropic' | 'gemini' | 'ollam
 
 /** A single chat message, provider-agnostic. Maps into each adapter's wire shape. */
 export interface ChatMessage {
-	role: 'system' | 'user' | 'assistant';
+	role: 'system' | 'user' | 'assistant' | 'tool';
 	content: string;
+	/** For assistant rows carrying a tool call. */
+	toolCallId?: string;
+	toolName?: string;
+	toolArgs?: unknown;
+	/** For tool-result rows. */
+	toolResult?: string;
 }
 
 /** A streamed token. `delta` and `text` are aliases (kept for readability at call sites). */
@@ -66,6 +72,13 @@ export interface ProviderConfig {
 	 * shipped fallback list. Optional: older configs predate this field.
 	 */
 	discoverable?: boolean;
+	/**
+	 * Per-provider tool-capability flag. `'auto'`/undefined → resolved default per
+	 * kind (anthropic/gemini→true, ollama→false, openai-compatible→true iff baseUrl
+	 * is a known gateway). `'on'`/`'off'` override. Respected by the agent loop
+	 * (AG3) to decide whether tool definitions are sent.
+	 */
+	toolCapability?: 'auto' | 'on' | 'off';
 }
 
 /**

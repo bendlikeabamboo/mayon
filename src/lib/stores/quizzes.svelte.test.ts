@@ -93,7 +93,11 @@ async function seedChat(): Promise<string> {
 }
 
 function mockProviderReturningQuiz(_quiz: GeneratedQuiz) {
-	mockedGetActiveSdkProvider.mockResolvedValue({ model: {} as LanguageModel, config: stubConfig });
+	mockedGetActiveSdkProvider.mockResolvedValue({
+		model: {} as LanguageModel,
+		config: stubConfig,
+		toolCapability: true
+	});
 }
 
 function mockGenerateReturningQuiz(quiz: GeneratedQuiz) {

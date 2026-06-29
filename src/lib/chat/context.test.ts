@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
 import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
-import { assembleContext } from './context';
+import { assembleContext, toCoreMessages } from './context';
+import type { ChatMessage } from '$lib/ai/types';
 import type { LearningBrief } from './brief';
 
 beforeEach(async () => {
@@ -246,5 +247,126 @@ describe('assembleContext', () => {
 		await repos.messages.append(child.id, 'user', 'c0');
 		const ctx = await assembleContext(child.id);
 		expect(ctx.map((m) => m.content)).toEqual(['u0', 'a1', 'c0']);
+	});
+
+	describe('toCoreMessages', () => {
+		it('converts plain user/assistant messages to ModelMessage with TextPart', () => {
+			const ctx: ChatMessage[] = [
+				{ role: 'user', content: 'hello' },
+				{ role: 'assistant', content: 'hi there' }
+			];
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(2);
+			expect(core[0].role).toBe('user');
+			expect(core[1].role).toBe('assistant');
+			if (core[1].role === 'assistant') {
+				expect(core[1].content).toEqual([{ type: 'text', text: 'hi there' }]);
+			}
+		});
+
+		it('converts assistant tool-call + tool-result pair into parts', () => {
+			const ctx: ChatMessage[] = [
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'tc_1',
+					toolName: 'read_checklist',
+					toolArgs: { labId: 'lab-1' }
+				},
+				{
+					role: 'tool',
+					content: '3/5 steps done',
+					toolCallId: 'tc_1',
+					toolName: 'read_checklist',
+					toolResult: '3/5 steps done'
+				}
+			];
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(2);
+
+			expect(core[0].role).toBe('assistant');
+			if (core[0].role === 'assistant') {
+				const parts = core[0].content as Array<{
+					type: string;
+					toolCallId?: string;
+					toolName?: string;
+					input?: unknown;
+				}>;
+				expect(parts).toHaveLength(1);
+				expect(parts[0].type).toBe('tool-call');
+				expect(parts[0].toolCallId).toBe('tc_1');
+				expect(parts[0].toolName).toBe('read_checklist');
+			}
+
+			expect(core[1].role).toBe('tool');
+			if (core[1].role === 'tool') {
+				const parts = core[1].content as Array<{
+					type: string;
+					toolCallId?: string;
+					toolName?: string;
+					output?: unknown;
+				}>;
+				expect(parts).toHaveLength(1);
+				expect(parts[0].type).toBe('tool-result');
+				expect(parts[0].toolCallId).toBe('tc_1');
+				expect(parts[0].output).toBe('3/5 steps done');
+			}
+		});
+
+		it('converts assistant with text + tool call into mixed parts', () => {
+			const ctx: ChatMessage[] = [
+				{
+					role: 'assistant',
+					content: 'Let me check that.',
+					toolCallId: 'tc_2',
+					toolName: 'list_artifacts',
+					toolArgs: { chatId: 'c1' }
+				}
+			];
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(1);
+			expect(core[0].role).toBe('assistant');
+			if (core[0].role === 'assistant') {
+				const parts = core[0].content as Array<{
+					type: string;
+					text?: string;
+					toolCallId?: string;
+					toolName?: string;
+				}>;
+				expect(parts).toHaveLength(2);
+				expect(parts[0]).toEqual({ type: 'text', text: 'Let me check that.' });
+				expect(parts[1].type).toBe('tool-call');
+				expect(parts[1].toolCallId).toBe('tc_2');
+			}
+		});
+
+		it('filters out system messages from the output', () => {
+			const ctx: ChatMessage[] = [
+				{ role: 'system', content: 'You are helpful.' },
+				{ role: 'user', content: 'hello' }
+			];
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(1);
+			expect(core[0].role).toBe('user');
+		});
+
+		it('null-brief chat produces no system note and byte-identical SDK input vs manual split', async () => {
+			const { chat } = await seedChat('Root', [
+				{ role: 'user', content: 'hello' },
+				{ role: 'assistant', content: 'world' }
+			]);
+			const ctx = await assembleContext(chat.id);
+			expect(ctx.every((m) => m.role !== 'system')).toBe(true);
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(2);
+			expect(core[0].role).toBe('user');
+			expect(core[1].role).toBe('assistant');
+			if (core[0].role === 'user') {
+				expect(core[0].content).toEqual([{ type: 'text', text: 'hello' }]);
+			}
+			if (core[1].role === 'assistant') {
+				expect(core[1].content).toEqual([{ type: 'text', text: 'world' }]);
+			}
+		});
 	});
 });

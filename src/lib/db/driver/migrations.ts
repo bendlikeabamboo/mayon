@@ -23,6 +23,15 @@ const migrations: MigrationMeta[] = [
 		sql: ['ALTER TABLE `chats` ADD `brief` text;'],
 		folderMillis: 1782469750295,
 		hash: '5861d0563f9d2aefdac2a48a81e5376ff1265a92128d4354832ce2f73600ed4e'
+	},
+	{
+		sql: [
+			'ALTER TABLE `messages` ADD `tool_call_id` text;',
+			'ALTER TABLE `messages` ADD `tool_name` text;',
+			'ALTER TABLE `messages` ADD `metadata` text;'
+		],
+		folderMillis: 1782665053149,
+		hash: '9b63a08c69efb7f6b79ca332f7d7c30e7bececc43c8eaf68a42e970d119254b6'
 	}
 ];
 

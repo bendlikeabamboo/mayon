@@ -15,7 +15,13 @@ export const messagesRepo = {
 		chatId: string,
 		role: MessageRole,
 		content: string,
-		opts?: { model?: string; tokens?: number }
+		opts?: {
+			model?: string;
+			tokens?: number;
+			toolCallId?: string;
+			toolName?: string;
+			metadata?: string;
+		}
 	): Promise<Message> {
 		const db = await awaitDb();
 		const last = await db
@@ -34,7 +40,21 @@ export const messagesRepo = {
 			ord: nextOrd,
 			model: opts?.model ?? null,
 			tokens: opts?.tokens ?? null,
+			toolCallId: opts?.toolCallId ?? null,
+			toolName: opts?.toolName ?? null,
+			metadata: opts?.metadata ?? null,
 			createdAt: now()
+		});
+	},
+
+	async appendToolResult(
+		chatId: string,
+		opts: { toolCallId: string; toolName: string; summary: string; detail?: unknown }
+	): Promise<Message> {
+		return this.append(chatId, 'tool', opts.summary, {
+			toolCallId: opts.toolCallId,
+			toolName: opts.toolName,
+			metadata: opts.detail != null ? JSON.stringify(opts.detail) : undefined
 		});
 	},
 

@@ -61,7 +61,11 @@ function mockStreamReply(tokens: string[]): void {
 	} as never);
 }
 function mockDefaultProvider(): void {
-	mockedGetActiveSdkProvider.mockResolvedValue({ model: {} as LanguageModel, config: stubConfig });
+	mockedGetActiveSdkProvider.mockResolvedValue({
+		model: {} as LanguageModel,
+		config: stubConfig,
+		toolCapability: true
+	});
 }
 
 beforeEach(async () => {

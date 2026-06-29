@@ -15,6 +15,13 @@
       "when": 1782469750295,
       "tag": "0001_parched_thundra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782665053149,
+      "tag": "0002_slimy_proudstar",
+      "breakpoints": true
     }
   ]
 }

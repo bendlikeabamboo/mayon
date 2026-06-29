@@ -122,7 +122,7 @@ export async function generateBrief(
 			model,
 			schema: GeneratedBriefSchema,
 			system: prompt,
-			messages: messages.map((m) => ({ role: m.role, content: m.content })),
+			messages: messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
 			abortSignal: opts?.signal,
 			maxRetries: 2
 		});

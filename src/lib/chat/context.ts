@@ -20,6 +20,7 @@ import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import type { ChatMessage } from '$lib/ai/types';
 import { buildBriefSystemNote, parseBrief } from '$lib/chat/brief';
+import type { ModelMessage } from 'ai';
 
 /** A message plus the depth of the chat it belongs to (for ordering). */
 interface AnchoredMessage {
@@ -27,6 +28,9 @@ interface AnchoredMessage {
 	ord: number;
 	role: Message['role'];
 	content: string;
+	toolCallId?: string | null;
+	toolName?: string | null;
+	metadata?: string | null;
 }
 
 /**
@@ -68,7 +72,15 @@ export async function assembleContext(targetChatId: string): Promise<ChatMessage
 	const out: ChatMessage[] = [];
 	if (briefNote) out.push(briefNote);
 	if (excerptNote) out.push(excerptNote);
-	for (const m of collected) out.push({ role: m.role, content: m.content });
+	for (const m of collected) {
+		const msg: ChatMessage = { role: m.role, content: m.content };
+		if (m.toolCallId) msg.toolCallId = m.toolCallId;
+		if (m.toolName) msg.toolName = m.toolName;
+		if (m.role === 'tool') {
+			msg.toolResult = m.content;
+		}
+		out.push(msg);
+	}
 	return out;
 }
 
@@ -93,7 +105,15 @@ async function cutoffForChild(child: Chat): Promise<number | null> {
 /** Append a chat's messages to the collector, tagged with that chat's depth. */
 function pushAll(out: AnchoredMessage[], msgs: Message[], depth: number): void {
 	for (const m of msgs) {
-		out.push({ depth, ord: m.ord, role: m.role, content: m.content });
+		out.push({
+			depth,
+			ord: m.ord,
+			role: m.role,
+			content: m.content,
+			toolCallId: m.toolCallId,
+			toolName: m.toolName,
+			metadata: m.metadata
+		});
 	}
 }
 
@@ -126,4 +146,61 @@ async function excerptSystemNoteFor(targetChatId: string): Promise<ChatMessage |
 		role: 'system',
 		content: `This conversation was branched from the following excerpt of an earlier chat:\n\n"""\n${src.excerpt}\n"""`
 	};
+}
+
+/**
+ * Convert an assembled `ChatMessage[]` into ai@7 `ModelMessage[]`.
+ *
+ * - `system` → system message
+ * - plain `user`/`assistant` text → text messages
+ * - assistant row with `toolArgs` → `AssistantModelMessage` with parts
+ *   (`TextPart?` + `ToolCallPart`)
+ * - tool row → `ToolModelMessage` with `ToolResultPart`
+ *
+ * Constructed directly — no `convertToCoreMessages` (removed in ai@5+).
+ */
+export function toCoreMessages(ctx: ChatMessage[]): ModelMessage[] {
+	return ctx
+		.filter((m) => m.role !== 'system')
+		.map((m): ModelMessage => {
+			if (m.role === 'tool') {
+				return {
+					role: 'tool' as const,
+					content: [
+						{
+							type: 'tool-result' as const,
+							toolCallId: m.toolCallId ?? '',
+							toolName: m.toolName ?? '',
+							output: m.toolResult ?? m.content,
+							input: undefined as unknown,
+							dynamic: true as const
+						}
+					]
+				} as unknown as ModelMessage;
+			}
+
+			if (m.role === 'assistant' && m.toolCallId && m.toolName) {
+				const parts: unknown[] = [];
+				if (m.content) parts.push({ type: 'text', text: m.content });
+				parts.push({
+					type: 'tool-call',
+					toolCallId: m.toolCallId,
+					toolName: m.toolName,
+					input: (m.toolArgs as Record<string, unknown>) ?? {}
+				});
+				return { role: 'assistant' as const, content: parts } as unknown as ModelMessage;
+			}
+
+			if (m.role === 'assistant') {
+				return {
+					role: 'assistant' as const,
+					content: [{ type: 'text', text: m.content }]
+				} as unknown as ModelMessage;
+			}
+
+			return {
+				role: 'user' as const,
+				content: [{ type: 'text', text: m.content }]
+			} as unknown as ModelMessage;
+		});
 }
