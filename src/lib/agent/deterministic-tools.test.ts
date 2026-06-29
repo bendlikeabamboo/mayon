@@ -4,6 +4,8 @@ import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
 import { toolsRun } from '$lib/agent/registry';
 import type { ToolContext } from '$lib/agent/registry';
+import type { LanguageModel } from 'ai';
+import type { ProviderConfig } from '$lib/ai/types';
 
 beforeEach(async () => {
 	await bootstrapWithDriver(await createMemoryDriver());
@@ -13,7 +15,9 @@ function ctx(chatId: string, rootChatId: string): ToolContext {
 	return {
 		chatId,
 		rootChatId,
-		budget: { subCalls: 0, maxSubCalls: 0 }
+		budget: { subCalls: 0, maxSubCalls: 0 },
+		model: null as unknown as LanguageModel,
+		config: null as unknown as ProviderConfig
 	};
 }
 

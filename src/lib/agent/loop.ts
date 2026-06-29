@@ -53,7 +53,6 @@ function buildSdkTools(enabled: boolean): ToolSet {
 	if (!enabled) return {};
 	const out: ToolSet = {};
 	for (const def of getToolDefinitions()) {
-		if (def.generative) continue;
 		out[def.id] = tool({
 			description: def.description,
 			inputSchema: jsonSchema(def.parameters)
@@ -153,6 +152,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 	const toolCapability = deps.config.toolCapability && !isSessionDisabled();
 
 	async function inner(toolsEnabled: boolean): Promise<{ aborted: boolean }> {
+		const turnBudget = { subCalls: 0, maxSubCalls: 1 };
 		let buf = '';
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -262,7 +262,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 							chatId: deps.chatId,
 							rootChatId: deps.rootChatId,
 							signal: deps.signal,
-							budget: { subCalls: 0, maxSubCalls: 1 }
+							budget: turnBudget,
+							model: deps.model,
+							config: deps.config
 						});
 						const def = getToolDefinition(tc.toolName);
 						if (def?.risk === 'low') {
@@ -301,11 +303,22 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						} else if (!dec.approved) {
 							results.push({ tc, result: { ok: false, summary: 'user declined' } });
 						} else {
+							const def = getToolDefinition(tc.toolName);
+							if (def?.generative && turnBudget.subCalls >= turnBudget.maxSubCalls) {
+								results.push({
+									tc,
+									result: { ok: false, summary: 'one generative action per turn' }
+								});
+								continue;
+							}
+							if (def?.generative) turnBudget.subCalls++;
 							const r = await toolsRun(tc.toolName, tc.args, {
 								chatId: deps.chatId,
 								rootChatId: deps.rootChatId,
 								signal: deps.signal,
-								budget: { subCalls: 0, maxSubCalls: 1 }
+								budget: turnBudget,
+								model: deps.model,
+								config: deps.config
 							});
 							results.push({ tc, result: r });
 						}

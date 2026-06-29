@@ -224,7 +224,8 @@ export function buildCapabilitiesPreamble(): string {
 		'Prefer continuing the lesson over invoking tools. Use them judiciously, not every turn.',
 		"You can also act on the learner's behalf: branch a deeper dive, adjust the learning brief, draft a lab or quiz skeleton, toggle a checklist step.",
 		"Actions that create or change artifacts require the learner's approval — you will be asked and should wait.",
-		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.'
+		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.',
+		'When it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn.'
 	].join('\n');
 }
 

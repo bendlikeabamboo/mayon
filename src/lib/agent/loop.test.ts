@@ -60,6 +60,13 @@ vi.mock('$lib/agent/registry', () => {
 			parameters: { type: 'object', properties: {} },
 			risk: 'low' as const,
 			generative: false
+		},
+		{
+			id: 'create_quiz',
+			description: 'Generate a quiz',
+			parameters: { type: 'object', properties: {} },
+			risk: 'high' as const,
+			generative: true
 		}
 	];
 	return {
@@ -750,6 +757,163 @@ describe('runAgentTurn', () => {
 		expect(deps.appendToolResult).toHaveBeenCalledWith(
 			expect.objectContaining({ summary: 'aborted' })
 		);
+	});
+
+	describe('(o–s) generative tools', () => {
+		it('(o) manifest: create_quiz appears in enabled tools', async () => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', textDelta: 'Hi' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps({ config: makeConfig({ toolCapability: 'on' as const }) });
+			await runAgentTurn(deps);
+			const enabledTools = mockedStreamText.mock.calls[0][0].tools as Record<string, unknown>;
+			expect(Object.keys(enabledTools!)).toContain('create_quiz');
+		});
+
+		it('(p) first generative approved runs: budget maxSubCalls===1; model/config forwarded; result persisted', async () => {
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'tool-call', toolCallId: 'tc1', toolName: 'create_quiz', args: {} },
+						{ type: 'finish', finishReason: 'tool-calls' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', textDelta: 'Created!' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never);
+
+			mockedToolsRun.mockResolvedValue({
+				ok: true,
+				summary: 'Created quiz (3 questions)',
+				detail: { artifact: { kind: 'quiz', id: 'q1' } }
+			});
+
+			const deps = makeDeps({
+				requestApproval: vi.fn(async () => ({ approved: true }))
+			});
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(mockedToolsRun).toHaveBeenCalledOnce();
+			expect(mockedToolsRun).toHaveBeenCalledWith(
+				'create_quiz',
+				{},
+				expect.objectContaining({
+					chatId: 'chat-1',
+					rootChatId: 'chat-1',
+					budget: expect.objectContaining({ maxSubCalls: 1, subCalls: 1 }),
+					model: deps.model,
+					config: deps.config
+				})
+			);
+			expect(deps.appendToolResult).toHaveBeenCalledOnce();
+		});
+
+		it('(q) cap-depth-one enforced: two create_quiz → first runs, second synthesized as cap; both persisted', async () => {
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'tool-call', toolCallId: 'tc1', toolName: 'create_quiz', args: {} },
+						{ type: 'tool-call', toolCallId: 'tc2', toolName: 'create_quiz', args: {} },
+						{ type: 'finish', finishReason: 'tool-calls' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', textDelta: 'Only one.' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never);
+
+			mockedToolsRun.mockResolvedValue({
+				ok: true,
+				summary: 'Created quiz (3 questions)',
+				detail: { artifact: { kind: 'quiz', id: 'q1' } }
+			});
+
+			const deps = makeDeps({
+				requestApproval: vi.fn(async () => ({ approved: true }))
+			});
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(mockedToolsRun).toHaveBeenCalledOnce();
+			expect(deps.appendToolResult).toHaveBeenCalledTimes(2);
+
+			const resultCalls = (deps.appendToolResult as ReturnType<typeof vi.fn>).mock.calls;
+			expect(resultCalls[0][0]).toHaveProperty('toolCallId', 'tc1');
+			expect(resultCalls[0][0]).toHaveProperty('summary', 'Created quiz (3 questions)');
+			expect(resultCalls[1][0]).toHaveProperty('toolCallId', 'tc2');
+			expect(resultCalls[1][0]).toHaveProperty('summary', 'one generative action per turn');
+		});
+
+		it('(r) refused then continue: declined generative → loop proceeds; next iteration text-only', async () => {
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'tool-call', toolCallId: 'tc1', toolName: 'create_quiz', args: {} },
+						{ type: 'finish', finishReason: 'tool-calls' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', textDelta: 'Continuing without quiz.' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never);
+
+			const deps = makeDeps({
+				requestApproval: vi.fn(async () => ({ approved: false }))
+			});
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(mockedToolsRun).not.toHaveBeenCalled();
+			expect(deps.appendToolResult).toHaveBeenCalledOnce();
+			expect(deps.appendToolResult).toHaveBeenCalledWith(
+				expect.objectContaining({ summary: 'user declined' })
+			);
+			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.');
+		});
+
+		it('(s) non-generative high tool unaffected: branch_chat + create_quiz → both approved; branch not budget-gated', async () => {
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'tool-call', toolCallId: 'tc1', toolName: 'branch_chat', args: { topic: 'A' } },
+						{ type: 'tool-call', toolCallId: 'tc2', toolName: 'create_quiz', args: {} },
+						{ type: 'finish', finishReason: 'tool-calls' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', textDelta: 'Done.' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never);
+
+			mockedToolsRun
+				.mockResolvedValueOnce({ ok: true, summary: 'Branched' })
+				.mockResolvedValueOnce({ ok: true, summary: 'Created quiz' });
+
+			const deps = makeDeps({
+				requestApproval: vi.fn(async () => ({ approved: true }))
+			});
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(mockedToolsRun).toHaveBeenCalledTimes(2);
+			expect(deps.appendToolResult).toHaveBeenCalledTimes(2);
+			expect(deps.requestApproval).toHaveBeenCalledTimes(2);
+		});
 	});
 });
 

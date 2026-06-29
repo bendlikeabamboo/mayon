@@ -1,3 +1,5 @@
+import type { LanguageModel } from 'ai';
+import type { ProviderConfig } from '$lib/ai/types';
 import { repos } from '$lib/db';
 
 // ── Types (design §4.1) ──────────────────────────────────────────
@@ -24,6 +26,8 @@ export interface ToolContext {
 	rootChatId: string;
 	signal?: AbortSignal;
 	budget: { subCalls: number; maxSubCalls: number };
+	model: LanguageModel;
+	config: ProviderConfig;
 }
 
 export interface Tool {
@@ -229,5 +233,7 @@ registerTool({
 });
 
 import { deterministicTools } from './deterministic-tools';
+import { generativeTools } from './generative-tools';
 
 for (const t of deterministicTools) registerTool(t);
+for (const t of generativeTools) registerTool(t);

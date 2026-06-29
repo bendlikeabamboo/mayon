@@ -4,6 +4,8 @@ import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
 import { toolsRun, getToolDefinitions } from '$lib/agent/registry';
 import type { ToolContext } from '$lib/agent/registry';
+import type { LanguageModel } from 'ai';
+import type { ProviderConfig } from '$lib/ai/types';
 
 beforeEach(async () => {
 	await bootstrapWithDriver(await createMemoryDriver());
@@ -13,7 +15,9 @@ function ctx(chatId: string, rootChatId: string): ToolContext {
 	return {
 		chatId,
 		rootChatId,
-		budget: { subCalls: 0, maxSubCalls: 0 }
+		budget: { subCalls: 0, maxSubCalls: 0 },
+		model: null as unknown as LanguageModel,
+		config: null as unknown as ProviderConfig
 	};
 }
 
@@ -163,9 +167,9 @@ describe('summarize_progress', () => {
 });
 
 describe('getToolDefinitions', () => {
-	it('returns 9 tools: 4 readonly + 5 deterministic (low/high)', () => {
+	it('returns 11 tools: 4 readonly + 3 deterministic low + 2 deterministic high + 2 generative high', () => {
 		const defs = getToolDefinitions();
-		expect(defs).toHaveLength(9);
+		expect(defs).toHaveLength(11);
 
 		const readonly = defs.filter((d) => d.risk === 'readonly');
 		expect(readonly).toHaveLength(4);
@@ -185,11 +189,22 @@ describe('getToolDefinitions', () => {
 		]);
 
 		const high = defs.filter((d) => d.risk === 'high');
-		expect(high).toHaveLength(2);
-		expect(high.map((d) => d.id).sort()).toEqual(['branch_chat', 'save_brief']);
+		expect(high).toHaveLength(4);
+		expect(high.map((d) => d.id).sort()).toEqual([
+			'branch_chat',
+			'create_lab',
+			'create_quiz',
+			'save_brief'
+		]);
 
-		for (const d of defs) {
-			expect(d.generative).toBe(false);
+		const generative = defs.filter((d) => d.generative === true);
+		expect(generative).toHaveLength(2);
+		expect(generative.map((d) => d.id).sort()).toEqual(['create_lab', 'create_quiz']);
+		for (const d of generative) {
+			expect(d.risk).toBe('high');
 		}
+
+		const nonGenerative = defs.filter((d) => d.generative === false);
+		expect(nonGenerative).toHaveLength(9);
 	});
 });
