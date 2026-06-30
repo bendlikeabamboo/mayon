@@ -14,6 +14,7 @@ vi.mock('ai', () => ({
 	generateObject: vi.fn(),
 	generateText: vi.fn(),
 	streamText: vi.fn(),
+	tool: vi.fn((def: unknown) => def),
 	APICallError: class extends Error {
 		statusCode: number;
 		responseBody?: string;
@@ -33,8 +34,8 @@ vi.mock('ai', () => ({
 const { getActiveSdkProvider } = await import('$lib/ai/client');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
-const { generateObject } = await import('ai');
-const mockedGenerateObject = vi.mocked(generateObject);
+const { generateText } = await import('ai');
+const mockedGenerateText = vi.mocked(generateText);
 
 import { labsStore } from './labs.svelte';
 
@@ -57,7 +58,7 @@ const validLab: GeneratedLab = GeneratedLabSchema.parse({
 beforeEach(async () => {
 	await bootstrapWithDriver(await createMemoryDriver());
 	mockedGetActiveSdkProvider.mockReset();
-	mockedGenerateObject.mockReset();
+	mockedGenerateText.mockReset();
 	labsStore.list = [];
 	labsStore.current = null;
 	labsStore.error = null;
@@ -78,7 +79,10 @@ describe('labsStore.generate', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		mockedGenerateObject.mockResolvedValue({ object: validLab } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validLab }],
+			text: ''
+		} as never);
 		const chatId = await seedChat();
 
 		const id = await labsStore.generate(chatId);
@@ -105,7 +109,7 @@ describe('labsStore.generate', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		mockedGenerateObject.mockRejectedValue(new Error('generation failed'));
+		mockedGenerateText.mockRejectedValue(new Error('generation failed'));
 		const chatId = await seedChat();
 
 		const id = await labsStore.generate(chatId);
@@ -136,7 +140,10 @@ describe('labsStore.generate', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		mockedGenerateObject.mockResolvedValue({ object: validLab } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validLab }],
+			text: ''
+		} as never);
 		const chatId = await seedChat();
 		labsStore.generating = true;
 		const id = await labsStore.generate(chatId);
@@ -164,7 +171,10 @@ describe('labsStore.toggleItem (optimistic)', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		mockedGenerateObject.mockResolvedValue({ object: validLab } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validLab }],
+			text: ''
+		} as never);
 		const chatId = await seedChat();
 		const id = await labsStore.generate(chatId);
 		labsStore.current = await repos.labs.getById(id!);

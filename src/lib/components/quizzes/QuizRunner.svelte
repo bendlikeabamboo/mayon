@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { ArrowLeft } from '@lucide/svelte';
+	import { ArrowLeft, Wrench } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { quizzesStore } from '$lib/stores/quizzes.svelte';
+	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
+	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 	import McqQuestion from './McqQuestion.svelte';
 	import FlashcardQuestion from './FlashcardQuestion.svelte';
 	import ShortQuestion from './ShortQuestion.svelte';
@@ -26,7 +28,18 @@
 			<Button href="/chat/{quizzesStore.current.chatId}" variant="ghost" size="sm">
 				<ArrowLeft class="size-4" /> Back to chat
 			</Button>
-			<a href="/quiz" class="text-xs text-muted-foreground hover:underline">All quizzes</a>
+			<div class="flex items-center gap-1">
+				<Button
+					variant="ghost"
+					size="icon"
+					title="Diagnostics"
+					aria-label="Diagnostics"
+					onclick={() => diagnosticsStore.toggle()}
+				>
+					<Wrench class="size-4" />
+				</Button>
+				<a href="/quiz" class="text-xs text-muted-foreground hover:underline">All quizzes</a>
+			</div>
 		</div>
 
 		{#if quizzesStore.current.model}
@@ -101,5 +114,6 @@
 			</div>
 			<AttemptHistory />
 		{/if}
+		<DiagnosticsPanel quizId={quizzesStore.current.id} title="Diagnostics — Quiz" />
 	</div>
 {/if}

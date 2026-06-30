@@ -1,14 +1,18 @@
 /**
  * Lab payload schema + parser (architecture.md §7, P3).
  *
- * Generation is prompt-driven (no per-adapter wire support for JSON mode): the
- * model is asked to emit a ```json fenced block whose content matches
- * {@link GeneratedLab}. This module owns the shape, the strict Zod schema, the
- * fenced-JSON extractor, the typed parse error, and the flattening into the
- * single-markdown-body + checklist shape the `labs` table stores.
+ * Generation is tool-call driven: `generate.ts` forces a single tool call via
+ * `generateObjectViaTool` and validates the tool input against
+ * {@link GeneratedLabSchema} (see `object-tool.ts`). This module owns the shape,
+ * the strict Zod schema, and the flattening into the single-markdown-body +
+ * checklist shape the `labs` table stores.
+ *
+ * The fenced-JSON `parseGeneratedLab` / `extractFencedJson` helpers here are a
+ * legacy fallback kept for the schema unit tests; the live generation path no
+ * longer relies on the model emitting a ```json fence.
  *
  * Kept provider-agnostic on purpose: every adapter delegates to the orchestrator
- * in `generate.ts`, which calls `parseGeneratedLab` here.
+ * in `generate.ts`.
  */
 import { z } from 'zod';
 import { uuid } from '$lib/db/ids';

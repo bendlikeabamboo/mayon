@@ -1,12 +1,12 @@
 import { asc, desc, eq } from 'drizzle-orm';
 import { quizAnswers, quizAttempts, type QuizAnswer, type QuizAttempt } from '$lib/db/schema';
-import { getDb } from '$lib/db/driver/client';
+import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 
 export const quizAttemptsRepo = {
 	/** Start a new attempt (ungraded until `finish`). */
 	async start(quizId: string): Promise<QuizAttempt> {
-		const [row] = await getDb()
+		const [row] = await (await awaitDb())
 			.insert(quizAttempts)
 			.values({ id: uuid(), quizId, score: null, startedAt: now(), finishedAt: null })
 			.returning();
@@ -15,7 +15,7 @@ export const quizAttemptsRepo = {
 
 	/** Finalize an attempt with an aggregate score. */
 	async finish(id: string, score: number): Promise<void> {
-		await getDb()
+		await (await awaitDb())
 			.update(quizAttempts)
 			.set({ score, finishedAt: now() })
 			.where(eq(quizAttempts.id, id))
@@ -23,13 +23,17 @@ export const quizAttemptsRepo = {
 	},
 
 	async getById(id: string): Promise<QuizAttempt | null> {
-		const rows = await getDb().select().from(quizAttempts).where(eq(quizAttempts.id, id)).all();
+		const rows = await (await awaitDb())
+			.select()
+			.from(quizAttempts)
+			.where(eq(quizAttempts.id, id))
+			.all();
 		return rows[0] ?? null;
 	},
 
 	/** All attempts for a quiz, newest first (for the attempt-history view). */
 	async listByQuiz(quizId: string): Promise<QuizAttempt[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(quizAttempts)
 			.where(eq(quizAttempts.quizId, quizId))
@@ -44,7 +48,9 @@ export const quizAnswersRepo = {
 		questionId: string;
 		answer: string;
 	}): Promise<QuizAnswer> {
-		const [row] = await getDb()
+		const [row] = await (
+			await awaitDb()
+		)
 			.insert(quizAnswers)
 			.values({
 				id: uuid(),
@@ -64,7 +70,9 @@ export const quizAnswersRepo = {
 		id: string,
 		opts: { isCorrect?: boolean | null; aiFeedback?: string | null }
 	): Promise<void> {
-		await getDb()
+		await (
+			await awaitDb()
+		)
 			.update(quizAnswers)
 			.set({
 				isCorrect: opts.isCorrect == null ? null : opts.isCorrect ? 1 : 0,
@@ -76,7 +84,7 @@ export const quizAnswersRepo = {
 	},
 
 	async listByAttempt(attemptId: string): Promise<QuizAnswer[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(quizAnswers)
 			.where(eq(quizAnswers.attemptId, attemptId))

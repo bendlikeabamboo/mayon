@@ -22,6 +22,7 @@ import { getActiveSdkProvider } from '$lib/ai/client';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 import { generateLab, LabGenerationError } from '$lib/ai/generate/generate';
 import { toLabContent } from '$lib/ai/generate/lab';
+import { buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -84,12 +85,27 @@ class LabsState {
 		this.rawOffer = null;
 		this.controller = new AbortController();
 
+		let traceInput: ObjectTraceInput | null = null;
+		let createdLabId: string | undefined;
+		const startTime = Date.now();
+
 		try {
 			const [ctx, { model, config }] = await Promise.all([
 				assembleContext(chatId),
 				getActiveSdkProvider()
 			]);
-			const generated = await generateLab(model, ctx, { signal: this.controller.signal });
+			const generated = await generateLab(model, ctx, {
+				signal: this.controller.signal,
+				onTrace: (t) => {
+					traceInput = {
+						kind: 'lab',
+						request: t.request,
+						result: t.result,
+						error: t.error,
+						raw: t.raw
+					};
+				}
+			});
 			const { title, content, checklist } = toLabContent(generated);
 			const lab = await repos.labs.create({
 				chatId,
@@ -98,7 +114,7 @@ class LabsState {
 				checklist,
 				model: config.defaultModel
 			});
-			// Keep the list in sync if it was already loaded.
+			createdLabId = lab.id;
 			this.list = [lab, ...this.list];
 			return lab.id;
 		} catch (err) {
@@ -112,6 +128,25 @@ class LabsState {
 		} finally {
 			this.generating = false;
 			this.controller = null;
+			if (traceInput) {
+				try {
+					const { config } = await getActiveSdkProvider();
+					await repos.agentTraces.create({
+						id: '',
+						createdAt: startTime,
+						chatId,
+						kind: 'lab',
+						labId: createdLabId,
+						model: '',
+						configKind: config.kind,
+						reasoning: '',
+						durationMs: Date.now() - startTime,
+						trace: buildObjectTrace(traceInput)
+					});
+				} catch {
+					/* best-effort; never surfaces */
+				}
+			}
 		}
 	}
 

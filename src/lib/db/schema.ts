@@ -167,6 +167,9 @@ export const agentTraces = sqliteTable('agent_traces', {
 	model: text('model'),
 	configKind: text('config_kind').notNull(),
 	reasoning: text('reasoning').notNull(),
+	kind: text('kind').notNull().default('chat'),
+	labId: text('lab_id').references(() => labs.id, { onDelete: 'no action' }),
+	quizId: text('quiz_id').references(() => quizzes.id, { onDelete: 'no action' }),
 	createdAt: integer('created_at').notNull(),
 	durationMs: integer('duration_ms'),
 	trace: text('trace').notNull()

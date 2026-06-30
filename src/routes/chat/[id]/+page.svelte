@@ -28,7 +28,7 @@
 	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import CrossLinks from '$lib/components/chat/CrossLinks.svelte';
-	import DiagnosticsPanel from '$lib/components/chat/DiagnosticsPanel.svelte';
+	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
 
 	let breadcrumb = $state<Chat[]>([]);
 	let children = $state<Chat[]>([]);
@@ -508,5 +508,7 @@
 			</div>
 		{/if}
 	{/if}
-	<DiagnosticsPanel chatId={chatStore.chat!.id} />
+	{#if chatStore.chat}
+		<DiagnosticsPanel chatId={chatStore.chat.id} />
+	{/if}
 </div>

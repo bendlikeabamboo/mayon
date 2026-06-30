@@ -30,7 +30,7 @@ import { runAgentTurn } from '$lib/agent/loop';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 import { generateBrief } from '$lib/ai/generate/generate-brief';
 import { toastState } from '$lib/stores/toasts.svelte';
-import { TraceBuilder } from '$lib/agent/trace';
+import { TraceBuilder, buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
 import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 
 function isAbortError(err: unknown): boolean {
@@ -370,12 +370,22 @@ class ChatState {
 		if (this.titling) return;
 		this.titling = true;
 		this.titleController = new AbortController();
+		let traceInput: ObjectTraceInput | null = null;
+		const startTime = Date.now();
 		try {
 			const ctx: ChatMessage[] = [{ role: 'user', content: firstMessage }];
 			const title = await generateTitle(model, ctx, {
-				signal: this.titleController.signal
+				signal: this.titleController.signal,
+				onTrace: (t) => {
+					traceInput = {
+						kind: 'title',
+						request: t.request,
+						result: t.result,
+						error: t.error,
+						raw: t.raw
+					};
+				}
 			});
-			// Re-check: a retitle (or a concurrent auto-title) may have landed.
 			if (!this.chat || this.chat.id !== chat.id || this.chat.title !== DEFAULT_TITLE) return;
 			await repos.chats.updateTitle(chat.id, title);
 			this.chat = { ...this.chat, title };
@@ -384,6 +394,24 @@ class ChatState {
 		} finally {
 			this.titling = false;
 			this.titleController = null;
+			if (traceInput) {
+				try {
+					const { config } = await getActiveSdkProvider();
+					await repos.agentTraces.create({
+						id: '',
+						createdAt: startTime,
+						chatId: chat.id,
+						kind: 'title',
+						model: (model as { modelId?: string }).modelId ?? '',
+						configKind: config.kind,
+						reasoning: '',
+						durationMs: Date.now() - startTime,
+						trace: buildObjectTrace(traceInput)
+					});
+				} catch {
+					/* best-effort; never surfaces */
+				}
+			}
 		}
 	}
 
@@ -450,9 +478,20 @@ class ChatState {
 		if (this.inferring || this.inferDismissed) return;
 		this.inferring = true;
 		this.inferController = new AbortController();
+		let traceInput: ObjectTraceInput | null = null;
+		const startTime = Date.now();
 		try {
 			const brief = await generateBrief(model, ctx, {
-				signal: this.inferController.signal
+				signal: this.inferController.signal,
+				onTrace: (t) => {
+					traceInput = {
+						kind: 'brief',
+						request: t.request,
+						result: t.result,
+						error: t.error,
+						raw: t.raw
+					};
+				}
 			});
 			if (!this.inferDismissed) {
 				this.inferredBrief = brief;
@@ -462,6 +501,24 @@ class ChatState {
 		} finally {
 			this.inferring = false;
 			this.inferController = null;
+			if (traceInput) {
+				try {
+					const { config } = await getActiveSdkProvider();
+					await repos.agentTraces.create({
+						id: '',
+						createdAt: startTime,
+						chatId: chat.id,
+						kind: 'brief',
+						model: (model as { modelId?: string }).modelId ?? '',
+						configKind: config.kind,
+						reasoning: '',
+						durationMs: Date.now() - startTime,
+						trace: buildObjectTrace(traceInput)
+					});
+				} catch {
+					/* best-effort; never surfaces */
+				}
+			}
 		}
 	}
 

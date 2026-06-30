@@ -15,6 +15,7 @@ vi.mock('ai', () => ({
 	generateObject: vi.fn(),
 	generateText: vi.fn(),
 	streamText: vi.fn(),
+	tool: vi.fn((def: unknown) => def),
 	APICallError: class extends Error {
 		statusCode: number;
 		responseBody?: string;
@@ -34,8 +35,8 @@ vi.mock('ai', () => ({
 const { getActiveSdkProvider } = await import('$lib/ai/client');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
-const { generateObject } = await import('ai');
-const mockedGenerateObject = vi.mocked(generateObject);
+const { generateText } = await import('ai');
+const mockedGenerateText = vi.mocked(generateText);
 
 import { quizzesStore } from './quizzes.svelte';
 
@@ -73,7 +74,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 beforeEach(async () => {
 	await bootstrapWithDriver(await createMemoryDriver());
 	mockedGetActiveSdkProvider.mockReset();
-	mockedGenerateObject.mockReset();
+	mockedGenerateText.mockReset();
 	quizzesStore.list = [];
 	quizzesStore.current = null;
 	quizzesStore.questions = [];
@@ -101,7 +102,10 @@ function mockProviderReturningQuiz(_quiz: GeneratedQuiz) {
 }
 
 function mockGenerateReturningQuiz(quiz: GeneratedQuiz) {
-	mockedGenerateObject.mockResolvedValue({ object: quiz } as never);
+	mockedGenerateText.mockResolvedValue({
+		toolCalls: [{ toolName: 'json', input: quiz }],
+		text: ''
+	} as never);
 }
 
 describe('quizzesStore.generate', () => {
@@ -134,7 +138,7 @@ describe('quizzesStore.generate', () => {
 
 	it('sets a typed error and persists nothing on QuizGenerationError', async () => {
 		mockProviderReturningQuiz(validQuiz);
-		mockedGenerateObject.mockRejectedValue(new Error('generation failed'));
+		mockedGenerateText.mockRejectedValue(new Error('generation failed'));
 		const chatId = await seedChat();
 
 		const id = await quizzesStore.generate(chatId);
@@ -227,9 +231,15 @@ describe('quizzesStore.answerFlashcard', () => {
 describe('quizzesStore.answerShort', () => {
 	it('records the answer and applies the AI grade', async () => {
 		mockProviderReturningQuiz(validQuiz);
-		mockedGenerateObject
-			.mockResolvedValueOnce({ object: validQuiz } as never)
-			.mockResolvedValueOnce({ object: gradedCorrect } as never);
+		mockedGenerateText
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: validQuiz }],
+				text: ''
+			} as never)
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: gradedCorrect }],
+				text: ''
+			} as never);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);
@@ -251,8 +261,11 @@ describe('quizzesStore.answerShort', () => {
 
 	it('leaves the answer ungraded with a message when grading fails', async () => {
 		mockProviderReturningQuiz(oneShortQuiz);
-		mockedGenerateObject
-			.mockResolvedValueOnce({ object: oneShortQuiz } as never)
+		mockedGenerateText
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: oneShortQuiz }],
+				text: ''
+			} as never)
 			.mockRejectedValueOnce(new Error('grade failed'));
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
@@ -277,10 +290,16 @@ describe('quizzesStore.answerShort', () => {
 
 	it('re-grades a previously failed answer on regrade()', async () => {
 		mockProviderReturningQuiz(oneShortQuiz);
-		mockedGenerateObject
-			.mockResolvedValueOnce({ object: oneShortQuiz } as never)
+		mockedGenerateText
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: oneShortQuiz }],
+				text: ''
+			} as never)
 			.mockRejectedValueOnce(new Error('grade failed'))
-			.mockResolvedValueOnce({ object: gradedCorrect } as never);
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: gradedCorrect }],
+				text: ''
+			} as never);
 		const chatId = await seedChat();
 		const id = await quizzesStore.generate(chatId);
 		quizzesStore.current = await repos.quizzes.getById(id!);

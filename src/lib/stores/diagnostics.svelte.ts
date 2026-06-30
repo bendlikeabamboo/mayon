@@ -7,9 +7,25 @@ class DiagnosticsStore {
 	liveEvents = $state<TraceEvent[]>([]);
 	traces = $state<AgentTrace[]>([]);
 	selectedTurnId = $state<string | null>(null);
+	kinds = $state<string[] | null>(null);
 
-	async load(chatId: string): Promise<void> {
-		this.traces = await repos.agentTraces.listByChat(chatId);
+	async load(chatId: string, kinds?: string[] | null): Promise<void> {
+		this.traces = await repos.agentTraces.listByChat(chatId, kinds);
+		if (kinds !== undefined) this.kinds = kinds;
+	}
+
+	async loadByLab(labId: string): Promise<void> {
+		this.traces = await repos.agentTraces.listByLab(labId);
+		this.kinds = null;
+	}
+
+	async loadByQuiz(quizId: string): Promise<void> {
+		this.traces = await repos.agentTraces.listByQuiz(quizId);
+		this.kinds = null;
+	}
+
+	setKinds(kinds: string[] | null): void {
+		this.kinds = kinds;
 	}
 
 	liveEmit(e: TraceEvent): void {
@@ -24,6 +40,21 @@ class DiagnosticsStore {
 		await repos.agentTraces.deleteByChat(chatId);
 		this.traces = [];
 		this.selectedTurnId = null;
+		this.kinds = null;
+	}
+
+	async clearLab(labId: string): Promise<void> {
+		await repos.agentTraces.deleteByLab(labId);
+		this.traces = [];
+		this.selectedTurnId = null;
+		this.kinds = null;
+	}
+
+	async clearQuiz(quizId: string): Promise<void> {
+		await repos.agentTraces.deleteByQuiz(quizId);
+		this.traces = [];
+		this.selectedTurnId = null;
+		this.kinds = null;
 	}
 
 	toggle(): void {

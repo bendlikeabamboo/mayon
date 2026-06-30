@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { ArrowLeft } from '@lucide/svelte';
+	import { ArrowLeft, Wrench } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from '$lib/components/chat/Markdown.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
 	import { labsRepo, type LabChecklistItem } from '$lib/db/repositories/labs';
 	import type { Lab } from '$lib/db/schema';
+	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
+	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 
 	/**
 	 * Lab runner: renders the generated markdown body and an interactive
@@ -28,7 +30,18 @@
 		<Button href="/chat/{lab.chatId}" variant="ghost" size="sm">
 			<ArrowLeft class="size-4" /> Back to chat
 		</Button>
-		<a href="/lab" class="text-xs text-muted-foreground hover:underline">All labs</a>
+		<div class="flex items-center gap-1">
+			<Button
+				variant="ghost"
+				size="icon"
+				title="Diagnostics"
+				aria-label="Diagnostics"
+				onclick={() => diagnosticsStore.toggle()}
+			>
+				<Wrench class="size-4" />
+			</Button>
+			<a href="/lab" class="text-xs text-muted-foreground hover:underline">All labs</a>
+		</div>
 	</div>
 
 	<div class="space-y-1">
@@ -75,4 +88,5 @@
 			</ul>
 		{/if}
 	</section>
+	<DiagnosticsPanel labId={lab.id} title="Diagnostics — Lab" />
 </div>

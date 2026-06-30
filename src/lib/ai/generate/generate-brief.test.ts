@@ -16,6 +16,7 @@ vi.mock('ai', () => ({
 	generateObject: vi.fn(),
 	generateText: vi.fn(),
 	streamText: vi.fn(),
+	tool: vi.fn((def: unknown) => def),
 	APICallError: class extends Error {
 		statusCode: number;
 		responseBody?: string;
@@ -32,8 +33,8 @@ vi.mock('ai', () => ({
 	}
 }));
 
-const { generateObject } = await import('ai');
-const mockedGenerateObject = vi.mocked(generateObject);
+const { generateText } = await import('ai');
+const mockedGenerateText = vi.mocked(generateText);
 
 const mockModel = {} as LanguageModel;
 
@@ -121,27 +122,36 @@ describe('parseGeneratedBrief', () => {
 
 describe('generateBrief', () => {
 	beforeEach(() => {
-		mockedGenerateObject.mockReset();
+		mockedGenerateText.mockReset();
 	});
 
 	it('returns the parsed brief on success', async () => {
-		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validBrief }],
+			text: ''
+		} as never);
 		const brief = await generateBrief(mockModel, messages, optsWith('p'));
 		expect(brief).toEqual(validBrief);
 	});
 
 	it('passes the prompt as the system instruction', async () => {
-		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validBrief }],
+			text: ''
+		} as never);
 		await generateBrief(mockModel, messages, optsWith('MY PROMPT'));
-		expect(mockedGenerateObject).toHaveBeenCalledWith(
+		expect(mockedGenerateText).toHaveBeenCalledWith(
 			expect.objectContaining({ system: 'MY PROMPT' })
 		);
 	});
 
 	it('maps messages to SDK format', async () => {
-		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validBrief }],
+			text: ''
+		} as never);
 		await generateBrief(mockModel, messages, optsWith('p'));
-		expect(mockedGenerateObject).toHaveBeenCalledWith(
+		expect(mockedGenerateText).toHaveBeenCalledWith(
 			expect.objectContaining({
 				messages: [{ role: 'user', content: 'go' }]
 			})
@@ -149,29 +159,35 @@ describe('generateBrief', () => {
 	});
 
 	it('passes abort signal as abortSignal', async () => {
-		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validBrief }],
+			text: ''
+		} as never);
 		const ac = new AbortController();
 		await generateBrief(mockModel, messages, { prompt: 'p', signal: ac.signal });
-		expect(mockedGenerateObject).toHaveBeenCalledWith(
+		expect(mockedGenerateText).toHaveBeenCalledWith(
 			expect.objectContaining({ abortSignal: ac.signal })
 		);
 	});
 
 	it('sets maxRetries to 2', async () => {
-		mockedGenerateObject.mockResolvedValue({ object: validBrief } as never);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validBrief }],
+			text: ''
+		} as never);
 		await generateBrief(mockModel, messages, optsWith('p'));
-		expect(mockedGenerateObject).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 2 }));
+		expect(mockedGenerateText).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 2 }));
 	});
 
 	it('wraps errors in BriefGenerationError', async () => {
-		mockedGenerateObject.mockRejectedValue(new Error('boom'));
+		mockedGenerateText.mockRejectedValue(new Error('boom'));
 		await expect(generateBrief(mockModel, messages, optsWith('p'))).rejects.toThrow(
 			BriefGenerationError
 		);
 	});
 
 	it('carries raw message in BriefGenerationError', async () => {
-		mockedGenerateObject.mockRejectedValue(new Error('parse fail'));
+		mockedGenerateText.mockRejectedValue(new Error('parse fail'));
 		try {
 			await generateBrief(mockModel, messages, optsWith('p'));
 		} catch (e) {
@@ -189,7 +205,7 @@ describe('generateBrief', () => {
 			statusCode: 500,
 			responseBody: 'raw brief body'
 		});
-		mockedGenerateObject.mockRejectedValue(apiErr);
+		mockedGenerateText.mockRejectedValue(apiErr);
 		try {
 			await generateBrief(mockModel, messages, optsWith('p'));
 		} catch (e) {

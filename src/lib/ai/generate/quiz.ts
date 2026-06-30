@@ -1,15 +1,20 @@
 /**
  * Quiz payload + grading schema/parser (architecture.md §7, P4).
  *
- * Generation is prompt-driven (no per-adapter wire support for JSON mode): the
- * model is asked to emit a ```json fenced block whose content matches
- * {@link GeneratedQuiz} (for question generation) or {@link GradedAnswer} (for
- * per-answer grading). This module owns the shapes, the strict Zod schemas, the
- * shared fenced-JSON extractor, the typed parse errors, and the flattening into
- * the `{ type, prompt, payload }` shape the `quizQuestions` table stores.
+ * Generation is tool-call driven: `generate-quiz.ts` forces a single tool call
+ * via `generateObjectViaTool` and validates the tool input against
+ * {@link GeneratedQuizSchema} (for question generation) or
+ * {@link GradedAnswerSchema} (for per-answer grading); see `object-tool.ts`.
+ * This module owns the shapes, the strict Zod schemas, the typed parse errors,
+ * and the flattening into the `{ type, prompt, payload }` shape the
+ * `quizQuestions` table stores.
+ *
+ * The fenced-JSON `parseGeneratedQuiz` / `parseGradedAnswer` helpers here are a
+ * legacy fallback kept for the schema unit tests; the live generation path no
+ * longer relies on the model emitting a ```json fence.
  *
  * Kept provider-agnostic on purpose: every adapter delegates to the orchestrator
- * in `generate.ts`, which calls `parseGeneratedQuiz` / `parseGradedAnswer` here.
+ * in `generate-quiz.ts`.
  */
 import { z } from 'zod';
 import { extractFencedJson } from './generate-gate';

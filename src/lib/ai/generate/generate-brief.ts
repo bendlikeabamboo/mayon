@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { generateObject, APICallError } from 'ai';
 import type { LanguageModel } from 'ai';
 import type { ChatMessage } from '../types';
 import { LEVEL_OPTIONS, MODE_OPTIONS, type LearningBrief } from '$lib/chat/brief';
 import { SCOPE_STRATEGY_IDS } from '$lib/chat/strategies';
 import { extractFencedJson } from './generate-gate';
+import { generateObjectViaTool, extractObjectErrorRaw } from './object-tool';
+import { splitContextForGeneration } from './context-split';
 
 export { extractFencedJson } from './generate-gate';
 
@@ -99,16 +100,12 @@ export async function readBriefPrompt(): Promise<string> {
 export interface GenerateBriefOptions {
 	prompt?: string;
 	signal?: AbortSignal;
-}
-
-function extractRaw(err: unknown): string {
-	if (err instanceof APICallError) {
-		return err.responseBody ?? err.message ?? '';
-	}
-	if (err instanceof Error) {
-		return err.message;
-	}
-	return String(err);
+	onTrace?: (t: {
+		request: import('$lib/agent/trace').ObjectTraceRequest;
+		result?: { object: unknown };
+		error?: string;
+		raw?: string;
+	}) => void;
 }
 
 export async function generateBrief(
@@ -117,17 +114,28 @@ export async function generateBrief(
 	opts?: GenerateBriefOptions
 ): Promise<GeneratedBrief> {
 	const prompt = opts?.prompt ?? (await readBriefPrompt());
+	const { system, messages: core } = splitContextForGeneration(messages, prompt);
+	const request = {
+		system,
+		messages: core.map((m) => ({ role: m.role, content: String(m.content) })),
+		schema: 'GeneratedBriefSchema'
+	};
 	try {
-		const result = await generateObject({
-			model,
+		const { object } = await generateObjectViaTool(model, {
 			schema: GeneratedBriefSchema,
-			system: prompt,
-			messages: messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-			abortSignal: opts?.signal,
+			system,
+			messages: core,
+			signal: opts?.signal,
 			maxRetries: 2
 		});
-		return result.object;
+		opts?.onTrace?.({ request, result: { object } });
+		return object;
 	} catch (err) {
-		throw new BriefGenerationError('Brief generation failed.', extractRaw(err));
+		opts?.onTrace?.({
+			request,
+			error: err instanceof Error ? err.message : String(err),
+			raw: extractObjectErrorRaw(err)
+		});
+		throw new BriefGenerationError('Brief generation failed.', extractObjectErrorRaw(err));
 	}
 }

@@ -6,8 +6,9 @@ import {
 	type QuizQuestion,
 	type QuizQuestionType
 } from '$lib/db/schema';
-import { getDb } from '$lib/db/driver/client';
+import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
+import { agentTracesRepo } from './agent-traces';
 
 export interface McqPayload {
 	options: string[];
@@ -24,7 +25,9 @@ export type QuizPayload = McqPayload | FlashcardPayload | ShortPayload;
 
 export const quizzesRepo = {
 	async create(opts: { chatId: string; model?: string }): Promise<Quiz> {
-		const [row] = await getDb()
+		const [row] = await (
+			await awaitDb()
+		)
 			.insert(quizzes)
 			.values({ id: uuid(), chatId: opts.chatId, model: opts.model ?? null, createdAt: now() })
 			.returning();
@@ -32,21 +35,26 @@ export const quizzesRepo = {
 	},
 
 	async getById(id: string): Promise<Quiz | null> {
-		const rows = await getDb().select().from(quizzes).where(eq(quizzes.id, id)).all();
+		const rows = await (await awaitDb()).select().from(quizzes).where(eq(quizzes.id, id)).all();
 		return rows[0] ?? null;
 	},
 
 	async listByChat(chatId: string): Promise<Quiz[]> {
-		return getDb().select().from(quizzes).where(eq(quizzes.chatId, chatId)).all();
+		return (await awaitDb()).select().from(quizzes).where(eq(quizzes.chatId, chatId)).all();
 	},
 
 	/** All quizzes, newest first (the `/quiz` index page groups by chat client-side). */
 	async listAll(): Promise<Quiz[]> {
-		return getDb().select().from(quizzes).orderBy(desc(quizzes.createdAt)).all();
+		return (await awaitDb()).select().from(quizzes).orderBy(desc(quizzes.createdAt)).all();
 	},
 
 	async delete(id: string): Promise<void> {
-		await getDb().delete(quizzes).where(eq(quizzes.id, id)).run();
+		try {
+			await agentTracesRepo.deleteByQuiz(id);
+		} catch {
+			/* best-effort cascade */
+		}
+		await (await awaitDb()).delete(quizzes).where(eq(quizzes.id, id)).run();
 	}
 };
 
@@ -60,7 +68,9 @@ export const quizQuestionsRepo = {
 	}): Promise<QuizQuestion> {
 		const existing = await this.listByQuiz(opts.quizId);
 		const ord = existing.length ? Math.max(...existing.map((q) => q.ord)) + 1 : 0;
-		const [row] = await getDb()
+		const [row] = await (
+			await awaitDb()
+		)
 			.insert(quizQuestions)
 			.values({
 				id: uuid(),
@@ -75,7 +85,7 @@ export const quizQuestionsRepo = {
 	},
 
 	async listByQuiz(quizId: string): Promise<QuizQuestion[]> {
-		return getDb()
+		return (await awaitDb())
 			.select()
 			.from(quizQuestions)
 			.where(eq(quizQuestions.quizId, quizId))

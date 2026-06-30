@@ -18,6 +18,7 @@ vi.mock('ai', () => ({
 	generateObject: vi.fn(),
 	generateText: vi.fn(),
 	streamText: vi.fn(),
+	tool: vi.fn((def: unknown) => def),
 	APICallError: class extends Error {
 		statusCode: number;
 		responseBody?: string;
@@ -376,7 +377,7 @@ describe('chatStore auto-title', () => {
 	});
 
 	it('requests the title via generateText with system prompt and first user message only', async () => {
-		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const root = await repos.chats.createRoot({ title: 'New chat', brief: { goal: 'terraform' } });
 		mockDefaultProvider();
 		mockStreamReply(['the answer']);
 		mockedGenerateText.mockResolvedValue({ text: 'Terraform Basics' } as never);
@@ -429,7 +430,7 @@ describe('chatStore auto-title', () => {
 	});
 
 	it('aborts an in-flight title request when switching chats', async () => {
-		const root = await repos.chats.createRoot({ title: 'New chat' });
+		const root = await repos.chats.createRoot({ title: 'New chat', brief: { goal: 'x' } });
 		const other = await repos.chats.createRoot({ title: 'Other' });
 		let titleSignal: AbortSignal | undefined;
 
@@ -610,12 +611,25 @@ describe('chatStore inferred brief', () => {
 		}
 	}
 
+	// Brief inference now flows through `generateText` (tool-calling path in
+	// `object-tool.ts`, which passes `tools`), so it shares the mock with title
+	// generation (`generateText` without tools). Dispatch on the presence of
+	// `tools` to return the tool-call shape for briefs and the text shape for
+	// titles.
+	function mockTitleAndBrief(brief: unknown = inferredBrief, title = 'Docker'): void {
+		mockedGenerateText.mockImplementation(async (opts: Record<string, unknown>) => {
+			if (opts && 'tools' in opts) {
+				return { toolCalls: [{ toolName: 'json', input: brief }], text: '' } as never;
+			}
+			return { text: title } as never;
+		});
+	}
+
 	it('first message on a null-brief root sets inferredBrief', async () => {
 		const root = await repos.chats.createRoot({ title: 'New chat' });
 		mockDefaultProvider();
 		mockStreamReply(['the answer']);
-		mockedGenerateObject.mockResolvedValue({ object: inferredBrief } as never);
-		mockedGenerateText.mockResolvedValue({ text: 'Docker' } as never);
+		mockTitleAndBrief();
 		await chatStore.load(root.id);
 		expect(chatStore.inferredBrief).toBeNull();
 
@@ -663,8 +677,7 @@ describe('chatStore inferred brief', () => {
 		const root = await repos.chats.createRoot({ title: 'New chat' });
 		mockDefaultProvider();
 		mockStreamReply(['the answer']);
-		mockedGenerateObject.mockResolvedValue({ object: inferredBrief } as never);
-		mockedGenerateText.mockResolvedValue({ text: 'Docker' } as never);
+		mockTitleAndBrief();
 		await chatStore.load(root.id);
 		await chatStore.send('teach me Makefiles');
 		await waitForInferredBrief();
@@ -680,8 +693,7 @@ describe('chatStore inferred brief', () => {
 		const root = await repos.chats.createRoot({ title: 'New chat' });
 		mockDefaultProvider();
 		mockStreamReply(['the answer']);
-		mockedGenerateObject.mockResolvedValue({ object: inferredBrief } as never);
-		mockedGenerateText.mockResolvedValue({ text: 'Docker' } as never);
+		mockTitleAndBrief();
 		await chatStore.load(root.id);
 		await chatStore.send('teach me Makefiles');
 		await waitForInferredBrief();
@@ -698,8 +710,7 @@ describe('chatStore inferred brief', () => {
 		const root = await repos.chats.createRoot({ title: 'New chat' });
 		mockDefaultProvider();
 		mockStreamReply(['the answer']);
-		mockedGenerateObject.mockResolvedValue({ object: inferredBrief } as never);
-		mockedGenerateText.mockResolvedValue({ text: 'Docker' } as never);
+		mockTitleAndBrief();
 		await chatStore.load(root.id);
 		await chatStore.send('teach me Makefiles');
 		await waitForInferredBrief();
@@ -713,10 +724,15 @@ describe('chatStore inferred brief', () => {
 	it('dismiss-race guard: dismiss before inference completes keeps inferredBrief null', async () => {
 		mockDefaultProvider();
 		mockStreamReply(['reply']);
-		mockedGenerateText.mockResolvedValue({ text: 'Title' } as never);
-		mockedGenerateObject.mockImplementation(async () => {
-			await new Promise((r) => setTimeout(r, 200));
-			return { object: { goal: 'late brief' } } as never;
+		mockedGenerateText.mockImplementation(async (opts: Record<string, unknown>) => {
+			if (opts && 'tools' in opts) {
+				await new Promise((r) => setTimeout(r, 200));
+				return {
+					toolCalls: [{ toolName: 'json', input: { goal: 'late brief' } }],
+					text: ''
+				} as never;
+			}
+			return { text: 'Title' } as never;
 		});
 
 		const root = await repos.chats.createRoot({ title: 'New chat' });
@@ -737,16 +753,17 @@ describe('chatStore inferred brief', () => {
 
 		mockDefaultProvider();
 		mockStreamReply(['reply']);
-		mockedGenerateText.mockResolvedValue({ text: 'Title' } as never);
-		mockedGenerateObject.mockImplementation(async (opts: Record<string, unknown>) => {
-			briefSignal = opts?.abortSignal as AbortSignal | undefined;
-			await new Promise<void>((resolve) => {
-				if ((opts?.abortSignal as AbortSignal | undefined)?.aborted) return resolve();
-				(opts?.abortSignal as AbortSignal | undefined)?.addEventListener('abort', () => resolve(), {
-					once: true
+		mockedGenerateText.mockImplementation(async (opts: Record<string, unknown>) => {
+			const signal = opts?.abortSignal as AbortSignal | undefined;
+			if (opts && 'tools' in opts) {
+				briefSignal = signal;
+				await new Promise<void>((resolve) => {
+					if (signal?.aborted) return resolve();
+					signal?.addEventListener('abort', () => resolve(), { once: true });
 				});
-			});
-			return { object: { goal: 'brief' } } as never;
+				return { toolCalls: [{ toolName: 'json', input: { goal: 'brief' } }], text: '' } as never;
+			}
+			return { text: 'Title' } as never;
 		});
 
 		const root = await repos.chats.createRoot({ title: 'New chat' });

@@ -39,6 +39,7 @@ import {
 	gradeShortAnswer
 } from '$lib/ai/generate/generate-quiz';
 import { toQuizQuestions } from '$lib/ai/generate/quiz';
+import { buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -154,14 +155,30 @@ class QuizzesState {
 		this.error = null;
 		this.controller = new AbortController();
 
+		let traceInput: ObjectTraceInput | null = null;
+		let createdQuizId: string | undefined;
+		const startTime = Date.now();
+
 		try {
 			const [ctx, { model, config }] = await Promise.all([
 				assembleContext(chatId),
 				getActiveSdkProvider()
 			]);
-			const generated = await generateQuiz(model, ctx, { signal: this.controller!.signal });
+			const generated = await generateQuiz(model, ctx, {
+				signal: this.controller!.signal,
+				onTrace: (t) => {
+					traceInput = {
+						kind: 'quiz',
+						request: t.request,
+						result: t.result,
+						error: t.error,
+						raw: t.raw
+					};
+				}
+			});
 			const items = toQuizQuestions(generated);
 			const quiz = await repos.quizzes.create({ chatId, model: config.defaultModel });
+			createdQuizId = quiz.id;
 			for (const it of items) {
 				await repos.quizQuestions.add({
 					quizId: quiz.id,
@@ -183,6 +200,25 @@ class QuizzesState {
 		} finally {
 			this.generating = false;
 			this.controller = null;
+			if (traceInput) {
+				try {
+					const { config } = await getActiveSdkProvider();
+					await repos.agentTraces.create({
+						id: '',
+						createdAt: startTime,
+						chatId,
+						kind: 'quiz',
+						quizId: createdQuizId,
+						model: '',
+						configKind: config.kind,
+						reasoning: '',
+						durationMs: Date.now() - startTime,
+						trace: buildObjectTrace(traceInput)
+					});
+				} catch {
+					/* best-effort; never surfaces */
+				}
+			}
 		}
 	}
 
@@ -330,18 +366,40 @@ class QuizzesState {
 	): Promise<void> {
 		if (!this.current || !this.activeAttempt) return;
 		const attemptId = this.activeAttempt.id;
+		let traceInput: ObjectTraceInput | null = null;
+		let configKind: string = 'openai-compatible';
+		const startTime = Date.now();
 		try {
 			const ctx = await assembleContext(this.current!.chatId);
-			const { model } = await getActiveSdkProvider();
+			const { model, config } = await getActiveSdkProvider();
+			configKind = config.kind;
 			const question = this.questions.find((q) => q.id === questionId);
 			if (!question) return;
 			const payload = repos.quizQuestions.parsePayload<ShortPayload>(question.payload);
-			const graded = await gradeShortAnswer(model, {
-				prompt: question.prompt,
-				rubric: payload.rubric,
-				answer: answerText,
-				context: ctx
-			});
+			const graded = await gradeShortAnswer(
+				model,
+				{
+					prompt: question.prompt,
+					rubric: payload.rubric,
+					answer: answerText,
+					context: ctx
+				},
+				{
+					onTrace: (t) => {
+						traceInput = {
+							kind: 'grade',
+							request: t.request,
+							result: t.result,
+							error: t.error,
+							raw: t.raw,
+							questionId,
+							prompt: t.prompt,
+							rubric: t.rubric,
+							answer: t.answer
+						};
+					}
+				}
+			);
 			if (this.activeAttempt?.id !== attemptId) return;
 			await repos.quizAnswers.grade(answerRowId, {
 				isCorrect: graded.isCorrect,
@@ -370,6 +428,25 @@ class QuizzesState {
 					gradedAt: Date.now()
 				}
 			};
+		} finally {
+			if (traceInput) {
+				try {
+					await repos.agentTraces.create({
+						id: '',
+						createdAt: startTime,
+						chatId: this.current!.chatId,
+						kind: 'grade',
+						quizId: this.current!.id,
+						model: '',
+						configKind,
+						reasoning: '',
+						durationMs: Date.now() - startTime,
+						trace: buildObjectTrace(traceInput)
+					});
+				} catch {
+					/* best-effort; never surfaces */
+				}
+			}
 		}
 	}
 

@@ -7,6 +7,7 @@
 import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
 import type { ChatMessage } from '../types';
+import { splitContextForGeneration } from './context-split';
 
 const TITLE_PROMPT = [
 	'You generate a short title for a conversation.',
@@ -20,6 +21,12 @@ export const DEFAULT_TITLE = 'New chat';
 
 export interface GenerateTitleOptions {
 	signal?: AbortSignal;
+	onTrace?: (t: {
+		request: import('$lib/agent/trace').ObjectTraceRequest;
+		result?: { object: unknown };
+		error?: string;
+		raw?: string;
+	}) => void;
 }
 
 export async function generateTitle(
@@ -27,14 +34,27 @@ export async function generateTitle(
 	messages: ChatMessage[],
 	opts?: GenerateTitleOptions
 ): Promise<string> {
-	const result = await generateText({
-		model,
-		system: TITLE_PROMPT,
-		messages: messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-		abortSignal: opts?.signal,
-		maxRetries: 0
-	});
-	return cleanTitle(result.text);
+	const { system, messages: core } = splitContextForGeneration(messages, TITLE_PROMPT);
+	const request = {
+		system,
+		messages: core.map((m) => ({ role: m.role, content: String(m.content) })),
+		schema: 'text'
+	};
+	try {
+		const result = await generateText({
+			model,
+			system,
+			messages: core,
+			abortSignal: opts?.signal,
+			maxRetries: 0
+		});
+		const title = cleanTitle(result.text);
+		opts?.onTrace?.({ request, result: { object: title } });
+		return title;
+	} catch (err) {
+		opts?.onTrace?.({ request, error: err instanceof Error ? err.message : String(err) });
+		throw err;
+	}
 }
 
 export function cleanTitle(raw: string): string {

@@ -39,6 +39,15 @@ const migrations: MigrationMeta[] = [
 		],
 		folderMillis: 1782748702546,
 		hash: '10ed43a27aa8a958a2eaa2d1a0d973ec90d8db37d32a7b29718b61a45e2d2227'
+	},
+	{
+		sql: [
+			"ALTER TABLE `agent_traces` ADD `kind` text DEFAULT 'chat' NOT NULL;",
+			'ALTER TABLE `agent_traces` ADD `lab_id` text REFERENCES labs(id);',
+			'ALTER TABLE `agent_traces` ADD `quiz_id` text REFERENCES quizzes(id);'
+		],
+		folderMillis: 1782790610817,
+		hash: '80d8f7980037295483bace262e043dd4b6186b1b95aaf014551b4bd66b42ea8a'
 	}
 ];
 

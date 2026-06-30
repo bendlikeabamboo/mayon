@@ -1,7 +1,8 @@
 import { desc, eq } from 'drizzle-orm';
 import { labs, type Lab } from '$lib/db/schema';
-import { getDb } from '$lib/db/driver/client';
+import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
+import { agentTracesRepo } from './agent-traces';
 
 export interface LabChecklistItem {
 	id: string;
@@ -19,7 +20,9 @@ function parseChecklist(raw: string): LabChecklistItem[] {
 }
 
 async function update(id: string, patch: Partial<typeof labs.$inferInsert>): Promise<void> {
-	await getDb()
+	await (
+		await awaitDb()
+	)
 		.update(labs)
 		.set({ ...patch, updatedAt: now() })
 		.where(eq(labs.id, id))
@@ -35,7 +38,9 @@ export const labsRepo = {
 		checklist?: LabChecklistItem[];
 		model?: string;
 	}): Promise<Lab> {
-		const [row] = await getDb()
+		const [row] = await (
+			await awaitDb()
+		)
 			.insert(labs)
 			.values({
 				id: uuid(),
@@ -52,17 +57,17 @@ export const labsRepo = {
 	},
 
 	async getById(id: string): Promise<Lab | null> {
-		const rows = await getDb().select().from(labs).where(eq(labs.id, id)).all();
+		const rows = await (await awaitDb()).select().from(labs).where(eq(labs.id, id)).all();
 		return rows[0] ?? null;
 	},
 
 	async listByChat(chatId: string): Promise<Lab[]> {
-		return getDb().select().from(labs).where(eq(labs.chatId, chatId)).all();
+		return (await awaitDb()).select().from(labs).where(eq(labs.chatId, chatId)).all();
 	},
 
 	/** All labs, newest first (the `/lab` index page groups by chat client-side). */
 	async listAll(): Promise<Lab[]> {
-		return getDb().select().from(labs).orderBy(desc(labs.createdAt)).all();
+		return (await awaitDb()).select().from(labs).orderBy(desc(labs.createdAt)).all();
 	},
 
 	async updateContent(id: string, content: string): Promise<void> {
@@ -86,7 +91,12 @@ export const labsRepo = {
 	},
 
 	async delete(id: string): Promise<void> {
-		await getDb().delete(labs).where(eq(labs.id, id)).run();
+		try {
+			await agentTracesRepo.deleteByLab(id);
+		} catch {
+			/* best-effort cascade */
+		}
+		await (await awaitDb()).delete(labs).where(eq(labs.id, id)).run();
 	},
 
 	parseChecklist

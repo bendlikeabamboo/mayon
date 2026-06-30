@@ -1,14 +1,38 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { agentTraces, type AgentTrace } from '$lib/db/schema';
 import { awaitDb, getDriver } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 
 export const agentTracesRepo = {
-	async listByChat(chatId: string): Promise<AgentTrace[]> {
+	async listByChat(chatId: string, kinds?: string[] | null): Promise<AgentTrace[]> {
+		const conditions: SQL[] = [eq(agentTraces.chatId, chatId)];
+		if (kinds?.length) {
+			conditions.push(
+				kinds.length === 1 ? eq(agentTraces.kind, kinds[0]!) : inArray(agentTraces.kind, kinds)
+			);
+		}
 		return (await awaitDb())
 			.select()
 			.from(agentTraces)
-			.where(eq(agentTraces.chatId, chatId))
+			.where(and(...conditions))
+			.orderBy(desc(agentTraces.createdAt))
+			.all();
+	},
+
+	async listByLab(labId: string): Promise<AgentTrace[]> {
+		return (await awaitDb())
+			.select()
+			.from(agentTraces)
+			.where(eq(agentTraces.labId, labId))
+			.orderBy(desc(agentTraces.createdAt))
+			.all();
+	},
+
+	async listByQuiz(quizId: string): Promise<AgentTrace[]> {
+		return (await awaitDb())
+			.select()
+			.from(agentTraces)
+			.where(eq(agentTraces.quizId, quizId))
 			.orderBy(desc(agentTraces.createdAt))
 			.all();
 	},
@@ -34,6 +58,14 @@ export const agentTracesRepo = {
 
 	async deleteByChat(chatId: string): Promise<void> {
 		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.chatId, chatId)).run();
+	},
+
+	async deleteByLab(labId: string): Promise<void> {
+		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.labId, labId)).run();
+	},
+
+	async deleteByQuiz(quizId: string): Promise<void> {
+		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.quizId, quizId)).run();
 	},
 
 	async deleteByRoot(rootId: string): Promise<void> {

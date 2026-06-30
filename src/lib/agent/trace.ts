@@ -51,6 +51,37 @@ interface IterationState {
 	toolResults: Array<{ toolCallId: string; summary: string; detail: Record<string, unknown> }>;
 }
 
+export interface ObjectTraceRequest {
+	system: string;
+	messages: Array<{ role: string; content: string }>;
+	schema?: string;
+}
+
+export interface ObjectTraceInput {
+	kind: string;
+	request: ObjectTraceRequest;
+	result?: { object: unknown };
+	error?: string;
+	raw?: string;
+	questionId?: string;
+	prompt?: string;
+	rubric?: string;
+	answer?: string;
+}
+
+export function buildObjectTrace(input: ObjectTraceInput): string {
+	const { kind, request, result, error, raw, questionId, prompt, rubric, answer } = input;
+	const payload: Record<string, unknown> = { kind, request };
+	if (result) payload.result = result;
+	if (error) payload.error = error;
+	if (raw) payload.raw = raw;
+	if (questionId) payload.questionId = questionId;
+	if (prompt) payload.prompt = prompt;
+	if (rubric) payload.rubric = rubric;
+	if (answer) payload.answer = answer;
+	return JSON.stringify(payload);
+}
+
 export class TraceBuilder {
 	startTime: number | null = null;
 	private aborted = false;
