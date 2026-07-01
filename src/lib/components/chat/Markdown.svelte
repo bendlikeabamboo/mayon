@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { renderMarkdown } from '$lib/markdown/render';
 	import { hasMermaid, renderMermaidBlock } from '$lib/markdown/mermaid';
+	import { isExternalLink } from '$lib/markdown/links';
+	import MermaidPreview from './MermaidPreview.svelte';
 
 	/**
 	 * Renders sanitized markdown via `{@html}`. When the rendered HTML contains
@@ -15,6 +17,7 @@
 	const needsMermaid = $derived(hasMermaid(html));
 
 	let container = $state<HTMLDivElement | null>(null);
+	let previewSvg = $state<string | null>(null);
 
 	onMount(() => {
 		if (!needsMermaid || !container) return;
@@ -28,8 +31,12 @@
 			void renderMermaidBlock(source)
 				.then((svg) => {
 					const wrapper = document.createElement('div');
-					wrapper.className = 'mermaid-svg my-3 flex justify-center overflow-x-auto';
+					wrapper.className = 'mermaid-svg my-3 flex justify-center overflow-x-auto cursor-zoom-in';
+					wrapper.title = 'Click to preview';
 					wrapper.innerHTML = svg;
+					wrapper.addEventListener('click', () => {
+						previewSvg = wrapper.innerHTML;
+					});
 					pre?.replaceWith(wrapper);
 				})
 				.catch((err) => {
@@ -40,12 +47,42 @@
 				});
 		}
 	});
+
+	$effect(() => {
+		const rendered = html;
+		if (!container || !rendered) return;
+		const links = container.querySelectorAll<HTMLAnchorElement>('a[href]');
+		for (const link of links) {
+			const href = link.getAttribute('href') ?? '';
+			if (!isExternalLink(href)) continue;
+			link.classList.add('external-link');
+			link.setAttribute('target', '_blank');
+			link.setAttribute('rel', 'noopener noreferrer');
+			if (!link.querySelector('svg.external-link-icon')) {
+				const icon = document.createElement('span');
+				icon.className = 'external-link-icon inline-block ml-0.5 align-text-bottom opacity-70';
+				icon.innerHTML =
+					'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+				link.appendChild(icon);
+			}
+		}
+	});
 </script>
 
 <div bind:this={container} class="markdown-body {className}">
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by rehype-sanitize (allowlist in render.ts); mermaid SVG injected post-hoc on wrapper elements -->
 	{@html html}
 </div>
+
+{#if previewSvg}
+	<MermaidPreview
+		open={previewSvg !== null}
+		svgHtml={previewSvg}
+		onClose={() => {
+			previewSvg = null;
+		}}
+	/>
+{/if}
 
 <style>
 	:global(.markdown-body) {
@@ -89,6 +126,9 @@
 		color: oklch(0.55 0.2 250);
 		text-decoration: underline;
 		text-underline-offset: 2px;
+	}
+	:global(.markdown-body a.external-link) {
+		color: var(--muted-foreground);
 	}
 	:global(.markdown-body blockquote) {
 		border-left: 3px solid var(--border);

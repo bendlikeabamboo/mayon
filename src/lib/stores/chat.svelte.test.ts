@@ -847,3 +847,81 @@ describe('chatStore approval flow', () => {
 		expect(chatStore.pendingApprovals).toHaveLength(0);
 	});
 });
+
+describe('chatStore reasoning buffer', () => {
+	it('reasoningBuffer resets on send() start and in finally', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'reply';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'reasoning-delta', text: 'thinking' };
+				yield { type: 'text-delta', text: 'reply' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: 'reply',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		expect(chatStore.reasoningBuffer).toBe('');
+
+		void chatStore.send('hello');
+		expect(chatStore.reasoningBuffer).toBe('');
+
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+		expect(chatStore.reasoningBuffer).toBe('');
+	});
+
+	it('reasoningBuffer resets on load()', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		(chatStore as unknown as { reasoningBuffer: string }).reasoningBuffer = 'some reasoning';
+		await chatStore.load(root.id);
+		expect(chatStore.reasoningBuffer).toBe('');
+	});
+
+	it('turn with reasoning writes metadata JSON containing reasoning on assistant row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'reply';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'reasoning-delta', text: 'thinking…' };
+				yield { type: 'text-delta', text: 'Reply text' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: 'Reply text',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistant = msgs.find((m) => m.role === 'assistant');
+		expect(assistant).toBeDefined();
+		expect(assistant!.metadata).not.toBeNull();
+		const parsed = JSON.parse(assistant!.metadata!);
+		expect(parsed.reasoning).toBe('thinking…');
+	});
+
+	it('turn without reasoning writes no metadata on assistant row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['No reasoning reply']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistant = msgs.find((m) => m.role === 'assistant');
+		expect(assistant).toBeDefined();
+		expect(assistant!.metadata).toBeNull();
+	});
+});

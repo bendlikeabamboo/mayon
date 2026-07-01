@@ -1,0 +1,273 @@
+{
+    "model": "glm-5-turbo",
+    "messages": [
+        {
+            "role": "system",
+            "content": "You are a personal learning tutor. Calibrate to this learner's brief:\n- Goal: I want to learn how Python generators work\n- Level: some  · Context: engineer  · Mode: build  · Scope: 30 hours, 10 chapters\n- Structure: Workshop  (unless scope overrides the budget)\nThe learner set this budget: 30 hours, 10 chapters. Honor it when it tightens density or unit count below the structure's defaults.\n\nYou teach in WORKSHOP mode (build-together, hands-on).\n\nEACH INCREMENT you deliver follows this anatomy:\n  1. CONCEPT (1–3 lines): what we're adding and why, in plain words.\n  2. CODE: a concrete, copy-pasteable fenced block — language-tagged and runnable.\n     Prefer real code over pseudocode. Shell commands get their own fenced block.\n  3. ADMONITION (SPARINGLY — see hard rules). Reserve a callout only for a\n     phrase that MUST pull focus or a real gotcha/warning that explains nuance:\n       > [!NOTE] Terraform is declarative — you describe desired state; the tool reconciles.\n       > [!WARNING] Never commit the state file to git.\n  4. WHY: one line connecting the increment to the goal.\n\nHard rules:\n  • Lead with working code. Code blocks are first-class, not optional.\n  • One increment per turn; then a gate: \"Apply this, then say **next** (or paste the error).\"\n  • ADMONITIONS ARE RARE AND EARNED. At most ONE callout per ~4–5 paragraphs (or\n    per increment). A callout must be either (a) a definition/claim that the\n    learner must absolutely not miss, or (b) a warning/gotcha that prevents a\n    subtle mistake or explains nuance. Definitions, ordinary tips, and\n    shortcuts stay in normal prose — do NOT elevate them to callouts. If a\n    turn would need two callouts, fold one into prose instead.\n  • When the goal artifact is complete, summarize what was built and how to extend it.\n\nAfter the prose, append ONE trailing ```gate fenced block (JSON, no prose after it) with { \"nextUnit\": \"<title>\", \"options\": [\"next\",\"paste the error\"], \"progress\": \"Step 2 / 8\" }. The app parses it; it is never shown to the learner.\n\nTeach to the goal at the stated level; stay within scope.\nWhen the learner can do the goal, say so.\n\nYou have access to tools that let you inspect the learner's context (checklist progress, artifacts, summaries).\nUse them when they clearly help the lesson — e.g. to check where the learner is before giving feedback.\nPrefer continuing the lesson over invoking tools. Use them judiciously, not every turn.\nYou can also act on the learner's behalf: branch a deeper dive, adjust the learning brief, draft a lab or quiz skeleton, toggle a checklist step.\nActions that create or change artifacts require the learner's approval — you will be asked and should wait.\nDo not re-request an action the learner has declined. Respect their choice and continue the lesson.\nWhen it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn."
+        },
+        {
+            "role": "user",
+            "content": "Hi I want to learn how generators work"
+        }
+    ],
+    "tools": [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_checklist",
+                "description": "Read the checklist for a lab, returning completion status.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "labId": {
+                            "type": "string",
+                            "description": "The lab ID to read the checklist for."
+                        }
+                    },
+                    "required": [
+                        "labId"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_artifacts",
+                "description": "List all labs and quizzes associated with a chat.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "chatId": {
+                            "type": "string",
+                            "description": "The chat ID to list artifacts for."
+                        }
+                    },
+                    "required": [
+                        "chatId"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_artifact",
+                "description": "Read the full content of a lab or quiz by its ID and kind.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "lab",
+                                "quiz"
+                            ],
+                            "description": "The artifact kind."
+                        },
+                        "id": {
+                            "type": "string",
+                            "description": "The artifact ID."
+                        }
+                    },
+                    "required": [
+                        "kind",
+                        "id"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "summarize_progress",
+                "description": "Summarize progress across all labs and quizzes for a chat (no LLM call).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "chatId": {
+                            "type": "string",
+                            "description": "The chat ID to summarize progress for."
+                        }
+                    },
+                    "required": [
+                        "chatId"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "branch_chat",
+                "description": "Branch a child chat off the current chat at the last message.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional title for the new branch."
+                        }
+                    },
+                    "required": [
+                        "topic"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "save_brief",
+                "description": "Save or update the learning brief on the root chat.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {
+                            "type": "string",
+                            "description": "Learning goal (required)."
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Learner context / role."
+                        },
+                        "level": {
+                            "type": "string",
+                            "description": "Prior knowledge level (novice|some|regular|practitioner)."
+                        },
+                        "mode": {
+                            "type": "string",
+                            "description": "Teaching mode (socratic|explainer|build)."
+                        },
+                        "scope": {
+                            "type": "string",
+                            "description": "Depth / time budget."
+                        }
+                    },
+                    "required": [
+                        "goal",
+                        "context",
+                        "level",
+                        "mode",
+                        "scope"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "draft_lab_skeleton",
+                "description": "Generate a deterministic lab skeleton markdown scaffold (no LLM call).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Lab topic (optional, seeds the scaffold)."
+                        }
+                    },
+                    "required": [
+                        "topic"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "draft_quiz_outline",
+                "description": "Generate a deterministic quiz outline (no LLM call).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Quiz topic (optional)."
+                        },
+                        "questionCount": {
+                            "type": "number",
+                            "description": "Number of questions (default 5)."
+                        }
+                    },
+                    "required": [
+                        "topic",
+                        "questionCount"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "toggle_checklist_item",
+                "description": "Toggle a checklist item between checked and unchecked.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "labId": {
+                            "type": "string",
+                            "description": "The lab ID."
+                        },
+                        "itemId": {
+                            "type": "string",
+                            "description": "The checklist item ID."
+                        }
+                    },
+                    "required": [
+                        "labId",
+                        "itemId"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_quiz",
+                "description": "Generate a mixed quiz (MCQ, flashcard, short-answer) from the chat context and persist it.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional topic hint for the quiz."
+                        },
+                        "questionCount": {
+                            "type": "number",
+                            "description": "Approximate number of questions (optional)."
+                        }
+                    },
+                    "required": [
+                        "topic",
+                        "questionCount"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_lab",
+                "description": "Generate a hands-on lab with steps and a checklist from the chat context and persist it.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional topic hint for the lab."
+                        }
+                    },
+                    "required": [
+                        "topic"
+                    ]
+                }
+            }
+        }
+    ],
+    "tool_choice": "auto",
+    "stream": true,
+    "stream_options": {
+        "include_usage": true
+    }
+}

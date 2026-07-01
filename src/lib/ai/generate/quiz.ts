@@ -216,14 +216,45 @@ export function parseGradedAnswer(raw: string): GradedAnswer {
 }
 
 /**
+ * Fisher–Yates shuffle of MCQ options. Tracks positions (not values) so that
+ * duplicate option strings are handled correctly. Returns the shuffled options
+ * and the new `answerIndex` pointing at the original correct answer.
+ */
+export function shuffleMcqOptions(
+	options: string[],
+	answerIndex: number,
+	rng: () => number = Math.random
+): { options: string[]; answerIndex: number } {
+	const order = options.map((_, i) => i);
+	for (let i = order.length - 1; i > 0; i--) {
+		const j = Math.floor(rng() * (i + 1));
+		[order[i], order[j]] = [order[j], order[i]];
+	}
+	return {
+		options: order.map((i) => options[i]),
+		answerIndex: order.indexOf(answerIndex)
+	};
+}
+
+/**
  * Flatten a {@link GeneratedQuiz} into the storage shape `quizQuestionsRepo.add`
- * consumes: `{ type, prompt, payload }` per question, in order. The model emits
- * no ids or ordering; both `id` (uuid) and `ord` are assigned at persist time by
+ * consumes: `{ type, prompt, payload }` per question, in order. MCQ options are
+ * shuffled so the correct answer isn't always first. The model emits no ids or
+ * ordering; both `id` (uuid) and `ord` are assigned at persist time by
  * `quizQuestionsRepo.add` (which computes `ord` from the current count), so this
  * helper must not assign them.
  */
 export function toQuizQuestions(
 	gen: GeneratedQuiz
 ): Array<{ type: QuizQuestionType; prompt: string; payload: QuizPayload }> {
-	return gen.questions.map((q) => ({ type: q.type, prompt: q.prompt, payload: q.payload }));
+	return gen.questions.map((q) => {
+		if (q.type === 'mcq') {
+			return {
+				type: q.type,
+				prompt: q.prompt,
+				payload: shuffleMcqOptions(q.payload.options, q.payload.answerIndex)
+			};
+		}
+		return { type: q.type, prompt: q.prompt, payload: q.payload };
+	});
 }

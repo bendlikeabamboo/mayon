@@ -21,7 +21,11 @@ export interface AgentTurnDeps {
 	signal: AbortSignal;
 	reasoning: ReasoningMode;
 	updateStreamBuffer: (next: string) => void;
-	appendAssistantText: (content: string, opts?: { model?: string }) => Promise<Message>;
+	updateReasoningBuffer: (next: string) => void;
+	appendAssistantText: (
+		content: string,
+		opts?: { model?: string; reasoning?: string }
+	) => Promise<Message>;
 	appendAssistantToolCall: (p: {
 		toolCallId: string;
 		toolName: string;
@@ -68,6 +72,7 @@ async function consumeStream(
 	signal: AbortSignal,
 	onTextDelta: (text: string) => void,
 	onToolCall: (tc: CollectedToolCall) => void,
+	onReasoningDelta: (text: string) => void,
 	onTrace?: (e: TraceEvent) => void
 ): Promise<{ finishReason: string }> {
 	let finishReason = '';
@@ -83,6 +88,8 @@ async function consumeStream(
 				toolName: p.toolName as string,
 				args: p.input ?? p.args
 			});
+		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
+			onReasoningDelta(p.text);
 		} else if (p.type === 'finish') {
 			finishReason = p.finishReason as string;
 		} else if (p.type === 'error') {
@@ -158,6 +165,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 	async function inner(toolsEnabled: boolean): Promise<{ aborted: boolean }> {
 		const turnBudget = { subCalls: 0, maxSubCalls: 1 };
 		let buf = '';
+		let reasoningBuf = '';
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
 			if (deps.signal.aborted) {
@@ -178,7 +186,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			const messages = toCoreMessages(ctx);
 
 			const system = sysParts.join('\n\n');
-			const pOpts = providerOptionsForReasoning(deps.config.kind, deps.reasoning);
+			const pOpts = providerOptionsForReasoning(deps.config.kind, deps.reasoning, deps.config.name);
 			const toolNames = toolsEnabled ? getToolDefinitions().map((d) => d.id) : [];
 			deps.onTrace?.({
 				kind: 'request',
@@ -230,6 +238,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						deps.updateStreamBuffer(buf);
 					},
 					(tc) => toolCalls.push(tc),
+					(t) => {
+						reasoningBuf += t;
+						deps.updateReasoningBuffer(reasoningBuf);
+					},
 					deps.onTrace
 				));
 			} catch (err) {
@@ -259,7 +271,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 			if (finishReason !== 'tool-calls' || toolCalls.length === 0) {
 				const finalBuf = await runCriticPhase(buf, deps, ctx);
-				const msg = await deps.appendAssistantText(finalBuf);
+				const msg = await deps.appendAssistantText(finalBuf, {
+					reasoning: reasoningBuf || undefined
+				});
 				deps.onTrace?.({
 					kind: 'persisted',
 					messageId: msg.id,
@@ -430,7 +444,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		const ctx = await deps.reassembleContext();
 		const finalBuf = buf + '\n\n_(…tool budget reached; continuing from here.)_';
 		await runCriticPhase(finalBuf, deps, ctx);
-		const msg = await deps.appendAssistantText(finalBuf);
+		const msg = await deps.appendAssistantText(finalBuf, {
+			reasoning: reasoningBuf || undefined
+		});
 		deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: finalBuf, empty: !finalBuf });
 		return { aborted: false };
 	}

@@ -1,0 +1,1282 @@
+[{"role":"user","content":[{"type":"text","text":"I want to learn about quadratic equations"}]},{"role":"assistant","content":[{"type":"text","text":"# 📘 Quadratic Equations — Guided Curriculum\n\n## Advance Organizer\n\nQuadratic equations are one of the most powerful tools in algebra. They describe everything from the arc of a thrown ball to the shape of satellite dishes, and they appear in virtually every field of science and engineering. In this curriculum, you'll move from *understanding what a quadratic equation is* to *solving them fluently* and finally to *applying them to real-world problems*. By the end, you'll be able to look at a quadratic, know how to solve it, and understand what its graph tells you.\n\n---\n\n## Table of Contents\n\n| Unit | Title | Outcome |\n|------|-------|---------|\n| **1** | The Anatomy of a Quadratic Equation | By Unit 1 you will be able to **identify** a quadratic equation in any form, name its key coefficients, and describe the shape of its graph (a parabola). |\n| **2** | Solving Quadratic Equations | By Unit 2 you will be able to **solve** any quadratic equation using factoring, completing the square, or the quadratic formula — and choose the best method for each problem. |\n| **3** | Graphs, Vertices, and Real-World Applications | By Unit 3 you will be able to **graph** a parabola from its equation, find its vertex and intercepts, and model real-world scenarios (like projectile motion or area optimization). |\n\n---\n\n> **Prerequisites:** Comfort with linear equations, basic factoring, and squaring binomials (e.g., (x + 2)² = x² + 4x + 4). If anything feels rusty, let me know as we go.\n\nReady for Unit 1: The Anatomy of a Quadratic Equation? Reply **continue**, **go deeper**, or type your own direction.\n\n```gate\n{ \"nextUnit\": \"The Anatomy of a Quadratic Equation\", \"options\": [\"continue\", \"go deeper\"], \"progress\": \"Orientation / 3 units\" }\n```"}]},{"role":"user","content":[{"type":"text","text":"continue"}]},{"role":"assistant","content":[{"type":"text","text":"# Unit 1 — The Anatomy of a Quadratic Equation\n\n## 1. Concept: What Makes an Equation \"Quadratic\"?\n\nA **quadratic equation** is any equation that can be written in the following **standard form**:\n\n> **ax² + bx + c = 0**\n\nwhere **x** is the variable (the unknown we're solving for), and **a**, **b**, and **c** are **coefficients** — real numbers that you know (or are given). There are three critical restrictions:\n\n- **a ≠ 0**. If *a* were zero, the x² term would vanish and you'd have a *linear* equation (bx + c = 0), not a quadratic. The presence of the **x²** term — the variable raised to the power of 2 — is what makes the equation quadratic. The word *quadratic* comes from the Latin *quadratus*, meaning \"square.\"\n- **b** and **c** can be *any* real number, including **zero**. For instance, x² − 9 = 0 is perfectly quadratic (a = 1, b = 0, c = −9).\n\n### The Key Coefficients\n\nEach coefficient controls a specific geometric feature of the graph:\n\n| Coefficient | Name | What it controls |\n|---|---|---|\n| **a** | Leading coefficient | Determines the **direction** the parabola opens (up if a > 0, down if a < 0) and how **wide or narrow** it is. Larger |a| → narrower parabola. |\n| **b** | Linear coefficient | Shifts the **axis of symmetry** left or right. |\n| **c** | Constant term | The **y-intercept** — where the parabola crosses the y-axis (at x = 0, y = c). |\n\n### The Parabola: The Graph of a Quadratic\n\nEvery quadratic equation **ax² + bx + c = 0** corresponds to a curve called a **parabola**. When you graph the function **y = ax² + bx + c** (the left-hand side, not set to zero), you get one of two shapes:\n\n- If **a > 0**: a U-shaped curve opening **upward** ↗↗. The lowest point is called the **vertex** — this is the minimum value of the function.\n- If **a < 0**: an inverted U opening **downward** ↙↙. The highest point is the vertex — the maximum value.\n\nThe parabola is always **symmetric** about a vertical line called the **axis of symmetry**, which passes straight through the vertex. We'll find the exact x-coordinate of that line in Unit 3 (it's x = −b/2a).\n\n### Other Forms\n\nQuadratics don't *always* appear in standard form. Two other common forms are:\n\n1. **Factored form:** a(x − p)(x − q) = 0 — This directly reveals the **roots** (solutions) x = p and x = q. We'll explore this in Unit 2.\n2. **Vertex form:** a(x − h)² + k = 0 — This directly reveals the **vertex** at (h, k). We'll build this form in Unit 2 when we learn completing the square.\n\nBeing able to **recognize** a quadratic regardless of its form, and to **convert** between forms, is a core skill.\n\n---\n\n## 2. Worked Examples\n\n### Example A — Identifying the coefficients\n\nConsider: **2x² − 5x + 3 = 0**\n\n| Coefficient | Value | Note |\n|---|---|---|\n| a = | **2** | Leading coefficient — positive, so parabola opens **upward** |\n| b = | **−5** | Linear coefficient (be careful with the sign!) |\n| c = | **3** | Constant term — y-intercept is (0, 3) |\n\nThe solutions (roots) of this equation are the x-values where the parabola crosses the x-axis. We'll learn how to find them in Unit 2 (spoiler: they're x = 1 and x = 3/2).\n\n### Example B — Spotting the hidden quadratic\n\nIs **3x = x² + 4** a quadratic equation? **Yes**, but it's not in standard form yet. Let's rearrange:\n\n1. Move everything to one side: **0 = x² − 3x + 4**\n2. Rewrite: **x² − 3x + 4 = 0**\n\nNow we can read off a = 1, b = −3, c = 4. Since **a = 1 > 0**, the parabola opens upward. And since c = 4, the y-intercept is (0, 4).\n\n### Example C — A \"degenerate\" case\n\n**5x² − 20 = 0** is quadratic with a = 5, b = 0, c = −20. The b = 0 means the x-term is absent — this is a special but common case (a \"pure\" quadratic). We'll see it's very easy to solve in Unit 2.\n\n---\n\n## 3. Connection to the Goal\n\nUnderstanding **what** a quadratic is and how to identify its coefficients is the essential first step. In Unit 2, we'll learn **how to solve** these equations — finding the x-values that make ax² + bx + c equal to zero — which is the core of everything from predicting where a ball lands to optimizing areas in engineering.\n\n---\n\nReady for Unit 2: Solving Quadratic Equations? Reply **continue**, **go deeper**, or type your own direction.\n\n```gate\n{ \"nextUnit\": \"Solving Quadratic Equations\", \"options\": [\"continue\", \"go deeper\"], \"progress\": \"Unit 1 / 3\" }\n```"}]},{"role":"user","content":[{"type":"text","text":"Summarize the current discussion.\n\nThe user would like to expound on this excerpt:\n\"\"\"\nroots \n\"\"\"\n\nWith the following instructions:\nexpound more on roots\n\nAdding no extra formats whenever possible."}]},{"role":"assistant","content":[{"type":"tool-call","toolCallId":"call_232488c0a44d49e7a2fe80af","toolName":"summarize_progress","input":{}}]},{"role":"tool","content":[{"type":"tool-result","toolCallId":"call_232488c0a44d49e7a2fe80af","toolName":"summarize_progress","output":"0 labs, 0 quizzes"}]}].
+Error message: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "system"
+          ],
+          "path": [
+            "role"
+          ],
+          "message": "Invalid input: expected \"system\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "content"
+          ],
+          "message": "Invalid input: expected string, received array"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "user"
+          ],
+          "path": [
+            "role"
+          ],
+          "message": "Invalid input: expected \"user\""
+        },
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": [],
+                "message": "Invalid input: expected string, received array"
+              }
+            ],
+            [
+              {
+                "code": "invalid_union",
+                "errors": [
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "text"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"text\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "text"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "image"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"image\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "expected": "record",
+                            "code": "invalid_type",
+                            "path": [],
+                            "message": "Invalid input: expected record, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "image"
+                      ],
+                      "message": "Invalid input"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "file"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"file\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "object",
+                            "path": [],
+                            "message": "Invalid input: expected object, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "expected": "record",
+                            "code": "invalid_type",
+                            "path": [],
+                            "message": "Invalid input: expected record, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "data"
+                      ],
+                      "message": "Invalid input"
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "mediaType"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ]
+                ],
+                "path": [
+                  0
+                ],
+                "message": "Invalid input"
+              }
+            ]
+          ],
+          "path": [
+            "content"
+          ],
+          "message": "Invalid input"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "assistant"
+          ],
+          "path": [
+            "role"
+          ],
+          "message": "Invalid input: expected \"assistant\""
+        },
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": [],
+                "message": "Invalid input: expected string, received array"
+              }
+            ],
+            [
+              {
+                "code": "invalid_union",
+                "errors": [
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "text"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"text\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "text"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "custom"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"custom\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "kind"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "file"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"file\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "object",
+                            "path": [],
+                            "message": "Invalid input: expected object, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "expected": "record",
+                            "code": "invalid_type",
+                            "path": [],
+                            "message": "Invalid input: expected record, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "data"
+                      ],
+                      "message": "Invalid input"
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "mediaType"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "reasoning"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"reasoning\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "text"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "reasoning-file"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"reasoning-file\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "object",
+                            "path": [],
+                            "message": "Invalid input: expected object, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "data"
+                      ],
+                      "message": "Invalid input"
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "mediaType"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "tool-call"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"tool-call\""
+                    },
+                    {
+                      "code": "invalid_type",
+                      "expected": "nonoptional",
+                      "path": [
+                        "input"
+                      ],
+                      "message": "Invalid input: expected nonoptional, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_type",
+                      "expected": "object",
+                      "path": [
+                        "output"
+                      ],
+                      "message": "Invalid input: expected object, received string"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "tool-approval-request"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"tool-approval-request\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "approvalId"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ]
+                ],
+                "path": [
+                  0
+                ],
+                "message": "Invalid input"
+              }
+            ]
+          ],
+          "path": [
+            "content"
+          ],
+          "message": "Invalid input"
+        }
+      ],
+      [
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "code": "invalid_type",
+                "expected": "object",
+                "path": [
+                  "output"
+                ],
+                "message": "Invalid input: expected object, received string"
+              }
+            ],
+            [
+              {
+                "code": "invalid_value",
+                "values": [
+                  "tool-approval-response"
+                ],
+                "path": [
+                  "type"
+                ],
+                "message": "Invalid input: expected \"tool-approval-response\""
+              },
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": [
+                  "approvalId"
+                ],
+                "message": "Invalid input: expected string, received undefined"
+              },
+              {
+                "expected": "boolean",
+                "code": "invalid_type",
+                "path": [
+                  "approved"
+                ],
+                "message": "Invalid input: expected boolean, received undefined"
+              }
+            ]
+          ],
+          "path": [
+            "content",
+            0
+          ],
+          "message": "Invalid input"
+        }
+      ]
+    ],
+    "path": [
+      6
+    ],
+    "message": "Invalid input"
+  }
+]
+    at _TypeValidationError.wrap (index.js:359:12)
+    at safeValidateTypes (index.js:2706:35)
+    at async standardizePrompt (index.js:2452:28)
+    at async index.js:9014:29Caused by: ZodError: [
+  {
+    "code": "invalid_union",
+    "errors": [
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "system"
+          ],
+          "path": [
+            "role"
+          ],
+          "message": "Invalid input: expected \"system\""
+        },
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [
+            "content"
+          ],
+          "message": "Invalid input: expected string, received array"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "user"
+          ],
+          "path": [
+            "role"
+          ],
+          "message": "Invalid input: expected \"user\""
+        },
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": [],
+                "message": "Invalid input: expected string, received array"
+              }
+            ],
+            [
+              {
+                "code": "invalid_union",
+                "errors": [
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "text"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"text\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "text"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "image"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"image\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "expected": "record",
+                            "code": "invalid_type",
+                            "path": [],
+                            "message": "Invalid input: expected record, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "image"
+                      ],
+                      "message": "Invalid input"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "file"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"file\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "object",
+                            "path": [],
+                            "message": "Invalid input: expected object, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "expected": "record",
+                            "code": "invalid_type",
+                            "path": [],
+                            "message": "Invalid input: expected record, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "data"
+                      ],
+                      "message": "Invalid input"
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "mediaType"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ]
+                ],
+                "path": [
+                  0
+                ],
+                "message": "Invalid input"
+              }
+            ]
+          ],
+          "path": [
+            "content"
+          ],
+          "message": "Invalid input"
+        }
+      ],
+      [
+        {
+          "code": "invalid_value",
+          "values": [
+            "assistant"
+          ],
+          "path": [
+            "role"
+          ],
+          "message": "Invalid input: expected \"assistant\""
+        },
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": [],
+                "message": "Invalid input: expected string, received array"
+              }
+            ],
+            [
+              {
+                "code": "invalid_union",
+                "errors": [
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "text"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"text\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "text"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "custom"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"custom\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "kind"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "file"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"file\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "object",
+                            "path": [],
+                            "message": "Invalid input: expected object, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "expected": "record",
+                            "code": "invalid_type",
+                            "path": [],
+                            "message": "Invalid input: expected record, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "data"
+                      ],
+                      "message": "Invalid input"
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "mediaType"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "reasoning"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"reasoning\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "text"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "reasoning-file"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"reasoning-file\""
+                    },
+                    {
+                      "code": "invalid_union",
+                      "errors": [
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "object",
+                            "path": [],
+                            "message": "Invalid input: expected object, received undefined"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_union",
+                            "errors": [
+                              [
+                                {
+                                  "expected": "string",
+                                  "code": "invalid_type",
+                                  "path": [],
+                                  "message": "Invalid input: expected string, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "Uint8Array",
+                                  "path": [],
+                                  "message": "Invalid input: expected Uint8Array, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "invalid_type",
+                                  "expected": "ArrayBuffer",
+                                  "path": [],
+                                  "message": "Invalid input: expected ArrayBuffer, received undefined"
+                                }
+                              ],
+                              [
+                                {
+                                  "code": "custom",
+                                  "path": [],
+                                  "message": "Must be a Buffer"
+                                }
+                              ]
+                            ],
+                            "path": [],
+                            "message": "Invalid input"
+                          }
+                        ],
+                        [
+                          {
+                            "code": "invalid_type",
+                            "expected": "URL",
+                            "path": [],
+                            "message": "Invalid input: expected URL, received undefined"
+                          }
+                        ]
+                      ],
+                      "path": [
+                        "data"
+                      ],
+                      "message": "Invalid input"
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "mediaType"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "tool-call"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"tool-call\""
+                    },
+                    {
+                      "code": "invalid_type",
+                      "expected": "nonoptional",
+                      "path": [
+                        "input"
+                      ],
+                      "message": "Invalid input: expected nonoptional, received undefined"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_type",
+                      "expected": "object",
+                      "path": [
+                        "output"
+                      ],
+                      "message": "Invalid input: expected object, received string"
+                    }
+                  ],
+                  [
+                    {
+                      "code": "invalid_value",
+                      "values": [
+                        "tool-approval-request"
+                      ],
+                      "path": [
+                        "type"
+                      ],
+                      "message": "Invalid input: expected \"tool-approval-request\""
+                    },
+                    {
+                      "expected": "string",
+                      "code": "invalid_type",
+                      "path": [
+                        "approvalId"
+                      ],
+                      "message": "Invalid input: expected string, received undefined"
+                    }
+                  ]
+                ],
+                "path": [
+                  0
+                ],
+                "message": "Invalid input"
+              }
+            ]
+          ],
+          "path": [
+            "content"
+          ],
+          "message": "Invalid input"
+        }
+      ],
+      [
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "code": "invalid_type",
+                "expected": "object",
+                "path": [
+                  "output"
+                ],
+                "message": "Invalid input: expected object, received string"
+              }
+            ],
+            [
+              {
+                "code": "invalid_value",
+                "values": [
+                  "tool-approval-response"
+                ],
+                "path": [
+                  "type"
+                ],
+                "message": "Invalid input: expected \"tool-approval-response\""
+              },
+              {
+                "expected": "string",
+                "code": "invalid_type",
+                "path": [
+                  "approvalId"
+                ],
+                "message": "Invalid input: expected string, received undefined"
+              },
+              {
+                "expected": "boolean",
+                "code": "invalid_type",
+                "path": [
+                  "approved"
+                ],
+                "message": "Invalid input: expected boolean, received undefined"
+              }
+            ]
+          ],
+          "path": [
+            "content",
+            0
+          ],
+          "message": "Invalid input"
+        }
+      ]
+    ],
+    "path": [
+      6
+    ],
+    "message": "Invalid input"
+  }
+]

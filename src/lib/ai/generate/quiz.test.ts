@@ -6,6 +6,7 @@ import {
 	QuizParseError,
 	parseGeneratedQuiz,
 	parseGradedAnswer,
+	shuffleMcqOptions,
 	toQuizQuestions,
 	type GeneratedQuiz
 } from './quiz';
@@ -173,15 +174,15 @@ describe('parseGradedAnswer', () => {
 });
 
 describe('toQuizQuestions', () => {
-	it('preserves order and returns {type, prompt, payload} per question', () => {
+	it('shuffles MCQ options and keeps the correct answer tracked', () => {
 		const out = toQuizQuestions(mixedQuiz);
 		expect(out).toHaveLength(3);
 		expect(out.map((q) => q.type)).toEqual(['mcq', 'flashcard', 'short']);
 		expect(out.map((q) => q.prompt)).toEqual(['What is 2 + 2?', 'Define ATP', 'Explain osmosis.']);
-		expect(out[0].payload).toEqual({
-			options: ['3', '4', '5', '6'],
-			answerIndex: 1
-		});
+		const mcq = out[0].payload as { options: string[]; answerIndex: number };
+		expect(mcq.options).toHaveLength(4);
+		expect(new Set(mcq.options)).toEqual(new Set(['3', '4', '5', '6']));
+		expect(mcq.options[mcq.answerIndex]).toBe('4');
 		expect(out[1].payload).toEqual({ front: 'ATP', back: 'Adenosine triphosphate' });
 		expect(out[2].payload).toEqual({
 			rubric: 'Mentions water moving across a semi-permeable membrane.'
@@ -192,5 +193,45 @@ describe('toQuizQuestions', () => {
 		const out = toQuizQuestions({ questions: [validMcq] });
 		expect(out[0]).not.toHaveProperty('id');
 		expect(out[0]).not.toHaveProperty('ord');
+	});
+});
+
+function makeSequentialRng(values: number[]) {
+	let i = 0;
+	return () => values[i++]!;
+}
+
+describe('shuffleMcqOptions', () => {
+	it('produces an exact permutation with a deterministic rng', () => {
+		const options = ['A', 'B', 'C', 'D'];
+		const result = shuffleMcqOptions(options, 1, makeSequentialRng([0.9, 0.5, 0.2]));
+		expect(result.options).toEqual(['C', 'A', 'B', 'D']);
+		expect(result.options[result.answerIndex]).toBe('B');
+	});
+
+	it('tracks the correct answer when answerIndex is 0', () => {
+		const options = ['X', 'Y', 'Z'];
+		const result = shuffleMcqOptions(options, 0, makeSequentialRng([0.9, 0.1]));
+		expect(result.options).toEqual(['Y', 'X', 'Z']);
+		expect(result.options[result.answerIndex]).toBe('X');
+	});
+
+	it('handles the 2-option edge case', () => {
+		const options = ['yes', 'no'];
+		const result = shuffleMcqOptions(options, 0, makeSequentialRng([0.9]));
+		expect(result.options).toEqual(['yes', 'no']);
+		expect(result.options[result.answerIndex]).toBe('yes');
+	});
+
+	it('does not mutate the input array', () => {
+		const options = ['A', 'B', 'C'];
+		const copy = [...options];
+		shuffleMcqOptions(options, 0, Math.random);
+		expect(options).toEqual(copy);
+	});
+
+	it('identity when options length is 1 (boundary)', () => {
+		const result = shuffleMcqOptions(['only'], 0, Math.random);
+		expect(result).toEqual({ options: ['only'], answerIndex: 0 });
 	});
 });

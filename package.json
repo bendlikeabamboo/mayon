@@ -35,7 +35,7 @@
 	"dependencies": {
 		"@ai-sdk/anthropic": "^4.0.1",
 		"@ai-sdk/google": "^4.0.2",
-		"@ai-sdk/openai": "^4.0.2",
+		"@ai-sdk/openai-compatible": "^3.0.2",
 		"@fontsource/newsreader": "^5.2.10",
 		"@sqlite.org/sqlite-wasm": "3.53.0-build1",
 		"@sveltejs/kit": "^2.68.0",
@@ -53,6 +53,7 @@
 		"katex": "0.16.11",
 		"mermaid": "^11.16.0",
 		"ollama-ai-provider-v2": "^3.6.0",
+		"panzoom": "^9.4.4",
 		"rehype-highlight": "^7.0.2",
 		"rehype-katex": "^7.0.1",
 		"rehype-sanitize": "^6.0.0",

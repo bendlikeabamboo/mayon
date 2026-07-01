@@ -124,8 +124,9 @@ describe('quizzesStore.generate', () => {
 		expect(questions).toHaveLength(3);
 		expect(questions.map((q) => q.type)).toEqual(['mcq', 'flashcard', 'short']);
 		const mcq = repos.quizQuestions.parsePayload<McqPayload>(questions[0].payload);
-		expect(mcq.options).toEqual(['3', '4', '5']);
-		expect(mcq.answerIndex).toBe(1);
+		expect(mcq.options).toHaveLength(3);
+		expect(new Set(mcq.options)).toEqual(new Set(['3', '4', '5']));
+		expect(mcq.options[mcq.answerIndex]).toBe('4');
 		const fc = repos.quizQuestions.parsePayload<FlashcardPayload>(questions[1].payload);
 		expect(fc.front).toBe('France');
 		expect(fc.back).toBe('Paris');
@@ -187,7 +188,10 @@ describe('quizzesStore.startAttempt + answerMcq', () => {
 		expect(quizzesStore.history).toHaveLength(1);
 
 		const mcqId = quizzesStore.questions[0].id;
-		await quizzesStore.answerMcq(mcqId, 1);
+		const mcqPayload = repos.quizQuestions.parsePayload<McqPayload>(
+			quizzesStore.questions[0].payload
+		);
+		await quizzesStore.answerMcq(mcqId, mcqPayload.answerIndex);
 		expect(quizzesStore.answers[mcqId]).toBeDefined();
 		expect(quizzesStore.answers[mcqId].isCorrect).toBe(1);
 	});
@@ -201,7 +205,11 @@ describe('quizzesStore.startAttempt + answerMcq', () => {
 		quizzesStore.questions = await repos.quizQuestions.listByQuiz(id!);
 		await quizzesStore.startAttempt();
 
-		await quizzesStore.answerMcq(quizzesStore.questions[0].id, 0);
+		const mcqPayload = repos.quizQuestions.parsePayload<McqPayload>(
+			quizzesStore.questions[0].payload
+		);
+		const wrongIndex = mcqPayload.answerIndex === 0 ? 1 : 0;
+		await quizzesStore.answerMcq(quizzesStore.questions[0].id, wrongIndex);
 
 		expect(quizzesStore.answers[quizzesStore.questions[0].id].isCorrect).toBe(0);
 		expect(quizzesStore.score).toBe(0);
@@ -326,8 +334,11 @@ describe('quizzesStore live score + finalisation', () => {
 		quizzesStore.questions = await repos.quizQuestions.listByQuiz(id!);
 		await quizzesStore.startAttempt();
 		const mcqId = quizzesStore.questions[0].id;
+		const mcqPayload = repos.quizQuestions.parsePayload<McqPayload>(
+			quizzesStore.questions[0].payload
+		);
 
-		await quizzesStore.answerMcq(mcqId, 1);
+		await quizzesStore.answerMcq(mcqId, mcqPayload.answerIndex);
 
 		expect(quizzesStore.score).toBe(1);
 		expect(quizzesStore.allAnswered).toBe(true);
@@ -346,7 +357,10 @@ describe('quizzesStore live score + finalisation', () => {
 		quizzesStore.current = await repos.quizzes.getById(id!);
 		quizzesStore.questions = await repos.quizQuestions.listByQuiz(id!);
 		await quizzesStore.startAttempt();
-		await quizzesStore.answerMcq(quizzesStore.questions[0].id, 1);
+		const mcqPayload = repos.quizQuestions.parsePayload<McqPayload>(
+			quizzesStore.questions[0].payload
+		);
+		await quizzesStore.answerMcq(quizzesStore.questions[0].id, mcqPayload.answerIndex);
 		expect(quizzesStore.isComplete).toBe(true);
 		const beforeId = quizzesStore.activeAttempt!.id;
 

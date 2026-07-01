@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { modelMessageSchema } from 'ai';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
 import { createMemoryDriver } from '$lib/db/driver/memory';
 import { repos } from '$lib/db';
@@ -264,6 +265,163 @@ describe('assembleContext', () => {
 			}
 		});
 
+		it('emits a text-typed output when the tool result is a plain summary string', () => {
+			const ctx: ChatMessage[] = [
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'tc',
+					toolName: 'read_checklist',
+					toolArgs: {}
+				},
+				{
+					role: 'tool',
+					content: '3/5 steps done',
+					toolCallId: 'tc',
+					toolName: 'read_checklist',
+					toolResult: '3/5 steps done'
+				}
+			];
+			const core = toCoreMessages(ctx);
+			expect(core[1].role).toBe('tool');
+			const part = (core[1].content as Array<{ type: string; output?: unknown }>)[0];
+			expect(part.output).toEqual({ type: 'text', value: '3/5 steps done' });
+		});
+
+		it('emits a json-typed output when the tool result is a JSON object (structured detail)', () => {
+			// Mirrors what appendToolResult persists: content = summary string,
+			// metadata = JSON-stringified detail object. assembleContext promotes
+			// metadata into toolResult, so toCoreMessages sees the JSON string.
+			const detail = { labs: [], quizCount: 0 };
+			const ctx: ChatMessage[] = [
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'tc',
+					toolName: 'summarize_progress',
+					toolArgs: {}
+				},
+				{
+					role: 'tool',
+					content: '0 labs, 0 quizzes',
+					toolCallId: 'tc',
+					toolName: 'summarize_progress',
+					toolResult: JSON.stringify(detail)
+				}
+			];
+			const core = toCoreMessages(ctx);
+			expect(core[1].role).toBe('tool');
+			const part = (core[1].content as Array<{ type: string; output?: unknown }>)[0];
+			expect(part.output).toEqual({ type: 'json', value: detail });
+		});
+
+		it('produces a ModelMessage[] that passes the ai SDK schema (regression for the crash)', () => {
+			// Reconstructed from a real crash: a summarize_progress tool call whose
+			// persisted result fed a bare string into tool-result `output`, which
+			// ai v7's standardizePrompt rejected at path [6].content[0].output
+			// before the provider was ever called. This guards the whole assembly
+			// against ever emitting shape the SDK refuses.
+			const detail = { labs: [], quizCount: 0 };
+			const ctx: ChatMessage[] = [
+				{ role: 'user', content: 'I want to learn about quadratic equations' },
+				{ role: 'assistant', content: 'Quadratic equations curriculum...' },
+				{ role: 'user', content: 'continue' },
+				{
+					role: 'assistant',
+					content: 'Unit 1 — The Anatomy of a Quadratic Equation...'
+				},
+				{ role: 'user', content: 'expound more on roots' },
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'call_232488c0a44d49e7a2fe80af',
+					toolName: 'summarize_progress',
+					toolArgs: {}
+				},
+				{
+					role: 'tool',
+					content: '0 labs, 0 quizzes',
+					toolCallId: 'call_232488c0a44d49e7a2fe80af',
+					toolName: 'summarize_progress',
+					toolResult: JSON.stringify(detail)
+				}
+			];
+			const core = toCoreMessages(ctx);
+			const parsed = modelMessageSchema.array().safeParse(core);
+			if (!parsed.success) {
+				expect.fail(
+					`toCoreMessages produced an invalid ModelMessage[]: ${JSON.stringify(parsed.error.issues[0])}`
+				);
+			}
+			expect(parsed.success).toBe(true);
+		});
+
+		it('validates every message shape produced by toCoreMessages against the SDK schema', () => {
+			// Exhaustive shape sweep: exercises every branch of toCoreMessages
+			// (user text, assistant text, assistant tool-call, tool json, tool
+			// text) and asserts the combined array parses cleanly.
+			const ctx: ChatMessage[] = [
+				{ role: 'user', content: 'hello' },
+				{ role: 'assistant', content: 'working on it' },
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'tc_a',
+					toolName: 'list_artifacts',
+					toolArgs: { chatId: 'c1' }
+				},
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'tc_b',
+					toolName: 'read_checklist',
+					toolArgs: {}
+				},
+				{
+					role: 'tool',
+					content: '3/5 steps done',
+					toolCallId: 'tc_a',
+					toolName: 'list_artifacts',
+					toolResult: JSON.stringify({ items: [], count: 0 })
+				},
+				{
+					role: 'tool',
+					content: 'done',
+					toolCallId: 'tc_b',
+					toolName: 'read_checklist',
+					toolResult: 'done'
+				}
+			];
+			const core = toCoreMessages(ctx);
+			const parsed = modelMessageSchema.array().safeParse(core);
+			if (!parsed.success) {
+				expect.fail(
+					`toCoreMessages produced an invalid ModelMessage[]: ${JSON.stringify(parsed.error.issues[0])}`
+				);
+			}
+			expect(parsed.success).toBe(true);
+		});
+
+		it('documents the contract: the SDK schema rejects the old bare-string tool output', () => {
+			// The pre-fix shape (a raw string under `output`) is what used to
+			// crash the run. If the SDK ever loosens this, the regression above
+			// still guards the json/text contract; this test pins the contract.
+			const bad = [
+				{
+					role: 'tool',
+					content: [
+						{
+							type: 'tool-result',
+							toolCallId: 'tc',
+							toolName: 'summarize_progress',
+							output: '0 labs, 0 quizzes'
+						}
+					]
+				}
+			];
+			expect(modelMessageSchema.array().safeParse(bad).success).toBe(false);
+		});
+
 		it('converts assistant tool-call + tool-result pair into parts', () => {
 			const ctx: ChatMessage[] = [
 				{
@@ -309,7 +467,7 @@ describe('assembleContext', () => {
 				expect(parts).toHaveLength(1);
 				expect(parts[0].type).toBe('tool-result');
 				expect(parts[0].toolCallId).toBe('tc_1');
-				expect(parts[0].output).toBe('3/5 steps done');
+				expect(parts[0].output).toEqual({ type: 'text', value: '3/5 steps done' });
 			}
 		});
 
@@ -348,6 +506,97 @@ describe('assembleContext', () => {
 			const core = toCoreMessages(ctx);
 			expect(core).toHaveLength(1);
 			expect(core[0].role).toBe('user');
+		});
+
+		it('merges consecutive assistant tool-call messages into a single message', () => {
+			const ctx: ChatMessage[] = [
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'call_aaa',
+					toolName: 'list_artifacts',
+					toolArgs: {}
+				},
+				{
+					role: 'assistant',
+					content: '',
+					toolCallId: 'call_bbb',
+					toolName: 'summarize_progress',
+					toolArgs: {}
+				},
+				{
+					role: 'tool',
+					content: 'result_a',
+					toolCallId: 'call_aaa',
+					toolName: 'list_artifacts',
+					toolResult: 'result_a'
+				},
+				{
+					role: 'tool',
+					content: 'result_b',
+					toolCallId: 'call_bbb',
+					toolName: 'summarize_progress',
+					toolResult: 'result_b'
+				}
+			];
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(2);
+
+			expect(core[0].role).toBe('assistant');
+			if (core[0].role === 'assistant') {
+				const parts = core[0].content as Array<{
+					type: string;
+					toolCallId?: string;
+					toolName?: string;
+					input?: unknown;
+				}>;
+				expect(parts).toHaveLength(2);
+				expect(parts[0]).toEqual({
+					type: 'tool-call',
+					toolCallId: 'call_aaa',
+					toolName: 'list_artifacts',
+					input: {}
+				});
+				expect(parts[1]).toEqual({
+					type: 'tool-call',
+					toolCallId: 'call_bbb',
+					toolName: 'summarize_progress',
+					input: {}
+				});
+			}
+
+			expect(core[1].role).toBe('tool');
+			if (core[1].role === 'tool') {
+				const parts = core[1].content as Array<{
+					type: string;
+					toolCallId?: string;
+					toolName?: string;
+					output?: unknown;
+				}>;
+				expect(parts).toHaveLength(2);
+				expect(parts[0]).toEqual({
+					type: 'tool-result',
+					toolCallId: 'call_aaa',
+					toolName: 'list_artifacts',
+					output: { type: 'text', value: 'result_a' }
+				});
+				expect(parts[1]).toEqual({
+					type: 'tool-result',
+					toolCallId: 'call_bbb',
+					toolName: 'summarize_progress',
+					output: { type: 'text', value: 'result_b' }
+				});
+			}
+		});
+
+		it('does not merge non-consecutive same-role messages', () => {
+			const ctx: ChatMessage[] = [
+				{ role: 'assistant', content: 'first' },
+				{ role: 'user', content: 'middle' },
+				{ role: 'assistant', content: 'second' }
+			];
+			const core = toCoreMessages(ctx);
+			expect(core).toHaveLength(3);
 		});
 
 		it('null-brief chat produces no system note and byte-identical SDK input vs manual split', async () => {

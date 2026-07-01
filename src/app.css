@@ -32,6 +32,20 @@
 }
 
 @font-face {
+	font-family: 'Bpmf Huninn';
+	src:
+		url('/fonts/BpmfHuninn-Regular.woff2') format('woff2'),
+		url('/fonts/BpmfHuninn-Regular.ttf') format('truetype');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+	font-feature-settings:
+		'kern' 1,
+		'liga' 1,
+		'calt' 1;
+}
+
+@font-face {
 	font-family: 'Fira Sans';
 	src:
 		url('/fonts/FiraSans-Regular.woff2') format('woff2'),
@@ -103,12 +117,13 @@
 	--callout-info: oklch(0.55 0.12 250);
 	--callout-warn: oklch(0.68 0.15 70);
 	--callout-concept: oklch(0.55 0.16 300);
+	--text-thin: 0.5px;
 }
 
 .dark {
 	--background: oklch(24.776% 0.00003 271.152);
 	--highlight: oklch(0.85 0 0);
-	--foreground: oklch(0.985 0 0);
+	--foreground: oklch(89.143% 0.0001 271.152);
 	--card: oklch(0.205 0 0);
 	--card-foreground: oklch(0.985 0 0);
 	--popover: oklch(0.205 0 0);
@@ -136,6 +151,7 @@
 	--callout-info: oklch(0.7 0.13 250);
 	--callout-warn: oklch(0.78 0.15 75);
 	--callout-concept: oklch(0.72 0.15 305);
+	--text-thin: 0.4px;
 }
 
 @theme inline {
@@ -170,10 +186,11 @@
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--font-sans:
-		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-	--font-serif:
-		'Fira Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+		'Bpmf Huninn', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
 		sans-serif;
+	--font-serif:
+		'Bpmf Huninn', 'Fira Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+		Helvetica, Arial, sans-serif;
 }
 
 @layer base {
@@ -185,6 +202,13 @@
 		color: var(--foreground);
 		font-family: var(--font-sans);
 		-webkit-font-smoothing: antialiased;
+		paint-order: stroke fill;
+		-webkit-text-stroke: var(--text-thin) var(--background);
+	}
+	/* Full-weight text: cancels the body thinning (e.g. user-sent chat bubbles). */
+	.no-text-thin {
+		paint-order: normal;
+		-webkit-text-stroke: 0;
 	}
 	body::before {
 		content: '';
@@ -203,6 +227,15 @@
 	@media (prefers-contrast: more) {
 		body::before {
 			display: none;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.mayon-spinner {
+			animation: none !important;
+		}
+		.mayon-spinner::before,
+		.mayon-spinner::after {
+			animation: none !important;
 		}
 	}
 
@@ -242,14 +275,32 @@
 
 /* Persistent underline marking an excerpt that has been expounded into a
    branch. Applied via post-render DOM wrapping (Highlighter.svelte), not the
-   markdown sanitize pipeline. Subtle dotted underline + faint accent wash. */
+   markdown sanitize pipeline. Solid highlight underline, clickable. */
+@keyframes mayon-pulse-ring {
+	0% {
+		transform: scale(0.4);
+		opacity: 0.9;
+	}
+	70% {
+		transform: scale(1.4);
+		opacity: 0;
+	}
+	100% {
+		transform: scale(1.4);
+		opacity: 0;
+	}
+}
+@keyframes mayon-orbit-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
 .expound-mark {
 	text-decoration: underline;
-	text-decoration-style: dotted;
-	text-decoration-color: var(--primary);
+	text-decoration-style: solid;
+	text-decoration-color: var(--highlight);
 	text-decoration-thickness: 2px;
 	text-underline-offset: 3px;
-	background-color: color-mix(in oklch, var(--accent) 50%, transparent);
-	border-radius: 2px;
 	cursor: pointer;
 }

@@ -6,6 +6,7 @@
 	import { resolveSelectionOffsets } from '$lib/chat/highlight';
 	import { selectionOverlapsExisting, type ExpoundOptions } from '$lib/chat/expound';
 	import ContextMenu from './ContextMenu.svelte';
+	import ExpoundMarkPopover from './ExpoundMarkPopover.svelte';
 	import ExpoundPromptConstructor from './ExpoundPromptConstructor.svelte';
 
 	/**
@@ -51,6 +52,14 @@
 
 	// Existing excerpts for this source message (drives overlap + underlines).
 	let existingSpans = $state<BranchSource[]>([]);
+
+	let expoundPopover = $state<{
+		x: number;
+		y: number;
+		chatId: string;
+		chatTitle: string;
+		loading: boolean;
+	} | null>(null);
 
 	// Load spans whenever the message id changes.
 	$effect(() => {
@@ -107,6 +116,20 @@
 		pendingSel = sel;
 		constructorState = null;
 		menu = { x: e.clientX, y: e.clientY };
+	}
+
+	function onClick(e: MouseEvent) {
+		const target = (e.target as HTMLElement).closest('.expound-mark') as HTMLElement | null;
+		if (!target || !container?.contains(target)) return;
+		const chatId = target.getAttribute('data-branch-chat');
+		if (!chatId) return;
+		expoundPopover = { x: e.clientX, y: e.clientY, chatId, chatTitle: '', loading: true };
+		repos.chats.getById(chatId).then((chat) => {
+			if (expoundPopover?.chatId === chatId) {
+				expoundPopover.chatTitle = chat?.title ?? 'Untitled';
+				expoundPopover.loading = false;
+			}
+		});
 	}
 
 	function handleExpound() {
@@ -302,11 +325,14 @@
 	});
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	bind:this={container}
 	oncontextmenu={onContextMenu}
+	onclick={onClick}
 	role="region"
-	aria-label="Assistant reply — select text and right-click to expound"
+	aria-label="Mayon reply — select text and right-click to expound"
 	class="relative"
 >
 	{@render children()}
@@ -331,5 +357,18 @@
 		y={constructorState.y}
 		onSubmit={submitConstructor}
 		onCancel={cancelConstructor}
+	/>
+{/if}
+
+{#if expoundPopover}
+	<ExpoundMarkPopover
+		x={expoundPopover.x}
+		y={expoundPopover.y}
+		chatTitle={expoundPopover.chatTitle}
+		chatId={expoundPopover.chatId}
+		loading={expoundPopover.loading}
+		onClose={() => {
+			expoundPopover = null;
+		}}
 	/>
 {/if}

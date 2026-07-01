@@ -66,6 +66,7 @@ class ChatState {
 	messages = $state<Message[]>([]);
 	streaming = $state(false);
 	streamBuffer = $state('');
+	reasoningBuffer = $state('');
 	error = $state<FormattedProviderError | null>(null);
 	loading = $state(false);
 
@@ -108,6 +109,7 @@ class ChatState {
 		this.loading = true;
 		this.error = null;
 		this.streamBuffer = '';
+		this.reasoningBuffer = '';
 		this.streaming = false;
 		this.chatId = chatId;
 		try {
@@ -180,6 +182,7 @@ class ChatState {
 		// 2) Begin streaming.
 		this.streaming = true;
 		this.streamBuffer = '';
+		this.reasoningBuffer = '';
 		this.controller = new AbortController();
 
 		const builder = new TraceBuilder();
@@ -211,9 +214,11 @@ class ChatState {
 				signal: this.controller.signal,
 				reasoning,
 				updateStreamBuffer: (n) => (this.streamBuffer = n),
+				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {
 					const row = await repos.messages.append(chatId, 'assistant', content, {
-						model: opts?.model
+						model: opts?.model,
+						metadata: opts?.reasoning ? JSON.stringify({ reasoning: opts.reasoning }) : undefined
 					});
 					this.messages = [...this.messages, row];
 					await repos.chats.touch(chatId);
@@ -298,6 +303,7 @@ class ChatState {
 			this.pendingApprovals = [];
 			this.streaming = false;
 			this.streamBuffer = '';
+			this.reasoningBuffer = '';
 			this.controller = null;
 			diagnosticsStore.endTurn();
 			try {

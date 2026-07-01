@@ -77,7 +77,7 @@ export async function assembleContext(targetChatId: string): Promise<ChatMessage
 		if (m.toolCallId) msg.toolCallId = m.toolCallId;
 		if (m.toolName) msg.toolName = m.toolName;
 		if (m.role === 'tool') {
-			msg.toolResult = m.content;
+			msg.toolResult = m.metadata ?? m.content;
 		}
 		out.push(msg);
 	}
@@ -159,8 +159,33 @@ async function excerptSystemNoteFor(targetChatId: string): Promise<ChatMessage |
  *
  * Constructed directly — no `convertToCoreMessages` (removed in ai@5+).
  */
+/**
+ * ai v7's `ModelMessage` schema requires a tool-result part's `output` to be a
+ * discriminated object (`{ type: 'text', value }` / `{ type: 'json', value }`).
+ * A bare string is rejected by `standardizePrompt` before any provider call.
+ *
+ * Tools persist their structured result in `messages.metadata` (a JSON string);
+ * when present it is parsed back into a `json`-typed output. A plain summary
+ * string (no structured detail) becomes a `text`-typed output.
+ */
+type ToolResultOutput =
+	| { type: 'text'; value: string }
+	| { type: 'json'; value: Record<string, unknown> };
+
+function toolResultOutput(stored: string): ToolResultOutput {
+	try {
+		const v = JSON.parse(stored);
+		if (v && typeof v === 'object' && !Array.isArray(v)) {
+			return { type: 'json', value: v as Record<string, unknown> };
+		}
+	} catch {
+		/* not a JSON object — emit the raw summary as text below */
+	}
+	return { type: 'text', value: stored };
+}
+
 export function toCoreMessages(ctx: ChatMessage[]): ModelMessage[] {
-	return ctx
+	const raw = ctx
 		.filter((m) => m.role !== 'system')
 		.map((m): ModelMessage => {
 			if (m.role === 'tool') {
@@ -171,9 +196,7 @@ export function toCoreMessages(ctx: ChatMessage[]): ModelMessage[] {
 							type: 'tool-result' as const,
 							toolCallId: m.toolCallId ?? '',
 							toolName: m.toolName ?? '',
-							output: m.toolResult ?? m.content,
-							input: undefined as unknown,
-							dynamic: true as const
+							output: toolResultOutput(m.toolResult ?? m.content)
 						}
 					]
 				} as unknown as ModelMessage;
@@ -203,4 +226,20 @@ export function toCoreMessages(ctx: ChatMessage[]): ModelMessage[] {
 				content: [{ type: 'text', text: m.content }]
 			} as unknown as ModelMessage;
 		});
+
+	const merged: ModelMessage[] = [];
+	for (const msg of raw) {
+		const last = merged[merged.length - 1];
+		if (
+			last &&
+			last.role === msg.role &&
+			Array.isArray(last.content) &&
+			Array.isArray(msg.content)
+		) {
+			(last.content as unknown[]).push(...(msg.content as unknown[]));
+		} else {
+			merged.push(msg);
+		}
+	}
+	return merged;
 }

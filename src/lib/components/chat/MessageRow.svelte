@@ -2,6 +2,7 @@
 	import { GitBranch } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from './Markdown.svelte';
+	import Reasoning from './Reasoning.svelte';
 	import Highlighter from './Highlighter.svelte';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
@@ -27,7 +28,7 @@
 
 	const roleLabel: Record<Message['role'], string> = {
 		user: 'You',
-		assistant: 'Assistant',
+		assistant: 'Mayon',
 		system: 'System',
 		tool: 'Tool'
 	};
@@ -39,7 +40,10 @@
 		tool: 'border border-border bg-muted/50 text-muted-foreground'
 	};
 
-	function parseMetadata(raw: string | null): { artifact?: { kind: string; id: string } } | null {
+	function parseMetadata(raw: string | null): {
+		artifact?: { kind: string; id: string };
+		reasoning?: string;
+	} | null {
 		if (!raw) return null;
 		try {
 			return JSON.parse(raw);
@@ -57,6 +61,9 @@
 
 	let parsedMeta = $derived(parseMetadata(message.metadata));
 	let artifact = $derived(parsedMeta?.artifact);
+	let reasoning = $derived(
+		message.role === 'assistant' && !message.toolCallId ? parsedMeta?.reasoning : undefined
+	);
 </script>
 
 {#if message.role === 'assistant' && message.toolCallId != null && message.content === ''}
@@ -72,11 +79,8 @@
 		</span>
 	</div>
 {:else}
-	<div class="flex flex-col gap-1">
+	<div class="flex flex-col gap-1 {message.role === 'user' ? 'items-end' : 'items-start'}">
 		<div class="flex items-center gap-2 px-1">
-			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-				{roleLabel[message.role]}
-			</span>
 			{#if message.role === 'assistant'}
 				<Button
 					variant="ghost"
@@ -88,8 +92,18 @@
 					<GitBranch class="size-3" /> Branch
 				</Button>
 			{/if}
+			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+				{roleLabel[message.role]}
+			</span>
 		</div>
-		<div class="rounded-lg px-4 py-2.5 {bubbleClass[message.role]}">
+		{#if message.role === 'assistant' && reasoning}
+			<Reasoning {reasoning} />
+		{/if}
+		<div
+			class="{message.role === 'user' ? 'max-w-[75%]' : ''} {message.role === 'user'
+				? 'no-text-thin'
+				: ''} rounded-lg px-4 py-2.5 {bubbleClass[message.role]}"
+		>
 			{#if message.role === 'assistant'}
 				{@const visible = stripGateFence(message.content)}
 				<Highlighter
