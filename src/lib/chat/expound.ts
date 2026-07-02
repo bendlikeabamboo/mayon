@@ -69,6 +69,22 @@ export function spansOverlap(a: CharSpan, b: CharSpan): boolean {
 	return a.startChar < b.endChar && b.startChar < a.endChar;
 }
 
+export function serializeAddFormats(toggles: ExpoundToggle[]): string {
+	return JSON.stringify(toggles);
+}
+
+export function parseAddFormats(raw: string | null | undefined): ExpoundToggle[] {
+	if (!raw) return [];
+	try {
+		const arr = JSON.parse(raw);
+		if (!Array.isArray(arr)) return [];
+		const valid = new Set<ExpoundToggle>(['diagrams', 'tables', 'code']);
+		return arr.filter((v: unknown) => typeof v === 'string' && valid.has(v as ExpoundToggle));
+	} catch {
+		return [];
+	}
+}
+
 /**
  * True when `sel` overlaps any entry in `existing`. Used to enforce one branch
  * per excerpt and to prevent a word belonging to two expounds.

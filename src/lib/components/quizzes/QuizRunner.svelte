@@ -19,7 +19,7 @@
 </script>
 
 <svelte:head>
-	<title>Quiz — Mayon</title>
+	<title>Quiz #{quizzesStore.getQuizNumber(quizzesStore.current?.id ?? '')} — Mayon</title>
 </svelte:head>
 
 {#if quizzesStore.current}
@@ -29,6 +29,9 @@
 				<ArrowLeft class="size-4" /> Back to chat
 			</Button>
 			<div class="flex items-center gap-1">
+				<span class="text-sm font-medium">
+					Quiz #{quizzesStore.getQuizNumber(quizzesStore.current.id)}
+				</span>
 				<Button
 					variant="ghost"
 					size="icon"
@@ -104,6 +107,37 @@
 					</li>
 				{/each}
 			</ol>
+		{:else if !quizzesStore.showResults}
+			<p class="text-sm text-muted-foreground">
+				All questions answered · Score {quizzesStore.score}/{quizzesStore.total}
+			</p>
+			<ol class="space-y-4">
+				{#each quizzesStore.questions as q, ord (q.id)}
+					{@const ans = quizzesStore.answers[q.id]}
+					<li class="space-y-2 rounded-lg border border-border bg-card p-4">
+						<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+							Question {ord + 1}
+						</p>
+						{#if q.type === 'mcq'}
+							<McqQuestion {q} answer={ans} readonly={true} onAnswer={() => {}} />
+						{:else if q.type === 'flashcard'}
+							<FlashcardQuestion {q} answer={ans} readonly={true} onAnswer={() => {}} />
+						{:else}
+							<ShortQuestion
+								{q}
+								answer={ans}
+								grading={quizzesStore.gradingQuestionId === q.id}
+								readonly={true}
+								onAnswer={() => {}}
+								onRegrade={() => {}}
+							/>
+						{/if}
+					</li>
+				{/each}
+			</ol>
+			<div class="flex justify-center">
+				<Button onclick={() => quizzesStore.viewResults()}>Take me to the results</Button>
+			</div>
 		{:else}
 			<QuizSummary />
 			<div class="flex items-center justify-between gap-2">

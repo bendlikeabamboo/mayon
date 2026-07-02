@@ -18,9 +18,13 @@ import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
 import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highlight';
-import { selectionOverlapsExisting } from '$lib/chat/expound';
+import {
+	selectionOverlapsExisting,
+	serializeAddFormats,
+	type ExpoundOptions
+} from '$lib/chat/expound';
 import type { LearningBrief } from '$lib/chat/brief';
-import { parseBrief } from '$lib/chat/brief';
+import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import { getActiveSdkProvider } from '$lib/ai/client';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
@@ -75,7 +79,7 @@ class ChatState {
 	 * `createExpoundBranch`; drained by the route's `loadAll` after navigation so
 	 * the first user message + stream lands on the freshly-opened branch.
 	 */
-	pendingPrompt = $state<string | null>(null);
+	pendingPrompt = $state<{ text: string; hidden?: boolean } | null>(null);
 
 	private controller: AbortController | null = null;
 	/** Separate abort for the parallel first-message title request. */
@@ -158,13 +162,14 @@ class ChatState {
 	}
 
 	/** Send a user prompt and stream the assistant reply, persisting on finish. */
-	async send(text: string, opts?: { reasoning?: ReasoningMode }): Promise<void> {
+	async send(text: string, opts?: { reasoning?: ReasoningMode; hidden?: boolean }): Promise<void> {
 		const prompt = text.trim();
 		if (!prompt || this.streaming || !this.chatId) return;
 
 		this.error = null;
 		const chatId = this.chatId;
 		const reasoning: ReasoningMode = opts?.reasoning ?? 'auto';
+		const hidden = opts?.hidden ?? false;
 		const chat = this.chat;
 		// A root that still holds the placeholder title and has no prior turns:
 		// this is the first real message → fire the parallel title request.
@@ -174,8 +179,17 @@ class ChatState {
 			chat.title === DEFAULT_TITLE &&
 			!this.messages.some((m) => m.role === 'user' || m.role === 'assistant');
 
+		const rootBriefRaw =
+			chat?.parentId === null
+				? chat.brief
+				: chat
+					? await repos.chats.getById(chat.rootId).then((r) => r?.brief ?? null)
+					: null;
+
 		// 1) Persist the user row immediately and reflect it in the UI.
-		const userRow = await repos.messages.append(chatId, 'user', prompt);
+		const userRow = await repos.messages.append(chatId, 'user', prompt, {
+			metadata: hidden ? JSON.stringify({ hidden: true }) : undefined
+		});
 		this.messages = [...this.messages, userRow];
 		await repos.chats.touch(chatId);
 
@@ -213,6 +227,7 @@ class ChatState {
 				rootChatId: chat?.rootId ?? chatId,
 				signal: this.controller.signal,
 				reasoning,
+				disabledToolIds: disabledToolsForBrief(rootBriefRaw),
 				updateStreamBuffer: (n) => (this.streamBuffer = n),
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {
@@ -552,7 +567,8 @@ class ChatState {
 		messageId: string,
 		rawContent: string,
 		selection: SelectionInput,
-		prompt: string
+		prompt: string,
+		expoundOpts?: ExpoundOptions
 	): Promise<string> {
 		const excerpt = selection.excerpt;
 		const resolved =
@@ -569,9 +585,15 @@ class ChatState {
 			messageId,
 			resolved.startChar,
 			resolved.endChar,
-			excerpt
+			excerpt,
+			expoundOpts
+				? {
+						customInstructions: expoundOpts.customInstructions || undefined,
+						addFormats: serializeAddFormats(expoundOpts.toggles)
+					}
+				: undefined
 		);
-		this.pendingPrompt = prompt;
+		this.pendingPrompt = { text: prompt, hidden: true };
 		return childId;
 	}
 
@@ -590,7 +612,8 @@ class ChatState {
 		messageId: string,
 		startChar: number,
 		endChar: number,
-		excerpt: string
+		excerpt: string,
+		extra?: { customInstructions?: string; addFormats?: string }
 	): Promise<string> {
 		if (!this.chat) throw new Error('Cannot branch: no active chat');
 		const child = await repos.chats.createChild({
@@ -603,7 +626,8 @@ class ChatState {
 			startChar,
 			endChar,
 			excerpt,
-			branchChatId: child.id
+			branchChatId: child.id,
+			...extra
 		});
 		return child.id;
 	}

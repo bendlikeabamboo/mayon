@@ -6,8 +6,8 @@ import type { ProviderConfig } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
-import { buildExpoundPrompt } from '$lib/chat/expound';
-import { parseBrief } from '$lib/chat/brief';
+import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '$lib/chat/expound';
+import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import type { LearningBrief } from '$lib/chat/brief';
 
 vi.mock('$lib/ai/client', () => ({
@@ -196,7 +196,7 @@ describe('chatStore.createExpoundBranch', () => {
 		expect(src!.startChar).toBe(start);
 		expect(src!.endChar).toBe(end);
 
-		expect(chatStore.pendingPrompt).toBe(prompt);
+		expect(chatStore.pendingPrompt?.text).toBe(prompt);
 
 		const ctx = await assembleContext(childId);
 		expect(ctx[0].role).toBe('system');
@@ -227,7 +227,7 @@ describe('chatStore.createExpoundBranch', () => {
 
 		const afterCount = (await repos.branchSources.listBySourceMessage(assistant.id)).length;
 		expect(afterCount).toBe(beforeCount);
-		expect(chatStore.pendingPrompt).toBe('first prompt');
+		expect(chatStore.pendingPrompt?.text).toBe('first prompt');
 	});
 
 	it('throws ExcerptOverlapError for a partially overlapping selection', async () => {
@@ -336,11 +336,11 @@ describe('chatStore.createExpoundBranch', () => {
 		mockStreamReply(['Hello ', 'world']);
 
 		await chatStore.load(childId);
-		expect(chatStore.pendingPrompt).toBe(prompt);
+		expect(chatStore.pendingPrompt?.text).toBe(prompt);
 		const drained = chatStore.pendingPrompt;
 		if (drained) {
 			chatStore.clearPendingPrompt();
-			await chatStore.send(drained);
+			await chatStore.send(drained.text, { hidden: drained.hidden });
 		}
 
 		expect(mockedStreamText).toHaveBeenCalledTimes(1);
@@ -923,5 +923,125 @@ describe('chatStore reasoning buffer', () => {
 		const assistant = msgs.find((m) => m.role === 'assistant');
 		expect(assistant).toBeDefined();
 		expect(assistant!.metadata).toBeNull();
+	});
+});
+
+describe('disabledToolsForBrief', () => {
+	it('returns save_brief when root has a brief', () => {
+		const brief: LearningBrief = { goal: 'learn X' };
+		expect(disabledToolsForBrief(JSON.stringify(brief))).toEqual(['save_brief']);
+	});
+
+	it('returns empty array for null brief', () => {
+		expect(disabledToolsForBrief(null)).toEqual([]);
+	});
+
+	it('returns empty array for empty string', () => {
+		expect(disabledToolsForBrief('')).toEqual([]);
+	});
+
+	it('returns empty array for invalid JSON', () => {
+		expect(disabledToolsForBrief('not json')).toEqual([]);
+	});
+});
+
+describe('hidden message metadata', () => {
+	it('send with hidden=true stores metadata with hidden:true', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['reply']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hidden prompt', { hidden: true });
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const userMsg = msgs.find((m) => m.role === 'user');
+		expect(userMsg).toBeDefined();
+		expect(userMsg!.metadata).not.toBeNull();
+		const parsed = JSON.parse(userMsg!.metadata!);
+		expect(parsed.hidden).toBe(true);
+	});
+
+	it('send without hidden stores no metadata on user row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['reply']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('visible prompt');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const userMsg = msgs.find((m) => m.role === 'user');
+		expect(userMsg).toBeDefined();
+		expect(userMsg!.metadata).toBeNull();
+	});
+});
+
+describe('serializeAddFormats / parseAddFormats round-trip', () => {
+	it('round-trips toggles through JSON', () => {
+		const toggles = ['diagrams', 'tables'] as const;
+		const json = serializeAddFormats([...toggles]);
+		expect(parseAddFormats(json)).toEqual([...toggles]);
+	});
+
+	it('parseAddFormats handles null gracefully', () => {
+		expect(parseAddFormats(null)).toEqual([]);
+	});
+
+	it('parseAddFormats handles invalid JSON gracefully', () => {
+		expect(parseAddFormats('not json')).toEqual([]);
+	});
+
+	it('parseAddFormats filters out unknown values', () => {
+		expect(parseAddFormats('["diagrams","unknown"]')).toEqual(['diagrams']);
+	});
+});
+
+describe('branch_sources extra columns', () => {
+	it('create with customInstructions and addFormats persists and reads back', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		const userMsg = await repos.messages.append(root.id, 'assistant', 'content');
+		const _bs = await repos.branchSources.create({
+			sourceMessageId: userMsg.id,
+			startChar: 0,
+			endChar: 5,
+			excerpt: 'conte',
+			branchChatId: root.id,
+			customInstructions: 'explain in detail',
+			addFormats: '["diagrams","tables"]'
+		});
+
+		const fetched = await repos.branchSources.getByBranchChat(root.id);
+		expect(fetched).not.toBeNull();
+		expect(fetched!.customInstructions).toBe('explain in detail');
+		expect(fetched!.addFormats).toBe('["diagrams","tables"]');
+	});
+
+	it('create without extra columns persists nulls', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		const userMsg = await repos.messages.append(root.id, 'assistant', 'content');
+		await repos.branchSources.create({
+			sourceMessageId: userMsg.id,
+			startChar: 0,
+			endChar: 5,
+			excerpt: 'conte',
+			branchChatId: root.id
+		});
+
+		const fetched = await repos.branchSources.getByBranchChat(root.id);
+		expect(fetched).not.toBeNull();
+		expect(fetched!.customInstructions).toBeNull();
+		expect(fetched!.addFormats).toBeNull();
+	});
+});
+
+describe('buildCapabilitiesPreamble save_brief wording', () => {
+	it('mentions save_brief first-turn-only constraint', async () => {
+		const { buildCapabilitiesPreamble } = await import('$lib/chat/brief');
+		const preamble = buildCapabilitiesPreamble();
+		expect(preamble).toContain('save_brief');
+		expect(preamble).toContain('first turn');
+		expect(preamble).toContain('no learning goal');
+		expect(preamble).toContain('Never rewrite');
 	});
 });

@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import type { LanguageModel } from 'ai';
 import type { ChatMessage } from '../types';
-import { LEVEL_OPTIONS, MODE_OPTIONS, type LearningBrief } from '$lib/chat/brief';
+import {
+	LEVEL_OPTIONS,
+	MODE_OPTIONS,
+	PERSONA_IDS,
+	type LearningBrief,
+	type PersonaId
+} from '$lib/chat/brief';
 import { SCOPE_STRATEGY_IDS } from '$lib/chat/strategies';
 import { extractFencedJson } from './generate-gate';
 import { generateObjectViaTool, extractObjectErrorRaw } from './object-tool';
@@ -24,19 +30,20 @@ export const DEFAULT_BRIEF_PROMPT = [
 	'- "mode": string (optional) — one of: socratic, explainer, build.',
 	'- "scopeStrategy": string (optional) — one of: guided-curriculum, deep-dive, quick-orientation, reference-manual, guided-inquiry, devils-advocate, case-based, workshop, tutorial, pair-programming. Pick a strategy consistent with the inferred mode.',
 	'- "scope": string (optional) — depth / time budget.',
+	'- "persona": string (optional) — one of: professor-ada, coach-rex, dr-kim, kit, sage. Suggest the teacher voice that best matches the learner\'s tone: playful/informal \u2192 kit; formal, precise \u2192 professor-ada; high-energy, wants to be pushed \u2192 coach-rex; terse, advanced \u2192 sage. If the tone is neutral or unclear, OMIT this field (defaults to dr-kim).',
 	'',
 	'Example:',
 	'',
 	`${FENCE}json`,
-	'{"goal": "be able to write a basic Makefile", "context": "software engineer", "level": "some", "mode": "explainer", "scopeStrategy": "guided-curriculum", "scope": "30 min"}',
+	'{"goal": "be able to write a basic Makefile", "context": "software engineer", "level": "some", "mode": "explainer", "scopeStrategy": "guided-curriculum", "scope": "30 min", "persona": "kit"}',
 	FENCE,
 	'',
-	`Output ONE ${FENCE}json block. Do not include any fields other than goal, context, level, mode, scopeStrategy, scope.`
+	`Output ONE ${FENCE}json block. Do not include any fields other than goal, context, level, mode, scopeStrategy, scope, persona.`
 ].join('\n');
 
 export type GeneratedBrief = Pick<
 	LearningBrief,
-	'goal' | 'context' | 'level' | 'mode' | 'scopeStrategy' | 'scope'
+	'goal' | 'context' | 'level' | 'mode' | 'scopeStrategy' | 'scope' | 'persona'
 >;
 
 export const GeneratedBriefSchema: z.ZodType<GeneratedBrief> = z
@@ -46,7 +53,8 @@ export const GeneratedBriefSchema: z.ZodType<GeneratedBrief> = z
 		level: z.enum(LEVEL_OPTIONS).optional(),
 		mode: z.enum(MODE_OPTIONS).optional(),
 		scopeStrategy: z.enum(SCOPE_STRATEGY_IDS).optional(),
-		scope: z.string().optional()
+		scope: z.string().optional(),
+		persona: z.enum(PERSONA_IDS as [PersonaId, ...PersonaId[]]).optional()
 	})
 	.strict();
 

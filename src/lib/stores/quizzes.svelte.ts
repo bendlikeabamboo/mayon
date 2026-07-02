@@ -47,6 +47,8 @@ function isAbortError(err: unknown): boolean {
 
 class QuizzesState {
 	list = $state<Quiz[]>([]);
+	/** Record of quiz id → sequence number (oldest = 1). Updated on loadList. */
+	quizNumbers = $state<Record<string, number>>({});
 	current = $state<Quiz | null>(null);
 	questions = $state<QuizQuestion[]>([]);
 	activeAttempt = $state<QuizAttempt | null>(null);
@@ -58,6 +60,8 @@ class QuizzesState {
 	error = $state<FormattedProviderError | null>(null);
 	/** True while reviewing a past attempt (read-only answers; no re-answer). */
 	reviewing = $state(false);
+	/** When true, the QuizSummary is shown (user must click "Take me to the results"). */
+	showResults = $state(false);
 
 	private controller: AbortController | null = null;
 
@@ -93,6 +97,12 @@ class QuizzesState {
 		this.loading = true;
 		try {
 			this.list = await repos.quizzes.listAll();
+			const total = this.list.length;
+			const record: Record<string, number> = {};
+			for (let i = 0; i < total; i++) {
+				record[this.list[i].id] = total - i;
+			}
+			this.quizNumbers = record;
 		} finally {
 			this.loading = false;
 		}
@@ -114,6 +124,7 @@ class QuizzesState {
 				return;
 			}
 			this.reviewing = false;
+			this.showResults = false;
 			this.questions = await repos.quizQuestions.listByQuiz(id);
 			this.history = await repos.quizAttempts.listByQuiz(id);
 			const inProgress = this.history.find((a) => a.finishedAt == null);
@@ -188,6 +199,12 @@ class QuizzesState {
 				});
 			}
 			this.list = [quiz, ...this.list];
+			const total = this.list.length;
+			const record: Record<string, number> = {};
+			for (let i = 0; i < total; i++) {
+				record[this.list[i].id] = total - i;
+			}
+			this.quizNumbers = record;
 			return quiz.id;
 		} catch (err) {
 			if (isAbortError(err)) return null;
@@ -230,6 +247,7 @@ class QuizzesState {
 		this.answers = {};
 		this.gradingQuestionId = null;
 		this.reviewing = false;
+		this.showResults = false;
 		this.history = [attempt, ...this.history];
 	}
 
@@ -246,6 +264,7 @@ class QuizzesState {
 		for (const r of rows) map[r.questionId] = r;
 		this.answers = map;
 		this.reviewing = true;
+		this.showResults = true;
 	}
 
 	/** Auto-score an MCQ pick against its `answerIndex` and persist it. */
@@ -324,6 +343,16 @@ class QuizzesState {
 	/** Start a fresh attempt (clears answers) — the "retake" action. */
 	async retake(): Promise<void> {
 		await this.startAttempt();
+	}
+
+	/** Show the results summary after the user opts in. */
+	viewResults(): void {
+		this.showResults = true;
+	}
+
+	/** Get the sequence number for a quiz (oldest = 1). Returns 0 if unknown. */
+	getQuizNumber(id: string): number {
+		return this.quizNumbers[id] ?? 0;
 	}
 
 	/** Record + auto-score an answer (MCQ / flashcard) in one step. */

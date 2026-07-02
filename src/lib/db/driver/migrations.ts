@@ -48,6 +48,14 @@ const migrations: MigrationMeta[] = [
 		],
 		folderMillis: 1782790610817,
 		hash: '80d8f7980037295483bace262e043dd4b6186b1b95aaf014551b4bd66b42ea8a'
+	},
+	{
+		sql: [
+			'ALTER TABLE `branch_sources` ADD `custom_instructions` text;',
+			'ALTER TABLE `branch_sources` ADD `add_formats` text;'
+		],
+		folderMillis: 1783008654126,
+		hash: 'e55cb1f5138b70eaf4fdad4922e8cf580af7c0975db22121ebaa0b1262b6e932'
 	}
 ];
 

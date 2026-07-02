@@ -3,7 +3,9 @@
 	import { renderMarkdown } from '$lib/markdown/render';
 	import { hasMermaid, renderMermaidBlock } from '$lib/markdown/mermaid';
 	import { isExternalLink } from '$lib/markdown/links';
+	import { enhanceFocusable } from '$lib/markdown/focusable';
 	import MermaidPreview from './MermaidPreview.svelte';
+	import FocusModal from './FocusModal.svelte';
 
 	/**
 	 * Renders sanitized markdown via `{@html}`. When the rendered HTML contains
@@ -18,6 +20,8 @@
 
 	let container = $state<HTMLDivElement | null>(null);
 	let previewSvg = $state<string | null>(null);
+	let focusNode = $state<HTMLElement | null>(null);
+	let focusTitle = $state('Table');
 
 	onMount(() => {
 		if (!needsMermaid || !container) return;
@@ -66,6 +70,10 @@
 				link.appendChild(icon);
 			}
 		}
+		enhanceFocusable(container, 'table', (n) => {
+			focusNode = n;
+			focusTitle = 'Table';
+		});
 	});
 </script>
 
@@ -84,6 +92,15 @@
 	/>
 {/if}
 
+<FocusModal
+	open={focusNode !== null}
+	title={focusTitle}
+	node={focusNode}
+	onClose={() => {
+		focusNode = null;
+	}}
+/>
+
 <style>
 	:global(.markdown-body) {
 		font-family: var(--font-serif);
@@ -91,6 +108,9 @@
 		font-weight: 400;
 		line-height: 1.65;
 		word-wrap: break-word;
+		overflow-wrap: anywhere;
+		overflow-x: hidden;
+		max-width: 100%;
 		-webkit-font-smoothing: auto;
 		-moz-osx-font-smoothing: auto;
 	}
@@ -148,6 +168,7 @@
 		padding: 0.75em 1em;
 		border-radius: 0.5rem;
 		overflow-x: auto;
+		max-width: 100%;
 		margin: 0.5em 0;
 	}
 	:global(.markdown-body pre code) {
@@ -158,7 +179,9 @@
 	}
 	:global(.markdown-body table) {
 		border-collapse: collapse;
-		width: 100%;
+		display: block;
+		width: max-content;
+		min-width: 100%;
 		margin: 0.5em 0;
 		font-size: 0.85em;
 	}
@@ -167,6 +190,10 @@
 		border: 1px solid var(--border);
 		padding: 0.4em 0.6em;
 		text-align: left;
+		max-width: 24rem;
+		overflow-wrap: break-word;
+		word-wrap: break-word;
+		hyphens: auto;
 	}
 	:global(.markdown-body hr) {
 		border: 0;
@@ -199,5 +226,38 @@
 	}
 	:global(.markdown-body .callout.callout-concept .callout-title) {
 		color: var(--callout-concept);
+	}
+	:global(.md-focusable) {
+		border-radius: 0.375rem;
+		margin: 0.5em 0;
+		border: 1px solid transparent;
+	}
+	:global(.md-focusable:hover) {
+		border-color: var(--border);
+	}
+	:global(.md-focusable-btn) {
+		position: sticky;
+		top: 0;
+		left: 0;
+		float: left;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		padding: 0;
+		margin: 0.25rem;
+		border-radius: 0.25rem;
+		border: 1px solid var(--border);
+		background: var(--card);
+		color: var(--muted-foreground);
+		opacity: 0.6;
+		cursor: pointer;
+		transition: opacity 0.15s;
+	}
+	:global(.md-focusable-btn:hover) {
+		opacity: 1;
+		color: var(--foreground);
 	}
 </style>

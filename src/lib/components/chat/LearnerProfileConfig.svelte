@@ -3,7 +3,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		DEFAULT_PROFILE,
-		DEFAULT_PERSONA,
 		LEVEL_LABELS,
 		LEVEL_OPTIONS,
 		MODE_LABELS,
@@ -31,8 +30,8 @@
 
 	$effect(() => {
 		if (scopeStrategy !== undefined && !modeStrategies.find((s) => s.id === scopeStrategy)) {
-		scopeStrategy = undefined;
-		persona = undefined;
+			scopeStrategy = undefined;
+			persona = undefined;
 		}
 	});
 

@@ -100,7 +100,8 @@
 			<Reasoning {reasoning} />
 		{/if}
 		<div
-			class="{message.role === 'user' ? 'max-w-[75%]' : ''} {message.role === 'user'
+			class="{message.role === 'user' ? 'max-w-[75%]' : 'min-w-0 max-w-full'} {message.role ===
+			'user'
 				? 'no-text-thin'
 				: ''} rounded-lg px-4 py-2.5 {bubbleClass[message.role]}"
 		>

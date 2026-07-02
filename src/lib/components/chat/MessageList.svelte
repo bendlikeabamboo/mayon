@@ -30,11 +30,25 @@
 		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
 	} = $props();
+
+	function isHidden(m: Message): boolean {
+		if (!m.metadata) return false;
+		try {
+			const parsed = JSON.parse(m.metadata);
+			return parsed.hidden === true;
+		} catch {
+			return false;
+		}
+	}
+
+	const visibleMessages = $derived(messages.filter((m) => !isHidden(m)));
 </script>
 
-<div class="flex flex-col gap-4">
-	{#each messages as message (message.id)}
-		<MessageRow {message} {onExpound} {onCopy} {onBranchWhole} />
+<div class="min-w-0 flex flex-col gap-4">
+	{#each visibleMessages as message (message.id)}
+		<div id="msg-{message.id}">
+			<MessageRow {message} {onExpound} {onCopy} {onBranchWhole} />
+		</div>
 	{/each}
 
 	{#if streaming}
@@ -63,7 +77,7 @@
 		</div>
 	{/if}
 
-	{#if messages.length === 0 && !streaming}
+	{#if visibleMessages.length === 0 && !streaming}
 		<p class="py-8 text-center text-sm text-muted-foreground">
 			No messages yet. Send a prompt below.
 		</p>

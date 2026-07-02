@@ -72,6 +72,8 @@ export const branchSources = sqliteTable('branch_sources', {
 	branchChatId: text('branch_chat_id')
 		.notNull()
 		.references(() => chats.id),
+	customInstructions: text('custom_instructions'),
+	addFormats: text('add_formats'),
 	createdAt: integer('created_at').notNull()
 });
 

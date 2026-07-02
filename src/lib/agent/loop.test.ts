@@ -1004,3 +1004,51 @@ describe('runAgentTurn', () => {
 function mockedAppendAssistantTextContent(deps: AgentTurnDeps): string {
 	return (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
 }
+
+describe('disabledToolIds filtering', () => {
+	it('excludes specified tool from SDK tools object and trace toolNames', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hi' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const traceCapture: Array<{ tools: string[] }> = [];
+		const deps = makeDeps({
+			config: makeConfig({ toolCapability: 'on' as const }),
+			disabledToolIds: ['branch_chat'],
+			onTrace: (e) => {
+				if (e.kind === 'request' && e.tools) {
+					traceCapture.push({ tools: e.tools as string[] });
+				}
+			}
+		});
+		await runAgentTurn(deps);
+
+		const enabledTools = mockedStreamText.mock.calls[0][0].tools as Record<string, unknown>;
+		expect(Object.keys(enabledTools!)).not.toContain('branch_chat');
+		expect(Object.keys(enabledTools!)).toContain('read_checklist');
+		expect(Object.keys(enabledTools!)).toContain('create_quiz');
+
+		expect(traceCapture).toHaveLength(1);
+		expect(traceCapture[0].tools).not.toContain('branch_chat');
+		expect(traceCapture[0].tools).toContain('read_checklist');
+	});
+
+	it('empty or undefined disabledToolIds has no effect', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hi' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({ config: makeConfig({ toolCapability: 'on' as const }) });
+		await runAgentTurn(deps);
+
+		const enabledTools = mockedStreamText.mock.calls[0][0].tools as Record<string, unknown>;
+		expect(Object.keys(enabledTools!)).toContain('branch_chat');
+		expect(Object.keys(enabledTools!)).toHaveLength(4);
+	});
+});

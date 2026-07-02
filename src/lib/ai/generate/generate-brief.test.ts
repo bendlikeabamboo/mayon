@@ -91,6 +91,15 @@ describe('GeneratedBriefSchema (strict)', () => {
 	it('rejects bad mode enum', () => {
 		expect(() => GeneratedBriefSchema.parse({ ...validBrief, mode: 'lecture' })).toThrow();
 	});
+
+	it('accepts a valid persona', () => {
+		const out = GeneratedBriefSchema.parse({ goal: 'learn rust', persona: 'kit' });
+		expect(out).toEqual({ goal: 'learn rust', persona: 'kit' });
+	});
+
+	it('rejects an unknown persona id', () => {
+		expect(() => GeneratedBriefSchema.parse({ ...validBrief, persona: 'nobody' })).toThrow();
+	});
 });
 
 describe('parseGeneratedBrief', () => {
@@ -117,6 +126,12 @@ describe('parseGeneratedBrief', () => {
 	it('throws BriefParseError on a schema mismatch (extra field)', () => {
 		const raw = '```json\n' + JSON.stringify({ ...validBrief, extra: 1 }) + '\n```';
 		expect(() => parseGeneratedBrief(raw)).toThrow(BriefParseError);
+	});
+
+	it('round-trips a fenced JSON block that includes persona', () => {
+		const briefWithPersona = { ...validBrief, persona: 'coach-rex' };
+		const raw = '```json\n' + JSON.stringify(briefWithPersona) + '\n```';
+		expect(parseGeneratedBrief(raw)).toEqual(briefWithPersona);
 	});
 });
 
@@ -222,5 +237,7 @@ describe('DEFAULT_BRIEF_PROMPT', () => {
 		expect(DEFAULT_BRIEF_PROMPT).toContain('level');
 		expect(DEFAULT_BRIEF_PROMPT).toContain('mode');
 		expect(DEFAULT_BRIEF_PROMPT).toContain('scopeStrategy');
+		expect(DEFAULT_BRIEF_PROMPT).toContain('persona');
+		expect(DEFAULT_BRIEF_PROMPT).toContain('dr-kim');
 	});
 });

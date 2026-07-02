@@ -141,6 +141,11 @@ export const chatsRepo = {
 	async deleteSubtree(rootId: string): Promise<void> {
 		const driver = getDriver();
 		await driver.batch([
+			// agent_traces has quiz_id → quizzes.id FK; delete before quizzes.
+			{
+				sql: 'DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				params: [rootId]
+			},
 			// Quizzes: answers → attempts → questions → quizzes.
 			{
 				sql: 'DELETE FROM quiz_answers WHERE question_id IN (SELECT qq.id FROM quiz_questions qq JOIN quizzes qz ON qz.id = qq.quiz_id JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
@@ -182,10 +187,6 @@ export const chatsRepo = {
 			},
 			{
 				sql: 'DELETE FROM messages WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
 				params: [rootId]
 			},
 			{

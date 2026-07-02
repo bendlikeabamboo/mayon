@@ -30,6 +30,7 @@
 		creating = true;
 		try {
 			const id = await chatStore.createAndNavigate({ brief });
+			chatStore.pendingPrompt = { text: brief.goal };
 			await goto(`/chat/${id}`);
 		} finally {
 			creating = false;

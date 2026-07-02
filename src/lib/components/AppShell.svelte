@@ -123,7 +123,7 @@
 			{/if}
 		</Button>
 
-		<main class="min-h-0 flex-1 overflow-auto">
+		<main class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
 			{@render children()}
 		</main>
 

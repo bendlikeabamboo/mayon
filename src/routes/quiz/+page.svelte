@@ -22,9 +22,6 @@
 
 	async function regroup(): Promise<void> {
 		const all = quizzesStore.list;
-		// Group quizzes by chatId preserving newest-first order. A plain record
-		// (not a reactive SvelteMap) is fine here — `groups` is the reactive
-		// $state we reassign at the end.
 		const byChat: Record<string, Quiz[]> = {};
 		const order: string[] = [];
 		for (const quiz of all) {
@@ -112,7 +109,7 @@
 							>
 								<a href="/quiz/{quiz.id}" class="min-w-0 flex-1">
 									<p class="truncate text-sm font-medium">
-										Quiz · {quiz.questionCount} questions
+										Quiz #{quizzesStore.getQuizNumber(quiz.id)} · {quiz.questionCount} questions
 									</p>
 									<p class="text-xs text-muted-foreground">{timeAgo(quiz.createdAt)}</p>
 								</a>

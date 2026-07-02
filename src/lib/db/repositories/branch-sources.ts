@@ -16,6 +16,8 @@ export const branchSourcesRepo = {
 		endChar: number;
 		excerpt: string;
 		branchChatId: string;
+		customInstructions?: string;
+		addFormats?: string;
 	}): Promise<BranchSource> {
 		return insert({
 			id: uuid(),
@@ -24,6 +26,8 @@ export const branchSourcesRepo = {
 			endChar: opts.endChar,
 			excerpt: opts.excerpt,
 			branchChatId: opts.branchChatId,
+			customInstructions: opts.customInstructions ?? null,
+			addFormats: opts.addFormats ?? null,
 			createdAt: now()
 		});
 	},

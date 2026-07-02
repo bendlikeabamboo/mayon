@@ -230,6 +230,10 @@ export function buildBriefSystemNote(brief: LearningBrief): ChatMessage {
 	return { role: 'system', content: lines.join('\n') };
 }
 
+export function disabledToolsForBrief(rootBrief: string | null): string[] {
+	return parseBrief(rootBrief) !== null ? ['save_brief'] : [];
+}
+
 // ─────────────── capabilities preamble (AG3) ──────────────────
 
 /**
@@ -241,7 +245,8 @@ export function buildCapabilitiesPreamble(): string {
 		"You have access to tools that let you inspect the learner's context (checklist progress, artifacts, summaries).",
 		'Use them when they clearly help the lesson — e.g. to check where the learner is before giving feedback.',
 		'Prefer continuing the lesson over invoking tools. Use them judiciously, not every turn.',
-		"You can also act on the learner's behalf: branch a deeper dive, adjust the learning brief, draft a lab or quiz skeleton, toggle a checklist step.",
+		"You can also act on the learner's behalf: branch a deeper dive, draft a lab or quiz skeleton, toggle a checklist step.",
+		'The save_brief tool sets or updates the learning goal on the root chat. Use it only on the first turn of a chat that has no learning goal yet (a brief-less chat). Pass only the goal; leave level, mode, scope, and context unset. Never rewrite an existing goal or re-save a brief that already has one.',
 		"Actions that create or change artifacts require the learner's approval — you will be asked and should wait.",
 		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.',
 		'When it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn.'

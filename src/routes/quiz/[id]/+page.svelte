@@ -10,7 +10,10 @@
 	 * on `[id]` change (mirrors `/chat/[id]`'s `$effect` param-watch pattern).
 	 * Shows loading / not-found states before delegating to `<QuizRunner>`.
 	 */
-	onMount(() => {
+	onMount(async () => {
+		if (quizzesStore.list.length === 0) {
+			await quizzesStore.loadList();
+		}
 		const initial = page.params.id;
 		if (initial) return quizzesStore.loadQuiz(initial);
 	});

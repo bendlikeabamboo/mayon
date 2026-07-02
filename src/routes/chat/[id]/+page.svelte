@@ -2,7 +2,15 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { Network, PanelRight, PanelRightClose, Sparkles, Target, Wrench, GraduationCap } from '@lucide/svelte';
+	import {
+		Network,
+		PanelRight,
+		PanelRightClose,
+		Sparkles,
+		Target,
+		Wrench,
+		GraduationCap
+	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
@@ -19,15 +27,17 @@
 		personaForId,
 		type LearningBrief
 	} from '$lib/chat/brief';
+	import { parseAddFormats, type ExpoundToggle } from '$lib/chat/expound';
 	import { extractGateBlock } from '$lib/ai/generate/generate-gate';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
-	import type { Chat, Lab, Quiz } from '$lib/db/schema';
+	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 	import type { ReasoningMode } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
+	import ExpoundCard from '$lib/components/chat/ExpoundCard.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
 	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
@@ -44,6 +54,7 @@
 	let intakeDismissed = $state(false);
 	let editingInferred = $state(false);
 	let rootChat = $state<Chat | null>(null);
+	let branchSource = $state<BranchSource | null>(null);
 	let railOpen = $state(false);
 	let railCollapsed = $state(localStorage.getItem('mayon:ui:rail') === '1');
 	let lg = $state(false);
@@ -56,6 +67,7 @@
 	let bottomVisible = $state(false);
 	let fadeTop = $state(0);
 	let fadeBottom = $state(0);
+	let scrolledToHash = $state(false);
 
 	const FADE_CAP_PX = 80;
 	function halfCapped(h: number) {
@@ -74,6 +86,7 @@
 
 	$effect(() => {
 		void chatStore.messages.length;
+		if (scrolledToHash) return;
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
@@ -177,6 +190,12 @@
 		labs = await repos.labs.listByChat(chat.id);
 		// Existing quizzes for this chat (shown as chips under the composer).
 		quizzes = await repos.quizzes.listByChat(chat.id);
+		// Ensure quiz numbering map is populated for the ChatRail.
+		if (quizzesStore.list.length === 0) {
+			await quizzesStore.loadList();
+		}
+		// Load expound branch source for this chat (if any).
+		branchSource = await repos.branchSources.getByBranchChat(chat.id);
 	}
 
 	async function loadAll(chatId: string) {
@@ -184,6 +203,8 @@
 		intakeDismissed = false;
 		editingInferred = false;
 		rootChat = null;
+		branchSource = null;
+		scrolledToHash = false;
 		await chatStore.load(chatId);
 		if (chatStore.chat) {
 			await loadNav(chatStore.chat);
@@ -194,8 +215,62 @@
 		if (chatStore.pendingPrompt) {
 			const p = chatStore.pendingPrompt;
 			chatStore.clearPendingPrompt();
-			void chatStore.send(p);
+			void chatStore.send(p.text, { hidden: p.hidden });
 		}
+	}
+
+	function handleHashScroll() {
+		const hash = window.location.hash.slice(1);
+		if (!hash) return;
+		const params = new URLSearchParams(hash);
+		const msgId = params.get('m');
+		const branchId = params.get('b');
+		if (!msgId || !viewport) return;
+
+		function attemptScroll() {
+			const el = document.getElementById(`msg-${msgId}`);
+			if (el) {
+				el.scrollIntoView({ block: 'center' });
+				scrolledToHash = true;
+
+				if (branchId) {
+					flashExpoundMark(branchId);
+				}
+				return true;
+			}
+			return false;
+		}
+
+		if (attemptScroll()) return;
+
+		let tries = 0;
+		const maxTries = 5;
+		function retry() {
+			tries++;
+			if (tries >= maxTries || attemptScroll()) return;
+			requestAnimationFrame(retry);
+		}
+		requestAnimationFrame(retry);
+	}
+
+	function flashExpoundMark(branchId: string) {
+		function tryFlash() {
+			const el = viewport?.querySelector(
+				`.expound-mark[data-branch-chat="${branchId}"]`
+			) as HTMLElement | null;
+			if (!el) return false;
+			el.classList.add('expound-flash');
+			setTimeout(() => el.classList.remove('expound-flash'), 1500);
+			return true;
+		}
+		if (tryFlash()) return;
+		let tries = 0;
+		function retry() {
+			tries++;
+			if (tries >= 6 || tryFlash()) return;
+			requestAnimationFrame(retry);
+		}
+		requestAnimationFrame(retry);
 	}
 
 	onMount(() => {
@@ -206,7 +281,7 @@
 		}
 		mq.addEventListener('change', onMatchChange);
 		const initial = page.params.id;
-		if (initial) return loadAll(initial);
+		if (initial) return loadAll(initial).then(() => handleHashScroll());
 		return () => mq.removeEventListener('change', onMatchChange);
 	});
 
@@ -216,7 +291,7 @@
 		const current = page.params.id;
 		if (current && current !== lastId) {
 			lastId = current;
-			void loadAll(current);
+			void loadAll(current).then(() => handleHashScroll());
 		}
 	});
 
@@ -232,7 +307,7 @@
 	) {
 		const prompt = buildExpoundPrompt(opts);
 		try {
-			const childId = await chatStore.createExpoundBranch(messageId, raw, sel, prompt);
+			const childId = await chatStore.createExpoundBranch(messageId, raw, sel, prompt, opts);
 			await goto(`/chat/${childId}`);
 		} catch (err) {
 			if (err instanceof ExcerptOverlapError) {
@@ -283,6 +358,7 @@
 
 	async function onSaveIntakeBrief(brief: LearningBrief) {
 		await chatStore.saveBrief(brief);
+		void chatStore.send(brief.goal);
 	}
 
 	/** "Just start chatting" on the [id] intake: dismiss the card, no brief. */
@@ -386,7 +462,9 @@
 									.chat?.parentId
 									? 'cursor-default'
 									: 'cursor-pointer'}"
-								title={chatStore.chat?.parentId ? 'Inherited from the root chat' : 'Edit your brief'}
+								title={chatStore.chat?.parentId
+									? 'Inherited from the root chat'
+									: 'Edit your brief'}
 								onclick={() => {
 									if (!chatStore.chat?.parentId) editingBrief = true;
 								}}
@@ -445,13 +523,25 @@
 							}}
 						/>
 					{/if}
+
+					{#if chatStore.chat?.parentId !== null && branchSource}
+						{@const formats = parseAddFormats(branchSource.addFormats) as ExpoundToggle[]}
+						<ExpoundCard
+							excerpt={branchSource.excerpt}
+							customInstructions={branchSource.customInstructions}
+							addFormats={formats}
+							parentChatId={chatStore.chat.parentId}
+							sourceMessageId={branchSource.sourceMessageId}
+							childId={chatStore.chat.id}
+						/>
+					{/if}
 				</div>
 				<div
 					class="relative min-h-0 flex-1"
 					bind:this={middleWrapper}
 					style="--fade-top:{fadeTop}px; --fade-bottom:{fadeBottom}px;"
 				>
-					<div bind:this={viewport} class="h-full overflow-auto p-4">
+					<div bind:this={viewport} class="h-full overflow-y-auto overflow-x-hidden p-4">
 						<MessageList
 							messages={chatStore.messages}
 							streaming={chatStore.streaming}
@@ -574,6 +664,7 @@
 				{onGenerateLab}
 				{onGenerateQuiz}
 				generating={labsStore.generating || quizzesStore.generating}
+				getQuizNumber={(id) => quizzesStore.getQuizNumber(id)}
 				bind:collapsed={railCollapsed}
 			/>
 		</div>
@@ -596,6 +687,7 @@
 					{onGenerateLab}
 					{onGenerateQuiz}
 					generating={labsStore.generating || quizzesStore.generating}
+					getQuizNumber={(id) => quizzesStore.getQuizNumber(id)}
 				/>
 			</div>
 		</SheetContent>

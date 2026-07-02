@@ -46,6 +46,7 @@ export interface AgentTurnDeps {
 		args: unknown;
 	}) => Promise<{ approved: boolean; aborted?: boolean }>;
 	notifyLowRisk: (toolLabel: string, summary: string) => void;
+	disabledToolIds?: string[];
 	onTrace?: (e: TraceEvent) => void;
 }
 
@@ -55,10 +56,12 @@ interface CollectedToolCall {
 	args: unknown;
 }
 
-function buildSdkTools(enabled: boolean): ToolSet {
+function buildSdkTools(enabled: boolean, disabledToolIds?: string[]): ToolSet {
 	if (!enabled) return {};
+	const disabled = new Set(disabledToolIds ?? []);
 	const out: ToolSet = {};
 	for (const def of getToolDefinitions()) {
+		if (disabled.has(def.id)) continue;
 		out[def.id] = tool({
 			description: def.description,
 			inputSchema: jsonSchema(def.parameters)
@@ -186,8 +189,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			const messages = toCoreMessages(ctx);
 
 			const system = sysParts.join('\n\n');
+			const disabled = deps.disabledToolIds ?? [];
+			const disabledSet = new Set(disabled);
 			const pOpts = providerOptionsForReasoning(deps.config.kind, deps.reasoning, deps.config.name);
-			const toolNames = toolsEnabled ? getToolDefinitions().map((d) => d.id) : [];
+			const toolNames = toolsEnabled
+				? getToolDefinitions()
+						.filter((d) => !disabledSet.has(d.id))
+						.map((d) => d.id)
+				: [];
 			deps.onTrace?.({
 				kind: 'request',
 				system,
@@ -205,7 +214,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					model: deps.model,
 					system: system || undefined,
 					messages,
-					tools: buildSdkTools(toolsEnabled),
+					tools: buildSdkTools(toolsEnabled, disabled),
 					abortSignal: deps.signal,
 					providerOptions: pOpts as never
 				});

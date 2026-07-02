@@ -15,7 +15,8 @@
 		onGenerateLab,
 		onGenerateQuiz,
 		generating,
-		collapsed = $bindable(false)
+		collapsed = $bindable(false),
+		getQuizNumber = (_id: string) => 0
 	}: {
 		breadcrumb: Chat[];
 		children: Chat[];
@@ -28,6 +29,7 @@
 		onGenerateQuiz: () => void;
 		generating: boolean;
 		collapsed?: boolean;
+		getQuizNumber?: (id: string) => number;
 	} = $props();
 </script>
 
@@ -167,7 +169,7 @@
 									title={new Date(q.createdAt).toLocaleString()}
 								>
 									<ListChecks class="size-3" />
-									Quiz
+									Quiz #{getQuizNumber(q.id)}
 								</a>
 							</li>
 						{/each}
