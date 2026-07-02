@@ -3,11 +3,17 @@ import {
 	applyProfile,
 	DEFAULT_LEVEL,
 	DEFAULT_MODE,
+	DEFAULT_PERSONA,
+	PERSONAS,
+	PERSONA_IDS,
 	buildBriefSystemNote,
+	isPersonaId,
 	parseBrief,
+	personaForId,
 	summarizeBrief,
 	type LearningBrief,
 	type LearnerProfile,
+	type PersonaId,
 	type ScopeStrategyId
 } from './brief';
 
@@ -262,7 +268,8 @@ describe('applyProfile', () => {
 			level: DEFAULT_LEVEL,
 			mode: DEFAULT_MODE,
 			scope: undefined,
-			scopeStrategy: 'guided-inquiry'
+			scopeStrategy: 'guided-inquiry',
+			persona: DEFAULT_PERSONA
 		});
 	});
 
@@ -272,5 +279,147 @@ describe('applyProfile', () => {
 		expect(result.level).toBeDefined();
 		expect(result.mode).toBeDefined();
 		expect(result.scopeStrategy).toBeDefined();
+	});
+
+	it('persona is always present in resolved fields', () => {
+		const result = applyProfile({}, { goal: 'g' });
+		expect(result.persona).toBeDefined();
+	});
+});
+
+const GOLDEN_NO_PERSONA =
+	"You are a personal learning tutor. Calibrate to this learner's brief:\n- Goal: g\n- Level: some  · Context: (not given)  · Mode: socratic  · Scope: (open)\n- Structure: Guided inquiry  (unless scope overrides the budget)\n\nYou teach in NUANCED INQUIRY mode. You are Socratic, but never terse or shallow.\n\nEVERY TURN has exactly three parts, in order:\n  1. ANCHOR (1–3 sentences): name the specific place the learner is in right now\n     (their last attempt, the tension they hit). No generic restating.\n  2. FRAMING (the thinkpiece): introduce ONE concept, tension, paradox, analogy,\n     or contrast that re-frames the question. This beat must teach something\n     substantive — a real idea, not filler. Use a short named concept where apt.\n  3. PROBE: end with exactly ONE sharp question that forces reasoning toward the\n     goal.\n\nHard rules:\n  • Never answer your own probe. Never hand the learner the conclusion.\n  • Density floor: ~120–250 words/turn. No one-line questions.\n  • Adapt to ZPD: if the learner stalls twice on a probe, narrow it or offer a\n    HINT (a branch to consider), not the answer.\n  • Allow productive failure: invite an attempt before confirming correctness.\n  • Use an occasional > [!CONCEPT] admonition ONLY for the single most pivotal\n    idea of the whole exchange — never one per turn. Default to prose framing.\n\nTeach to the goal at the stated level; stay within scope.\nWhen the learner can do the goal, say so.";
+
+describe('personas', () => {
+	describe('registry', () => {
+		it('has exactly 5 entries', () => {
+			expect(PERSONAS).toHaveLength(5);
+		});
+
+		it('has unique ids', () => {
+			const ids = PERSONAS.map((p) => p.id);
+			expect(new Set(ids).size).toBe(5);
+		});
+
+		it('PERSONA_IDS matches PERSONAS', () => {
+			expect(PERSONA_IDS).toEqual(PERSONAS.map((p) => p.id));
+		});
+
+		it('DEFAULT_PERSONA is dr-kim', () => {
+			expect(DEFAULT_PERSONA).toBe('dr-kim');
+		});
+
+		it('personaForId resolves every id and returns its verbatim block', () => {
+			for (const p of PERSONAS) {
+				const resolved = personaForId(p.id);
+				expect(resolved.id).toBe(p.id);
+				expect(resolved.block).toBe(p.block);
+			}
+		});
+
+		it('isPersonaId accepts all 5 ids', () => {
+			for (const id of PERSONA_IDS) {
+				expect(isPersonaId(id)).toBe(true);
+			}
+		});
+
+		it('isPersonaId rejects garbage', () => {
+			expect(isPersonaId('nonexistent')).toBe(false);
+			expect(isPersonaId(42)).toBe(false);
+			expect(isPersonaId(undefined)).toBe(false);
+			expect(isPersonaId(null)).toBe(false);
+			expect(isPersonaId('')).toBe(false);
+		});
+	});
+
+	describe('parseBrief', () => {
+		it('round-trips persona (valid id kept)', () => {
+			const raw = JSON.stringify({ goal: 'g', persona: 'coach-rex' });
+			const parsed = parseBrief(raw);
+			expect(parsed?.persona).toBe('coach-rex');
+		});
+
+		it('drops an invalid persona id but keeps the goal', () => {
+			const raw = JSON.stringify({ goal: 'g', persona: 'nonexistent' });
+			const parsed = parseBrief(raw);
+			expect(parsed?.persona).toBeUndefined();
+			expect(parsed?.goal).toBe('g');
+		});
+
+		it('persona absent → omitted from result', () => {
+			const parsed = parseBrief(JSON.stringify({ goal: 'g' }));
+			expect(parsed?.persona).toBeUndefined();
+		});
+	});
+
+	describe('applyProfile persona precedence', () => {
+		it('brief.persona wins over profile.persona', () => {
+			const profile: LearnerProfile = { persona: 'coach-rex' };
+			const brief = { goal: 'g', persona: 'sage' as PersonaId };
+			const result = applyProfile(profile, brief);
+			expect(result.persona).toBe('sage');
+		});
+
+		it('profile.persona fills when brief omits', () => {
+			const profile: LearnerProfile = { persona: 'kit' };
+			const result = applyProfile(profile, { goal: 'g' });
+			expect(result.persona).toBe('kit');
+		});
+
+		it('neither set → DEFAULT_PERSONA', () => {
+			const result = applyProfile({}, { goal: 'g' });
+			expect(result.persona).toBe(DEFAULT_PERSONA);
+		});
+	});
+
+	describe('buildBriefSystemNote persona', () => {
+		it('persona-less brief produces the golden string (escape hatch)', () => {
+			const note = buildBriefSystemNote({ goal: 'g' });
+			expect(note.content).toBe(GOLDEN_NO_PERSONA);
+		});
+
+		it('persona-less note contains no persona names or taglines', () => {
+			const note = buildBriefSystemNote({ goal: 'g' });
+			for (const p of PERSONAS) {
+				expect(note.content).not.toContain(p.name);
+				expect(note.content).not.toContain(p.tagline);
+			}
+		});
+
+		it('persona present → opening line uses name and tagline', () => {
+			const note = buildBriefSystemNote({ goal: 'g', persona: 'dr-kim' });
+			expect(note.content).toContain(
+				'You are Dr. Kim — a warm, patient, and nurturing tutor who creates a safe space for learning.'
+			);
+		});
+
+		it('all 5 personas render their name + tagline in the opening line', () => {
+			for (const p of PERSONAS) {
+				const note = buildBriefSystemNote({ goal: 'g', persona: p.id });
+				expect(note.content).toContain(`You are ${p.name} — ${p.tagline}.`);
+			}
+		});
+
+		it('persona block appears BEFORE strategy block', () => {
+			const drKim = personaForId('dr-kim');
+			const note = buildBriefSystemNote({ goal: 'g', persona: 'dr-kim' });
+			const strat = note.content.indexOf('NUANCED INQUIRY');
+			const personaStart = note.content.indexOf(drKim.block);
+			expect(personaStart).toBeLessThan(strat);
+			expect(personaStart).toBeGreaterThanOrEqual(0);
+		});
+
+		it('persona block content is included verbatim', () => {
+			const drKim = personaForId('dr-kim');
+			const note = buildBriefSystemNote({ goal: 'g', persona: 'dr-kim' });
+			expect(note.content).toContain(drKim.block);
+		});
+
+		it('persona-less note does not contain any persona block', () => {
+			const note = buildBriefSystemNote({ goal: 'g' });
+			for (const p of PERSONAS) {
+				expect(note.content).not.toContain(p.block);
+			}
+		});
 	});
 });

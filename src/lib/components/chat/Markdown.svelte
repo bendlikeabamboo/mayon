@@ -176,7 +176,7 @@
 	:global(.markdown-body .callout) {
 		border-left: 3px solid var(--callout-info);
 		padding: 0.5em 0.75em;
-		margin: 0.5em 0;
+		margin: 1.25em 0;
 		border-radius: var(--radius-sm);
 		background: color-mix(in oklch, var(--callout-info) 12%, var(--card));
 	}

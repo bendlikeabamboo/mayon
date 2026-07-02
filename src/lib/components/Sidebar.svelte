@@ -2,6 +2,9 @@
 	import { page } from '$app/state';
 	import { FlaskConical, Home, ListChecks, MessageSquare, Network, Settings } from '@lucide/svelte';
 	import type { Component } from 'svelte';
+	import DbStatus from './DbStatus.svelte';
+	import ThemeToggle from './ThemeToggle.svelte';
+	import { dbStatus } from '$lib/stores/db.svelte.js';
 
 	type NavItem = { href: string; label: string; icon: Component };
 
@@ -52,4 +55,20 @@
 			</a>
 		{/each}
 	</nav>
+
+	<div
+		class="flex flex-col border-t border-sidebar-border p-2 {collapsed
+			? 'items-center gap-1'
+			: 'gap-1'}"
+	>
+		<ThemeToggle {collapsed} />
+		{#if !collapsed}
+			<span class="px-2 text-xs text-muted-foreground/50">{dbStatus.runtime}</span>
+		{/if}
+		{#if !collapsed}
+			<DbStatus />
+		{:else}
+			<DbStatus collapsed />
+		{/if}
+	</div>
 </aside>

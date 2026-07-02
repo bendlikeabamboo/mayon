@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FlaskConical, GitBranch, ListChecks, PanelRight, PanelRightClose } from '@lucide/svelte';
+	import { FlaskConical, GitBranch, ListChecks } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import CrossLinks from './CrossLinks.svelte';
@@ -180,17 +180,4 @@
 			</section>
 		</div>
 	{/if}
-
-	<button
-		type="button"
-		class="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-		onclick={() => (collapsed = !collapsed)}
-		aria-label={collapsed ? 'Expand rail' : 'Collapse rail'}
-	>
-		{#if collapsed}
-			<PanelRight class="size-3.5" />
-		{:else}
-			<PanelRightClose class="size-3.5" />
-		{/if}
-	</button>
 </div>

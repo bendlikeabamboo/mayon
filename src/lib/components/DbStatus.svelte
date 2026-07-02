@@ -1,11 +1,22 @@
 <script lang="ts">
-	import { AlertCircle, CheckCircle2, Database, Loader2 } from '@lucide/svelte';
+	import { AlertCircle, CheckCircle2, Loader2 } from '@lucide/svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
 	import { cn } from '$lib/utils.js';
+
+	let { collapsed = false }: { collapsed?: boolean } = $props();
+
+	const statusLabel = $derived(
+		dbStatus.status === 'initializing'
+			? 'DB…'
+			: dbStatus.status === 'ready'
+				? 'DB ready'
+				: 'DB error'
+	);
 
 	const badgeClass = $derived(
 		cn(
 			'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium',
+			collapsed && 'gap-0 px-0 py-1',
 			dbStatus.status === 'initializing' && 'bg-muted text-muted-foreground',
 			dbStatus.status === 'ready' &&
 				dbStatus.selfCheck !== 'fail' &&
@@ -20,15 +31,13 @@
 
 <div class={badgeClass} title={dbStatus.error ?? `Database: ${dbStatus.status}`}>
 	{#if dbStatus.status === 'initializing'}
-		<Loader2 class="size-3.5 animate-spin" /> DB…
+		<Loader2 class="size-3.5 animate-spin" />
 	{:else if dbStatus.status === 'ready'}
-		<CheckCircle2 class="size-3.5" /> DB ready
+		<CheckCircle2 class="size-3.5" />
 	{:else}
-		<AlertCircle class="size-3.5" /> DB error
+		<AlertCircle class="size-3.5" />
 	{/if}
-	<span class="opacity-40">·</span>
-	<span class="inline-flex items-center gap-1 opacity-70">
-		<Database class="size-3.5" />
-		{dbStatus.runtime}
-	</span>
+	{#if !collapsed}
+		<span>{statusLabel}</span>
+	{/if}
 </div>

@@ -1,8 +1,9 @@
 Here are things I notice and should be corrected in terms of the UI when I'm using the application.
 
-1. The left bar moves with the scrollbar. The scrollbar should be on the left edge of the left pane and thus not affecting the left pane whenever it moves.
-2. The thinking flash animation, the circle that pulses around the dot, it's static on the page and does not move as I scroll up and down. It should follow its reference dot.
-3. There should be a little bit more space above the "[brain] Thought process >" UI
-I'd like to remove the thin border of the chat. So we have a border for the assistant right? and then there's another border that encompasses both your chat and the assistant? i want that gone. In replacement I want the upper part (the breadcrumb the goal, etc.) to be sticky and then the chatbox below (along with the reasoning, etc.) also to be sticky.
-
-There will also be new graphic behavior for the chat as it approaches the top and the bottom. So when the message area meets the top or bottom., it should progressively fade. 
+1. The thinking animation that happens when the model is "Thinking", the circle that pulses around the dot, it's static on the page and does not move as I scroll up and down. It should follow its reference dot.
+2. There  should be more empty space on top and bottom of admonition boxes (like Tip or Concept) so they would be highlighted more. This one should be controlled on the rendering only.
+3. There is an majority unused bar at the top of the page. It houses the DB Ready, and the night modem, the Mayon, and the "Toggle (Right) Sidebar". I want to do the following to that.
+   1. Let's move the "DB ready" and the night mode toggle on the left pane but bottom part.
+   2. Make the "Toggle sidebar" on the left a floating button but still sticky and on the same place as it is now and copy that behavior and positioning for the left pane as well.
+   3. The Mayon Icon stays the same as it is now but consider it as part of the left pane only instead of the that top bar.
+   4. Then finally let's remove the unused bar at the top

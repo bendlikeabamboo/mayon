@@ -75,7 +75,8 @@ export const deterministicTools: Tool[] = [
 				level: (a.level as LearningBrief['level']) || existing?.level || 'some',
 				mode: (a.mode as LearningBrief['mode']) || existing?.mode || 'socratic',
 				scope: a.scope?.trim() || existing?.scope,
-				scopeStrategy: existing?.scopeStrategy
+				scopeStrategy: existing?.scopeStrategy,
+				persona: existing?.persona
 			};
 
 			await repos.chats.updateBrief(ctx.rootChatId, merged);

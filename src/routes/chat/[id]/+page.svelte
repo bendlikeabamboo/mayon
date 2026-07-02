@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { Network, PanelRight, Sparkles, Target, Wrench } from '@lucide/svelte';
+	import { Network, PanelRight, PanelRightClose, Sparkles, Target, Wrench, GraduationCap } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
@@ -15,6 +15,8 @@
 		parseBrief,
 		summarizeBrief,
 		strategyForBrief,
+		DEFAULT_PERSONA,
+		personaForId,
 		type LearningBrief
 	} from '$lib/chat/brief';
 	import { extractGateBlock } from '$lib/ai/generate/generate-gate';
@@ -44,6 +46,7 @@
 	let rootChat = $state<Chat | null>(null);
 	let railOpen = $state(false);
 	let railCollapsed = $state(localStorage.getItem('mayon:ui:rail') === '1');
+	let lg = $state(false);
 
 	let viewport = $state<HTMLDivElement | null>(null);
 	let topPane = $state<HTMLDivElement | null>(null);
@@ -196,8 +199,15 @@
 	}
 
 	onMount(() => {
+		const mq = window.matchMedia('(min-width: 1024px)');
+		lg = mq.matches;
+		function onMatchChange(e: MediaQueryListEvent) {
+			lg = e.matches;
+		}
+		mq.addEventListener('change', onMatchChange);
 		const initial = page.params.id;
 		if (initial) return loadAll(initial);
+		return () => mq.removeEventListener('change', onMatchChange);
 	});
 
 	// Reload when navigating between chats ([id] changes).
@@ -308,7 +318,27 @@
 	</div>
 {:else}
 	<div class="flex h-full">
-		<div class="min-w-0 flex-1">
+		<div class="relative min-w-0 flex-1">
+			<Button
+				variant="ghost"
+				size="icon"
+				class="absolute top-2 right-2 z-30"
+				title="Toggle rail"
+				aria-label="Toggle rail"
+				onclick={() => {
+					if (lg) {
+						railCollapsed = !railCollapsed;
+					} else {
+						railOpen = !railOpen;
+					}
+				}}
+			>
+				{#if lg && !railCollapsed}
+					<PanelRightClose class="size-4" />
+				{:else}
+					<PanelRight class="size-4" />
+				{/if}
+			</Button>
 			<div class="mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-3 p-4">
 				<div class="flex shrink-0 flex-col gap-3" bind:this={topPane}>
 					<div class="flex items-center justify-between gap-2">
@@ -334,16 +364,6 @@
 							>
 								<Wrench class="size-4" />
 							</Button>
-							<Button
-								variant="ghost"
-								size="icon"
-								title="Toggle rail"
-								aria-label="Toggle rail"
-								class="lg:hidden"
-								onclick={() => (railOpen = !railOpen)}
-							>
-								<PanelRight class="size-4" />
-							</Button>
 						</div>
 					</div>
 
@@ -359,23 +379,41 @@
 							}}
 						/>
 					{:else if rootBrief}
-						<button
-							type="button"
-							class="flex items-center gap-2 self-start rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
-								.chat?.parentId
-								? 'cursor-default'
-								: 'cursor-pointer'}"
-							title={chatStore.chat?.parentId ? 'Inherited from the root chat' : 'Edit your brief'}
-							onclick={() => {
-								if (!chatStore.chat?.parentId) editingBrief = true;
-							}}
-						>
-							<Target class="size-3 shrink-0" />
-							<span class="truncate">{summarizeBrief(rootBrief)}</span>
-							{#if chatStore.chat?.parentId}
-								<span class="shrink-0 text-muted-foreground/70">(inherited)</span>
-							{/if}
-						</button>
+						<div class="flex flex-wrap items-center gap-2 self-start">
+							<button
+								type="button"
+								class="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
+									.chat?.parentId
+									? 'cursor-default'
+									: 'cursor-pointer'}"
+								title={chatStore.chat?.parentId ? 'Inherited from the root chat' : 'Edit your brief'}
+								onclick={() => {
+									if (!chatStore.chat?.parentId) editingBrief = true;
+								}}
+							>
+								<Target class="size-3 shrink-0" />
+								<span class="truncate">{summarizeBrief(rootBrief)}</span>
+								{#if chatStore.chat?.parentId}
+									<span class="shrink-0 text-muted-foreground/70">(inherited)</span>
+								{/if}
+							</button>
+							<button
+								type="button"
+								class="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
+									.chat?.parentId
+									? 'cursor-default'
+									: 'cursor-pointer'}"
+								title={chatStore.chat?.parentId
+									? 'Inherited from the root chat'
+									: 'Switch teacher persona'}
+								onclick={() => {
+									if (!chatStore.chat?.parentId) editingBrief = true;
+								}}
+							>
+								<GraduationCap class="size-3 shrink-0" />
+								<span>{personaForId(rootBrief.persona ?? DEFAULT_PERSONA).name}</span>
+							</button>
+						</div>
 					{:else if chatStore.inferredBrief && chatStore.chat?.parentId === null && !editingInferred}
 						<div class="self-start rounded-md border border-border bg-card p-3 text-sm">
 							<div class="flex items-center gap-2">

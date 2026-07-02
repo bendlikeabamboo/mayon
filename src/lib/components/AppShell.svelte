@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import {
 		PanelLeft,
+		PanelLeftClose,
 		FlaskConical,
 		Home,
 		ListChecks,
@@ -11,9 +12,10 @@
 	} from '@lucide/svelte';
 	import { page } from '$app/state';
 	import Sidebar from './Sidebar.svelte';
-	import ThemeToggle from './ThemeToggle.svelte';
 	import DbStatus from './DbStatus.svelte';
+	import ThemeToggle from './ThemeToggle.svelte';
 	import Toaster from './Toaster.svelte';
+	import { dbStatus } from '$lib/stores/db.svelte.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 	import type { Component, Snippet } from 'svelte';
@@ -89,37 +91,37 @@
 							</a>
 						{/each}
 					</nav>
+					<div class="flex flex-col gap-1 border-t border-sidebar-border p-2">
+						<ThemeToggle />
+						<span class="px-2 text-xs text-muted-foreground/50">{dbStatus.runtime}</span>
+						<DbStatus />
+					</div>
 				</aside>
 			</SheetContent>
 		</Sheet>
 	{/if}
 
-	<div class="flex min-w-0 flex-1 flex-col">
-		<header
-			class="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-3"
+	<div class="relative flex min-w-0 flex-1 flex-col">
+		<Button
+			variant="ghost"
+			size="icon"
+			class="absolute top-2 left-2 z-30"
+			title="Toggle sidebar"
+			aria-label="Toggle sidebar"
+			onclick={() => {
+				if (lg) {
+					collapsed = !collapsed;
+				} else {
+					drawerOpen = !drawerOpen;
+				}
+			}}
 		>
-			<div class="flex items-center gap-2">
-				<Button
-					variant="ghost"
-					size="icon"
-					title="Toggle sidebar"
-					aria-label="Toggle sidebar"
-					onclick={() => {
-						if (lg) {
-							collapsed = !collapsed;
-						} else {
-							drawerOpen = !drawerOpen;
-						}
-					}}
-				>
-					<PanelLeft />
-				</Button>
-			</div>
-			<div class="flex items-center gap-2">
-				<DbStatus />
-				<ThemeToggle />
-			</div>
-		</header>
+			{#if lg && !collapsed}
+				<PanelLeftClose class="size-4" />
+			{:else}
+				<PanelLeft class="size-4" />
+			{/if}
+		</Button>
 
 		<main class="min-h-0 flex-1 overflow-auto">
 			{@render children()}

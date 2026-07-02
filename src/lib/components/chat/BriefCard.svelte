@@ -10,10 +10,13 @@
 		LEVEL_OPTIONS,
 		MODE_LABELS,
 		MODE_OPTIONS,
+		PERSONAS,
 		defaultStrategyFor,
 		strategiesForMode,
 		type LearningBrief,
-		type ScopeStrategyId
+		type PersonaId,
+		type ScopeStrategyId,
+		DEFAULT_PERSONA
 	} from '$lib/chat/brief';
 	import { getLearnerProfile } from '$lib/chat/profile';
 
@@ -58,6 +61,7 @@
 	let scopeStrategy = $state<ScopeStrategyId>(
 		untrack(() => brief?.scopeStrategy ?? defaultStrategyFor(DEFAULT_MODE))
 	);
+	let persona = $state<PersonaId>(untrack(() => brief?.persona ?? DEFAULT_PERSONA));
 
 	let modeStrategies = $derived(strategiesForMode(modeVal));
 
@@ -78,6 +82,7 @@
 			context = seed.context ?? '';
 			scopeState = seed.scope ?? '';
 			scopeStrategy = seed.scopeStrategy;
+			persona = seed.persona;
 		} catch {
 			// Best-effort: fall back to existing defaults
 		}
@@ -95,6 +100,7 @@
 		if (ctx.length > 0) b.context = ctx;
 		const scp = scopeState.trim();
 		if (scp.length > 0) b.scope = scp;
+		if (persona) b.persona = persona;
 		return b;
 	}
 
@@ -190,6 +196,16 @@
 				{modeStrategies.find((s) => s.id === scopeStrategy)?.hint}
 			</p>
 		{/if}
+	</div>
+
+	<!-- Teacher persona -->
+	<div class="space-y-1">
+		<label class={labelClass} for="brief-persona">Teacher</label>
+		<select id="brief-persona" bind:value={persona} class={inputClass}>
+			{#each PERSONAS as p (p.id)}
+				<option value={p.id}>{p.name} ({p.summary})</option>
+			{/each}
+		</select>
 	</div>
 
 	<!-- Context + Scope (optional) -->

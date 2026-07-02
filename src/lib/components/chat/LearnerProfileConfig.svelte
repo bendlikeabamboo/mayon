@@ -3,14 +3,17 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		DEFAULT_PROFILE,
+		DEFAULT_PERSONA,
 		LEVEL_LABELS,
 		LEVEL_OPTIONS,
 		MODE_LABELS,
 		MODE_OPTIONS,
+		PERSONAS,
 		strategiesForMode,
 		type BriefLevel,
 		type BriefMode,
 		type LearnerProfile,
+		type PersonaId,
 		type ScopeStrategyId
 	} from '$lib/chat/brief';
 	import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
@@ -19,6 +22,7 @@
 	let level = $state<BriefLevel>(DEFAULT_PROFILE.level!);
 	let modeVal = $state<BriefMode>(DEFAULT_PROFILE.mode!);
 	let scopeStrategy = $state<ScopeStrategyId | undefined>(undefined);
+	let persona = $state<PersonaId | undefined>(undefined);
 	let loading = $state(true);
 	let status = $state<string | null>(null);
 	let isDefault = $state(true);
@@ -27,7 +31,8 @@
 
 	$effect(() => {
 		if (scopeStrategy !== undefined && !modeStrategies.find((s) => s.id === scopeStrategy)) {
-			scopeStrategy = undefined;
+		scopeStrategy = undefined;
+		persona = undefined;
 		}
 	});
 
@@ -38,11 +43,13 @@
 			level = profile.level ?? DEFAULT_PROFILE.level!;
 			modeVal = profile.mode ?? DEFAULT_PROFILE.mode!;
 			scopeStrategy = profile.scopeStrategy;
+			persona = profile.persona;
 			isDefault =
 				context === '' &&
 				level === DEFAULT_PROFILE.level &&
 				modeVal === DEFAULT_PROFILE.mode &&
-				scopeStrategy === undefined;
+				scopeStrategy === undefined &&
+				persona === undefined;
 		} catch {
 			// fall back to defaults
 		}
@@ -54,12 +61,14 @@
 		const ctx = context.trim();
 		if (ctx.length > 0) clean.context = ctx;
 		if (scopeStrategy !== undefined) clean.scopeStrategy = scopeStrategy;
+		if (persona !== undefined) clean.persona = persona;
 		await setLearnerProfile(clean);
 		isDefault =
 			clean.context === undefined &&
 			clean.level === DEFAULT_PROFILE.level &&
 			clean.mode === DEFAULT_PROFILE.mode &&
-			clean.scopeStrategy === undefined;
+			clean.scopeStrategy === undefined &&
+			persona === undefined;
 		status = 'Learner profile saved.';
 	}
 
@@ -143,6 +152,17 @@
 					{modeStrategies.find((s) => s.id === scopeStrategy)?.hint}
 				</p>
 			{/if}
+		</div>
+
+		<!-- Teacher -->
+		<div class="space-y-1">
+			<label class={labelClass} for="profile-persona">Teacher</label>
+			<select id="profile-persona" bind:value={persona} class={inputClass}>
+				<option value={undefined as unknown as string}>(default · Dr. Kim)</option>
+				{#each PERSONAS as p (p.id)}
+					<option value={p.id}>{p.name} ({p.summary})</option>
+				{/each}
+			</select>
 		</div>
 
 		<div class="flex items-center gap-2 pt-1">

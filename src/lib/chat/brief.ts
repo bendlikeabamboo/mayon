@@ -17,6 +17,7 @@ import {
 	resolveStrategy,
 	strategyForBrief
 } from './strategies';
+import { type PersonaId, DEFAULT_PERSONA, isPersonaId, personaForId } from './personas';
 
 export type { ScopeStrategy, ScopeStrategyId } from './strategies';
 export {
@@ -26,6 +27,9 @@ export {
 	resolveStrategy,
 	strategyForBrief
 } from './strategies';
+
+export type { PersonaId } from './personas';
+export { PERSONAS, PERSONA_IDS, DEFAULT_PERSONA, personaForId, isPersonaId } from './personas';
 
 // ─────────────────────────── types ────────────────────────────
 
@@ -53,6 +57,8 @@ export interface LearningBrief {
 	scope?: string;
 	/** Teaching structure. Defaults to {@link defaultStrategyFor} for the mode. */
 	scopeStrategy?: ScopeStrategyId;
+	/** Teacher persona. Defaults to {@link DEFAULT_PERSONA} via profile. */
+	persona?: PersonaId;
 }
 
 // ─────────────────────────── consts ───────────────────────────
@@ -83,9 +89,14 @@ export interface LearnerProfile {
 	level?: BriefLevel;
 	mode?: BriefMode;
 	scopeStrategy?: ScopeStrategyId;
+	persona?: PersonaId;
 }
 
-export const DEFAULT_PROFILE: LearnerProfile = { level: 'some', mode: 'socratic' };
+export const DEFAULT_PROFILE: LearnerProfile = {
+	level: 'some',
+	mode: 'socratic',
+	persona: DEFAULT_PERSONA
+};
 
 /**
  * Resolved brief fields after applying a profile. `level`/`mode` are always
@@ -99,6 +110,7 @@ export interface ResolvedBriefFields {
 	mode: BriefMode;
 	scope?: string;
 	scopeStrategy: ScopeStrategyId;
+	persona: PersonaId;
 }
 
 /**
@@ -113,13 +125,15 @@ export function applyProfile(
 ): ResolvedBriefFields {
 	const level = brief.level ?? profile.level ?? DEFAULT_LEVEL;
 	const mode = brief.mode ?? profile.mode ?? DEFAULT_MODE;
+	const persona = brief.persona ?? profile.persona ?? DEFAULT_PERSONA;
 	return {
 		goal: brief.goal,
 		context: brief.context ?? profile.context,
 		level,
 		mode,
 		scope: brief.scope,
-		scopeStrategy: resolveStrategy({ ...brief, mode }, profile).id
+		scopeStrategy: resolveStrategy({ ...brief, mode }, profile).id,
+		persona
 	};
 }
 
@@ -166,6 +180,7 @@ export function parseBrief(raw: string | null | undefined): LearningBrief | null
 	if (isBriefLevel(obj.level)) brief.level = obj.level;
 	if (isBriefMode(obj.mode)) brief.mode = obj.mode;
 	if (isScopeStrategyId(obj.scopeStrategy)) brief.scopeStrategy = obj.scopeStrategy;
+	if (isPersonaId(obj.persona)) brief.persona = obj.persona;
 	return brief;
 }
 
@@ -186,9 +201,12 @@ export function buildBriefSystemNote(brief: LearningBrief): ChatMessage {
 	const scope = brief.scope && brief.scope.trim().length > 0 ? brief.scope.trim() : '(open)';
 
 	const strat = strategyForBrief(brief);
+	const persona = brief.persona ? personaForId(brief.persona) : null;
 
 	const lines: string[] = [
-		"You are a personal learning tutor. Calibrate to this learner's brief:",
+		persona
+			? `You are ${persona.name} — ${persona.tagline}.`
+			: "You are a personal learning tutor. Calibrate to this learner's brief:",
 		`- Goal: ${brief.goal}`,
 		`- Level: ${level}  · Context: ${context}  · Mode: ${mode}  · Scope: ${scope}`,
 		`- Structure: ${strat.label}  (unless scope overrides the budget)`
@@ -200,8 +218,9 @@ export function buildBriefSystemNote(brief: LearningBrief): ChatMessage {
 		);
 	}
 
+	lines.push('');
+	if (persona) lines.push(persona.block, '');
 	lines.push(
-		'',
 		strat.block,
 		'',
 		'Teach to the goal at the stated level; stay within scope.',

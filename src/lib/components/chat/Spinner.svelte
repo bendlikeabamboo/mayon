@@ -3,7 +3,7 @@
 </script>
 
 {#if variant === 'pulse'}
-	<span class="mayon-spinner inline-flex size-4 items-center justify-center {className}">
+	<span class="mayon-spinner relative inline-flex size-4 items-center justify-center {className}">
 		<span class="size-1.5 rounded-full bg-current"></span>
 		<span
 			class="mayon-spinner absolute size-4 rounded-full border-2 border-current"
