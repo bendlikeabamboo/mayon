@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { RotateCcw } from '@lucide/svelte';
+	import { computeCenter } from './mermaid-center';
 
 	let {
 		open,
@@ -20,6 +21,7 @@
 	};
 
 	let svgContainer = $state<HTMLDivElement | null>(null);
+	let viewportPane = $state<HTMLDivElement | null>(null);
 	let resetBtn = $state<HTMLButtonElement | null>(null);
 	let pzInstance: PanZoomInstance | null = null;
 
@@ -46,27 +48,65 @@
 		}
 	}
 
-	function resetPanZoom() {
-		if (!pzInstance || !svgContainer) return;
-		pzInstance.moveTo(0, 0);
-		pzInstance.zoomAbs(0, 0, 1);
+	function centerView(): boolean {
+		if (!pzInstance || !svgContainer || !viewportPane) return false;
+		const svgEl = svgContainer.firstElementChild as HTMLElement | null;
+		if (!svgEl) return false;
+		const svgBox = svgEl.getBoundingClientRect();
+		if (svgBox.width === 0 || svgBox.height === 0) return false;
+		const vpBox = viewportPane.getBoundingClientRect();
+		const { x, y } = computeCenter(
+			{ w: vpBox.width, h: vpBox.height },
+			{ w: svgBox.width, h: svgBox.height }
+		);
+		pzInstance.moveTo(x, y);
+		pzInstance.zoomAbs(x, y, 1);
+		return true;
 	}
 
-	onMount(async () => {
-		if (!svgContainer) return;
-		const mod = await import('panzoom');
-		const instance = mod.default(svgContainer, {
-			minZoom: 0.5,
-			maxZoom: 5,
-			smoothScroll: false,
-			filterKey: () => true
+	function resetPanZoom() {
+		centerView();
+	}
+
+	onMount(() => {
+		if (!svgContainer || !viewportPane) return;
+		const container = svgContainer;
+		import('panzoom').then((mod) => {
+			const instance = mod.default(container, {
+				minZoom: 0.5,
+				maxZoom: 5,
+				smoothScroll: false,
+				filterKey: () => true
+			});
+			pzInstance = {
+				moveTo: instance.moveTo.bind(instance),
+				zoomAbs: instance.zoomAbs.bind(instance),
+				dispose: instance.dispose.bind(instance)
+			};
+			resetBtn?.focus();
+
+			let attempts = 0;
+			const tryCenter = () => {
+				if (centerView() || attempts++ > 30) return;
+				requestAnimationFrame(tryCenter);
+			};
+			requestAnimationFrame(tryCenter);
 		});
-		pzInstance = {
-			moveTo: instance.moveTo.bind(instance),
-			zoomAbs: instance.zoomAbs.bind(instance),
-			dispose: instance.dispose.bind(instance)
-		};
-		resetBtn?.focus();
+
+		let cleanup: (() => void) | undefined;
+		if (typeof ResizeObserver !== 'undefined') {
+			const ro = new ResizeObserver(() => {
+				let retryAttempts = 0;
+				const tryRecenter = () => {
+					if (centerView() || retryAttempts++ > 30) return;
+					requestAnimationFrame(tryRecenter);
+				};
+				requestAnimationFrame(tryRecenter);
+			});
+			ro.observe(viewportPane);
+			cleanup = () => ro.disconnect();
+		}
+		return cleanup;
 	});
 </script>
 
@@ -109,7 +149,7 @@
 					</button>
 				</div>
 			</div>
-			<div class="flex-1 overflow-hidden">
+			<div bind:this={viewportPane} class="flex-1 overflow-hidden">
 				<div
 					bind:this={svgContainer}
 					class="flex h-full w-full items-center justify-center"

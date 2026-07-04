@@ -35,6 +35,18 @@ vi.mock('ai', () => ({
 	}
 }));
 
+let lastDisabledToolIds: string[] | undefined;
+vi.mock('$lib/agent/loop', async (importOriginal) => {
+	const real = await importOriginal<typeof import('$lib/agent/loop')>();
+	return {
+		...real,
+		runAgentTurn: vi.fn(async (deps) => {
+			lastDisabledToolIds = deps.disabledToolIds;
+			return real.runAgentTurn(deps);
+		})
+	};
+});
+
 const { getActiveSdkProvider } = await import('$lib/ai/client');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
@@ -80,6 +92,7 @@ beforeEach(async () => {
 	mockedGenerateObject.mockReset();
 	mockedStreamText.mockReset();
 	chatStore.pendingPrompt = null;
+	lastDisabledToolIds = undefined;
 });
 
 describe('chatStore branching round-trip', () => {
@@ -1043,5 +1056,111 @@ describe('buildCapabilitiesPreamble save_brief wording', () => {
 		expect(preamble).toContain('first turn');
 		expect(preamble).toContain('no learning goal');
 		expect(preamble).toContain('Never rewrite');
+	});
+});
+
+describe('branch_chat first-turn suppression (UX1a)', () => {
+	it('suppresses branch_chat on the first send after createExpoundBranch, but not on the second', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const reply = 'The mitochondrion is the powerhouse of the cell.';
+		const assistant = await repos.messages.append(parent.id, 'assistant', reply);
+		await chatStore.load(parent.id);
+
+		const childId = await chatStore.createExpoundBranch(
+			assistant.id,
+			reply,
+			{
+				excerpt: 'powerhouse of the cell',
+				containerText: reply,
+				startInContainer: 0,
+				endInContainer: reply.length
+			},
+			'Explain this excerpt'
+		);
+
+		mockDefaultProvider();
+		mockStreamReply(['Explanation']);
+		await chatStore.load(childId);
+		const drained = chatStore.pendingPrompt;
+		chatStore.clearPendingPrompt();
+		if (drained) await chatStore.send(drained.text, { hidden: drained.hidden });
+
+		expect(lastDisabledToolIds).toContain('branch_chat');
+
+		mockStreamReply(['Follow up']);
+		await chatStore.send('next');
+
+		expect(lastDisabledToolIds).not.toContain('branch_chat');
+	});
+
+	it('suppresses branch_chat on the first send after branchFromMessage, but not on the second', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(parent.id, 'user', 'hello');
+		const assistant = await repos.messages.append(parent.id, 'assistant', 'hi there');
+		await chatStore.load(parent.id);
+
+		const childId = await chatStore.branchFromMessage(assistant.id);
+
+		mockDefaultProvider();
+		mockStreamReply(['Reply']);
+		await chatStore.load(childId);
+		await chatStore.send('continue');
+
+		expect(lastDisabledToolIds).toContain('branch_chat');
+
+		mockStreamReply(['Second reply']);
+		await chatStore.send('again');
+
+		expect(lastDisabledToolIds).not.toContain('branch_chat');
+	});
+
+	it('clears suppression after stop (abort)', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(parent.id, 'user', 'hello');
+		const assistant = await repos.messages.append(parent.id, 'assistant', 'hi there');
+		await chatStore.load(parent.id);
+
+		await chatStore.branchFromMessage(assistant.id);
+
+		mockDefaultProvider();
+		let resolveStream!: () => void;
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'token';
+				await new Promise<void>((r) => (resolveStream = r));
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'token' };
+				await new Promise<void>((r) => (resolveStream = r));
+			})(),
+			text: 'token',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(parent.id);
+		const childId = (await repos.chats.listChildren(parent.id))[0].id;
+		await chatStore.load(childId);
+		void chatStore.send('test');
+
+		await vi.waitFor(() => expect(lastDisabledToolIds).toContain('branch_chat'), { timeout: 2000 });
+		chatStore.stop();
+		resolveStream();
+
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false), { timeout: 2000 });
+
+		mockStreamReply(['After abort']);
+		await chatStore.send('after stop');
+
+		expect(lastDisabledToolIds).not.toContain('branch_chat');
+	});
+
+	it('normal root send never suppresses branch_chat (regression guard)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['Normal reply']);
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		expect(lastDisabledToolIds).not.toContain('branch_chat');
 	});
 });

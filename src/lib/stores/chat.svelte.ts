@@ -93,6 +93,9 @@ class ChatState {
 
 	pendingApprovals = $state<ApprovalEntry[]>([]);
 
+	/** First-turn-only: suppress `branch_chat` after a manual branch (UX1a). */
+	manualBranchPending = $state<boolean>(false);
+
 	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
 	get showLiveBubble(): boolean {
 		return this.streaming && this.streamBuffer.length > 0;
@@ -227,7 +230,10 @@ class ChatState {
 				rootChatId: chat?.rootId ?? chatId,
 				signal: this.controller.signal,
 				reasoning,
-				disabledToolIds: disabledToolsForBrief(rootBriefRaw),
+				disabledToolIds: [
+					...disabledToolsForBrief(rootBriefRaw),
+					...(this.manualBranchPending ? ['branch_chat'] : [])
+				],
 				updateStreamBuffer: (n) => (this.streamBuffer = n),
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {
@@ -320,6 +326,7 @@ class ChatState {
 			this.streamBuffer = '';
 			this.reasoningBuffer = '';
 			this.controller = null;
+			this.manualBranchPending = false;
 			diagnosticsStore.endTurn();
 			try {
 				await repos.agentTraces.create({
@@ -600,6 +607,7 @@ class ChatState {
 	/** Branch a child off a whole message (no span / no branch_source row). */
 	async branchFromMessage(messageId: string): Promise<string> {
 		if (!this.chat) throw new Error('Cannot branch: no active chat');
+		this.manualBranchPending = true;
 		const child = await repos.chats.createChild({
 			parentId: this.chat.id,
 			branchPointMessageId: messageId,
@@ -616,6 +624,7 @@ class ChatState {
 		extra?: { customInstructions?: string; addFormats?: string }
 	): Promise<string> {
 		if (!this.chat) throw new Error('Cannot branch: no active chat');
+		this.manualBranchPending = true;
 		const child = await repos.chats.createChild({
 			parentId: this.chat.id,
 			branchPointMessageId: messageId,

@@ -35,7 +35,7 @@ Delete **any** chat node (root or a mid-tree branch) and cascade to its **descen
 - The deleted chat's own `branch_source` row (it points at the parent's message) is removed by the existing `branch_chat_id IN (set)` delete — so no dangling traceability row. A sibling that branched from the same parent message is **not** in the set and is untouched.
 - Parent is never orphaned (children hold the FK to parent, not vice-versa), so deleting a subtree never touches the parent row.
 
-**UI:** expose delete on **non-root nodes on the `/tree` page only** (row/hover menu), reusing the existing confirm dialog wording ("Delete \"<title>\" and all its branches?"). `/tree` is the discovery surface for the whole forest, so it is the single place per-node delete lives. Root delete on `/chat` stays as-is (it already says "and all its branches").
+**UI:** expose delete on **non-root nodes on the `/tree` page only** (row/hover menu), reusing the existing confirm dialog wording ("Delete `\"<title>\"` and all its branches?"). `/tree` is the discovery surface for the whole forest, so it is the single place per-node delete lives. Root delete on `/chat` stays as-is (it already says "and all its branches").
 
 ### User journey / acceptance
 - `/tree`: hover a branch node → Delete → confirm → that subtree (node + all descendants + their labs/quizzes) disappears; siblings and the parent/ancestors remain; the page re-renders.
