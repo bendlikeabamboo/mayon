@@ -106,16 +106,13 @@ registerTool({
 registerTool({
 	def: {
 		id: 'list_artifacts',
-		description: 'List all labs and quizzes associated with a chat.',
-		parameters: toolSchema({
-			chatId: { type: 'string', description: 'The chat ID to list artifacts for.' }
-		}),
+		description: 'List all labs and quizzes associated with the current chat.',
+		parameters: toolSchema({}),
 		risk: 'readonly',
 		generative: false
 	},
-	async run(args, _ctx): Promise<ToolResult> {
-		const { chatId } = args as { chatId?: string };
-		if (!chatId) return { ok: false, summary: 'missing chatId' };
+	async run(_args, ctx): Promise<ToolResult> {
+		const chatId = ctx.chatId;
 
 		const [labsList, quizzesList] = await Promise.all([
 			repos.labs.listByChat(chatId),
@@ -187,16 +184,14 @@ registerTool({
 registerTool({
 	def: {
 		id: 'summarize_progress',
-		description: 'Summarize progress across all labs and quizzes for a chat (no LLM call).',
-		parameters: toolSchema({
-			chatId: { type: 'string', description: 'The chat ID to summarize progress for.' }
-		}),
+		description:
+			'Summarize progress across all labs and quizzes for the current chat (no LLM call).',
+		parameters: toolSchema({}),
 		risk: 'readonly',
 		generative: false
 	},
-	async run(args, _ctx): Promise<ToolResult> {
-		const { chatId } = args as { chatId?: string };
-		if (!chatId) return { ok: false, summary: 'missing chatId' };
+	async run(_args, ctx): Promise<ToolResult> {
+		const chatId = ctx.chatId;
 
 		const [labsList, quizzesList] = await Promise.all([
 			repos.labs.listByChat(chatId),

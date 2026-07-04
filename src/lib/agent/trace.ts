@@ -146,39 +146,53 @@ export class TraceBuilder {
 				} else if (event.type === 'finish' && payload?.finishReason) {
 					this.current.finishReason = String(payload.finishReason);
 				} else if (event.type === 'tool-call' && payload) {
-					this.current.toolCalls.push({
-						toolCallId: String(payload.toolCallId ?? ''),
-						toolName: String(payload.toolName ?? ''),
-						args: (payload.args as Record<string, unknown>) ?? {}
-					});
+					if (
+						!this.current.toolCalls.some((tc) => tc.toolCallId === String(payload.toolCallId ?? ''))
+					) {
+						this.current.toolCalls.push({
+							toolCallId: String(payload.toolCallId ?? ''),
+							toolName: String(payload.toolName ?? ''),
+							args: (payload.args as Record<string, unknown>) ?? {}
+						});
+					}
 				} else if (event.type === 'tool-result' && payload) {
-					this.current.toolResults.push({
-						toolCallId: String(payload.toolCallId ?? ''),
-						summary: String(payload.summary ?? ''),
-						detail: (payload.detail as Record<string, unknown>) ?? {}
-					});
+					if (
+						!this.current.toolResults.some(
+							(tr) => tr.toolCallId === String(payload.toolCallId ?? '')
+						)
+					) {
+						this.current.toolResults.push({
+							toolCallId: String(payload.toolCallId ?? ''),
+							summary: String(payload.summary ?? ''),
+							detail: (payload.detail as Record<string, unknown>) ?? {}
+						});
+					}
 				}
 				break;
 			}
 
 			case 'tool-call': {
 				if (this.current) {
-					this.current.toolCalls.push({
-						toolCallId: event.toolCallId,
-						toolName: event.toolName,
-						args: event.args
-					});
+					if (!this.current.toolCalls.some((tc) => tc.toolCallId === event.toolCallId)) {
+						this.current.toolCalls.push({
+							toolCallId: event.toolCallId,
+							toolName: event.toolName,
+							args: event.args
+						});
+					}
 				}
 				break;
 			}
 
 			case 'tool-result': {
 				if (this.current) {
-					this.current.toolResults.push({
-						toolCallId: event.toolCallId,
-						summary: event.summary,
-						detail: event.detail
-					});
+					if (!this.current.toolResults.some((tr) => tr.toolCallId === event.toolCallId)) {
+						this.current.toolResults.push({
+							toolCallId: event.toolCallId,
+							summary: event.summary,
+							detail: event.detail
+						});
+					}
 				}
 				break;
 			}

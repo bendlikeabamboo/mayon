@@ -26,7 +26,12 @@ export const deterministicTools: Tool[] = [
 			const { topic } = args as { topic?: string };
 			const msgs = await repos.messages.listByChat(ctx.chatId);
 			if (msgs.length === 0) return { ok: false, summary: 'no messages in chat' };
-			const last = msgs[msgs.length - 1];
+			let idx = msgs.length - 1;
+			while (idx >= 0 && msgs[idx].role === 'assistant' && msgs[idx].toolCallId) {
+				idx--;
+			}
+			if (idx < 0) return { ok: false, summary: 'no suitable branch point' };
+			const last = msgs[idx];
 			const child = await repos.chats.createChild({
 				parentId: ctx.chatId,
 				branchPointMessageId: last.id,

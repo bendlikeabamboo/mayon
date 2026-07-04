@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import Markdown from './Markdown.svelte';
 	import MessageRow from './MessageRow.svelte';
 	import Reasoning from './Reasoning.svelte';
@@ -15,7 +16,9 @@
 		reasoningBuffer = '',
 		onExpound,
 		onCopy,
-		onBranchWhole
+		onBranchWhole,
+		header,
+		personaName = 'Mayon'
 	}: {
 		messages: Message[];
 		streaming?: boolean;
@@ -29,6 +32,8 @@
 		) => void | Promise<void>;
 		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
+		header?: Snippet;
+		personaName?: string;
 	} = $props();
 
 	function isHidden(m: Message): boolean {
@@ -45,9 +50,12 @@
 </script>
 
 <div class="min-w-0 flex flex-col gap-4">
+	{#if header}
+		{@render header()}
+	{/if}
 	{#each visibleMessages as message (message.id)}
 		<div id="msg-{message.id}">
-			<MessageRow {message} {onExpound} {onCopy} {onBranchWhole} />
+			<MessageRow {message} {onExpound} {onCopy} {onBranchWhole} {personaName} />
 		</div>
 	{/each}
 
@@ -59,7 +67,7 @@
 				{#if streamBuffer}
 					<Spinner variant="orbit" />
 				{/if}
-				Mayon
+				{personaName}
 			</span>
 			{#if reasoningBuffer}
 				<Reasoning reasoning={reasoningBuffer} live />

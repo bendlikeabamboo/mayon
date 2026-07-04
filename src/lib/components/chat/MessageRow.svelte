@@ -13,7 +13,8 @@
 		message,
 		onExpound,
 		onCopy,
-		onBranchWhole
+		onBranchWhole,
+		personaName = 'Mayon'
 	}: {
 		message: Message;
 		onExpound: (
@@ -24,14 +25,15 @@
 		) => void | Promise<void>;
 		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
+		personaName?: string;
 	} = $props();
 
-	const roleLabel: Record<Message['role'], string> = {
-		user: 'You',
-		assistant: 'Mayon',
-		system: 'System',
-		tool: 'Tool'
-	};
+	function roleLabel(role: Message['role']): string {
+		if (role === 'assistant') return personaName;
+		if (role === 'user') return 'You';
+		if (role === 'system') return 'System';
+		return 'Tool';
+	}
 
 	const bubbleClass: Record<Message['role'], string> = {
 		user: 'bg-[var(--highlight)] text-white dark:bg-primary dark:text-primary-foreground',
@@ -93,7 +95,7 @@
 				</Button>
 			{/if}
 			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-				{roleLabel[message.role]}
+				{roleLabel(message.role)}
 			</span>
 		</div>
 		{#if message.role === 'assistant' && reasoning}

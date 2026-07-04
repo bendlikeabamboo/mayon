@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, listRootChats } from '$lib/stores/chat.svelte';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
+	import Pagination from '$lib/components/Pagination.svelte';
 	import type { LearningBrief } from '$lib/chat/brief';
 	import type { Chat } from '$lib/db/schema';
 
@@ -12,6 +13,7 @@
 	let loading = $state(true);
 	let creating = $state(false);
 	let deletingId = $state<string | null>(null);
+	let page = $state(1);
 
 	/** When true, the brief intake card is shown instead of the chat list. */
 	let showIntake = $state(false);
@@ -49,6 +51,16 @@
 			showIntake = false;
 		}
 	}
+
+	const ITEMS_PER_PAGE = 7;
+
+	let totalPages = $derived(Math.max(1, Math.ceil(roots.length / ITEMS_PER_PAGE)));
+	let pagedRoots = $derived(roots.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE));
+
+	$effect(() => {
+		void roots.length;
+		page = 1;
+	});
 
 	async function deleteChat(chat: Chat) {
 		const msg =
@@ -105,11 +117,11 @@
 		{:else if roots.length === 0}
 			<div class="rounded-lg border border-dashed border-border p-8 text-center">
 				<p class="text-sm text-muted-foreground">No chats yet.</p>
-				<p class="mt-1 text-sm text-muted-foreground">Click “New chat” to begin.</p>
+				<p class="mt-1 text-sm text-muted-foreground">Click "New chat" to begin.</p>
 			</div>
 		{:else}
 			<ul class="space-y-2">
-				{#each roots as chat (chat.id)}
+				{#each pagedRoots as chat (chat.id)}
 					<li
 						class="group flex items-center gap-2 rounded-lg border border-border bg-card p-3 pr-2 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 					>
@@ -139,6 +151,7 @@
 					</li>
 				{/each}
 			</ul>
+			<Pagination bind:page {totalPages} />
 		{/if}
 	{/if}
 </div>

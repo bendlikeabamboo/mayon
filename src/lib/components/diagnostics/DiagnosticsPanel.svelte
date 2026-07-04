@@ -445,7 +445,7 @@
 												<Copy class="size-3" /> Copy
 											</Button>
 										</div>
-										{#each iter.toolCalls as tc (tc.toolCallId)}
+										{#each iter.toolCalls as tc, tci (`${tc.toolCallId}@${tci}`)}
 											<div class="rounded-md bg-muted p-2 text-xs space-y-0.5">
 												<span class="font-mono font-semibold">{tc.toolName}</span>
 												<span class="text-muted-foreground">({tc.toolCallId})</span>
@@ -474,7 +474,7 @@
 												<Copy class="size-3" /> Copy
 											</Button>
 										</div>
-										{#each iter.toolResults as tr (tr.toolCallId)}
+										{#each iter.toolResults as tr, tri (`${tr.toolCallId}@${tri}`)}
 											<div class="rounded-md bg-muted p-2 text-xs space-y-0.5">
 												<span class="text-muted-foreground">({tr.toolCallId})</span>
 												<span class="font-medium">{tr.summary}</span>

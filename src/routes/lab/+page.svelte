@@ -4,7 +4,10 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { labsStore } from '$lib/stores/labs.svelte';
 	import { repos } from '$lib/db';
+	import Pagination from '$lib/components/Pagination.svelte';
 	import type { Chat, Lab } from '$lib/db/schema';
+
+	const ITEMS_PER_PAGE = 7;
 
 	/**
 	 * Labs index. Lists every lab grouped by chat (each group shows the chat
@@ -12,20 +15,34 @@
 	 * page, not here — this route is navigation + (optional) delete only.
 	 */
 	let groups = $state<{ chat: Chat | null; labs: Lab[] }[]>([]);
+	let page = $state(1);
+
+	let totalPages = $derived(Math.max(1, Math.ceil(labsStore.list.length / ITEMS_PER_PAGE)));
+	let pagedSlice = $derived(
+		labsStore.list.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+	);
 
 	onMount(async () => {
 		await labsStore.loadList();
 		await regroup();
 	});
 
+	$effect(() => {
+		void labsStore.list.length;
+		page = 1;
+		void regroup();
+	});
+
+	$effect(() => {
+		void pagedSlice;
+		void regroup();
+	});
+
 	async function regroup(): Promise<void> {
-		const all = labsStore.list;
-		// Group labs by chatId preserving newest-first order. A plain record (not a
-		// reactive SvelteMap) is fine here — `groups` is the reactive $state we
-		// reassign at the end.
+		const slice = pagedSlice;
 		const byChat: Record<string, Lab[]> = {};
 		const order: string[] = [];
-		for (const lab of all) {
+		for (const lab of slice) {
 			if (!byChat[lab.chatId]) {
 				byChat[lab.chatId] = [];
 				order.push(lab.chatId);
@@ -70,7 +87,7 @@
 
 	{#if labsStore.loading}
 		<p class="text-sm text-muted-foreground">Loading…</p>
-	{:else if groups.length === 0}
+	{:else if labsStore.list.length === 0}
 		<div class="rounded-lg border border-dashed border-border p-8 text-center">
 			<FlaskConical class="mx-auto size-6 text-muted-foreground" />
 			<p class="mt-2 text-sm text-muted-foreground">No labs yet.</p>
@@ -118,5 +135,6 @@
 				</section>
 			{/each}
 		</div>
+		<Pagination bind:page {totalPages} />
 	{/if}
 </div>

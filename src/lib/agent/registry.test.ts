@@ -82,7 +82,7 @@ describe('list_artifacts', () => {
 		await repos.labs.create({ chatId: chat.id, title: 'Lab B', content: 'x' });
 		await repos.quizzes.create({ chatId: chat.id });
 
-		const result = await toolsRun('list_artifacts', { chatId: chat.id }, ctx(chat.id, chat.id));
+		const result = await toolsRun('list_artifacts', {}, ctx(chat.id, chat.id));
 		expect(result.ok).toBe(true);
 		expect(result.summary).toBe('2 labs, 1 quiz');
 		expect(Array.isArray(result.detail)).toBe(true);
@@ -151,7 +151,7 @@ describe('summarize_progress', () => {
 		});
 		await repos.quizzes.create({ chatId: chat.id });
 
-		const result = await toolsRun('summarize_progress', { chatId: chat.id }, ctx(chat.id, chat.id));
+		const result = await toolsRun('summarize_progress', {}, ctx(chat.id, chat.id));
 		expect(result.ok).toBe(true);
 		expect(result.summary).toContain('1 lab, 1 quiz');
 		expect(result.summary).toContain('1/2 checklist steps complete');

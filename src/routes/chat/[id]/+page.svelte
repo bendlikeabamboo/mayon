@@ -162,6 +162,10 @@
 
 	const activeStrategy = $derived(rootBrief ? strategyForBrief(rootBrief) : null);
 
+	const personaName = $derived(
+		rootBrief ? personaForId(rootBrief.persona ?? DEFAULT_PERSONA).name : 'Mayon'
+	);
+
 	const lastAssistantRaw = $derived(() => {
 		for (let i = chatStore.messages.length - 1; i >= 0; i--) {
 			if (chatStore.messages[i].role === 'assistant') return chatStore.messages[i].content;
@@ -523,18 +527,6 @@
 							}}
 						/>
 					{/if}
-
-					{#if chatStore.chat?.parentId !== null && branchSource}
-						{@const formats = parseAddFormats(branchSource.addFormats) as ExpoundToggle[]}
-						<ExpoundCard
-							excerpt={branchSource.excerpt}
-							customInstructions={branchSource.customInstructions}
-							addFormats={formats}
-							parentChatId={chatStore.chat.parentId}
-							sourceMessageId={branchSource.sourceMessageId}
-							childId={chatStore.chat.id}
-						/>
-					{/if}
 				</div>
 				<div
 					class="relative min-h-0 flex-1"
@@ -550,7 +542,23 @@
 							{onExpound}
 							{onCopy}
 							{onBranchWhole}
-						/>
+							{personaName}
+						>
+							{#snippet header()}
+								{#if chatStore.chat?.parentId !== null && chatStore.chat && branchSource}
+									{@const chat = chatStore.chat}
+									{@const formats = parseAddFormats(branchSource.addFormats) as ExpoundToggle[]}
+									<ExpoundCard
+										excerpt={branchSource.excerpt}
+										customInstructions={branchSource.customInstructions}
+										addFormats={formats}
+										parentChatId={chat.parentId!}
+										sourceMessageId={branchSource.sourceMessageId}
+										childId={chat.id}
+									/>
+								{/if}
+							{/snippet}
+						</MessageList>
 					</div>
 					<div
 						class="pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-200 motion-reduce:transition-none {topVisible

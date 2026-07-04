@@ -20,7 +20,7 @@
 	} = $props();
 </script>
 
-<div class="self-start rounded-md border border-border bg-card p-3 text-sm">
+<div class="w-full rounded-lg border border-border bg-card p-3 text-sm">
 	<div class="flex items-center gap-2 text-muted-foreground">
 		<FileText class="size-3 shrink-0" />
 		<span class="font-medium">Expound branch</span>
