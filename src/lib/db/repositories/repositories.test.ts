@@ -138,3 +138,188 @@ describe('labs repository', () => {
 		expect(all.map((l) => l.id)).toEqual([b.id, a.id]);
 	});
 });
+
+describe('delete cascade', () => {
+	interface Fixture {
+		root: { id: string };
+		a: { id: string };
+		b: { id: string };
+		c: { id: string };
+		d: { id: string };
+		other: { id: string };
+		other2: { id: string };
+		msgR: { id: string };
+		msgA: { id: string };
+	}
+
+	async function buildFixture(): Promise<Fixture> {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.chats.createChild({
+			parentId: root.id,
+			title: 'A',
+			branchPointMessageId: null
+		});
+		const msgR = await repos.messages.append(root.id, 'assistant', 'root message');
+		const msgA = await repos.messages.append(a.id, 'assistant', 'message in A');
+		const b = await repos.chats.createChild({
+			parentId: a.id,
+			title: 'B',
+			branchPointMessageId: msgA.id
+		});
+		const c = await repos.chats.createChild({
+			parentId: a.id,
+			title: 'C',
+			branchPointMessageId: msgA.id
+		});
+		const d = await repos.chats.createChild({ parentId: c.id, title: 'D' });
+
+		for (const chat of [a, b, c, d]) {
+			await repos.messages.append(chat.id, 'user', 'msg in ' + chat.title);
+			await repos.labs.create({ chatId: chat.id, title: 'Lab ' + chat.title, content: 'x' });
+			const qz = await repos.quizzes.create({ chatId: chat.id });
+			const qq = await repos.quizQuestions.add({
+				quizId: qz.id,
+				type: 'mcq',
+				prompt: '?',
+				payload: { options: ['a', 'b'], answerIndex: 0 }
+			});
+			const att = await repos.quizAttempts.start(qz.id);
+			await repos.quizAnswers.record({ attemptId: att.id, questionId: qq.id, answer: 'a' });
+			await repos.agentTraces.create({
+				id: '',
+				createdAt: 0,
+				chatId: chat.id,
+				model: '',
+				configKind: 'openai-compatible',
+				reasoning: '',
+				kind: 'chat',
+				durationMs: 0,
+				trace: '{}'
+			});
+		}
+
+		await repos.branchSources.create({
+			sourceMessageId: msgA.id,
+			startChar: 0,
+			endChar: 1,
+			excerpt: 'x',
+			branchChatId: b.id
+		});
+		await repos.branchSources.create({
+			sourceMessageId: msgA.id,
+			startChar: 0,
+			endChar: 1,
+			excerpt: 'x',
+			branchChatId: c.id
+		});
+
+		const other = await repos.chats.createRoot({ title: 'Other' });
+		const other2 = await repos.chats.createRoot({ title: 'Other2' });
+
+		await repos.crossLinks.create({ fromChatId: other.id, toChatId: b.id, note: 'link to b' });
+		await repos.crossLinks.create({
+			fromChatId: other2.id,
+			toChatId: other.id,
+			note: 'survivor link'
+		});
+
+		return {
+			root: { id: root.id },
+			a: { id: a.id },
+			b: { id: b.id },
+			c: { id: c.id },
+			d: { id: d.id },
+			other: { id: other.id },
+			other2: { id: other2.id },
+			msgR: { id: msgR.id },
+			msgA: { id: msgA.id }
+		};
+	}
+
+	it('deleteSubtree(rootId) removes the entire tree and all artifacts (regression)', async () => {
+		const f = await buildFixture();
+		await repos.chats.deleteSubtree(f.root.id);
+
+		expect(await repos.chats.listSubtree(f.root.id)).toHaveLength(0);
+		expect(
+			await repos.chats.listRoots().then((r) => r.find((c) => c.id === f.root.id))
+		).toBeUndefined();
+
+		for (const id of [f.a.id, f.b.id, f.c.id, f.d.id]) {
+			expect(await repos.messages.listByChat(id)).toHaveLength(0);
+			expect(await repos.labs.listAll().then((l) => l.filter((x) => x.chatId === id))).toHaveLength(
+				0
+			);
+			expect(await repos.quizzes.listByChat(id)).toHaveLength(0);
+			expect(await repos.agentTraces.listByChat(id)).toHaveLength(0);
+			expect(await repos.branchSources.getByBranchChat(id)).toBeNull();
+		}
+
+		expect(await repos.crossLinks.listForChat(f.other.id)).toHaveLength(1);
+
+		expect(await repos.chats.getById(f.other.id)).not.toBeNull();
+		expect(await repos.crossLinks.listForChat(f.other2.id)).toHaveLength(1);
+	});
+
+	it('deleteBranch(b) removes b but leaves a, c, d, root intact', async () => {
+		const f = await buildFixture();
+		await repos.chats.deleteBranch(f.b.id);
+
+		expect(await repos.chats.getById(f.b.id)).toBeNull();
+		expect(await repos.chats.getById(f.a.id)).not.toBeNull();
+		expect(await repos.chats.getById(f.c.id)).not.toBeNull();
+		expect(await repos.chats.getById(f.d.id)).not.toBeNull();
+		expect(await repos.chats.getById(f.root.id)).not.toBeNull();
+
+		expect(await repos.messages.listByChat(f.b.id)).toHaveLength(0);
+		expect(await repos.messages.listByChat(f.a.id)).toHaveLength(2);
+
+		expect(await repos.branchSources.getByBranchChat(f.b.id)).toBeNull();
+		expect(await repos.branchSources.getByBranchChat(f.c.id)).not.toBeNull();
+	});
+
+	it('deleteBranch(c) removes c + d and their artifacts; b survives', async () => {
+		const f = await buildFixture();
+		await repos.chats.deleteBranch(f.c.id);
+
+		expect(await repos.chats.getById(f.c.id)).toBeNull();
+		expect(await repos.chats.getById(f.d.id)).toBeNull();
+		expect(await repos.chats.getById(f.b.id)).not.toBeNull();
+
+		expect(await repos.messages.listByChat(f.c.id)).toHaveLength(0);
+		expect(await repos.messages.listByChat(f.d.id)).toHaveLength(0);
+		expect(await repos.messages.listByChat(f.b.id)).toHaveLength(1);
+
+		expect(await repos.branchSources.getByBranchChat(f.b.id)).not.toBeNull();
+		expect(await repos.branchSources.getByBranchChat(f.c.id)).toBeNull();
+	});
+
+	it('cross-link targeting a deleted branch is removed; other chat survives', async () => {
+		const f = await buildFixture();
+		await repos.chats.deleteBranch(f.b.id);
+
+		const otherLinks = await repos.crossLinks.listForChat(f.other.id);
+		expect(otherLinks).toHaveLength(1);
+		expect(otherLinks[0]!.fromChatId).toBe(f.other2.id);
+
+		expect(await repos.chats.getById(f.other.id)).not.toBeNull();
+		expect(await repos.crossLinks.listForChat(f.other2.id)).toHaveLength(1);
+	});
+
+	it('parent message is untouched after deleting a branch child', async () => {
+		const f = await buildFixture();
+		await repos.chats.deleteBranch(f.b.id);
+
+		const aMsgs = await repos.messages.listByChat(f.a.id);
+		expect(aMsgs.length).toBeGreaterThanOrEqual(1);
+		expect(aMsgs.some((m) => m.id === f.msgA.id)).toBe(true);
+	});
+
+	it('ancestor chain root→a is intact after deleting branch b', async () => {
+		const f = await buildFixture();
+		await repos.chats.deleteBranch(f.b.id);
+
+		expect(await repos.chats.listChildren(f.root.id)).toHaveLength(1);
+		expect((await repos.chats.listChildren(f.root.id))[0]!.id).toBe(f.a.id);
+	});
+});

@@ -356,27 +356,34 @@ class ChatState {
 		this.pendingPrompt = null;
 	}
 
-	/**
-	 * Delete a conversation tree rooted at `chatId` (root + all descendants + all
-	 * attached artifacts). Clears the active view if it was pointing into the
-	 * deleted tree.
-	 */
+	/** Abort in-flight work and drop the active-conversation view from the store. */
+	private clearActiveView(): void {
+		this.stop();
+		this.titleController?.abort();
+		this.inferController?.abort();
+		this.inferredBrief = null;
+		this.inferDismissed = false;
+		this.inferring = false;
+		this.chat = null;
+		this.chatId = null;
+		this.messages = [];
+		this.error = null;
+		this.streamBuffer = '';
+		this.streaming = false;
+	}
+
 	async deleteChat(chatId: string): Promise<void> {
 		await repos.chats.deleteSubtree(chatId);
 		if (this.chat && (this.chat.id === chatId || this.chat.rootId === chatId)) {
-			// Abort any in-flight stream AND title request before clearing state.
-			this.stop();
-			this.titleController?.abort();
-			this.inferController?.abort();
-			this.inferredBrief = null;
-			this.inferDismissed = false;
-			this.inferring = false;
-			this.chat = null;
-			this.chatId = null;
-			this.messages = [];
-			this.error = null;
-			this.streamBuffer = '';
-			this.streaming = false;
+			this.clearActiveView();
+		}
+	}
+
+	async deleteBranch(id: string): Promise<void> {
+		await repos.chats.deleteBranch(id);
+		if (this.chatId) {
+			const stillThere = await repos.chats.getById(this.chatId);
+			if (!stillThere) this.clearActiveView();
 		}
 	}
 

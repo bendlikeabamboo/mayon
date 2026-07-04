@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { ChevronDown, ChevronRight } from '@lucide/svelte';
+	import { ChevronDown, ChevronRight, Trash2 } from '@lucide/svelte';
 	import { repos } from '$lib/db';
+	import { chatStore } from '$lib/stores/chat.svelte';
 	import { buildSubtreeModel, type SubtreeNode } from '$lib/chat/tree';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import type { Chat } from '$lib/db/schema';
@@ -15,17 +17,21 @@
 	let loading = $state(true);
 	let collapsed = new SvelteSet<string>();
 	let pageNum = $state(1);
+	let deletingId = $state<string | null>(null);
 
 	let totalPages = $derived(Math.max(1, Math.ceil(forests.length / ITEMS_PER_PAGE)));
 	let pagedForests = $derived(
 		forests.slice((pageNum - 1) * ITEMS_PER_PAGE, pageNum * ITEMS_PER_PAGE)
 	);
 
-	onMount(async () => {
+	async function reloadForests() {
 		roots = await repos.chats.listRoots();
 		const subtrees = await Promise.all(roots.map((r) => repos.chats.listSubtree(r.id)));
-		const all = subtrees.flat();
-		forests = buildSubtreeModel(all);
+		forests = buildSubtreeModel(subtrees.flat());
+	}
+
+	onMount(async () => {
+		await reloadForests();
 		loading = false;
 	});
 
@@ -50,6 +56,18 @@
 		if (hrs < 24) return `${hrs}h ago`;
 		const days = Math.floor(hrs / 24);
 		return `${days}d ago`;
+	}
+
+	async function deleteBranch(node: SubtreeNode) {
+		if (!confirm(`Delete "${node.chat.title}" and all its branches?`)) return;
+		deletingId = node.chat.id;
+		try {
+			await chatStore.deleteBranch(node.chat.id);
+			await reloadForests();
+			if (chatStore.chatId === null) await goto('/chat');
+		} finally {
+			deletingId = null;
+		}
 	}
 </script>
 
@@ -77,7 +95,7 @@
 			{@const isCollapsed = collapsed.has(node.chat.id)}
 			{@const isCurrent = node.chat.id === currentId}
 			{@const hasChildren = node.children.length > 0}
-			<div class="flex items-center gap-2" style="padding-left: {depth * 1.5}rem">
+			<div class="group flex items-center gap-2" style="padding-left: {depth * 1.5}rem">
 				{#if hasChildren}
 					<button
 						type="button"
@@ -103,6 +121,18 @@
 					<span class="truncate">{node.chat.title}</span>
 					<span class="shrink-0 text-xs opacity-70">{timeAgo(node.chat.updatedAt)}</span>
 				</a>
+				{#if node.chat.parentId !== null}
+					<button
+						type="button"
+						title="Delete this branch and its sub-branches"
+						aria-label="Delete branch"
+						class="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+						disabled={deletingId === node.chat.id}
+						onclick={() => deleteBranch(node)}
+					>
+						<Trash2 class="size-4" />
+					</button>
+				{/if}
 			</div>
 			{#if hasChildren && !isCollapsed}
 				{#each node.children as child (child.chat.id)}

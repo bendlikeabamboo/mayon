@@ -3,6 +3,52 @@ import { chats, type Chat, type NewChat } from '$lib/db/schema';
 import { awaitDb, getDriver } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 import type { LearningBrief } from '$lib/chat/brief';
+import type { BatchStatement } from '$lib/db/driver/types';
+
+function cascadeStatements(cs: { sql: string; params?: unknown[] }): BatchStatement[] {
+	const p = cs.params ?? [];
+	return [
+		{
+			sql: `DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`,
+			params: p
+		},
+		{
+			sql: `DELETE FROM quiz_answers WHERE question_id IN (SELECT qq.id FROM quiz_questions qq JOIN quizzes qz ON qz.id = qq.quiz_id JOIN chats c ON c.id = qz.chat_id WHERE c.${cs.sql})`,
+			params: p
+		},
+		{
+			sql: `DELETE FROM quiz_attempts WHERE quiz_id IN (SELECT qz.id FROM quizzes qz JOIN chats c ON c.id = qz.chat_id WHERE c.${cs.sql})`,
+			params: p
+		},
+		{
+			sql: `DELETE FROM quiz_questions WHERE quiz_id IN (SELECT qz.id FROM quizzes qz JOIN chats c ON c.id = qz.chat_id WHERE c.${cs.sql})`,
+			params: p
+		},
+		{
+			sql: `DELETE FROM quizzes WHERE chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`,
+			params: p
+		},
+		{ sql: `DELETE FROM labs WHERE chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`, params: p },
+		{
+			sql: `DELETE FROM branch_sources WHERE branch_chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`,
+			params: p
+		},
+		{
+			sql: `DELETE FROM branch_sources WHERE source_message_id IN (SELECT m.id FROM messages m JOIN chats c ON c.id = m.chat_id WHERE c.${cs.sql})`,
+			params: p
+		},
+		{ sql: `UPDATE chats SET branch_point_message_id = NULL WHERE ${cs.sql}`, params: p },
+		{
+			sql: `DELETE FROM messages WHERE chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`,
+			params: p
+		},
+		{
+			sql: `DELETE FROM cross_links WHERE from_chat_id IN (SELECT id FROM chats WHERE ${cs.sql}) OR to_chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`,
+			params: [...p, ...p]
+		},
+		{ sql: `DELETE FROM chats WHERE ${cs.sql}`, params: p }
+	];
+}
 
 async function insertChat(input: NewChat): Promise<Chat> {
 	const [row] = await (await awaitDb()).insert(chats).values(input).returning();
@@ -131,73 +177,26 @@ export const chatsRepo = {
 		await (await awaitDb()).delete(chats).where(eq(chats.id, id)).run();
 	},
 
-	/**
-	 * Delete an entire conversation tree (root + all descendants) and every
-	 * artifact attached to it: messages, branch_sources, labs, quizzes (+ their
-	 * questions/attempts/answers), and cross_links. Run as one batched
-	 * transaction in leaf→root dependency order so the `ON DELETE NO ACTION` FKs
-	 * never trip. `rootId` is the conversation root (for a root chat, its own id).
-	 */
 	async deleteSubtree(rootId: string): Promise<void> {
-		const driver = getDriver();
-		await driver.batch([
-			// agent_traces has quiz_id → quizzes.id FK; delete before quizzes.
+		await getDriver().batch(cascadeStatements({ sql: 'root_id = ?', params: [rootId] }));
+	},
+
+	async deleteBranch(id: string): Promise<void> {
+		await getDriver().batch([
+			{ sql: 'DROP TABLE IF EXISTS _delete_set' },
+			{ sql: 'CREATE TEMP TABLE _delete_set(id TEXT PRIMARY KEY)' },
 			{
-				sql: 'DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId]
+				sql: `INSERT INTO _delete_set(id)
+					WITH RECURSIVE desc(id) AS (
+						SELECT id FROM chats WHERE id = ?
+						UNION ALL
+						SELECT c.id FROM chats c JOIN desc ON c.parent_id = desc.id
+					)
+					SELECT id FROM desc`,
+				params: [id]
 			},
-			// Quizzes: answers → attempts → questions → quizzes.
-			{
-				sql: 'DELETE FROM quiz_answers WHERE question_id IN (SELECT qq.id FROM quiz_questions qq JOIN quizzes qz ON qz.id = qq.quiz_id JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM quiz_attempts WHERE quiz_id IN (SELECT qz.id FROM quizzes qz JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM quiz_questions WHERE quiz_id IN (SELECT qz.id FROM quizzes qz JOIN chats c ON c.id = qz.chat_id WHERE c.root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM quizzes WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM labs WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId]
-			},
-			// branch_sources reference both a message and a chat in the subtree.
-			{
-				sql: 'DELETE FROM branch_sources WHERE branch_chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM branch_sources WHERE source_message_id IN (SELECT m.id FROM messages m JOIN chats c ON c.id = m.chat_id WHERE c.root_id = ?)',
-				params: [rootId]
-			},
-			// chats.branch_point_message_id → messages forms a cycle with
-			// messages.chat_id → chats. Clear the (nullable) branch-point
-			// reference on subtree chats before deleting messages, so removing
-			// a branched message can't trip a chats→messages FK. (A child's
-			// branch point always lives within its own subtree.)
-			{
-				sql: 'UPDATE chats SET branch_point_message_id = NULL WHERE root_id = ?',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM messages WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId]
-			},
-			{
-				sql: 'DELETE FROM cross_links WHERE from_chat_id IN (SELECT id FROM chats WHERE root_id = ?) OR to_chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
-				params: [rootId, rootId]
-			},
-			// Chats last (after every FK that points at them is gone).
-			{
-				sql: 'DELETE FROM chats WHERE root_id = ?',
-				params: [rootId]
-			}
+			...cascadeStatements({ sql: 'id IN (SELECT id FROM _delete_set)' }),
+			{ sql: 'DROP TABLE _delete_set' }
 		]);
 	}
 };
