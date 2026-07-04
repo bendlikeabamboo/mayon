@@ -99,4 +99,28 @@ export function getDriver(): StorageDriver {
 	return driverRef;
 }
 
+export async function rebootstrapWith(next?: {
+	driver?: StorageDriver;
+	runtime?: DbRuntime;
+}): Promise<Db> {
+	if (next?.driver) {
+		try {
+			await driverRef?.dispose?.();
+		} catch {
+			// best-effort
+		}
+		driverRef = next.driver;
+	}
+	if (next?.runtime) dbStatus.runtime = next.runtime;
+	dbStatus.status = 'initializing';
+	driverPromise = null;
+	dbRef = null;
+	if (!driverRef) throw new Error('rebootstrap called before bootstrap');
+	await runMigrations(driverRef, migrations);
+	dbRef = createDb(driverRef);
+	dbStatus.markReady(dbStatus.runtime);
+	driverPromise = Promise.resolve(dbRef);
+	return dbRef;
+}
+
 export type { QueryResult };

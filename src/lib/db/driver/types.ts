@@ -22,6 +22,12 @@ export interface StorageDriver {
 	batch(stmts: BatchStatement[]): Promise<QueryResult[]>;
 	/** Run a statement that returns no rows (DDL / INSERT / UPDATE / DELETE). */
 	exec(sql: string): Promise<void>;
+	/** Whole-DB snapshot as bytes (browser + in-memory). Optional on desktop. */
+	snapshot?(): Promise<Uint8Array>;
+	/** Replace the live DB with `bytes` (browser + in-memory). Optional on desktop. */
+	restore?(bytes: Uint8Array): Promise<void>;
+	/** Release the underlying connection/worker so a fresh driver can replace it. */
+	dispose?(): Promise<void>;
 }
 
 /** A migration as bundled at build time (mirrors drizzle's on-disk format, minus `fs`). */

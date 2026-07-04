@@ -1,3 +1,4 @@
+mod backup;
 mod keys;
 mod transport;
 
@@ -17,6 +18,7 @@ pub fn run() {
 
 	builder
 		.plugin(tauri_plugin_sql::Builder::default().build())
+		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_process::init())
 		.plugin(tauri_plugin_updater::Builder::new().build())
 		.manage(transport::StreamHandles::default())
@@ -36,6 +38,8 @@ pub fn run() {
 			keys::key_delete,
 			transport::llm_stream,
 			transport::llm_stream_cancel,
+			backup::backup_database,
+			backup::restore_database,
 		])
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");

@@ -5,6 +5,8 @@ interface WorkerMsg {
 	ok: boolean;
 	rows?: unknown[];
 	results?: QueryResult[];
+	bytes?: ArrayBuffer;
+	validate?: { ok: boolean; reason?: string };
 	error?: string;
 }
 
@@ -13,17 +15,12 @@ interface Pending {
 	reject: (e: Error) => void;
 }
 
-/**
- * Main-thread bridge over the OPFS worker. Owns the worker, maps request/response
- * ids to promises, and adapts the worker protocol to the `StorageDriver` contract.
- */
 export function createOpfsDriver(): StorageDriver {
 	const worker = new Worker(new URL('./opfs-worker.ts', import.meta.url), { type: 'module' });
 
 	const pending = new Map<number, Pending>();
 	let nextId = 1;
 
-	// Worker reports readiness / init failure with id = -1 before answering queries.
 	const ready = new Promise<void>((resolve, reject) => {
 		const onReady = (e: MessageEvent<WorkerMsg>) => {
 			if (e.data?.id !== -1) return;
@@ -57,14 +54,15 @@ export function createOpfsDriver(): StorageDriver {
 	});
 
 	async function send(
-		op: 'query' | 'exec' | 'batch',
-		payload: Record<string, unknown>
+		op: 'query' | 'exec' | 'batch' | 'snapshot' | 'restore' | 'validate',
+		payload: Record<string, unknown>,
+		transfer?: Transferable[]
 	): Promise<WorkerMsg> {
 		await ready;
 		const id = nextId++;
 		return new Promise((resolve, reject) => {
 			pending.set(id, { resolve, reject });
-			worker.postMessage({ id, op, ...payload });
+			worker.postMessage({ id, op, ...payload }, transfer as unknown as StructuredSerializeOptions);
 		});
 	}
 
@@ -79,6 +77,16 @@ export function createOpfsDriver(): StorageDriver {
 		async batch(stmts): Promise<QueryResult[]> {
 			const r = await send('batch', { stmts });
 			return r.results ?? [];
+		},
+		async snapshot(): Promise<Uint8Array> {
+			const r = await send('snapshot', {});
+			return new Uint8Array(r.bytes!);
+		},
+		async restore(bytes: Uint8Array): Promise<void> {
+			await send('restore', { bytes: bytes.buffer as ArrayBuffer }, [bytes.buffer]);
+		},
+		async dispose(): Promise<void> {
+			worker.terminate();
 		}
 	};
 }

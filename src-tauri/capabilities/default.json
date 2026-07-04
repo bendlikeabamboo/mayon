@@ -12,6 +12,7 @@
 		"sql:allow-select",
 		"sql:allow-close",
 		"updater:default",
-		"process:default"
+		"process:default",
+		"dialog:default"
 	]
 }

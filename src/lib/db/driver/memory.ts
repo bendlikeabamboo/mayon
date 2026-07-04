@@ -24,7 +24,7 @@ async function loadSql() {
  */
 export async function createMemoryDriver(): Promise<StorageDriver> {
 	const SQL = await loadSql();
-	const db = new SQL.Database();
+	let db: Database = new SQL.Database();
 	db.run('PRAGMA foreign_keys = ON');
 
 	function toRows(result: ReturnType<Database['exec']>): SqlValue[][] {
@@ -52,6 +52,19 @@ export async function createMemoryDriver(): Promise<StorageDriver> {
 				db.run('ROLLBACK');
 				throw err;
 			}
+		},
+		async snapshot(): Promise<Uint8Array> {
+			return db.export();
+		},
+		async restore(bytes: Uint8Array): Promise<void> {
+			db.close();
+			db = new SQL.Database(bytes as Buffer);
+			db.run('PRAGMA foreign_keys = ON');
+		},
+		async dispose(): Promise<void> {
+			db.close();
+			db = new SQL.Database();
+			db.run('PRAGMA foreign_keys = ON');
 		}
 	};
 }

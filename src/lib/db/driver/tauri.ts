@@ -68,6 +68,9 @@ export async function createTauriDriver(): Promise<StorageDriver> {
 				}
 				throw err;
 			}
+		},
+		async dispose(): Promise<void> {
+			await db.close();
 		}
 	};
 }
