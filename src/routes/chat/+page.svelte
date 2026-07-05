@@ -1,27 +1,30 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { Plus, Trash2 } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, listRootChats } from '$lib/stores/chat.svelte';
+	import { timeAgo } from '$lib/utils/time';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import type { LearningBrief } from '$lib/chat/brief';
 	import type { Chat } from '$lib/db/schema';
 
-	let roots = $state<Chat[]>([]);
-	let loading = $state(true);
-	let creating = $state(false);
-	let deletingId = $state<string | null>(null);
-	let page = $state(1);
+	let { data } = $props();
+
+let roots = $state<Chat[]>([]);
+let loading = $state(false);
+let creating = $state(false);
+let deletingId = $state<string | null>(null);
+let page = $state(1);
+let hasProviders = $state(false);
+
+$effect(() => {
+	roots = data.roots;
+	hasProviders = data.hasProviders;
+});
 
 	/** When true, the brief intake card is shown instead of the chat list. */
 	let showIntake = $state(false);
-
-	onMount(async () => {
-		roots = await listRootChats();
-		loading = false;
-	});
 
 	async function newChat() {
 		showIntake = true;
@@ -76,17 +79,6 @@
 			deletingId = null;
 		}
 	}
-
-	function timeAgo(ts: number): string {
-		const diff = Date.now() - ts;
-		const mins = Math.floor(diff / 60000);
-		if (mins < 1) return 'just now';
-		if (mins < 60) return `${mins}m ago`;
-		const hrs = Math.floor(mins / 60);
-		if (hrs < 24) return `${hrs}h ago`;
-		const days = Math.floor(hrs / 24);
-		return `${days}d ago`;
-	}
 </script>
 
 <svelte:head>
@@ -116,8 +108,13 @@
 			<p class="text-sm text-muted-foreground">Loading…</p>
 		{:else if roots.length === 0}
 			<div class="rounded-lg border border-dashed border-border p-8 text-center">
-				<p class="text-sm text-muted-foreground">No chats yet.</p>
-				<p class="mt-1 text-sm text-muted-foreground">Click "New chat" to begin.</p>
+				{#if !hasProviders}
+					<p class="text-sm text-muted-foreground">Add a provider first.</p>
+					<Button href="/settings" variant="outline" size="sm" class="mt-2">Open Settings</Button>
+				{:else}
+					<p class="text-sm text-muted-foreground">No chats yet.</p>
+					<p class="mt-1 text-sm text-muted-foreground">Click "New chat" to begin.</p>
+				{/if}
 			</div>
 		{:else}
 			<ul class="space-y-2">
@@ -131,9 +128,6 @@
 						>
 							<div class="min-w-0">
 								<p class="truncate text-sm font-medium">{chat.title}</p>
-								{#if chat.provider}
-									<p class="text-xs text-muted-foreground">{chat.provider}</p>
-								{/if}
 							</div>
 							<span class="shrink-0 text-xs text-muted-foreground">{timeAgo(chat.updatedAt)}</span>
 						</a>

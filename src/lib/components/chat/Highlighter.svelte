@@ -49,6 +49,9 @@
 		x: number;
 		y: number;
 	} | null>(null);
+	let selectionToolbar = $state<{ x: number; y: number; sel: SelectionInput } | null>(null);
+
+	let touchTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Existing excerpts for this source message (drives overlap + underlines).
 	let existingSpans = $state<BranchSource[]>([]);
@@ -109,7 +112,71 @@
 		return { excerpt, containerText, startInContainer, endInContainer };
 	}
 
+	function showToolbarFromSelection() {
+		const sel = captureSelection();
+		if (!sel) {
+			selectionToolbar = null;
+			return;
+		}
+		const range = window.getSelection()?.getRangeAt(0);
+		if (!range) {
+			selectionToolbar = null;
+			return;
+		}
+		const rect = range.getBoundingClientRect();
+		const x = Math.max(8, Math.min(rect.left + rect.width / 2, window.innerWidth - 8));
+		const y = Math.max(8, rect.top - 8);
+		selectionToolbar = { x, y, sel };
+	}
+
+	function onMouseUp(_e: MouseEvent) {
+		if (menu || constructorState) return;
+		showToolbarFromSelection();
+	}
+
+	function onSelectionChange() {
+		if (!selectionToolbar) return;
+		const sel = window.getSelection();
+		if (!sel || sel.isCollapsed) {
+			selectionToolbar = null;
+		}
+	}
+
+	function onTouchStart(_e: TouchEvent) {
+		touchTimer = setTimeout(() => {
+			touchTimer = null;
+		}, 500);
+	}
+
+	function onTouchEnd(_e: TouchEvent) {
+		if (touchTimer) {
+			clearTimeout(touchTimer);
+			touchTimer = null;
+			return;
+		}
+		if (menu || constructorState) return;
+		showToolbarFromSelection();
+	}
+
+	function handleToolbarExpound() {
+		if (!selectionToolbar) return;
+		const { x, y, sel } = selectionToolbar;
+		selectionToolbar = null;
+		window.getSelection()?.removeAllRanges();
+		constructorState = { sel, x, y };
+	}
+
+	$effect(() => {
+		document.addEventListener('selectionchange', onSelectionChange);
+		return () => document.removeEventListener('selectionchange', onSelectionChange);
+	});
+
+	function onScrollClear() {
+		selectionToolbar = null;
+	}
+
 	function onContextMenu(e: MouseEvent) {
+		selectionToolbar = null;
 		const sel = captureSelection();
 		if (!sel) return; // No valid selection → let the native menu show.
 		e.preventDefault();
@@ -137,7 +204,7 @@
 		const { x, y } = menu;
 		const sel = pendingSel;
 		menu = null;
-		// Clear the browser selection so it doesn't persist under the constructor.
+		selectionToolbar = null;
 		window.getSelection()?.removeAllRanges();
 		constructorState = { sel, x, y };
 	}
@@ -146,11 +213,13 @@
 		const text = pendingSel?.excerpt ?? '';
 		menu = null;
 		pendingSel = null;
+		selectionToolbar = null;
 		onCopy(text);
 	}
 
 	function closeMenu() {
 		menu = null;
+		selectionToolbar = null;
 	}
 
 	function submitConstructor(opts: ExpoundOptions) {
@@ -164,6 +233,7 @@
 	function cancelConstructor() {
 		constructorState = null;
 		pendingSel = null;
+		selectionToolbar = null;
 	}
 
 	// --- Underline rendering (post-render DOM wrap) --------------------------
@@ -325,12 +395,17 @@
 	});
 </script>
 
+<svelte:window onscroll={onScrollClear} />
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
 	bind:this={container}
 	oncontextmenu={onContextMenu}
 	onclick={onClick}
+	onmouseup={onMouseUp}
+	ontouchstart={onTouchStart}
+	ontouchend={onTouchEnd}
 	role="region"
 	aria-label="Mayon reply — select text and right-click to expound"
 	class="relative"
@@ -371,4 +446,18 @@
 			expoundPopover = null;
 		}}
 	/>
+{/if}
+
+{#if selectionToolbar}
+	<div
+		class="fixed z-50"
+		style="left: {selectionToolbar.x}px; top: {selectionToolbar.y}px; transform: translate(-50%, -100%);"
+	>
+		<button
+			class="shadow-lg rounded-full text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 transition-colors cursor-pointer"
+			onclick={handleToolbarExpound}
+		>
+			Branch from this
+		</button>
+	</div>
 {/if}

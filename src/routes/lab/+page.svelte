@@ -23,7 +23,6 @@
 	);
 
 	onMount(async () => {
-		await labsStore.loadList();
 		await regroup();
 	});
 

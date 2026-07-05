@@ -92,6 +92,8 @@
 		</button>
 	</div>
 
+	<p class="text-xs text-muted-foreground">A focused sub-chat about the selected excerpt.</p>
+
 	<!-- Read-only excerpt preview, truncated. -->
 	<p
 		class="mt-2 line-clamp-3 rounded-md bg-muted/50 p-2 text-xs italic text-muted-foreground"

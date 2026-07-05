@@ -3,12 +3,17 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
+		ChevronDown,
+		FlaskConical,
+		ListChecks,
+		LoaderCircle,
 		Network,
 		PanelRight,
 		PanelRightClose,
+		Plus,
 		Sparkles,
+		SquareTerminal,
 		Target,
-		Wrench,
 		GraduationCap
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -33,7 +38,9 @@
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
-	import type { ReasoningEffort } from '$lib/ai/types';
+	import { getActiveSdkProvider } from '$lib/ai/client';
+	import { supportsReasoningEffort } from '$lib/ai/sdk-factory';
+	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
@@ -59,6 +66,13 @@
 	let railCollapsed = $state(localStorage.getItem('mayon:ui:rail') === '1');
 	let lg = $state(false);
 
+	let activeModelId = $state<string | undefined>(undefined);
+	let activeKind = $state<ProviderConfig['kind'] | undefined>(undefined);
+	let activeProviderName = $state<string | undefined>(undefined);
+	const supportsDeep = $derived(
+		activeKind === 'openai-compatible' ? supportsReasoningEffort(activeModelId) : true
+	);
+
 	let viewport = $state<HTMLDivElement | null>(null);
 	let topPane = $state<HTMLDivElement | null>(null);
 	let bottomPane = $state<HTMLDivElement | null>(null);
@@ -68,6 +82,9 @@
 	let fadeTop = $state(0);
 	let fadeBottom = $state(0);
 	let scrolledToHash = $state(false);
+
+	let composerPrompt = $state('');
+	let draftTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const FADE_CAP_PX = 80;
 	function halfCapped(h: number) {
@@ -134,6 +151,16 @@
 	});
 
 	$effect(() => {
+		const text = composerPrompt;
+		const id = chatStore.chatId;
+		if (!id) return;
+		if (draftTimer) clearTimeout(draftTimer);
+		draftTimer = setTimeout(() => {
+			void (text ? repos.settings.set('draft:' + id, text) : repos.settings.delete('draft:' + id));
+		}, 400);
+	});
+
+	$effect(() => {
 		localStorage.setItem('mayon:ui:rail', railCollapsed ? '1' : '0');
 	});
 
@@ -175,6 +202,14 @@
 
 	const gate = $derived(activeStrategy?.gated ? extractGateBlock(lastAssistantRaw()) : null);
 
+	const failedMessageId = $derived.by(() => {
+		if (!chatStore.error || !chatStore.lastFailedPrompt) return null;
+		const msgs = chatStore.messages;
+		if (msgs.length === 0) return null;
+		const last = msgs[msgs.length - 1];
+		return last.role === 'user' ? last.id : null;
+	});
+
 	const suggestedReplies = $derived(gate?.options ?? activeStrategy?.replies);
 
 	async function loadNav(chat: Chat) {
@@ -210,6 +245,7 @@
 		branchSource = null;
 		scrolledToHash = false;
 		await chatStore.load(chatId);
+		composerPrompt = (await repos.settings.get<string>('draft:' + chatId)) ?? '';
 		if (chatStore.chat) {
 			await loadNav(chatStore.chat);
 			diagnosticsStore.load(chatId);
@@ -287,8 +323,23 @@
 			lg = e.matches;
 		}
 		mq.addEventListener('change', onMatchChange);
-		const initial = page.params.id;
-		if (initial) return loadAll(initial).then(() => handleHashScroll());
+
+		(async () => {
+			try {
+				const active = await getActiveSdkProvider();
+				activeModelId = active.config.defaultModel;
+				activeKind = active.config.kind;
+				activeProviderName = active.config.name;
+			} catch {
+				activeModelId = undefined;
+				activeKind = undefined;
+				activeProviderName = undefined;
+			}
+
+			const initial = page.params.id;
+			if (initial) await loadAll(initial).then(() => handleHashScroll());
+		})();
+
 		return () => mq.removeEventListener('change', onMatchChange);
 	});
 
@@ -340,6 +391,22 @@
 		await goto(`/chat/${childId}`);
 	}
 
+	async function onRegenerate(interruptedId: string) {
+		const msgs = chatStore.messages;
+		const idx = msgs.findIndex((m) => m.id === interruptedId);
+		if (idx < 0) return;
+		let userText = '';
+		for (let i = idx - 1; i >= 0; i--) {
+			if (msgs[i].role === 'user') {
+				userText = msgs[i].content;
+				break;
+			}
+		}
+		await repos.messages.delete(interruptedId);
+		chatStore.messages = chatStore.messages.filter((m) => m.id !== interruptedId);
+		if (userText) void chatStore.send(userText);
+	}
+
 	async function onGenerateLab() {
 		if (!chatStore.chat) return;
 		const id = await labsStore.generate(chatStore.chat.id);
@@ -356,6 +423,15 @@
 		if (!labsStore.rawOffer) return;
 		const id = await labsStore.saveRaw(labsStore.rawOffer.chatId, labsStore.rawOffer.raw);
 		if (id) await goto(`/lab/${id}`);
+	}
+
+	async function onRetry() {
+		const text = chatStore.lastFailedPrompt;
+		if (text == null) return;
+		await chatStore.deleteLastDanglingUser();
+		composerPrompt = text;
+		chatStore.lastFailedPrompt = null;
+		chatStore.error = null;
 	}
 
 	async function onSaveBrief(brief: LearningBrief) {
@@ -430,6 +506,46 @@
 						</div>
 						<div class="flex shrink-0 items-center gap-1">
 							<Button
+								variant="ghost"
+								size="sm"
+								class="shrink-0"
+								title="Generate lab"
+								aria-label="Generate lab"
+								onclick={onGenerateLab}
+								disabled={labsStore.generating || quizzesStore.generating}
+							>
+								{#if labsStore.generating}
+									<LoaderCircle class="size-4 animate-spin" />
+								{:else}
+									<span class="relative inline-flex">
+										<FlaskConical class="size-4" />
+										<Plus
+											class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-background"
+										/>
+									</span>
+								{/if}
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								class="shrink-0"
+								title="Generate quiz"
+								aria-label="Generate quiz"
+								onclick={onGenerateQuiz}
+								disabled={labsStore.generating || quizzesStore.generating}
+							>
+								{#if quizzesStore.generating}
+									<LoaderCircle class="size-4 animate-spin" />
+								{:else}
+									<span class="relative inline-flex">
+										<ListChecks class="size-4" />
+										<Plus
+											class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-background"
+										/>
+									</span>
+								{/if}
+							</Button>
+							<Button
 								href="/tree"
 								variant="ghost"
 								size="sm"
@@ -441,11 +557,11 @@
 							<Button
 								variant="ghost"
 								size="icon"
-								title="Diagnostics"
-								aria-label="Diagnostics"
+								title="Mayon console"
+								aria-label="Mayon console"
 								onclick={() => diagnosticsStore.toggle()}
 							>
-								<Wrench class="size-4" />
+								<SquareTerminal class="size-4" />
 							</Button>
 						</div>
 					</div>
@@ -540,12 +656,14 @@
 						<MessageList
 							messages={chatStore.messages}
 							streaming={chatStore.streaming}
-							streamBuffer={chatStore.streamBuffer}
+							streamBuffer={chatStore.streamBufferRender}
 							reasoningBuffer={chatStore.reasoningBuffer}
 							{onExpound}
 							{onCopy}
 							{onBranchWhole}
+							{onRegenerate}
 							{personaName}
+							{failedMessageId}
 						>
 							{#snippet header()}
 								{#if chatStore.chat?.parentId !== null && chatStore.chat && branchSource}
@@ -575,6 +693,17 @@
 							: 'opacity-0'}"
 						style="height:var(--fade-bottom); background:linear-gradient(to top, var(--background), transparent);"
 					></div>
+					{#if !bottomVisible}
+						<button
+							type="button"
+							class="jump-latest pointer-events-auto absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-background px-3 py-1.5 text-xs shadow-md hover:bg-accent"
+							title="Jump to latest"
+							onclick={() =>
+								viewport?.scrollTo({ top: viewport?.scrollHeight, behavior: 'smooth' })}
+						>
+							<ChevronDown class="size-4" /> Jump to latest
+						</button>
+					{/if}
 				</div>
 
 				<div class="flex shrink-0 flex-col gap-3" bind:this={bottomPane}>
@@ -597,6 +726,9 @@
 								<Button href="/settings" variant="outline" size="sm" class="mt-2"
 									>Open Settings</Button
 								>
+							{/if}
+							{#if chatStore.lastFailedPrompt}
+								<Button variant="outline" size="sm" class="mt-2" onclick={onRetry}>Retry</Button>
 							{/if}
 						</div>
 					{/if}
@@ -651,9 +783,13 @@
 
 					<Composer
 						bind:streaming={chatStore.streaming}
+						bind:prompt={composerPrompt}
 						{onSend}
 						onStop={chatStore.stop.bind(chatStore)}
 						{suggestedReplies}
+						{supportsDeep}
+						providerName={activeProviderName}
+						modelId={activeModelId}
 					/>
 				</div>
 			</div>
@@ -674,7 +810,8 @@
 				currentTitle={chatStore.chat.title ?? ''}
 				{onGenerateLab}
 				{onGenerateQuiz}
-				generating={labsStore.generating || quizzesStore.generating}
+				generatingLab={labsStore.generating}
+				generatingQuiz={quizzesStore.generating}
 				getQuizNumber={(id) => quizzesStore.getQuizNumber(id)}
 				bind:collapsed={railCollapsed}
 			/>
@@ -684,7 +821,7 @@
 	<Sheet open={railOpen} onOpenChange={(v) => (railOpen = v)}>
 		<SheetContent side="right" class="w-72 overflow-y-auto p-0">
 			<SheetHeader class="p-3 pb-0">
-				<SheetTitle>Navigation</SheetTitle>
+				<SheetTitle>Branches · Labs · Quizzes</SheetTitle>
 			</SheetHeader>
 			<div class="p-3">
 				<ChatRail
@@ -697,7 +834,8 @@
 					currentTitle={chatStore.chat.title ?? ''}
 					{onGenerateLab}
 					{onGenerateQuiz}
-					generating={labsStore.generating || quizzesStore.generating}
+					generatingLab={labsStore.generating}
+					generatingQuiz={quizzesStore.generating}
 					getQuizNumber={(id) => quizzesStore.getQuizNumber(id)}
 				/>
 			</div>
@@ -705,7 +843,7 @@
 	</Sheet>
 {/if}
 {#if chatStore.chat}
-	<DiagnosticsPanel chatId={chatStore.chat.id} />
+	<DiagnosticsPanel chatId={chatStore.chat.id} title="Mayon console" />
 {/if}
 
 <style>

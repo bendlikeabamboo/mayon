@@ -77,8 +77,13 @@ async function consumeStream(
 	onToolCall: (tc: CollectedToolCall) => void,
 	onReasoningDelta: (text: string) => void,
 	onTrace?: (e: TraceEvent) => void
-): Promise<{ finishReason: string }> {
+): Promise<{
+	finishReason: string;
+	usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null;
+}> {
 	let finishReason = '';
+	let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null =
+		null;
 	for await (const part of fullStream) {
 		if (signal.aborted) break;
 		const p = part as Record<string, unknown>;
@@ -95,11 +100,15 @@ async function consumeStream(
 			onReasoningDelta(p.text);
 		} else if (p.type === 'finish') {
 			finishReason = p.finishReason as string;
+			usage =
+				((p.usage ?? p.totalUsage) as
+					| { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+					| undefined) ?? null;
 		} else if (p.type === 'error') {
 			throw p.error as Error;
 		}
 	}
-	return { finishReason };
+	return { finishReason, usage: usage ?? null };
 }
 
 async function runCriticPhase(
@@ -243,8 +252,13 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			buf = '';
 
 			let finishReason: string;
+			let streamUsage: {
+				promptTokens?: number;
+				completionTokens?: number;
+				totalTokens?: number;
+			} | null;
 			try {
-				({ finishReason } = await consumeStream(
+				({ finishReason, usage: streamUsage } = await consumeStream(
 					result.fullStream,
 					deps.signal,
 					(text) => {
@@ -272,6 +286,18 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					message: err instanceof Error ? err.message : String(err)
 				});
 				throw err;
+			}
+
+			if (streamUsage) {
+				deps.onTrace?.({
+					kind: 'usage',
+					usage: {
+						promptTokens: streamUsage.promptTokens ?? 0,
+						completionTokens: streamUsage.completionTokens ?? 0,
+						totalTokens: streamUsage.totalTokens ?? 0
+					},
+					modelId: (deps.model as { modelId?: string })?.modelId ?? ''
+				});
 			}
 
 			if (deps.signal.aborted) {

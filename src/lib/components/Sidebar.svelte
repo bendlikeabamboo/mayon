@@ -13,6 +13,7 @@
 	import DbStatus from './DbStatus.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
+	import { runtimeLabel } from '$lib/utils/runtime';
 
 	type NavItem = { href: string; label: string; icon: Component };
 
@@ -72,7 +73,7 @@
 	>
 		<ThemeToggle {collapsed} />
 		{#if !collapsed}
-			<span class="px-2 text-xs text-muted-foreground/50">{dbStatus.runtime}</span>
+			<span class="px-2 text-xs text-muted-foreground">{runtimeLabel(dbStatus.runtime)}</span>
 		{/if}
 		{#if !collapsed}
 			<DbStatus />

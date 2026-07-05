@@ -10,6 +10,12 @@ import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '$lib/c
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import type { LearningBrief } from '$lib/chat/brief';
 
+if (typeof requestAnimationFrame === 'undefined') {
+	globalThis.requestAnimationFrame = (cb: FrameRequestCallback) =>
+		setTimeout(() => cb(Date.now()), 16) as unknown as number;
+	globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
+}
+
 vi.mock('$lib/ai/client', () => ({
 	getActiveSdkProvider: vi.fn()
 }));
@@ -1162,5 +1168,166 @@ describe('branch_chat first-turn suppression (UX1a)', () => {
 		await chatStore.send('hello');
 
 		expect(lastDisabledToolIds).not.toContain('branch_chat');
+	});
+});
+
+describe('chatStore rAF stream throttle (UJ13)', () => {
+	it('streamBufferRender lags behind streamBuffer until the rAF setTimeout fires', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+
+		let capturedUpdate: ((n: string) => void) | null = null;
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			capturedUpdate = deps.updateStreamBuffer;
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(capturedUpdate).not.toBeNull());
+
+		capturedUpdate!('a');
+		capturedUpdate!('ab');
+		capturedUpdate!('abc');
+
+		expect(chatStore.streamBuffer).toBe('abc');
+		expect(chatStore.streamBufferRender).toBe('');
+		expect(chatStore.showLiveBubble).toBe(false);
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(chatStore.streamBufferRender).toBe('abc');
+		expect(chatStore.showLiveBubble).toBe(true);
+
+		resolveTurn();
+		await sendP;
+
+		expect(chatStore.streamBuffer).toBe('');
+		expect(chatStore.streamBufferRender).toBe('');
+		expect(chatStore.showLiveBubble).toBe(false);
+	});
+
+	it('streamBufferRender resets on load()', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.updateStreamBuffer('content');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		void chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('content'));
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(chatStore.streamBufferRender).toBe('content');
+
+		resolveTurn();
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+
+		await chatStore.load(root.id);
+		expect(chatStore.streamBufferRender).toBe('');
+	});
+});
+
+describe('chatStore interrupted row persistence (UJ16)', () => {
+	it('aborted after buffer accumulates persists an assistant row with interrupted metadata', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.updateStreamBuffer('partial reply');
+			await turnBlocked;
+			return { aborted: true };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('partial reply'));
+
+		chatStore.stop();
+		resolveTurn();
+		await sendP;
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const interrupted = msgs.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(interrupted).toBeDefined();
+		expect(interrupted!.content).toBe('partial reply');
+	});
+
+	it('normal completion does not create an interrupted row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['Full reply']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const interrupted = msgs.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(interrupted).toBeUndefined();
+	});
+
+	it('aborted with empty buffer does not create an interrupted row', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async () => {
+			await turnBlocked;
+			return { aborted: true };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		chatStore.stop();
+		resolveTurn();
+		await sendP;
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantMsgs = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantMsgs).toHaveLength(0);
 	});
 });

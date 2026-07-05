@@ -64,7 +64,7 @@ export async function buildSdkModel(
 	}
 }
 
-function supportsReasoningEffort(modelId?: string): boolean {
+export function supportsReasoningEffort(modelId?: string): boolean {
 	return !!modelId && /^glm-5\.2/i.test(modelId);
 }
 

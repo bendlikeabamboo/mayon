@@ -5,6 +5,7 @@
 	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 	import type { TraceEvent } from '$lib/agent/trace';
 	import type { AgentTrace } from '$lib/db/schema';
+	import { estimateContextLimit } from '$lib/ai/model-limits';
 
 	let {
 		chatId,
@@ -136,6 +137,16 @@
 		return null;
 	});
 
+	let liveUsage = $derived.by(() => {
+		for (let i = diagnosticsStore.liveEvents.length - 1; i >= 0; i--) {
+			const e = diagnosticsStore.liveEvents[i];
+			if (e.kind === 'usage') return e;
+		}
+		return null;
+	});
+
+	let usageFmt = $state<'pct' | 'raw'>('pct');
+
 	let turnNumbers = $derived.by(() => {
 		const sorted = [...diagnosticsStore.traces].sort((a, b) => a.createdAt - b.createdAt);
 		const result: Record<string, number> = {};
@@ -152,12 +163,17 @@
 		else if (quizId) await diagnosticsStore.clearQuiz(quizId);
 		else if (chatId) await diagnosticsStore.clear(chatId);
 	}
+
+	function fmtNum(n: number): string {
+		if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+		return String(n);
+	}
 </script>
 
 <Sheet bind:open={diagnosticsStore.open}>
 	<SheetContent side="right" class="w-[480px] sm:w-[540px]">
 		<SheetHeader>
-			<SheetTitle>{title ? `Diagnostics — ${title}` : 'Diagnostics'}</SheetTitle>
+			<SheetTitle>{title ?? 'Mayon console'}</SheetTitle>
 		</SheetHeader>
 
 		<div class="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
@@ -230,6 +246,29 @@
 						>
 							<span class="font-semibold">Error: </span>{liveError}
 						</div>
+					{/if}
+					{#if liveUsage}
+						{@const limit = estimateContextLimit(liveUsage.modelId)}
+						{#if limit != null}
+							<div class="flex items-center gap-2 text-xs text-muted-foreground">
+								<span>
+									{#if usageFmt === 'pct'}
+										Context: ~{fmtNum(liveUsage.usage.totalTokens)} / {fmtNum(limit)} ({Math.round(
+											(liveUsage.usage.totalTokens / limit) * 100
+										)}%) est.
+									{:else}
+										Prompt: {fmtNum(liveUsage.usage.promptTokens)} / Completion: {fmtNum(
+											liveUsage.usage.completionTokens
+										)} / Total: {fmtNum(liveUsage.usage.totalTokens)}
+									{/if}
+								</span>
+								<button
+									type="button"
+									class="underline hover:text-foreground"
+									onclick={() => (usageFmt = usageFmt === 'pct' ? 'raw' : 'pct')}>toggle</button
+								>
+							</div>
+						{/if}
 					{/if}
 				</section>
 			{/if}

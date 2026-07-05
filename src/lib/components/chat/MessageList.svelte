@@ -17,8 +17,10 @@
 		onExpound,
 		onCopy,
 		onBranchWhole,
+		onRegenerate,
 		header,
-		personaName = 'Mayon'
+		personaName = 'Mayon',
+		failedMessageId = null
 	}: {
 		messages: Message[];
 		streaming?: boolean;
@@ -32,8 +34,10 @@
 		) => void | Promise<void>;
 		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
+		onRegenerate?: (messageId: string) => void | Promise<void>;
 		header?: Snippet;
 		personaName?: string;
+		failedMessageId?: string | null;
 	} = $props();
 
 	function isHidden(m: Message): boolean {
@@ -55,7 +59,15 @@
 	{/if}
 	{#each visibleMessages as message (message.id)}
 		<div id="msg-{message.id}">
-			<MessageRow {message} {onExpound} {onCopy} {onBranchWhole} {personaName} />
+			<MessageRow
+				{message}
+				{onExpound}
+				{onCopy}
+				{onBranchWhole}
+				{onRegenerate}
+				{personaName}
+				failed={message.id === failedMessageId}
+			/>
 		</div>
 	{/each}
 
@@ -74,7 +86,7 @@
 			{/if}
 			<div class="rounded-lg border border-border bg-background px-4 py-2.5 text-foreground">
 				{#if streamBuffer}
-					<Markdown raw={stripGateFence(streamBuffer)} />
+					<Markdown raw={stripGateFence(streamBuffer)} live={true} />
 				{:else}
 					<span class="flex items-center gap-1.5 text-sm text-muted-foreground">
 						<Spinner variant="pulse" />

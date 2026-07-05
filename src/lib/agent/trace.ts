@@ -11,7 +11,12 @@ export type TraceEvent =
 	| { kind: 'tool-result'; toolCallId: string; summary: string; detail: Record<string, unknown> }
 	| { kind: 'persisted'; messageId: string; finalText: string; empty: boolean }
 	| { kind: 'aborted' }
-	| { kind: 'error'; message: string };
+	| { kind: 'error'; message: string }
+	| {
+			kind: 'usage';
+			usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+			modelId: string;
+	  };
 
 interface TurnTrace {
 	aborted: boolean;
@@ -212,6 +217,9 @@ export class TraceBuilder {
 				this.errorMessage = event.message;
 				break;
 			}
+
+			case 'usage':
+				break;
 		}
 	}
 

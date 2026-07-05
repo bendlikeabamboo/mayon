@@ -83,7 +83,7 @@
 		}}
 	>
 		<GitBranch class="size-4 shrink-0" />
-		Expound…
+		Branch from this text
 	</button>
 	<button
 		type="button"

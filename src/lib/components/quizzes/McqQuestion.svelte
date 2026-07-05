@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { repos } from '$lib/db';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import type { McqPayload } from '$lib/db';
 	import type { QuizAnswer, QuizQuestion } from '$lib/db/schema';
 
@@ -31,7 +32,6 @@
 	function choose(i: number) {
 		if (locked) return;
 		localPick = i;
-		onAnswer(i);
 	}
 
 	function optionClass(i: number): string {
@@ -69,6 +69,9 @@
 			</li>
 		{/each}
 	</ul>
+	{#if !locked && localPick !== null}
+		<Button variant="default" size="sm" onclick={() => onAnswer(localPick!)}>Submit answer</Button>
+	{/if}
 	{#if answer}
 		{#if answer.isCorrect === 1}
 			<p class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Correct</p>

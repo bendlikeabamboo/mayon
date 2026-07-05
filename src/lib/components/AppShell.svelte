@@ -18,6 +18,7 @@
 	import ThemeToggle from './ThemeToggle.svelte';
 	import Toaster from './Toaster.svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
+	import { runtimeLabel } from '$lib/utils/runtime';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 	import type { Component, Snippet } from 'svelte';
@@ -111,7 +112,7 @@
 					</nav>
 					<div class="flex flex-col gap-1 border-t border-sidebar-border p-2">
 						<ThemeToggle />
-						<span class="px-2 text-xs text-muted-foreground/50">{dbStatus.runtime}</span>
+						<span class="px-2 text-xs text-muted-foreground">{runtimeLabel(dbStatus.runtime)}</span>
 						<DbStatus />
 					</div>
 				</aside>

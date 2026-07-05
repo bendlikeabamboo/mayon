@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FlaskConical, GitBranch, ListChecks } from '@lucide/svelte';
+	import { FlaskConical, GitBranch, ListChecks, LoaderCircle } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Chat, Lab, Quiz } from '$lib/db/schema';
 	import CrossLinks from './CrossLinks.svelte';
@@ -14,7 +14,8 @@
 		currentTitle,
 		onGenerateLab,
 		onGenerateQuiz,
-		generating,
+		generatingLab,
+		generatingQuiz,
 		collapsed = $bindable(false),
 		getQuizNumber = (_id: string) => 0
 	}: {
@@ -27,7 +28,8 @@
 		currentTitle: string;
 		onGenerateLab: () => void;
 		onGenerateQuiz: () => void;
-		generating: boolean;
+		generatingLab: boolean;
+		generatingQuiz: boolean;
 		collapsed?: boolean;
 		getQuizNumber?: (id: string) => number;
 	} = $props();
@@ -113,10 +115,10 @@
 						size="sm"
 						class="h-6 px-2 text-xs"
 						onclick={onGenerateLab}
-						disabled={generating}
+						disabled={generatingLab || generatingQuiz}
 					>
-						{#if generating}
-							Generating…
+						{#if generatingLab}
+							<LoaderCircle class="mr-1 inline size-3 animate-spin" /> Generating…
 						{:else}
 							Generate lab
 						{/if}
@@ -150,10 +152,10 @@
 						size="sm"
 						class="h-6 px-2 text-xs"
 						onclick={onGenerateQuiz}
-						disabled={generating}
+						disabled={generatingLab || generatingQuiz}
 					>
-						{#if generating}
-							Generating…
+						{#if generatingQuiz}
+							<LoaderCircle class="mr-1 inline size-3 animate-spin" /> Generating…
 						{:else}
 							Generate quiz
 						{/if}

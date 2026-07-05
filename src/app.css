@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
+@import 'highlight.js/styles/github.min.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -152,6 +153,49 @@
 	--callout-warn: oklch(0.78 0.15 75);
 	--callout-concept: oklch(0.72 0.15 305);
 	--text-thin: 0.4px;
+}
+
+.dark .hljs {
+	color: #c9d1d9;
+	background: #0d1117;
+}
+.dark .hljs-comment,
+.dark .hljs-quote {
+	color: #8b949e;
+	font-style: italic;
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-type {
+	color: #ff7b72;
+}
+.dark .hljs-string,
+.dark .hljs-addition {
+	color: #a5d6ff;
+}
+.dark .hljs-number,
+.dark .hljs-literal {
+	color: #79c0ff;
+}
+.dark .hljs-title,
+.dark .hljs-title\.function_,
+.dark .hljs-section {
+	color: #d2a8ff;
+}
+.dark .hljs-attr,
+.dark .hljs-variable,
+.dark .hljs-template-variable {
+	color: #ffa657;
+}
+.dark .hljs-built_in {
+	color: #ffa657;
+}
+.dark .hljs-meta {
+	color: #79c0ff;
+}
+.dark .hljs-deletion {
+	color: #ffa198;
+	background: rgba(248, 81, 73, 0.1);
 }
 
 @theme inline {

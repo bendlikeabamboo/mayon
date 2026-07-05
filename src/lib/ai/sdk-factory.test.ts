@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { providerOptionsForReasoning } from './sdk-factory';
+import { providerOptionsForReasoning, supportsReasoningEffort } from './sdk-factory';
 import type { ReasoningEffort } from './types';
 
 const _efforts: ReasoningEffort[] = ['off', 'on', 'deep'];
@@ -13,6 +13,28 @@ function opts(
 ): Record<string, unknown> {
 	return providerOptionsForReasoning(kind, effort, pKey, model);
 }
+
+describe('supportsReasoningEffort', () => {
+	it('returns true for glm-5.2', () => {
+		expect(supportsReasoningEffort('glm-5.2')).toBe(true);
+	});
+
+	it('returns true for glm-5.2[1m]', () => {
+		expect(supportsReasoningEffort('glm-5.2[1m]')).toBe(true);
+	});
+
+	it('returns false for gpt-4o', () => {
+		expect(supportsReasoningEffort('gpt-4o')).toBe(false);
+	});
+
+	it('returns false for glm-5.1', () => {
+		expect(supportsReasoningEffort('glm-5.1')).toBe(false);
+	});
+
+	it('returns false for undefined', () => {
+		expect(supportsReasoningEffort(undefined)).toBe(false);
+	});
+});
 
 describe('supportsReasoningEffort (indirect via openai-compatible)', () => {
 	function hasReasoningEffort(modelId: string): boolean {

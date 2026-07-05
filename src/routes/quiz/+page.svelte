@@ -16,7 +16,6 @@
 	);
 
 	onMount(async () => {
-		await quizzesStore.loadList();
 		await regroup();
 	});
 

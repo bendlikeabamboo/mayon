@@ -71,6 +71,38 @@
 		}
 	});
 
+	function hasNonDefaultCalibration(b: LearningBrief | null | undefined): boolean {
+		if (!b) return false;
+		return (
+			b.level !== DEFAULT_LEVEL ||
+			b.mode !== DEFAULT_MODE ||
+			b.scopeStrategy !== defaultStrategyFor(b.mode ?? DEFAULT_MODE) ||
+			b.persona !== DEFAULT_PERSONA
+		);
+	}
+
+	let calibrationOpen = $state(untrack(() => isEdit && hasNonDefaultCalibration(brief)));
+	let advancedOpen = $state(
+		untrack(() => isEdit && !!(brief?.context?.trim() || brief?.scope?.trim()))
+	);
+
+	const disclosureHeaderClass =
+		'flex w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground cursor-pointer select-none';
+
+	const calChevronClass = $derived(
+		`size-4 shrink-0 transition-transform duration-200${calibrationOpen ? ' rotate-90' : ''}`
+	);
+	const advChevronClass = $derived(
+		`size-4 shrink-0 transition-transform duration-200${advancedOpen ? ' rotate-90' : ''}`
+	);
+
+	function toggleCalibration() {
+		calibrationOpen = !calibrationOpen;
+	}
+	function toggleAdvanced() {
+		advancedOpen = !advancedOpen;
+	}
+
 	onMount(async () => {
 		if (mode !== 'intake') return;
 		try {
@@ -163,75 +195,91 @@
 		<p class="text-xs text-muted-foreground">A doable verb, not a topic noun.</p>
 	</div>
 
-	<!-- Level + Mode -->
-	<div class="grid gap-3 sm:grid-cols-2">
-		<div class="space-y-1">
-			<label class={labelClass} for="brief-level">Level</label>
-			<select id="brief-level" bind:value={level} class={inputClass}>
-				{#each LEVEL_OPTIONS as l (l)}
-					<option value={l}>{LEVEL_LABELS[l]}</option>
-				{/each}
-			</select>
-		</div>
-		<div class="space-y-1">
-			<label class={labelClass} for="brief-mode">Teaching mode</label>
-			<select id="brief-mode" bind:value={modeVal} class={inputClass}>
-				{#each MODE_OPTIONS as m (m)}
-					<option value={m}>{MODE_LABELS[m]}</option>
-				{/each}
-			</select>
-		</div>
-	</div>
+	<!-- Calibration disclosure -->
+	<div class="space-y-2">
+		<button type="button" class={disclosureHeaderClass} onclick={toggleCalibration}>
+			<ChevronDown class={calChevronClass} />
+			Calibration
+		</button>
+		{#if calibrationOpen}
+			<div class="space-y-3 pl-0">
+				<div class="grid gap-3 sm:grid-cols-2">
+					<div class="space-y-1">
+						<label class={labelClass} for="brief-level">Level</label>
+						<select id="brief-level" bind:value={level} class={inputClass}>
+							{#each LEVEL_OPTIONS as l (l)}
+								<option value={l}>{LEVEL_LABELS[l]}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="space-y-1">
+						<label class={labelClass} for="brief-mode">Teaching mode</label>
+						<select id="brief-mode" bind:value={modeVal} class={inputClass}>
+							{#each MODE_OPTIONS as m (m)}
+								<option value={m}>{MODE_LABELS[m]}</option>
+							{/each}
+						</select>
+					</div>
+				</div>
 
-	<!-- Structure (derived from mode) -->
-	<div class="space-y-1">
-		<label class={labelClass} for="brief-strategy">Structure</label>
-		<select id="brief-strategy" bind:value={scopeStrategy} class={inputClass}>
-			{#each modeStrategies as s (s.id)}
-				<option value={s.id}>{s.label}</option>
-			{/each}
-		</select>
-		{#if modeStrategies.find((s) => s.id === scopeStrategy)}
-			<p class="text-xs text-muted-foreground">
-				{modeStrategies.find((s) => s.id === scopeStrategy)?.hint}
-			</p>
+				<div class="space-y-1">
+					<label class={labelClass} for="brief-strategy">Structure</label>
+					<select id="brief-strategy" bind:value={scopeStrategy} class={inputClass}>
+						{#each modeStrategies as s (s.id)}
+							<option value={s.id}>{s.label}</option>
+						{/each}
+					</select>
+					{#if modeStrategies.find((s) => s.id === scopeStrategy)}
+						<p class="text-xs text-muted-foreground">
+							{modeStrategies.find((s) => s.id === scopeStrategy)?.hint}
+						</p>
+					{/if}
+				</div>
+
+				<div class="space-y-1">
+					<label class={labelClass} for="brief-persona">Teacher</label>
+					<select id="brief-persona" bind:value={persona} class={inputClass}>
+						{#each PERSONAS as p (p.id)}
+							<option value={p.id}>{p.name} ({p.summary})</option>
+						{/each}
+					</select>
+				</div>
+			</div>
 		{/if}
 	</div>
 
-	<!-- Teacher persona -->
-	<div class="space-y-1">
-		<label class={labelClass} for="brief-persona">Teacher</label>
-		<select id="brief-persona" bind:value={persona} class={inputClass}>
-			{#each PERSONAS as p (p.id)}
-				<option value={p.id}>{p.name} ({p.summary})</option>
-			{/each}
-		</select>
-	</div>
-
-	<!-- Context + Scope (optional) -->
-	<div class="grid gap-3 sm:grid-cols-2">
-		<div class="space-y-1">
-			<label class={labelClass} for="brief-context"
-				>Context <span class="text-muted-foreground/70">(optional)</span></label
-			>
-			<input
-				id="brief-context"
-				bind:value={context}
-				placeholder="role / situation"
-				class={inputClass}
-			/>
-		</div>
-		<div class="space-y-1">
-			<label class={labelClass} for="brief-scope"
-				>Scope <span class="text-muted-foreground/70">(optional)</span></label
-			>
-			<input
-				id="brief-scope"
-				bind:value={scopeState}
-				placeholder="e.g. “orient me in 10 min”"
-				class={inputClass}
-			/>
-		</div>
+	<!-- Advanced disclosure -->
+	<div class="space-y-2">
+		<button type="button" class={disclosureHeaderClass} onclick={toggleAdvanced}>
+			<ChevronDown class={advChevronClass} />
+			Advanced
+		</button>
+		{#if advancedOpen}
+			<div class="grid gap-3 sm:grid-cols-2">
+				<div class="space-y-1">
+					<label class={labelClass} for="brief-context"
+						>Context <span class="text-muted-foreground/70">(optional)</span></label
+					>
+					<input
+						id="brief-context"
+						bind:value={context}
+						placeholder="role / situation"
+						class={inputClass}
+					/>
+				</div>
+				<div class="space-y-1">
+					<label class={labelClass} for="brief-scope"
+						>Scope <span class="text-muted-foreground/70">(optional)</span></label
+					>
+					<input
+						id="brief-scope"
+						bind:value={scopeState}
+						placeholder="e.g. &quot;orient me in 10 min&quot;"
+						class={inputClass}
+					/>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<div class="flex flex-wrap items-center justify-between gap-2 pt-1">

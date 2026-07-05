@@ -4,6 +4,7 @@
 	import Markdown from './Markdown.svelte';
 	import Reasoning from './Reasoning.svelte';
 	import Highlighter from './Highlighter.svelte';
+	import LazyMount from './LazyMount.svelte';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
@@ -14,7 +15,9 @@
 		onExpound,
 		onCopy,
 		onBranchWhole,
-		personaName = 'Mayon'
+		onRegenerate,
+		personaName = 'Mayon',
+		failed = false
 	}: {
 		message: Message;
 		onExpound: (
@@ -25,7 +28,9 @@
 		) => void | Promise<void>;
 		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
+		onRegenerate?: (messageId: string) => void | Promise<void>;
 		personaName?: string;
+		failed?: boolean;
 	} = $props();
 
 	function roleLabel(role: Message['role']): string {
@@ -45,6 +50,7 @@
 	function parseMetadata(raw: string | null): {
 		artifact?: { kind: string; id: string };
 		reasoning?: string;
+		interrupted?: boolean;
 	} | null {
 		if (!raw) return null;
 		try {
@@ -66,6 +72,7 @@
 	let reasoning = $derived(
 		message.role === 'assistant' && !message.toolCallId ? parsedMeta?.reasoning : undefined
 	);
+	let interrupted = $derived(parsedMeta?.interrupted === true);
 </script>
 
 {#if message.role === 'assistant' && message.toolCallId != null && message.content === ''}
@@ -91,7 +98,7 @@
 					title="Branch a new chat from this whole message"
 					onclick={() => void onBranchWhole(message.id)}
 				>
-					<GitBranch class="size-3" /> Branch
+					<GitBranch class="size-3" /> Branch from this message
 				</Button>
 			{/if}
 			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -105,7 +112,9 @@
 			class="{message.role === 'user' ? 'max-w-[75%]' : 'min-w-0 max-w-full'} {message.role ===
 			'user'
 				? 'no-text-thin'
-				: ''} rounded-lg px-4 py-2.5 {bubbleClass[message.role]}"
+				: ''} {failed ? 'border-l-2 border-red-500/60' : ''} rounded-lg px-4 py-2.5 {bubbleClass[
+				message.role
+			]}"
 		>
 			{#if message.role === 'assistant'}
 				{@const visible = stripGateFence(message.content)}
@@ -115,11 +124,26 @@
 					onExpound={(raw, sel, opts) => onExpound(message.id, raw, sel, opts)}
 					{onCopy}
 				>
-					<Markdown raw={visible} />
+					<LazyMount><Markdown raw={visible} /></LazyMount>
 				</Highlighter>
 			{:else}
-				<Markdown raw={message.content} />
+				<LazyMount><Markdown raw={message.content} /></LazyMount>
 			{/if}
 		</div>
+		{#if interrupted && message.role === 'assistant'}
+			<div
+				class="mt-2 flex items-center gap-2 border-t border-border/60 pt-2 text-xs text-muted-foreground"
+			>
+				This reply was interrupted.
+				{#if onRegenerate}
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-6 px-2"
+						onclick={() => void onRegenerate(message.id)}>Regenerate</Button
+					>
+				{/if}
+			</div>
+		{/if}
 	</div>
 {/if}

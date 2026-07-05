@@ -70,8 +70,10 @@ class ChatState {
 	messages = $state<Message[]>([]);
 	streaming = $state(false);
 	streamBuffer = $state('');
+	streamBufferRender = $state('');
 	reasoningBuffer = $state('');
 	error = $state<FormattedProviderError | null>(null);
+	lastFailedPrompt = $state<string | null>(null);
 	loading = $state(false);
 
 	/**
@@ -85,6 +87,16 @@ class ChatState {
 	/** Separate abort for the parallel first-message title request. */
 	private titleController: AbortController | null = null;
 	private titling = false;
+	private rafId: number | null = null;
+
+	private startRenderFlush() {
+		const tick = () => {
+			this.streamBufferRender = this.streamBuffer;
+			if (this.streaming) this.rafId = requestAnimationFrame(tick);
+			else this.rafId = null;
+		};
+		this.rafId = requestAnimationFrame(tick);
+	}
 
 	inferredBrief = $state<LearningBrief | null>(null);
 	private inferring = false;
@@ -98,7 +110,7 @@ class ChatState {
 
 	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
 	get showLiveBubble(): boolean {
-		return this.streaming && this.streamBuffer.length > 0;
+		return this.streaming && this.streamBufferRender.length > 0;
 	}
 
 	/**
@@ -116,6 +128,7 @@ class ChatState {
 		this.loading = true;
 		this.error = null;
 		this.streamBuffer = '';
+		this.streamBufferRender = '';
 		this.reasoningBuffer = '';
 		this.streaming = false;
 		this.chatId = chatId;
@@ -199,8 +212,10 @@ class ChatState {
 		// 2) Begin streaming.
 		this.streaming = true;
 		this.streamBuffer = '';
+		this.streamBufferRender = '';
 		this.reasoningBuffer = '';
 		this.controller = new AbortController();
+		this.startRenderFlush();
 
 		const builder = new TraceBuilder();
 		const startTime = Date.now();
@@ -312,6 +327,7 @@ class ChatState {
 		} catch (err) {
 			if (!isAbortError(err)) {
 				this.error = formatProviderError(mapSdkError(err));
+				this.lastFailedPrompt = prompt;
 				builder.emit({
 					kind: 'error',
 					message: err instanceof Error ? `${err.name}: ${err.message}` : String(err)
@@ -322,8 +338,25 @@ class ChatState {
 				a.resolve({ approved: false, aborted: true });
 			}
 			this.pendingApprovals = [];
+			if (this.rafId !== null) {
+				cancelAnimationFrame(this.rafId);
+				this.rafId = null;
+			}
+			this.streamBufferRender = this.streamBuffer;
+			const wasAborted = this.controller?.signal.aborted ?? false;
+			if (wasAborted && this.streamBuffer.trim()) {
+				try {
+					const row = await repos.messages.append(chatId, 'assistant', this.streamBuffer, {
+						metadata: JSON.stringify({ interrupted: true })
+					});
+					this.messages = [...this.messages, row];
+				} catch {
+					/* best-effort */
+				}
+			}
 			this.streaming = false;
 			this.streamBuffer = '';
+			this.streamBufferRender = '';
 			this.reasoningBuffer = '';
 			this.controller = null;
 			this.manualBranchPending = false;
@@ -343,6 +376,7 @@ class ChatState {
 			} catch {
 				/* best-effort; never surfaces to user */
 			}
+			if (!this.error) this.lastFailedPrompt = null;
 		}
 	}
 
@@ -369,7 +403,18 @@ class ChatState {
 		this.messages = [];
 		this.error = null;
 		this.streamBuffer = '';
+		this.streamBufferRender = '';
 		this.streaming = false;
+		this.lastFailedPrompt = null;
+	}
+
+	async deleteLastDanglingUser(): Promise<void> {
+		const msgs = this.messages;
+		if (msgs.length === 0) return;
+		const last = msgs[msgs.length - 1];
+		if (last.role !== 'user') return;
+		await repos.messages.delete(last.id);
+		this.messages = msgs.filter((m) => m.id !== last.id);
 	}
 
 	async deleteChat(chatId: string): Promise<void> {
@@ -377,6 +422,7 @@ class ChatState {
 		if (this.chat && (this.chat.id === chatId || this.chat.rootId === chatId)) {
 			this.clearActiveView();
 		}
+		void repos.settings.delete('draft:' + chatId);
 	}
 
 	async deleteBranch(id: string): Promise<void> {
@@ -385,6 +431,7 @@ class ChatState {
 			const stillThere = await repos.chats.getById(this.chatId);
 			if (!stillThere) this.clearActiveView();
 		}
+		void repos.settings.delete('draft:' + id);
 	}
 
 	/**
