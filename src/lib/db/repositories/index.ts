@@ -13,3 +13,12 @@ export {
 	type QuizPayload
 } from './quizzes';
 export { quizAttemptsRepo, quizAnswersRepo } from './quiz-attempts';
+export {
+	searchRepo,
+	type SearchHit,
+	type SearchKind,
+	stripIndexNoise,
+	buildMatchQuery,
+	renderSnippet,
+	deepLink
+} from './search';

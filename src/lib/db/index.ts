@@ -13,6 +13,7 @@ import { labsRepo } from './repositories/labs';
 import { quizzesRepo, quizQuestionsRepo } from './repositories/quizzes';
 import { quizAttemptsRepo, quizAnswersRepo } from './repositories/quiz-attempts';
 import { agentTracesRepo } from './repositories/agent-traces';
+import { searchRepo } from './repositories/search';
 
 /** Typed repository namespace — the only sanctioned way to touch the database. */
 export const repos = {
@@ -26,7 +27,8 @@ export const repos = {
 	quizQuestions: quizQuestionsRepo,
 	quizAttempts: quizAttemptsRepo,
 	quizAnswers: quizAnswersRepo,
-	agentTraces: agentTracesRepo
+	agentTraces: agentTracesRepo,
+	search: searchRepo
 };
 
 export type { LabChecklistItem } from './repositories/labs';
@@ -36,3 +38,5 @@ export type {
 	ShortPayload,
 	QuizPayload
 } from './repositories/quizzes';
+export type { SearchHit, SearchKind } from './repositories/search';
+export { stripIndexNoise, buildMatchQuery, renderSnippet, deepLink } from './repositories/search';

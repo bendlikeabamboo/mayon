@@ -33,7 +33,7 @@
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { SelectionInput } from '$lib/chat/highlight';
 	import type { ExpoundOptions } from '$lib/chat/expound';
-	import type { ReasoningMode } from '$lib/ai/types';
+	import type { ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
@@ -239,6 +239,9 @@
 
 				if (branchId) {
 					flashExpoundMark(branchId);
+				} else {
+					el.classList.add('msg-flash');
+					setTimeout(() => el.classList.remove('msg-flash'), 1500);
 				}
 				return true;
 			}
@@ -299,8 +302,8 @@
 		}
 	});
 
-	async function onSend(text: string, reasoning: ReasoningMode) {
-		await chatStore.send(text, { reasoning });
+	async function onSend(text: string, effort: ReasoningEffort) {
+		await chatStore.send(text, { effort });
 	}
 
 	async function onExpound(
@@ -704,3 +707,17 @@
 {#if chatStore.chat}
 	<DiagnosticsPanel chatId={chatStore.chat.id} />
 {/if}
+
+<style>
+	:global(.msg-flash) {
+		animation: msg-flash-anim 1.5s ease-out;
+	}
+	@keyframes msg-flash-anim {
+		0% {
+			background-color: oklch(0.85 0.15 85);
+		}
+		100% {
+			background-color: transparent;
+		}
+	}
+</style>

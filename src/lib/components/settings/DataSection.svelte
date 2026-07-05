@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { isTauri } from '$lib/db';
+	import { isTauri, repos } from '$lib/db';
 	import { createBackup, restoreBackupFromBytes, restoreBackupFromPath } from '$lib/db/backup';
 	import { chatStore } from '$lib/stores/chat.svelte';
 
@@ -60,6 +60,21 @@
 	}
 
 	const disabled = $derived(busy || chatStore.streaming);
+
+	async function handleRebuildIndex() {
+		if (!confirm('Rebuild the search index from scratch?')) return;
+		busy = true;
+		error = null;
+		status = null;
+		try {
+			await repos.search.rebuildIndex();
+			status = 'Search index rebuilt.';
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			busy = false;
+		}
+	}
 </script>
 
 <section class="space-y-3">
@@ -95,5 +110,9 @@
 		<p class="text-xs text-destructive" role="alert">{error}</p>
 	{/if}
 
-	<!-- UX4: Rebuild search index button -->
+	<hr class="border-border" />
+
+	<Button variant="outline" size="sm" {disabled} onclick={handleRebuildIndex}>
+		Rebuild search index
+	</Button>
 </section>

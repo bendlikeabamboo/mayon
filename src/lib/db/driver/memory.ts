@@ -1,73 +1,102 @@
-import initSqlJs, { type Database, type SqlValue } from 'sql.js';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import sqlite3InitModule, { type SqlValue } from '@sqlite.org/sqlite-wasm';
 import type { QueryResult, StorageDriver } from './types';
 
-let sqlPromise: Promise<Awaited<ReturnType<typeof initSqlJs>>> | null = null;
+type Mod = Awaited<ReturnType<typeof sqlite3InitModule>>;
+type Db = InstanceType<Mod['oo1']['DB']>;
 
-async function loadSql() {
-	if (sqlPromise) return sqlPromise;
-	sqlPromise = (async () => {
-		const sqljsMain = import.meta.resolve('sql.js');
-		const dir = dirname(fileURLToPath(sqljsMain));
-		const wasmBinary = readFileSync(join(dir, 'sql-wasm.wasm'));
-		return initSqlJs({ wasmBinary: wasmBinary as never });
-	})();
-	return sqlPromise;
+let modulePromise: Promise<Mod> | null = null;
+
+async function loadModule() {
+	if (modulePromise) return modulePromise;
+	modulePromise = sqlite3InitModule();
+	return modulePromise;
 }
 
-/**
- * In-memory SQLite for Vitest (OPFS/Tauri are unavailable under Node/jsdom).
- * Implements the same `StorageDriver` contract and feeds `createDb`, so repository
- * tests exercise the real drizzle proxy path.
- */
-export async function createMemoryDriver(): Promise<StorageDriver> {
-	const SQL = await loadSql();
-	let db: Database = new SQL.Database();
-	db.run('PRAGMA foreign_keys = ON');
-
-	function toRows(result: ReturnType<Database['exec']>): SqlValue[][] {
-		return result.length > 0 ? result[0].values : [];
+function takeSnapshot(mod: Mod, db: Db): Uint8Array {
+	const capi = mod.capi as unknown as Record<string, (...args: unknown[]) => unknown>;
+	const state = (mod.wasm as unknown as { scopedAllocPush(): unknown }).scopedAllocPush();
+	try {
+		const piSize = (mod.wasm as unknown as { scopedAllocPtr(): number }).scopedAllocPtr();
+		const dataPtr = capi.sqlite3_serialize(db.pointer as number, 'main', piSize, 0) as number;
+		const size = (mod.wasm as unknown as { getPtrValue(p: number): number }).getPtrValue(piSize);
+		if (dataPtr && size > 0) {
+			const heap = (mod.wasm as unknown as { heap8u(): Uint8Array }).heap8u();
+			return new Uint8Array(heap.buffer, dataPtr, size).slice();
+		}
+	} finally {
+		(mod.wasm as unknown as { scopedAllocPop(s: unknown): void }).scopedAllocPop(state);
 	}
+	return new Uint8Array(0);
+}
+
+export async function createMemoryDriver(): Promise<StorageDriver> {
+	const mod = await loadModule();
+	const { oo1, capi, wasm } = mod;
+	let db: Db = new oo1.DB(':memory:');
+	db.exec('PRAGMA foreign_keys = ON');
 
 	return {
-		async query<T>(_sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
-			const res = db.exec(_sql, params as SqlValue[]);
-			return { rows: toRows(res) as T[] };
+		async query<T>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
+			const rows = db.exec({
+				sql,
+				bind: params as SqlValue[],
+				rowMode: 'array',
+				returnValue: 'resultRows'
+			}) as SqlValue[][];
+			return { rows: rows as T[] };
 		},
 		async exec(sql: string): Promise<void> {
-			db.run(sql);
+			db.exec({ sql });
 		},
 		async batch(stmts): Promise<QueryResult[]> {
-			db.run('BEGIN');
+			db.exec('BEGIN');
 			try {
 				const out = stmts.map((s) => {
-					const res = db.exec(s.sql, (s.params ?? []) as SqlValue[]);
-					return { rows: toRows(res) };
+					const rows = db.exec({
+						sql: s.sql,
+						bind: (s.params ?? []) as SqlValue[],
+						rowMode: 'array',
+						returnValue: 'resultRows'
+					}) as SqlValue[][];
+					return { rows };
 				});
-				db.run('COMMIT');
+				db.exec('COMMIT');
 				return out;
 			} catch (err) {
-				db.run('ROLLBACK');
+				try {
+					db.exec('ROLLBACK');
+				} catch {
+					// ignore rollback errors
+				}
 				throw err;
 			}
 		},
 		async snapshot(): Promise<Uint8Array> {
-			return db.export();
+			return takeSnapshot(mod, db);
 		},
 		async restore(bytes: Uint8Array): Promise<void> {
 			db.close();
-			db = new SQL.Database(bytes as Buffer);
-			db.run('PRAGMA foreign_keys = ON');
+			db = new oo1.DB(':memory:');
+			db.exec('PRAGMA foreign_keys = ON');
+			const dataPtr = wasm.alloc(bytes.byteLength);
+			wasm.heap8u().set(bytes, dataPtr);
+			const rc = capi.sqlite3_deserialize(
+				db.pointer as number,
+				'main',
+				dataPtr,
+				bytes.byteLength,
+				bytes.byteLength,
+				2
+			);
+			if (rc !== 0) {
+				wasm.dealloc(dataPtr);
+				throw new Error(`sqlite3_deserialize failed: ${capi.sqlite3_errstr(rc)}`);
+			}
 		},
 		async dispose(): Promise<void> {
 			db.close();
-			db = new SQL.Database();
-			db.run('PRAGMA foreign_keys = ON');
+			db = new oo1.DB(':memory:');
+			db.exec('PRAGMA foreign_keys = ON');
 		}
 	};
 }
-
-/** Export the sql.js Database type for callers that need raw access in tests. */
-export type { Database };

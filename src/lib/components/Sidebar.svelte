@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { FlaskConical, Home, ListChecks, MessageSquare, Network, Settings } from '@lucide/svelte';
+	import {
+		FlaskConical,
+		Home,
+		ListChecks,
+		MessageSquare,
+		Network,
+		Search,
+		Settings
+	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import DbStatus from './DbStatus.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
@@ -14,6 +22,7 @@
 		{ href: '/lab', label: 'Labs', icon: FlaskConical },
 		{ href: '/quiz', label: 'Quizzes', icon: ListChecks },
 		{ href: '/tree', label: 'Tree', icon: Network },
+		{ href: '/search', label: 'Search', icon: Search },
 		{ href: '/settings', label: 'Settings', icon: Settings }
 	];
 

@@ -5,7 +5,7 @@ import { isSessionDisabled, disableToolsForSession } from '$lib/agent/capability
 import { validateTurn } from '$lib/agent/critic';
 import { toCoreMessages } from '$lib/chat/context';
 import { buildCapabilitiesPreamble } from '$lib/chat/brief';
-import type { ChatMessage, ReasoningMode, ProviderConfig } from '$lib/ai/types';
+import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
 import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
 import type { Message } from '$lib/db/schema';
 import type { TraceEvent } from './trace';
@@ -19,7 +19,7 @@ export interface AgentTurnDeps {
 	chatId: string;
 	rootChatId: string;
 	signal: AbortSignal;
-	reasoning: ReasoningMode;
+	effort: ReasoningEffort;
 	updateStreamBuffer: (next: string) => void;
 	updateReasoningBuffer: (next: string) => void;
 	appendAssistantText: (
@@ -191,7 +191,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			const system = sysParts.join('\n\n');
 			const disabled = deps.disabledToolIds ?? [];
 			const disabledSet = new Set(disabled);
-			const pOpts = providerOptionsForReasoning(deps.config.kind, deps.reasoning, deps.config.name);
+			const pOpts = providerOptionsForReasoning(
+				deps.config.kind,
+				deps.effort,
+				deps.config.name,
+				deps.config.defaultModel
+			);
 			const toolNames = toolsEnabled
 				? getToolDefinitions()
 						.filter((d) => !disabledSet.has(d.id))

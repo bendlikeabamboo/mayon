@@ -171,7 +171,7 @@ function makeDeps(overrides: Partial<AgentTurnDeps> = {}): AgentTurnDeps {
 		chatId: 'chat-1',
 		rootChatId: 'chat-1',
 		signal: new AbortController().signal,
-		reasoning: 'auto',
+		effort: 'on',
 		updateStreamBuffer: vi.fn((n) => bufferStates.push(n)),
 		updateReasoningBuffer: vi.fn((n) => reasoningStates.push(n)),
 		appendAssistantText: vi.fn(async (content, _opts) => {

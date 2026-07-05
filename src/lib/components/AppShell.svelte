@@ -8,8 +8,10 @@
 		ListChecks,
 		MessageSquare,
 		Network,
+		Search,
 		Settings
 	} from '@lucide/svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Sidebar from './Sidebar.svelte';
 	import DbStatus from './DbStatus.svelte';
@@ -28,6 +30,7 @@
 		{ href: '/lab', label: 'Labs', icon: FlaskConical },
 		{ href: '/quiz', label: 'Quizzes', icon: ListChecks },
 		{ href: '/tree', label: 'Tree', icon: Network },
+		{ href: '/search', label: 'Search', icon: Search },
 		{ href: '/settings', label: 'Settings', icon: Settings }
 	];
 
@@ -48,7 +51,22 @@
 			lg = e.matches;
 		}
 		mq.addEventListener('change', onMatchChange);
-		return () => mq.removeEventListener('change', onMatchChange);
+
+		function onKeydown(e: KeyboardEvent) {
+			const tag = (e.target as HTMLElement)?.tagName;
+			const editable = (e.target as HTMLElement)?.isContentEditable;
+			if (tag === 'INPUT' || tag === 'TEXTAREA' || editable) return;
+			if (e.key === '/' || (e.key === 'k' && (e.metaKey || e.ctrlKey))) {
+				e.preventDefault();
+				goto('/search');
+			}
+		}
+		window.addEventListener('keydown', onKeydown);
+
+		return () => {
+			mq.removeEventListener('change', onMatchChange);
+			window.removeEventListener('keydown', onKeydown);
+		};
 	});
 
 	function isActive(href: string) {

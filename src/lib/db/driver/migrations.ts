@@ -56,6 +56,29 @@ const migrations: MigrationMeta[] = [
 		],
 		folderMillis: 1783008654126,
 		hash: 'e55cb1f5138b70eaf4fdad4922e8cf580af7c0975db22121ebaa0b1262b6e932'
+	},
+	{
+		sql: [
+			"-- FTS5 full-text search index (hand-authored, NOT a drizzle model).\n-- Kept in sync by triggers on messages, chats, labs, quiz_questions.\n-- Do NOT add to schema.ts — FTS5 virtual tables are not drizzle tables.\nCREATE VIRTUAL TABLE search_fts USING fts5(\n  kind UNINDEXED,\n  title,\n  body,\n  chat_id UNINDEXED,\n  ref_id UNINDEXED,\n  quiz_id UNINDEXED,\n  tokenize = 'unicode61 remove_diacritics 2'\n);",
+			"-- messages\nCREATE TRIGGER search_fts_messages_ai AFTER INSERT ON messages BEGIN\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    VALUES('message','',new.content,new.chat_id,new.id,NULL);\nEND;",
+			"CREATE TRIGGER search_fts_messages_ad AFTER DELETE ON messages BEGIN\n  DELETE FROM search_fts WHERE kind='message' AND ref_id = old.id;\nEND;",
+			"CREATE TRIGGER search_fts_messages_au AFTER UPDATE ON messages BEGIN\n  DELETE FROM search_fts WHERE kind='message' AND ref_id = old.id;\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    VALUES('message','',new.content,new.chat_id,new.id,NULL);\nEND;",
+			"-- chats (title only)\nCREATE TRIGGER search_fts_chats_ai AFTER INSERT ON chats BEGIN\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    VALUES('chat',new.title,'',new.id,new.id,NULL);\nEND;",
+			"CREATE TRIGGER search_fts_chats_ad AFTER DELETE ON chats BEGIN\n  DELETE FROM search_fts WHERE kind='chat' AND ref_id = old.id;\nEND;",
+			"CREATE TRIGGER search_fts_chats_au AFTER UPDATE ON chats BEGIN\n  DELETE FROM search_fts WHERE kind='chat' AND ref_id = old.id;\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    VALUES('chat',new.title,'',new.id,new.id,NULL);\nEND;",
+			"-- labs (title + content)\nCREATE TRIGGER search_fts_labs_ai AFTER INSERT ON labs BEGIN\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    VALUES('lab',new.title,new.content,new.chat_id,new.id,NULL);\nEND;",
+			"CREATE TRIGGER search_fts_labs_ad AFTER DELETE ON labs BEGIN\n  DELETE FROM search_fts WHERE kind='lab' AND ref_id = old.id;\nEND;",
+			"CREATE TRIGGER search_fts_labs_au AFTER UPDATE ON labs BEGIN\n  DELETE FROM search_fts WHERE kind='lab' AND ref_id = old.id;\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    VALUES('lab',new.title,new.content,new.chat_id,new.id,NULL);\nEND;",
+			"-- quiz_questions (prompt; chat_id resolved via the quiz)\nCREATE TRIGGER search_fts_qq_ai AFTER INSERT ON quiz_questions BEGIN\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    SELECT 'quiz_question','',new.prompt,q.chat_id,new.id,new.quiz_id\n    FROM quizzes q WHERE q.id = new.quiz_id;\nEND;",
+			"CREATE TRIGGER search_fts_qq_ad AFTER DELETE ON quiz_questions BEGIN\n  DELETE FROM search_fts WHERE kind='quiz_question' AND ref_id = old.id;\nEND;",
+			"CREATE TRIGGER search_fts_qq_au AFTER UPDATE ON quiz_questions BEGIN\n  DELETE FROM search_fts WHERE kind='quiz_question' AND ref_id = old.id;\n  INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n    SELECT 'quiz_question','',new.prompt,q.chat_id,new.id,new.quiz_id\n    FROM quizzes q WHERE q.id = new.quiz_id;\nEND;",
+			"-- one-time backfill (raw text — noise stripping is applied only by rebuildIndex())\nINSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n  SELECT 'chat', title, '', id, id, NULL FROM chats;",
+			"INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n  SELECT 'message', '', content, chat_id, id, NULL FROM messages;",
+			"INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n  SELECT 'lab', title, content, chat_id, id, NULL FROM labs;",
+			"INSERT INTO search_fts(kind,title,body,chat_id,ref_id,quiz_id)\n  SELECT 'quiz_question', '', qq.prompt, q.chat_id, qq.id, qq.quiz_id\n  FROM quiz_questions qq JOIN quizzes q ON q.id = qq.quiz_id;"
+		],
+		folderMillis: 1783164800000,
+		hash: '6042942feb9e6abbe4cfa57be4c4f57757aa3ec02881f1603f248f5a28f3ded0'
 	}
 ];
 

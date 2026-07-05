@@ -4,7 +4,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOllama } from 'ollama-ai-provider-v2';
 import type { LanguageModel } from 'ai';
 import { createKeychainFetch } from './sdk-fetch';
-import type { ProviderConfig, ReasoningMode } from './types';
+import type { ProviderConfig, ReasoningEffort } from './types';
 import { resolveToolCapability } from '$lib/agent/capability';
 
 export interface ActiveProvider {
@@ -64,36 +64,60 @@ export async function buildSdkModel(
 	}
 }
 
+function supportsReasoningEffort(modelId?: string): boolean {
+	return !!modelId && /^glm-5\.2/i.test(modelId);
+}
+
 export function providerOptionsForReasoning(
 	kind: ProviderConfig['kind'],
-	reasoning: ReasoningMode | undefined,
-	providerName?: string
+	effort: ReasoningEffort,
+	providerName?: string,
+	modelId?: string
 ): Record<string, unknown> {
-	const mode = reasoning ?? 'auto';
 	const pKey = providerName?.toLowerCase() ?? 'openai';
-	if (mode === 'disabled') {
-		switch (kind) {
-			case 'openai-compatible':
-				return { [pKey]: { thinking: { type: 'disabled' } } };
-			case 'anthropic':
-				return {};
-			case 'gemini':
-				return { google: { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } } };
-			case 'ollama':
-				return {};
-		}
-	}
-	if (mode === 'enabled' || mode === 'auto') {
-		switch (kind) {
-			case 'openai-compatible':
-				return { [pKey]: { thinking: { type: 'enabled' } } };
-			case 'anthropic':
-				return { anthropic: { thinking: { type: 'enabled', budget_tokens: 2048 } } };
-			case 'gemini':
-				return {};
-			case 'ollama':
-				return {};
-		}
+	const glm = kind === 'openai-compatible' && supportsReasoningEffort(modelId);
+
+	switch (effort) {
+		case 'off':
+			switch (kind) {
+				case 'openai-compatible':
+					return { [pKey]: { thinking: { type: 'disabled' } } };
+				case 'anthropic':
+					return {};
+				case 'gemini':
+					return { google: { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } } };
+				case 'ollama':
+					return {};
+			}
+			break;
+		case 'on':
+			switch (kind) {
+				case 'openai-compatible':
+					return glm
+						? { [pKey]: { thinking: { type: 'enabled' }, reasoning_effort: 'high' } }
+						: { [pKey]: { thinking: { type: 'enabled' } } };
+				case 'anthropic':
+					return { anthropic: { thinking: { type: 'enabled', budget_tokens: 2048 } } };
+				case 'gemini':
+					return {};
+				case 'ollama':
+					return {};
+			}
+			break;
+		case 'deep':
+			switch (kind) {
+				case 'openai-compatible':
+					return glm
+						? { [pKey]: { thinking: { type: 'enabled' }, reasoning_effort: 'max' } }
+						: { [pKey]: { thinking: { type: 'enabled' } } };
+				case 'anthropic':
+					return { anthropic: { thinking: { type: 'enabled', budget_tokens: 10000 } } };
+				case 'gemini':
+					return { google: { generationConfig: { thinkingConfig: { thinkingBudget: 32768 } } } };
+				case 'ollama':
+					return {};
+			}
+			break;
 	}
 	return {};
 }

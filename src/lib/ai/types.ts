@@ -32,6 +32,9 @@ export interface Token {
 /** Reasoning/thinking control. `'auto'` (or omitted) = provider default. */
 export type ReasoningMode = 'auto' | 'enabled' | 'disabled';
 
+/** Three-tier reasoning effort selector for chat turns. Default: `'on'`. */
+export type ReasoningEffort = 'off' | 'on' | 'deep';
+
 /** Options accepted by `Provider.chatStream`. */
 export interface ChatStreamOptions {
 	signal?: AbortSignal;

@@ -28,7 +28,7 @@ import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import { getActiveSdkProvider } from '$lib/ai/client';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
-import type { ChatMessage, ProviderConfig, ReasoningMode } from '$lib/ai/types';
+import type { ChatMessage, ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { runAgentTurn } from '$lib/agent/loop';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
@@ -165,13 +165,13 @@ class ChatState {
 	}
 
 	/** Send a user prompt and stream the assistant reply, persisting on finish. */
-	async send(text: string, opts?: { reasoning?: ReasoningMode; hidden?: boolean }): Promise<void> {
+	async send(text: string, opts?: { effort?: ReasoningEffort; hidden?: boolean }): Promise<void> {
 		const prompt = text.trim();
 		if (!prompt || this.streaming || !this.chatId) return;
 
 		this.error = null;
 		const chatId = this.chatId;
-		const reasoning: ReasoningMode = opts?.reasoning ?? 'auto';
+		const effort: ReasoningEffort = opts?.effort ?? 'on';
 		const hidden = opts?.hidden ?? false;
 		const chat = this.chat;
 		// A root that still holds the placeholder title and has no prior turns:
@@ -229,7 +229,7 @@ class ChatState {
 				chatId,
 				rootChatId: chat?.rootId ?? chatId,
 				signal: this.controller.signal,
-				reasoning,
+				effort,
 				disabledToolIds: [
 					...disabledToolsForBrief(rootBriefRaw),
 					...(this.manualBranchPending ? ['branch_chat'] : [])
@@ -336,7 +336,7 @@ class ChatState {
 					assistantMessageId: builder.assistantMessageId ?? null,
 					model: (model as { modelId?: string } | undefined)?.modelId ?? '',
 					configKind: config?.kind ?? 'openai-compatible',
-					reasoning,
+					reasoning: effort,
 					durationMs: Date.now() - startTime,
 					trace: builder.toJSON()
 				});

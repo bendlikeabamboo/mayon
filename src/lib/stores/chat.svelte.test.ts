@@ -472,7 +472,7 @@ describe('chatStore auto-title', () => {
 		mockedGenerateText.mockResolvedValue({ text: 'Ignored' } as never);
 		await chatStore.load(root.id);
 
-		await chatStore.send('hello', { reasoning: 'disabled' });
+		await chatStore.send('hello', { effort: 'off' });
 
 		expect(mockedStreamText).toHaveBeenCalled();
 		const streamArgs = mockedStreamText.mock.calls[0][0];
