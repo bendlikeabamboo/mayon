@@ -15,7 +15,8 @@ export const deterministicTools: Tool[] = [
 	{
 		def: {
 			id: 'branch_chat',
-			description: 'Branch a child chat off the current chat at the last message.',
+			description:
+				'Branch a child chat off the current chat at the last message. Do not reproduce artifact content from the branch target in the source chat.',
 			parameters: toolSchema({
 				topic: { type: 'string', description: 'Optional title for the new branch.' }
 			}),

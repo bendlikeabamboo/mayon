@@ -88,7 +88,7 @@
 
 	const FADE_CAP_PX = 80;
 	function halfCapped(h: number) {
-		return Math.min(FADE_CAP_PX, Math.max(0, Math.floor(h / 2)));
+		return Math.min(FADE_CAP_PX, Math.max(0, Math.floor(h / 4)));
 	}
 	function updateFadeHeights() {
 		if (topPane) fadeTop = halfCapped(topPane.offsetHeight);
@@ -488,8 +488,8 @@
 			<Button
 				variant="ghost"
 				size="icon"
-				class="absolute top-2 right-2 z-30"
-				title="Toggle rail"
+				class="absolute top-2 right-2 z-30 tip"
+				data-tip="Toggle rail"
 				aria-label="Toggle rail"
 				onclick={() => {
 					if (lg) {
@@ -515,56 +515,50 @@
 							<Button
 								variant="ghost"
 								size="sm"
-								class="shrink-0"
-								title="Generate lab"
+								class="shrink-0 relative gap-1 px-2.5 tip"
+								data-tip="Generate lab"
 								aria-label="Generate lab"
 								onclick={onGenerateLab}
 								disabled={labsStore.generating || quizzesStore.generating}
 							>
 								{#if labsStore.generating}
-									<LoaderCircle class="size-4 animate-spin" />
+									<LoaderCircle class="size-3.5 animate-spin" />
 								{:else}
-									<span class="relative inline-flex">
-										<FlaskConical class="size-4" />
-										<Plus
-											class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-background"
-										/>
-									</span>
+									<FlaskConical class="size-3.5" />
 								{/if}
+								<Plus class="size-3" />
 							</Button>
 							<Button
 								variant="ghost"
 								size="sm"
-								class="shrink-0"
-								title="Generate quiz"
+								class="shrink-0 relative gap-1 px-2.5 tip"
+								data-tip="Generate quiz"
 								aria-label="Generate quiz"
 								onclick={onGenerateQuiz}
 								disabled={labsStore.generating || quizzesStore.generating}
 							>
 								{#if quizzesStore.generating}
-									<LoaderCircle class="size-4 animate-spin" />
+									<LoaderCircle class="size-3.5 animate-spin" />
 								{:else}
-									<span class="relative inline-flex">
-										<ListChecks class="size-4" />
-										<Plus
-											class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-background"
-										/>
-									</span>
+									<ListChecks class="size-3.5" />
 								{/if}
+								<Plus class="size-3" />
 							</Button>
 							<Button
 								href="/tree"
 								variant="ghost"
-								size="sm"
-								class="shrink-0"
-								title="Open the conversation tree"
+								size="icon"
+								class="shrink-0 relative tip"
+								data-tip="Open tree"
+								aria-label="Open tree"
 							>
-								<Network class="size-4" /> Tree
+								<Network class="size-4" />
 							</Button>
 							<Button
 								variant="ghost"
 								size="icon"
-								title="Mayon console"
+								class="shrink-0 relative tip"
+								data-tip="Mayon console"
 								aria-label="Mayon console"
 								onclick={() => diagnosticsStore.toggle()}
 							>
@@ -703,6 +697,14 @@
 				</div>
 
 				<div class="flex shrink-0 flex-col gap-3" bind:this={bottomPane}>
+					{#if chatStore.generativeStatus}
+						<div
+							class="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm text-muted-foreground"
+						>
+							<LoaderCircle class="size-4 animate-spin" />
+							{chatStore.generativeStatus.label}
+						</div>
+					{/if}
 					{#each chatStore.pendingApprovals as a (a.toolCallId)}
 						<ApprovalCard
 							entry={a}

@@ -68,7 +68,7 @@ function ctx(chatId: string, rootChatId: string, signal?: AbortSignal): ToolCont
 }
 
 describe('create_quiz', () => {
-	it('generates quiz and persists quiz + questions; artifact returned with correct count', async () => {
+	it('generates quiz and persists quiz + questions; artifact returned with correct count and route', async () => {
 		mockedGenerateQuiz.mockResolvedValue(cannedQuiz);
 		const chat = await repos.chats.createRoot({ title: 'C' });
 
@@ -79,6 +79,8 @@ describe('create_quiz', () => {
 		const artifact = (result.detail as { artifact: { id: string } }).artifact;
 		expect(artifact.id).toBeTruthy();
 		expect(result.summary).toContain('3 questions');
+		expect(result.summary).toContain('/quiz/');
+		expect(result.summary).toContain('Do not reproduce');
 
 		const quiz = await repos.quizzes.getById(artifact.id);
 		expect(quiz).not.toBeNull();
@@ -126,7 +128,7 @@ describe('create_quiz', () => {
 });
 
 describe('create_lab', () => {
-	it('generates lab and persists with toLabContent-flattened content + checklist', async () => {
+	it('generates lab and persists with toLabContent-flattened content + checklist and route', async () => {
 		mockedGenerateLab.mockResolvedValue(cannedLab);
 		const chat = await repos.chats.createRoot({ title: 'C' });
 
@@ -136,6 +138,8 @@ describe('create_lab', () => {
 		const artifact = (result.detail as { artifact: { id: string } }).artifact;
 		expect(artifact.id).toBeTruthy();
 		expect(result.summary).toContain('Docker Basics');
+		expect(result.summary).toContain('/lab/');
+		expect(result.summary).toContain('Do not reproduce');
 
 		const lab = await repos.labs.getById(artifact.id);
 		expect(lab).not.toBeNull();

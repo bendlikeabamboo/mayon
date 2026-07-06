@@ -73,6 +73,7 @@
 		message.role === 'assistant' && !message.toolCallId ? parsedMeta?.reasoning : undefined
 	);
 	let interrupted = $derived(parsedMeta?.interrupted === true);
+	let reasoningOpen = $state(false);
 </script>
 
 {#if message.role === 'assistant' && message.toolCallId != null && message.content === ''}
@@ -89,7 +90,15 @@
 	</div>
 {:else}
 	<div class="flex flex-col gap-1 {message.role === 'user' ? 'items-end' : 'items-start'}">
-		<div class="flex items-center gap-2 px-1">
+		<div class="flex w-full items-center justify-between">
+			<div class="flex items-center">
+				<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					{roleLabel(message.role)}
+				</span>
+				{#if message.role === 'assistant' && reasoning}
+					<Reasoning {reasoning} inline bind:open={reasoningOpen} />
+				{/if}
+			</div>
 			{#if message.role === 'assistant'}
 				<Button
 					variant="ghost"
@@ -101,12 +110,13 @@
 					<GitBranch class="size-3" /> Branch from this message
 				</Button>
 			{/if}
-			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-				{roleLabel(message.role)}
-			</span>
 		</div>
-		{#if message.role === 'assistant' && reasoning}
-			<Reasoning {reasoning} />
+		{#if message.role === 'assistant' && reasoning && reasoningOpen}
+			<div
+				class="max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-muted-foreground italic"
+			>
+				<Markdown raw={reasoning} />
+			</div>
 		{/if}
 		<div
 			class="{message.role === 'user' ? 'max-w-[75%]' : 'min-w-0 max-w-full'} {message.role ===
@@ -114,7 +124,8 @@
 				? 'no-text-thin'
 				: ''} {failed ? 'border-l-2 border-red-500/60' : ''} rounded-lg px-4 py-2.5 {bubbleClass[
 				message.role
-			]}"
+			]} {message.role === 'user' ? 'markdown-invert bubble-user' : ''}"
+			style={message.role === 'user' ? '--bubble-bg: var(--highlight); --bubble-fg: #fff;' : ''}
 		>
 			{#if message.role === 'assistant'}
 				{@const visible = stripGateFence(message.content)}

@@ -11,17 +11,17 @@
 
 	let { data } = $props();
 
-let roots = $state<Chat[]>([]);
-let loading = $state(false);
-let creating = $state(false);
-let deletingId = $state<string | null>(null);
-let page = $state(1);
-let hasProviders = $state(false);
+	let roots = $state<Chat[]>([]);
+	let loading = $state(false);
+	let creating = $state(false);
+	let deletingId = $state<string | null>(null);
+	let page = $state(1);
+	let hasProviders = $state(false);
 
-$effect(() => {
-	roots = data.roots;
-	hasProviders = data.hasProviders;
-});
+	$effect(() => {
+		roots = data.roots;
+		hasProviders = data.hasProviders;
+	});
 
 	/** When true, the brief intake card is shown instead of the chat list. */
 	let showIntake = $state(false);

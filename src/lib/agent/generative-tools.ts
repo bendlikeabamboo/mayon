@@ -19,7 +19,7 @@ export const generativeTools: Tool[] = [
 		def: {
 			id: 'create_quiz',
 			description:
-				'Generate a mixed quiz (MCQ, flashcard, short-answer) from the chat context and persist it.',
+				'Generate a mixed quiz (MCQ, flashcard, short-answer) from the chat context and persist it. Do not reproduce the quiz content in chat — the artifact owns it.',
 			parameters: toolSchema({
 				topic: { type: 'string', description: 'Optional topic hint for the quiz.' },
 				questionCount: {
@@ -55,7 +55,7 @@ export const generativeTools: Tool[] = [
 				const firstQuestionTopic = items.length > 0 ? items[0].prompt.slice(0, 60) : 'Quiz';
 				return {
 					ok: true,
-					summary: `Created quiz "${firstQuestionTopic}" (${items.length} questions)`,
+					summary: `Created quiz "${firstQuestionTopic}" (${items.length} questions). Saved at /quiz/${quiz.id}. Do not reproduce its questions in chat — the artifact owns them.`,
 					detail: { artifact: { kind: 'quiz', id: quiz.id } }
 				};
 			} catch (err) {
@@ -73,7 +73,7 @@ export const generativeTools: Tool[] = [
 		def: {
 			id: 'create_lab',
 			description:
-				'Generate a hands-on lab with steps and a checklist from the chat context and persist it.',
+				'Generate a hands-on lab with steps and a checklist from the chat context and persist it. Do not reproduce the lab content in chat — the artifact owns it.',
 			parameters: toolSchema({
 				topic: { type: 'string', description: 'Optional topic hint for the lab.' }
 			}),
@@ -98,7 +98,7 @@ export const generativeTools: Tool[] = [
 				});
 				return {
 					ok: true,
-					summary: `Created lab "${title}"`,
+					summary: `Created lab "${title}". Saved at /lab/${lab.id}. Do not reproduce its content in chat — the artifact owns it.`,
 					detail: { artifact: { kind: 'lab', id: lab.id } }
 				};
 			} catch (err) {

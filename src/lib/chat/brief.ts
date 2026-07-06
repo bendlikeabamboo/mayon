@@ -249,7 +249,8 @@ export function buildCapabilitiesPreamble(): string {
 		'The save_brief tool sets or updates the learning goal on the root chat. Use it only on the first turn of a chat that has no learning goal yet (a brief-less chat). Pass only the goal; leave level, mode, scope, and context unset. Never rewrite an existing goal or re-save a brief that already has one.',
 		"Actions that create or change artifacts require the learner's approval — you will be asked and should wait.",
 		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.',
-		'When it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn.'
+		'When it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn.',
+		'The create_quiz / create_lab tools create and persist the artifact themselves and return a link. When you call one, emit NONE of its content as chat text. After it succeeds, acknowledge in 1–2 sentences and point the learner to the link.'
 	].join('\n');
 }
 

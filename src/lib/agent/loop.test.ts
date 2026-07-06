@@ -1052,3 +1052,117 @@ describe('disabledToolIds filtering', () => {
 		expect(Object.keys(enabledTools!)).toHaveLength(4);
 	});
 });
+
+describe('generative buf suppression + chip', () => {
+	it('generative tool call suppresses pre-tool buf; clears stream buffer; signals chip', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Here is a quiz for you:' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'create_quiz', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Quiz created. Check it out.' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({
+			ok: true,
+			summary: 'Created quiz (3 questions)',
+			detail: { artifact: { kind: 'quiz', id: 'q1' } }
+		});
+
+		const notifyGenerativeStatus = vi.fn();
+		const deps = makeDeps({
+			requestApproval: vi.fn(async () => ({ approved: true })),
+			notifyGenerativeStatus
+		});
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).not.toHaveBeenCalledWith(
+			'Here is a quiz for you:',
+			expect.anything()
+		);
+		const bufferCalls = (deps.updateStreamBuffer as ReturnType<typeof vi.fn>).mock.calls;
+		const lastClearIdx = bufferCalls.findLastIndex((c: unknown[]) => c[0] === '');
+		expect(lastClearIdx).toBeGreaterThanOrEqual(0);
+		expect(deps.appendAssistantText).toHaveBeenCalledTimes(1);
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.', {
+			reasoning: undefined
+		});
+
+		expect(notifyGenerativeStatus).toHaveBeenCalledWith({
+			toolName: 'create_quiz',
+			label: 'Creating your quiz…'
+		});
+		expect(notifyGenerativeStatus).toHaveBeenLastCalledWith(null);
+	});
+
+	it('non-generative tool call does NOT suppress buf', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Some preamble' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'branch_chat', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Branched.' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({
+			ok: true,
+			summary: 'Branched',
+			detail: { artifact: { kind: 'chat', id: 'c2' } }
+		});
+
+		const notifyGenerativeStatus = vi.fn();
+		const deps = makeDeps({
+			requestApproval: vi.fn(async () => ({ approved: true })),
+			notifyGenerativeStatus
+		});
+		await runAgentTurn(deps);
+
+		const calls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+		expect(calls[0][0]).toBe('Some preamble');
+		expect(notifyGenerativeStatus).not.toHaveBeenCalled();
+	});
+
+	it('declined generative tool clears chip; buf suppressed', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Let me make a quiz' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'create_quiz', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'OK, no quiz then.' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		const notifyGenerativeStatus = vi.fn();
+		const deps = makeDeps({
+			requestApproval: vi.fn(async () => ({ approved: false })),
+			notifyGenerativeStatus
+		});
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).not.toHaveBeenCalledWith(
+			'Let me make a quiz',
+			expect.anything()
+		);
+		expect(notifyGenerativeStatus).toHaveBeenCalledWith(null);
+	});
+});

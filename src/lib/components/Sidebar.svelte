@@ -58,7 +58,9 @@
 				class:text-sidebar-accent-foreground={isActive(item.href)}
 				class:text-muted-foreground={!isActive(item.href)}
 				class:hover:bg-sidebar-accent={true}
-				title={item.label}
+				class:tip={collapsed}
+				class:relative={collapsed}
+				data-tip={item.label}
 			>
 				<item.icon class="size-4 shrink-0" />
 				{#if !collapsed}{item.label}{/if}

@@ -124,8 +124,8 @@
 		<Button
 			variant="ghost"
 			size="icon"
-			class="absolute top-2 left-2 z-30"
-			title="Toggle sidebar"
+			class="absolute top-2 left-2 z-30 tip"
+			data-tip="Toggle sidebar"
 			aria-label="Toggle sidebar"
 			onclick={() => {
 				if (lg) {

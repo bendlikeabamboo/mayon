@@ -75,6 +75,7 @@ class ChatState {
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
 	loading = $state(false);
+	generativeStatus = $state<{ toolName: string; label: string } | null>(null);
 
 	/**
 	 * A prompt staged to auto-send once the next branch finishes loading. Set by
@@ -131,6 +132,7 @@ class ChatState {
 		this.streamBufferRender = '';
 		this.reasoningBuffer = '';
 		this.streaming = false;
+		this.generativeStatus = null;
 		this.chatId = chatId;
 		try {
 			const [chat, msgs] = await Promise.all([
@@ -214,6 +216,7 @@ class ChatState {
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
 		this.reasoningBuffer = '';
+		this.generativeStatus = null;
 		this.controller = new AbortController();
 		this.startRenderFlush();
 
@@ -286,6 +289,7 @@ class ChatState {
 				reassembleContext: () => assembleContext(chatId),
 				requestApproval: (req) => this.requestApprovalImpl(req),
 				notifyLowRisk: (toolLabel, summary) => this.notifyLowRiskImpl(toolLabel, summary),
+				notifyGenerativeStatus: (status) => (this.generativeStatus = status),
 				onTrace: (e) => {
 					builder.emit(e);
 					diagnosticsStore.liveEmit(e);
@@ -358,6 +362,7 @@ class ChatState {
 			this.streamBuffer = '';
 			this.streamBufferRender = '';
 			this.reasoningBuffer = '';
+			this.generativeStatus = null;
 			this.controller = null;
 			this.manualBranchPending = false;
 			diagnosticsStore.endTurn();
@@ -405,6 +410,7 @@ class ChatState {
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
 		this.streaming = false;
+		this.generativeStatus = null;
 		this.lastFailedPrompt = null;
 	}
 

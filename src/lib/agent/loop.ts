@@ -46,6 +46,7 @@ export interface AgentTurnDeps {
 		args: unknown;
 	}) => Promise<{ approved: boolean; aborted?: boolean }>;
 	notifyLowRisk: (toolLabel: string, summary: string) => void;
+	notifyGenerativeStatus?: (status: { toolName: string; label: string } | null) => void;
 	disabledToolIds?: string[];
 	onTrace?: (e: TraceEvent) => void;
 }
@@ -265,7 +266,13 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						buf += text;
 						deps.updateStreamBuffer(buf);
 					},
-					(tc) => toolCalls.push(tc),
+					(tc) => {
+						if (getToolDefinition(tc.toolName)?.generative) {
+							buf = '';
+							deps.updateStreamBuffer('');
+						}
+						toolCalls.push(tc);
+					},
 					(t) => {
 						reasoningBuf += t;
 						deps.updateReasoningBuffer(reasoningBuf);
@@ -323,9 +330,15 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				return { aborted: false };
 			}
 
-			if (buf) {
+			const hasGenerative = toolCalls.some((tc) => getToolDefinition(tc.toolName)?.generative);
+
+			if (buf && !hasGenerative) {
 				const msg = await deps.appendAssistantText(buf);
 				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+			}
+			if (hasGenerative) {
+				buf = '';
+				deps.updateStreamBuffer('');
 			}
 
 			for (const tc of toolCalls) {
@@ -409,19 +422,35 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						const tc = highCalls[i];
 						const dec = decisions[i];
 						if (deps.signal.aborted || dec.aborted) {
+							if (getToolDefinition(tc.toolName)?.generative) {
+								deps.notifyGenerativeStatus?.(null);
+							}
 							results.push({ tc, result: { ok: false, summary: 'aborted' } });
 						} else if (!dec.approved) {
+							if (getToolDefinition(tc.toolName)?.generative) {
+								deps.notifyGenerativeStatus?.(null);
+							}
 							results.push({ tc, result: { ok: false, summary: 'user declined' } });
 						} else {
 							const def = getToolDefinition(tc.toolName);
 							if (def?.generative && turnBudget.subCalls >= turnBudget.maxSubCalls) {
+								deps.notifyGenerativeStatus?.(null);
 								results.push({
 									tc,
 									result: { ok: false, summary: 'one generative action per turn' }
 								});
 								continue;
 							}
-							if (def?.generative) turnBudget.subCalls++;
+							if (def?.generative) {
+								turnBudget.subCalls++;
+								const label =
+									tc.toolName === 'create_quiz'
+										? 'Creating your quiz…'
+										: tc.toolName === 'create_lab'
+											? 'Creating your lab…'
+											: 'Creating artifact…';
+								deps.notifyGenerativeStatus?.({ toolName: tc.toolName, label });
+							}
 							deps.onTrace?.({
 								kind: 'tool-call',
 								toolCallId: tc.toolCallId,
@@ -436,6 +465,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 								model: deps.model,
 								config: deps.config
 							});
+							if (getToolDefinition(tc.toolName)?.generative) {
+								deps.notifyGenerativeStatus?.(null);
+							}
 							results.push({ tc, result: r });
 						}
 					}

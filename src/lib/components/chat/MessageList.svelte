@@ -51,6 +51,7 @@
 	}
 
 	const visibleMessages = $derived(messages.filter((m) => !isHidden(m)));
+	let liveReasoningOpen = $state(false);
 </script>
 
 <div class="min-w-0 flex flex-col gap-4">
@@ -73,16 +74,25 @@
 
 	{#if streaming}
 		<div class="flex flex-col gap-1 items-start">
-			<span
-				class="flex items-center gap-1.5 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-			>
-				{#if streamBuffer}
-					<Spinner variant="orbit" />
+			<div class="flex w-full items-center">
+				<span
+					class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+				>
+					{#if streamBuffer}
+						<Spinner variant="orbit" />
+					{/if}
+					{personaName}
+				</span>
+				{#if reasoningBuffer}
+					<Reasoning reasoning={reasoningBuffer} live bind:open={liveReasoningOpen} />
 				{/if}
-				{personaName}
-			</span>
-			{#if reasoningBuffer}
-				<Reasoning reasoning={reasoningBuffer} live />
+			</div>
+			{#if reasoningBuffer && liveReasoningOpen}
+				<div
+					class="max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-muted-foreground italic"
+				>
+					<Markdown raw={reasoningBuffer} />
+				</div>
 			{/if}
 			<div class="rounded-lg border border-border bg-background px-4 py-2.5 text-foreground">
 				{#if streamBuffer}
