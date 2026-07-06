@@ -3,7 +3,6 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
-		ChevronDown,
 		FlaskConical,
 		ListChecks,
 		LoaderCircle,
@@ -79,6 +78,7 @@
 	let middleWrapper = $state<HTMLDivElement | null>(null);
 	let topVisible = $state(false);
 	let bottomVisible = $state(false);
+	let stickToBottom = $state(true);
 	let fadeTop = $state(0);
 	let fadeBottom = $state(0);
 	let scrolledToHash = $state(false);
@@ -98,12 +98,14 @@
 		const el = viewport;
 		if (!el) return;
 		topVisible = el.scrollTop > 1;
-		bottomVisible = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+		const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+		bottomVisible = !atBottom;
+		stickToBottom = atBottom;
 	}
 
 	$effect(() => {
 		void chatStore.messages.length;
-		if (scrolledToHash) return;
+		if (scrolledToHash || !stickToBottom) return;
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
@@ -130,6 +132,9 @@
 			updateVisibility();
 		});
 		const contentObserver = new ResizeObserver(() => {
+			if (stickToBottom && !scrolledToHash && viewport) {
+				viewport.scrollTop = viewport.scrollHeight;
+			}
 			updateVisibility();
 		});
 
@@ -244,6 +249,7 @@
 		rootChat = null;
 		branchSource = null;
 		scrolledToHash = false;
+		stickToBottom = true;
 		await chatStore.load(chatId);
 		composerPrompt = (await repos.settings.get<string>('draft:' + chatId)) ?? '';
 		if (chatStore.chat) {
@@ -354,6 +360,7 @@
 	});
 
 	async function onSend(text: string, effort: ReasoningEffort) {
+		stickToBottom = true;
 		await chatStore.send(text, { effort });
 	}
 
@@ -693,17 +700,6 @@
 							: 'opacity-0'}"
 						style="height:var(--fade-bottom); background:linear-gradient(to top, var(--background), transparent);"
 					></div>
-					{#if !bottomVisible}
-						<button
-							type="button"
-							class="jump-latest pointer-events-auto absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-border bg-background px-3 py-1.5 text-xs shadow-md hover:bg-accent"
-							title="Jump to latest"
-							onclick={() =>
-								viewport?.scrollTo({ top: viewport?.scrollHeight, behavior: 'smooth' })}
-						>
-							<ChevronDown class="size-4" /> Jump to latest
-						</button>
-					{/if}
 				</div>
 
 				<div class="flex shrink-0 flex-col gap-3" bind:this={bottomPane}>

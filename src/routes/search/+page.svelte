@@ -7,6 +7,7 @@
 	import type { SearchHit } from '$lib/db';
 	import type { Component } from 'svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
+	import Pagination from '$lib/components/Pagination.svelte';
 
 	let q = $state(page.url.searchParams.get('q') ?? '');
 	let inputEl: HTMLInputElement | undefined = $state();
@@ -15,6 +16,8 @@
 	let error = $state<string | null>(null);
 	let fts5Available = $state<boolean | null>(null);
 	let searched = $state(false);
+	let currentPage = $state(1);
+	const ITEMS_PER_PAGE = 10;
 
 	function getKindIcon(kind: SearchHit['kind']): Component {
 		switch (kind) {
@@ -29,9 +32,13 @@
 		}
 	}
 
-	let grouped = $derived.by(() => {
+	let totalPages = $derived(Math.max(1, Math.ceil(results.length / ITEMS_PER_PAGE)));
+	let pagedResults = $derived(
+		results.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+	);
+	let pagedGroups = $derived.by(() => {
 		const groups: { title: string | null; rootId: string; hits: SearchHit[] }[] = [];
-		for (const hit of results) {
+		for (const hit of pagedResults) {
 			const key = hit.rootId ?? hit.chatId;
 			let group = groups.find((g) => g.rootId === key);
 			if (!group) {
@@ -41,6 +48,11 @@
 			group.hits.push(hit);
 		}
 		return groups;
+	});
+
+	$effect(() => {
+		void results.length;
+		currentPage = 1;
 	});
 
 	function doSearch(query: string) {
@@ -135,7 +147,7 @@
 	{:else if loading}
 		<p class="text-center text-sm text-muted-foreground">Searching…</p>
 	{:else}
-		{#each grouped as group (group.rootId)}
+		{#each pagedGroups as group (group.rootId)}
 			<div class="space-y-2">
 				{#if group.title}
 					<a
@@ -153,7 +165,7 @@
 					>
 						<Icon class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 						<div class="min-w-0 space-y-1">
-							{#each renderSnippet(hit.snippetTitle) as seg (seg.text)}
+							{#each renderSnippet(hit.snippetTitle) as seg, i (i)}
 								{#if seg.mark}
 									<mark class="bg-yellow-200 dark:bg-yellow-800 rounded px-0.5">{seg.text}</mark>
 								{:else}
@@ -161,7 +173,7 @@
 								{/if}
 							{/each}
 							<div class="text-sm text-muted-foreground">
-								{#each renderSnippet(hit.snippetBody) as seg (seg.text)}
+								{#each renderSnippet(hit.snippetBody) as seg, i (i)}
 									{#if seg.mark}
 										<mark class="bg-yellow-200 dark:bg-yellow-800 rounded px-0.5">{seg.text}</mark>
 									{:else}
@@ -174,5 +186,6 @@
 				{/each}
 			</div>
 		{/each}
+		<Pagination bind:page={currentPage} {totalPages} />
 	{/if}
 </div>

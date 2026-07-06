@@ -96,7 +96,12 @@
 	}
 </script>
 
-<div class="flex flex-col gap-2">
+<div class="flex flex-col gap-1.5">
+	{#if providerName && modelId}
+		<span class="px-1 text-[11px] leading-none text-muted-foreground"
+			>{providerName} · {modelId}</span
+		>
+	{/if}
 	{#if showChips}
 		<div class="flex flex-wrap gap-1.5">
 			{#each suggestedReplies as chip (chip)}
@@ -107,9 +112,6 @@
 		</div>
 	{/if}
 	<div class="flex items-end gap-2">
-		{#if providerName && modelId}
-			<span class="mb-2 shrink-0 text-xs text-muted-foreground">{providerName} · {modelId}</span>
-		{/if}
 		<textarea
 			bind:this={textareaEl}
 			bind:value={prompt}
