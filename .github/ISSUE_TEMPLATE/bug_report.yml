@@ -1,0 +1,59 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: 'Bug: '
+labels:
+  - bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps that reliably reproduce the issue.
+      placeholder: |
+        1. Open the app
+        2. Navigate to ...
+        3. Click on ...
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+      placeholder: The app should ...
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened.
+      placeholder: Instead, the app ...
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Which runtime were you using?
+      options:
+        - Browser
+        - Desktop (Tauri)
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: provider
+    attributes:
+      label: Provider (if applicable)
+      description: Which AI provider were you using? Include provider name, model, and any relevant configuration.
+      placeholder: e.g., OpenAI GPT-4o, Anthropic Claude 3.5 Sonnet, Ollama llama3

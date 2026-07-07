@@ -1,0 +1,88 @@
+---
+title: "Contributing"
+---
+
+# Contributing
+
+Contributions are welcome. This guide covers the setup, conventions, and workflow for working on Mayon.
+
+## Prerequisites
+
+- **Node.js 22** — set via `.nvmrc`; use `nvm install` and `nvm use`.
+- **pnpm 10** — set in `packageManager`; install with `corepack enable && corepack prepare pnpm@10 --activate`.
+- **Rust 1.95** — set via `rust-toolchain.toml`; install with `rustup`.
+- **Linux only:** GTK and WebKit development libraries (see the [Building](dev/building.qmd) page).
+
+## Setup
+
+```bash
+git clone https://github.com/bendlikeabamboo/mayon.git
+cd mayon
+pnpm install
+```
+
+## Code style
+
+Mayon uses ESLint (flat config) and Prettier. Do not add comments to code unless specifically asked.
+
+```bash
+pnpm lint       # check for issues
+pnpm format     # auto-fix formatting
+```
+
+CI runs both. Pushing code that fails lint or format checks will block the merge.
+
+## Type checking
+
+Run the type checker before pushing:
+
+```bash
+pnpm check
+```
+
+This runs `svelte-check` across the entire codebase.
+
+## Branch and commit conventions
+
+- Branch names: `feature/short-description`, `fix/short-description`, `chore/short-description`.
+- Commit messages: imperative mood, short subject line. Examples: `add provider template for Ollama`, `fix branch context assembly for nested trees`.
+- Keep commits small and atomic. Each commit should represent one logical change.
+
+## Pull request flow
+
+1. Create a feature branch from `main`.
+2. Implement the change and ensure `pnpm check`, `pnpm lint`, and `pnpm test` all pass.
+3. If you added or changed the database schema, run `pnpm db:generate` then **immediately** run `pnpm bundle:migrations`. Commits that include schema changes without bundled migrations will be rejected — the SPA cannot run offline without them.
+4. Open a pull request against `main`.
+5. Address review feedback and update the branch.
+
+## Testing
+
+Tests run against an in-memory SQLite driver (sql.js) — no filesystem or browser runtime required.
+
+```bash
+pnpm test         # run once
+pnpm test:watch   # watch mode
+```
+
+Write tests for new repositories, provider adapters, and context assembly logic. UI component tests are added as the surface grows.
+
+## Mandatory: bundle migrations after generate
+
+Whenever you modify `src/lib/db/schema.ts` and run:
+
+```bash
+pnpm db:generate
+```
+
+You **must** follow it with:
+
+```bash
+pnpm bundle:migrations
+```
+
+This bundles the SQL migration files from `drizzle/` into `src/lib/db/driver/migrations.ts` so the SPA can apply them at boot without filesystem access. Forgetting this step causes runtime migration failures in the browser.
+
+## Code of Conduct
+
+See [CODE_OF_CONDUCT.md](https://github.com/bendlikeabamboo/mayon/blob/main/CODE_OF_CONDUCT.md) for community guidelines.

@@ -1,0 +1,28 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: 'Feature: '
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Description
+      description: A clear description of the problem or need that this feature would address.
+      placeholder: I want to be able to ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature or change you would like to see.
+      placeholder: Add a setting that allows ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you have considered.
+      placeholder: I currently work around this by ...

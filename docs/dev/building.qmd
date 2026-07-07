@@ -1,0 +1,93 @@
+---
+title: "Building from Source"
+---
+
+# Building from Source
+
+This page covers the prerequisites and commands for building Mayon from source.
+
+## Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| Node.js | 22 | Set via `.nvmrc`. Use `nvm install && nvm use`. |
+| pnpm | 10 | Set in `packageManager`. Enable with `corepack enable && corepack prepare pnpm@10 --activate`. |
+| Rust | 1.95 | Set via `rust-toolchain.toml`. Install with `rustup`. |
+| Tauri CLI | v2 | Installed as a project dependency; no separate install needed. |
+
+No bun.
+
+### Linux system dependencies
+
+Building or running the Tauri desktop shell on Debian/Ubuntu requires GTK and WebKit development libraries:
+
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config
+```
+
+Without these, `cargo` cannot link the Tauri shell. macOS and Windows need only their standard toolchains.
+
+For OS keychain support on Linux, install and run `gnome-keyring` (or `kwallet`) and `libsecret-1-0`. Without a running Secret Service, key-dependent providers surface a clear error instead of failing silently.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `pnpm install` | Install Node.js dependencies. |
+| `pnpm dev` | Run the SvelteKit SPA dev server at http://localhost:5173. |
+| `pnpm build` | Build the SPA into `build/` (consumed by Tauri as `frontendDist`). |
+| `pnpm tauri dev` | Run the Tauri desktop shell. Boots `pnpm dev` internally and opens a native window. |
+| `pnpm tauri:build` | Build signed desktop installers. Requires `TAURI_SIGNING_PRIVATE_KEY` for updater-signed artifacts. |
+| `pnpm tauri:icon` | Regenerate the full icon set in `src-tauri/icons/` from a source PNG. |
+| `pnpm check` | Type-check with `svelte-check`. |
+| `pnpm lint` | ESLint (flat config) + Prettier `--check`. |
+| `pnpm format` | Prettier `--write`. |
+| `pnpm test` | Vitest against the in-memory driver — runs once. |
+| `pnpm test:watch` | Vitest in watch mode. |
+| `pnpm db:generate` | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`. |
+| `pnpm db:studio` | Open Drizzle Studio against the schema. |
+| `pnpm bundle:migrations` | Re-bundle `drizzle/` SQL + journal into `src/lib/db/driver/migrations.ts`. |
+
+## Mandatory: bundle migrations after generate
+
+After running `pnpm db:generate` you **must** run `pnpm bundle:migrations` before the build is usable by the SPA. The reason:
+
+- `db:generate` writes SQL migration files and a journal into the `drizzle/` directory on the filesystem.
+- The SPA runs without filesystem access (especially in the browser). It needs migrations bundled as a TypeScript module at build time.
+- `bundle:migrations` reads the `drizzle/` output and writes it into `src/lib/db/driver/migrations.ts`.
+- Without this step, the SPA cannot apply migrations at boot and the database will not initialize.
+
+Run the two commands together:
+
+```bash
+pnpm db:generate && pnpm bundle:migrations
+```
+
+## Development workflow
+
+The typical inner-loop for frontend work:
+
+```bash
+pnpm dev
+```
+
+This starts the SvelteKit dev server with HMR. Open http://localhost:5173. Changes to `.svelte`, `.ts`, and CSS files are reflected instantly.
+
+For desktop work:
+
+```bash
+pnpm tauri dev
+```
+
+This boots the SvelteKit dev server and launches the Tauri native window. Changes to Rust code in `src-tauri/` trigger a recompilation of the native shell.
+
+## Testing
+
+Tests use an in-memory SQLite driver (sql.js) — no filesystem, no browser, no Tauri needed. Run tests with:
+
+```bash
+pnpm test
+```
+
+Tests cover the repository layer, provider adapters, context assembly, transport contracts, and key storage.

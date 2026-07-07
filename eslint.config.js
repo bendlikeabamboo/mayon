@@ -13,6 +13,8 @@ export default ts.config(
 			'src-tauri/',
 			'drizzle/',
 			'coverage/',
+			'.kilo/',
+			'docs/',
 			// Generated: bundled migration SQL/journal — do not lint by hand.
 			'src/lib/db/driver/migrations.ts'
 		]

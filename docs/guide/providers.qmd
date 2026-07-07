@@ -1,0 +1,51 @@
+---
+title: "Providers"
+---
+
+# Providers
+
+Mayon talks to AI models through configurable providers. Each provider is an adapter that implements a common streaming interface. The app ships with templates for popular providers and supports any OpenAI-compatible endpoint.
+
+## Provider templates
+
+The following templates are built in:
+
+| Template | Type | Notes |
+|---|---|---|
+| Z.AI / GLM | OpenAI-compatible | Default template. Edit the base URL and paste your API key. |
+| OpenRouter | OpenAI-compatible | Gateway that aggregates many models. Auto-discovers its model catalog via the `/models` endpoint. |
+| Kilo Gateway | OpenAI-compatible | Gateway with model discovery. |
+| OpenAI | Native | Direct connection to the OpenAI API. |
+| Anthropic | Native | Direct connection to the Anthropic API. Subject to CORS restrictions in the browser. |
+| Gemini | Native | Direct connection to the Google Gemini API. |
+| Ollama | Local | Runs models locally on your machine. No API key needed. Default base URL is `http://localhost:11434`. |
+
+## Configuring a provider
+
+1. Open **Settings** (gear icon in the header).
+2. Click **Add provider**.
+3. Pick a template from the list.
+4. Edit the **base URL** if needed (e.g., point to a self-hosted instance).
+5. Select or search for a **model**. Gateways (OpenRouter, Kilo Gateway, Z.AI) auto-discover their available models and offer a searchable model picker.
+6. Paste your **API key**.
+7. Click **Save key**, then **Set active**.
+
+After saving, the provider becomes available for new chats. Reload the tab (or restart the desktop app) to confirm the configuration persists.
+
+## Switching providers
+
+Add multiple providers and switch between them using the "Set active" action. The active provider is used for new chats and streaming. You can switch at any time — existing chats retain the provider and model they were created with.
+
+## Key storage
+
+API keys are never stored in the settings database. The `settings` table holds only non-secret provider configuration fields (base URL, default model, template type).
+
+**Desktop (Tauri):** Keys are stored in the OS keychain via the `keyring` Rust crate. The plaintext key never enters the webview JavaScript context. The Tauri bridge exposes only boolean operations (`key_has`, `key_set`, `key_delete`) — it never returns the key value to the frontend.
+
+**Browser:** Keys are stored in IndexedDB under the same origin as the app. The key is not sent to any server other than the provider's API endpoint during streaming.
+
+## CORS limitation in the browser
+
+Some providers (notably Anthropic) block direct `fetch` requests from browser origins. When this happens, the chat view shows a clear "use the desktop app" notice instead of a raw error. The desktop app routes all provider requests through Rust's `reqwest`, which is not subject to CORS.
+
+OpenAI-compatible gateways (OpenRouter, Kilo Gateway, Z.AI) generally allow browser requests. If you are using the browser build exclusively, stick to these providers or use Ollama for local models.

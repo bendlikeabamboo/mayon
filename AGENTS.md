@@ -1,8 +1,8 @@
 # AGENTS.md
 
-Guidance for AI agents (and humans) working in this repo. Treat
-`refinement/architecture.md` as the authoritative design source and
-`refinement/phased-plan.md` as the phase scope. The active implementation plan lives
+Guidance for AI agents (and humans) working in this repo. The authoritative
+design source is `docs/dev/architecture.qmd` (rendered in the Quarto docs site).
+Historical design notes live in `refinement/`. The active implementation plan lives
 in `.kilo/plans/`.
 
 ## Stack

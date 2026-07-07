@@ -1,0 +1,282 @@
+---
+title: "Architecture"
+---
+
+# Architecture
+
+This is the authoritative design source for Mayon. It is self-contained — build against this document without needing the refinement conversation history.
+
+## Product summary
+
+A personal, **local-first** learning app built around a **branchable chat graph**:
+
+- Chat with an AI about a topic. When a response is too dense, **highlight a span** and **branch** a new conversation rooted in that excerpt — the child inherits the excerpt plus the full history up to that point.
+- Every branch is a node in a **navigable tree** (sidebar tree + breadcrumb path to root) with optional **cross-links** between otherwise separate chats.
+- From any chat, generate AI **labs** (hands-on guide + progress checklist) and **quizzes** (mixed MCQ / flashcard / AI-graded short answer). Both are **leaf artifacts** on a chat (they do not branch).
+- Personal, single-user, offline. One codebase ships as a web SPA and an installable Tauri desktop app.
+
+## Locked decisions
+
+| Area | Decision |
+|---|---|
+| Form factor | One codebase: SvelteKit static SPA + Tauri v2 shell |
+| Framework | SvelteKit, Svelte 5 (runes), SPA via `adapter-static` |
+| UI | Tailwind v4 + shadcn-svelte (bits-ui), lucide icons |
+| Database | SQLite — native (Tauri SQL plugin) / WASM+OPFS (browser); drizzle-kit schema |
+| AI | Provider-agnostic adapters (OpenAI/Anthropic/Gemini/Ollama), streaming |
+| Branch context | Excerpt + full history up to the fork point |
+| Branch storage | **Reference-based** — child reads ancestor messages up to a fork-point cutoff (no duplication) |
+| Transport | **Tauri-primary** (Rust/keychain); browser direct-fetch (IndexedDB) |
+| Labs/Quizzes | Leaf artifacts generated from a single chat |
+| Toolchain | pnpm 10, Node 22, Rust 1.95, Tauri v2 (no bun) |
+
+### Key tradeoffs
+
+- **Reference-based branching:** single source of truth, light storage; the accepted cost is that a pre-branch edit in a parent propagates to descendants. If immutability is ever needed, add a content-hash/version column later (no schema break).
+- **Tauri-primary, browser direct-fetch:** desktop keeps keys out of JS and avoids CORS entirely; the browser fallback may hit provider CORS limits (e.g. Anthropic needs `anthropic-dangerous-direct-browser-access: true`). Surfaced as a clear "use the desktop app for this provider" fallback in the UI.
+
+## System architecture
+
+One codebase, two runtimes. Application logic is framework-agnostic and identical in both; only the bottom **drivers** swap via interfaces.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  SvelteKit SPA (adapter-static) — Svelte 5 runes           │
+│  routes: /chat · /lab · /quiz · /tree · /settings         │
+├───────────────────────────────────────────────────────────┤
+│  lib/ai      Provider interface · chat stream              │
+│              generateLab · generateQuiz · gradeAnswer      │
+│              assembleContext (reference-based walk)        │
+│  lib/chat    tree ops · branch-from-highlight · crosslinks │
+│  lib/db      schema · migrations · repositories           │
+├─────────────────────────┬─────────────────────────────────┤
+│ Tauri runtime           │ Browser runtime                 │
+│ • SQLite (native plugin)│ • SQLite-WASM + OPFS            │
+│ • LLM via Rust/reqwest  │ • LLM via streaming fetch       │
+│ • key in OS keychain    │ • key in IndexedDB              │
+└─────────────────────────┴─────────────────────────────────┘
+        StorageDriver interface            ProviderTransport interface
+```
+
+Two seams make "both runtimes" cheap:
+
+- **`StorageDriver`** — same SQL schema and repository code over a native or WASM SQLite.
+- **`ProviderTransport`** — same provider adapters over a Rust-backed or fetch transport.
+
+## UI stack
+
+- **SvelteKit** in SPA/static mode (no SSR for a local app) — instant loads.
+- **Svelte 5 runes** (`$state` / `$derived`) — minimal re-renders, ideal for streaming.
+- **Tailwind v4** + **shadcn-svelte** (on **bits-ui**) — accessible, modern components.
+- **lucide-svelte** icons; **marked** + **DOMPurify** for markdown; **KaTeX** (math) and **shiki** (code) optional.
+- **Highlighter component:** Selection/Range API captures `startChar`/`endChar` on a message and surfaces a "Branch from here" action.
+- **Streaming render** of assistant tokens; optimistic UI for branching, checklist ticks, and quiz answers.
+
+## Database
+
+SQLite everywhere. Schema + migrations via **drizzle-kit**; queries through a typed **repository layer** over the `StorageDriver`. IDs are text UUIDs; timestamps are epoch-ms integers.
+
+### Tables
+
+#### chats
+
+A node in the conversation tree.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| parent_id | TEXT → chats.id | nullable; null = root |
+| root_id | TEXT → chats.id | self for root; fast subtree queries |
+| branch_point_message_id | TEXT → messages.id | message in parent that this child forked from; null for root |
+| title | TEXT | |
+| depth | INTEGER | tree depth (display) |
+| provider | TEXT | |
+| model | TEXT | |
+| brief | TEXT | Learning Brief on root chats; nullable |
+| created_at / updated_at | INTEGER | |
+
+#### messages
+
+Content of a single chat.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| chat_id | TEXT → chats.id | |
+| role | TEXT | system, user, assistant, or tool |
+| content | TEXT | markdown |
+| ord | INTEGER | ordering within the chat |
+| model | TEXT | nullable |
+| tokens | INTEGER | nullable |
+| tool_call_id | TEXT | nullable |
+| tool_name | TEXT | nullable |
+| metadata | TEXT | nullable |
+| created_at | INTEGER | |
+
+#### branch_sources
+
+Records the exact span a branch came from (traceability).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| source_message_id | TEXT → messages.id | |
+| start_char / end_char | INTEGER | span within the message |
+| excerpt | TEXT | snapshot of the highlighted text |
+| branch_chat_id | TEXT → chats.id | the child created from this highlight |
+| custom_instructions | TEXT | nullable |
+| add_formats | TEXT | nullable |
+| created_at | INTEGER | |
+
+#### cross_links
+
+References between otherwise separate chats.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| from_chat_id / to_chat_id | TEXT → chats.id | |
+| note | TEXT | |
+| created_at | INTEGER | |
+
+#### labs
+
+Leaf artifact on a chat.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| chat_id | TEXT → chats.id | |
+| title | TEXT | |
+| content | TEXT | markdown body (intro + steps) |
+| checklist | TEXT | JSON `[{id, text, done}]` |
+| model | TEXT | |
+| created_at / updated_at | INTEGER | |
+
+#### quizzes
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| chat_id | TEXT → chats.id | |
+| model | TEXT | |
+| created_at | INTEGER | |
+
+#### quiz_questions
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| quiz_id | TEXT → quizzes.id | |
+| ord | INTEGER | |
+| type | TEXT | mcq, flashcard, or short |
+| prompt | TEXT | |
+| payload | TEXT | JSON, type-specific |
+
+`payload` by type:
+
+- `mcq`: `{ options: [...], answerIndex }`
+- `flashcard`: `{ front, back }`
+- `short`: `{ rubric }`
+
+#### quiz_attempts
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| quiz_id | TEXT → quizzes.id | |
+| score | INTEGER | nullable until graded |
+| started_at | INTEGER | |
+| finished_at | INTEGER | |
+
+#### quiz_answers
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| attempt_id | TEXT → quiz_attempts.id | |
+| question_id | TEXT → quiz_questions.id | |
+| answer | TEXT | |
+| is_correct | INTEGER | nullable |
+| ai_feedback | TEXT | nullable; for short-answer AI grading |
+| graded_at | INTEGER | nullable |
+
+#### settings
+
+Key/value store (JSON values).
+
+| Column | Type | Notes |
+|---|---|---|
+| key | TEXT PK | |
+| value | TEXT | JSON |
+
+Provider configs live here. API keys are **not** stored in plaintext: desktop keeps them in the OS keychain (settings holds a handle); browser keeps them in IndexedDB (settings holds an opaque reference).
+
+### Reference-based context assembly
+
+A child inherits "excerpt + full history up to the fork point" by **reading** ancestor messages — never copying. `branch_point_message_id` on a node points to a message in its **parent** and defines how many of the parent's own messages the child sees.
+
+```
+assembleContext(target):
+  parts = []
+  # 1) target's own messages: all of them
+  parts += messages(target, ord <= inf)
+  # 2) walk up; for each ancestor, include its own messages up to the cutoff
+  #    recorded on the child that links into it
+  node = target.parent
+  while node != null:
+      cutoff = child_of(node).branch_point_message_id
+      parts += messages(node, ord <= ord(cutoff))
+      node = node.parent
+  return parts sorted by depth asc, then ord asc
+```
+
+The fork's **excerpt** is injected as a branching seed (a system note) so the child's first turn is anchored to the highlighted text. Messages created in a parent after a fork (ord > cutoff) never leak into the child. Sidebar tree + breadcrumb derive from `parent_id` / `root_id`; cross-links render as distinct reference edges.
+
+## Provider / AI layer
+
+- **`Provider` interface:** `chatStream(messages, opts): AsyncIterable<Token>`, plus `generateLab`, `generateQuiz`, `gradeAnswer` (structured output / tool calls).
+- **Adapters:** OpenAI, Anthropic, Gemini, Ollama (local) — all configurable in Settings.
+- **Two transports** behind the interface:
+  - Desktop: Rust `reqwest` via Tauri commands, streamed over event channels.
+  - Browser: streaming `fetch`.
+- **Key handling:** OS keychain (`keyring`) (desktop); IndexedDB (browser).
+- **Generation helpers** use provider structured-output to produce typed lab/quiz payloads.
+- **Grading:** MCQ/flashcard auto-scored; short-answer AI-graded against the stored rubric.
+
+## Labs and quizzes
+
+- Triggered from a chat; input = that **single** chat's assembled messages.
+- **Lab** = structured output `{ title, intro, steps[], checklist[] }`; runner renders markdown steps + interactive checklist persisted in `labs`.
+- **Quiz** = mixed questions; runner has per-type UX; auto-score + AI grading; attempts and answers persisted with score + feedback view.
+- Both are **leaf artifacts** — reachable from their parent chat, no branching.
+
+## Performance posture
+
+Local SQLite reads are instant. Token streaming provides perceived-instant responses. The static SPA has no server round-trips. Optimistic UI is used everywhere. WASM database queries run in a Web Worker to keep them off the UI thread where latency would be observable.
+
+## Project structure
+
+```
+src/
+  lib/
+    ai/        provider interface, adapters, transports, generation + grading
+    chat/      tree ops, branch-from-highlight, crosslinks, assembleContext
+    db/        schema, migrations, StorageDriver + adapters, repositories
+    components/ MessageList, Highlighter, Composer, TreeSidebar, Breadcrumb,
+               LabRunner, QuizRunner, ProviderSettings
+  routes/      /chat /lab /quiz /tree /settings
+src-tauri/     Rust: commands, SQL plugin, reqwest transport, key storage
+```
+
+## Future seams (out of scope)
+
+- **Cloud sync:** plug a sync adapter into the `StorageDriver` interface; no app-logic change.
+- **Spaced repetition** for flashcards.
+- **Runnable lab sandbox** (code execution in-app).
+
+## Non-goals
+
+- Multi-user / accounts / sharing (personal, single-user).
+- Server-side hosting of the primary experience (local-first).
+- Server-side rendering.

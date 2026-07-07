@@ -1,0 +1,54 @@
+---
+title: "Quizzes"
+---
+
+# Quizzes
+
+Quizzes are AI-generated assessments tied to a chat. They support multiple question types and store every attempt for review.
+
+## Generating a quiz
+
+From any chat, click the "Generate Quiz" action. The AI receives the chat's assembled context and produces a mixed set of questions. Each quiz is a leaf artifact on the chat — it does not branch.
+
+## Question types
+
+### Multiple choice (MCQ)
+
+Each MCQ question presents a prompt and a list of options. Select one option and submit. The quiz runner compares your selection against the stored answer index and marks the question correct or incorrect immediately.
+
+The MCQ payload stores the options array and the correct answer index.
+
+### Flashcard
+
+Flashcards present a front (the prompt) and a back (the answer). Flip the card to reveal the back. Flashcards are self-assessed — you mark whether you got it right or wrong. This makes them useful for spaced repetition and active recall.
+
+The flashcard payload stores a `front` and `back` string.
+
+### Short answer
+
+Short-answer questions present a prompt and a text input. After submitting, the answer is sent to the AI for grading against a stored rubric. The AI returns a correctness judgment and written feedback explaining its reasoning.
+
+The short-answer payload stores a `rubric` string that guides the AI grader.
+
+## Taking a quiz
+
+Open a quiz from its parent chat. The quiz runner presents questions one at a time or in a scrollable list. Answer each question and submit.
+
+MCQ and flashcard questions are scored immediately. Short-answer questions are graded asynchronously by the AI — you see a loading state while the grading response streams back.
+
+## Attempts and scores
+
+Each time you take a quiz, a new attempt is created. Your answers for that attempt are stored individually with per-question correctness flags and AI feedback (for short-answer questions).
+
+The attempt records:
+
+- **Score** — total correct out of total questions (null until all questions are graded).
+- **Start and finish timestamps** — for tracking how long you spent.
+
+You can take a quiz multiple times. Each attempt is independent — previous answers are not modified.
+
+## Reviewing results
+
+After finishing an attempt, the quiz view shows a summary with your score and a breakdown of each question. For short-answer questions, the AI feedback is displayed alongside your answer and the rubric.
+
+All attempts are accessible from the quiz view. Switch between attempts to compare performance over time.

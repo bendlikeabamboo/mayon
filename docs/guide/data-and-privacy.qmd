@@ -1,0 +1,53 @@
+---
+title: "Data and Privacy"
+---
+
+# Data and Privacy
+
+Mayon is designed around a local-first principle. Your data stays on your machine. This page explains how storage, API keys, and offline capabilities work.
+
+## Storage
+
+All application data lives in a single SQLite database.
+
+### Browser (OPFS)
+
+In the browser, the database is `file:mayon.sqlite` stored in the **Origin Private File System** (OPFS). OPFS is a browser API that provides a high-performance, sandboxed filesystem available only to the originating site. Data persists across page reloads and browser restarts.
+
+SQLite runs as WebAssembly inside a Web Worker so that database operations do not block the main UI thread.
+
+The database is scoped to the origin (`https://your-domain.com`). Clearing site data in the browser removes the database.
+
+### Desktop (native SQLite)
+
+The desktop app stores its database as `sqlite:mayon.db` in the Tauri application data directory. The path depends on the operating system:
+
+- **Windows:** `%APPDATA%\com.mayon.app\`
+- **macOS:** `~/Library/Application Support/com.mayon.app/`
+- **Linux:** `~/.config/com.mayon.app/`
+
+SQLite runs in WAL (Write-Ahead Logging) mode for better concurrent read performance. The file persists across app restarts and updates.
+
+### Migrations
+
+Both runtimes run the same drizzle migrations at boot. Migrations are bundled into the SPA build as TypeScript — no filesystem access is needed at runtime. If the database is empty (first run), all migrations apply sequentially. If it already exists, only new migrations run.
+
+## API key storage
+
+API keys are never written to the SQLite `settings` table. The settings table holds only provider configuration metadata (base URL, model, template type).
+
+**Desktop:** Keys are stored in the operating system's keychain. On macOS this is Keychain Access, on Windows it is Credential Manager, and on Linux it is the Secret Service (via `gnome-keyring` or `kwallet`). The Rust `keyring` crate handles storage. The key plaintext never enters the webview — the Tauri bridge only exposes `key_has`, `key_set`, and `key_delete` commands.
+
+**Browser:** Keys are stored in IndexedDB, which is scoped to the same origin as the app. The key is never transmitted anywhere except the provider's API endpoint during streaming.
+
+If you upgrade from a version that stored keys in the `settings` table, a one-time `migrateLegacyKeys()` step on boot moves them to the runtime key store and removes the old rows.
+
+## No telemetry
+
+Mayon does not collect, transmit, or report any telemetry. There are no analytics, no usage tracking, and no phone-home mechanisms. The app does not make any network requests except to the AI providers you explicitly configure.
+
+## Offline capability
+
+After the first load the app is fully offline-capable. The SPA is served as static files. The database is local. Chat, branching, labs, and quizzes all work without an internet connection.
+
+The only feature that requires network access is AI streaming (sending prompts to a provider and receiving responses). If you use a local provider like Ollama, even AI streaming works offline.

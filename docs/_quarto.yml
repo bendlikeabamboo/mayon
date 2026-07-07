@@ -1,0 +1,45 @@
+project:
+  type: book
+  output-dir: ../build/docs
+
+title: 'Mayon Docs'
+favicon: /favicon.png
+site-url: https://bendlikeabamboo.github.io/mayon/docs
+repo-url: https://github.com/bendlikeabamboo/mayon
+
+book:
+  title: 'Mayon Docs'
+  page-navigation: true
+  chapters:
+    - index.qmd
+    - part: 'User Guide'
+      chapters:
+        - getting-started.qmd
+        - guide/chat-and-branching.qmd
+        - guide/labs.qmd
+        - guide/quizzes.qmd
+        - guide/providers.qmd
+        - guide/data-and-privacy.qmd
+    - part: 'Developer'
+      chapters:
+        - dev/architecture.qmd
+        - dev/building.qmd
+        - dev/seams.qmd
+    - contributing.qmd
+
+website:
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: getting-started.qmd
+        text: Getting Started
+    right:
+      - icon: github
+        href: https://github.com/bendlikeabamboo/mayon
+  sidebar:
+    style: floating
+    collapse-level: 2
+    search: true
+  page-navigation: true
+  breadcrumbs: true

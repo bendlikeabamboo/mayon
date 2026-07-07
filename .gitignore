@@ -39,3 +39,6 @@ coverage/
 
 # OPFS / Tauri runtime caches
 .tauri/
+
+# Quarto build output
+docs/_book/

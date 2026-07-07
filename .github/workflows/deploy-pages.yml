@@ -1,0 +1,42 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+environment:
+  name: github-pages
+  url: ${{ steps.deployment.outputs.page_url }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: BASE_PATH=/mayon pnpm build
+      - uses: quarto-dev/quarto-actions/setup@v2
+      - run: quarto render docs/
+      - run: cp build/index.html build/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          directory: build/
+      - id: deployment
+        uses: actions/deploy-pages@v4

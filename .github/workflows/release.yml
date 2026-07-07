@@ -3,8 +3,7 @@
 # auto-updater. Updater signing is mandatory — the job gates on TAURI_SIGNING_PRIVATE_KEY.
 #
 # NOTE: the auto-updater `endpoints` in src-tauri/tauri.conf.json must point at this
-# release's `latest.json` asset URL (currently a placeholder owner/repo — update when the
-# release repo exists).
+# release's `latest.json` asset URL.
 name: Release
 
 on:
@@ -16,7 +15,21 @@ permissions:
   contents: write
 
 jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - uses: ./.github/actions/ci
+
   release:
+    needs: ci
     strategy:
       fail-fast: false
       matrix:

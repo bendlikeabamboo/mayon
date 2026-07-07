@@ -1,0 +1,50 @@
+---
+title: "Labs"
+---
+
+# Labs
+
+A lab is a hands-on learning guide generated from a chat. It takes the conversation context and produces a structured set of steps with an interactive checklist for tracking your progress.
+
+## Generating a lab
+
+From any chat, look for the "Generate Lab" action. Clicking it sends the chat's assembled context to the AI, which produces a structured output containing:
+
+- **Title** — a short name for the lab.
+- **Introduction** — context and goals.
+- **Steps** — numbered instructions, each rendered as markdown.
+- **Checklist** — a list of tasks to complete, each with a checkbox.
+
+The lab is persisted as a leaf artifact on the chat. It does not branch — a lab belongs to exactly one chat.
+
+## The lab runner
+
+The lab view renders the generated content as a scrollable guide:
+
+1. The title and introduction appear at the top.
+2. Each step is displayed in order with full markdown rendering (headings, code blocks, lists, images if referenced).
+3. Below the steps, the interactive checklist shows each task with a checkbox.
+
+## Interactive checklist
+
+Click any checklist item to toggle its completion state. The progress is saved immediately — close the lab and reopen it later, and your completed items persist.
+
+A progress bar at the top of the checklist shows how many items you have completed out of the total. When all items are checked the lab is marked as complete.
+
+## Progress tracking
+
+The checklist is stored as JSON in the database (`labs.checklist`). Each item has:
+
+- **id** — unique identifier.
+- **text** — the task description.
+- **done** — boolean completion state.
+
+Because the checklist is persisted in the same local SQLite database as the chat, progress survives app restarts and page reloads. There is no server or account involved.
+
+## Regenerating a lab
+
+If the generated lab does not fit your needs, you can regenerate it. The previous version is replaced with a new generation based on the current chat context. Your checklist progress from the previous version is not carried over.
+
+## Link back to the chat
+
+The lab view includes a link back to its parent chat. This lets you return to the conversation that generated the lab, ask follow-up questions, and generate an updated version.

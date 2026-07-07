@@ -1,0 +1,56 @@
+---
+title: "Chat and Branching"
+---
+
+# Chat and Branching
+
+At the core of Mayon is the branchable chat graph. Every conversation is a node in a tree. When an AI response covers too much ground or introduces a thread you want to follow deeper, you can branch a new chat from any highlighted span.
+
+## Starting a chat
+
+Open the chat view and type a prompt in the composer at the bottom of the screen. The AI streams a response in real time. Responses render as markdown with syntax highlighting for code blocks.
+
+Each chat is assigned a provider and model at creation time. You can change the active provider and model from the chat view before sending your first message.
+
+## Highlighting and branching
+
+When the AI finishes a response, click and drag to select a span of text within any assistant message. A floating action appears over the selection with a "Branch from here" option.
+
+Clicking it creates a new child chat that:
+
+- Inherits the full conversation history up to the fork point (every message from the parent and all its ancestors, in order).
+- Injects the highlighted excerpt as a branching seed so the child's first turn is anchored to that specific text.
+- Appears as a child node in the sidebar tree.
+
+The parent's context is **referenced**, not copied. The child reads ancestor messages up to the branch point each time it assembles context for the LLM. This means storage is lightweight — a branch does not duplicate its parent's messages.
+
+## Tree navigation
+
+The sidebar shows the conversation tree. Each root chat is a top-level node. Branches appear as indented children. Click any node to jump to that chat.
+
+The tree supports:
+
+- **Expand/collapse** — click the chevron to show or hide children.
+- **Depth display** — the tree renders the depth of each node for visual context.
+- **Active indicator** — the currently viewed chat is highlighted.
+
+## Breadcrumbs
+
+Above the chat view, a breadcrumb trail shows the path from the current chat back to the root ancestor. Each breadcrumb is clickable — tap any ancestor in the path to jump to it.
+
+## Cross-links
+
+You can link any two chats together with a cross-link, even if they belong to different trees. Cross-links are references between otherwise separate conversations, annotated with an optional note explaining the connection.
+
+Cross-linked chats appear as distinct reference edges in the sidebar (not as parent-child relationships). This lets you build a web of related conversations without flattening them into a single tree.
+
+## Context assembly
+
+When you send a message in a branched chat, Mayon assembles the LLM context by walking up the tree:
+
+1. Collect all messages in the current chat.
+2. For each ancestor, collect its messages up to the branch point recorded by the child that links into it.
+3. Sort all collected messages by depth (ascending) and then by order within each chat.
+4. Inject the original branch excerpt as a system note anchoring the conversation.
+
+Messages created in a parent **after** a fork are never included in the child's context. This isolation is what makes branching useful — each branch explores a direction without interference from later turns in its ancestors.

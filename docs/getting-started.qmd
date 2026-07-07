@@ -1,0 +1,59 @@
+---
+title: "Getting Started"
+---
+
+# Getting Started
+
+Mayon is available in three forms: a desktop installer, a browser-based web demo, and a self-hosted Docker image. Pick whichever suits your workflow.
+
+## Desktop app (recommended)
+
+Download the latest installer from the GitHub Releases page. Pre-built binaries are available for Windows, macOS, and Linux (deb/AppImage).
+
+<https://github.com/bendlikeabamboo/mayon/releases>
+
+On Linux you need the GTK and WebKit development libraries installed before the desktop app can run:
+
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config
+```
+
+For OS keychain support on Linux, ensure a Secret Service implementation is running (`gnome-keyring` or `kwallet`) and `libsecret-1-0` is installed.
+
+Double-click the installer or run it from the terminal. On first launch Mayon creates its data directory and opens the main window.
+
+## Web demo
+
+A live browser build is hosted on GitHub Pages:
+
+<https://bendlikeabamboo.github.io/mayon>
+
+The web demo runs entirely in your browser. It stores data in the Origin Private File System (OPFS) and API keys in IndexedDB. Some providers (notably Anthropic) may block direct browser requests due to CORS — the desktop app handles all providers without CORS issues.
+
+## Docker (self-hosted)
+
+Pull and run the Mayon container:
+
+```bash
+docker pull ghcr.io/bendlikeabamboo/mayon:latest
+docker run -d --name mayon -p 8080:80 ghcr.io/bendlikeabamboo/mayon:latest
+```
+
+Open `http://localhost:8080` in your browser. Data is stored inside the container; mount a volume to persist it across restarts:
+
+```bash
+docker run -d --name mayon -p 8080:80 \
+  -v mayon-data:/data \
+  ghcr.io/bendlikeabamboo/mayon:latest
+```
+
+## First run
+
+When you open Mayon for the first time the database is created automatically and migrations run. Look for two signals in the header:
+
+1. **DB status badge** — shows "DB ready" with the runtime label ("browser" or "desktop"). In development builds a self-check runs on boot that writes, reads, and deletes a test row to confirm the database is functional.
+
+2. **Theme toggle** — click the sun/moon icon in the header to switch between light and dark mode. Close and reopen the app (or reload the tab in the browser). The theme persists, proving that storage is working correctly.
+
+If the DB status badge shows "DB error" with a message about OPFS being unavailable, your browser does not support the Origin Private File System. Use the desktop app or a supported browser (Chromium-based browsers have full OPFS support).

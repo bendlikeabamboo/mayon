@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://bendlikeabamboo.github.io/mayon/docs
+    about: Check the docs for setup guides, configuration, and usage information.
+  - name: Discussions
+    url: https://github.com/bendlikeabamboo/mayon/discussions
+    about: Ask questions, share ideas, and discuss the project with the community.

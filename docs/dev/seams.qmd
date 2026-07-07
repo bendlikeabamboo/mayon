@@ -1,0 +1,54 @@
+---
+title: "Architecture Boundaries"
+---
+
+# Architecture Boundaries
+
+These are the rules that keep the codebase clean and both runtimes maintainable. Violating them creates coupling between the application layer and a specific runtime, which defeats the purpose of the storage and transport seams.
+
+Do not violate these boundaries.
+
+## Components and stores call repositories only
+
+Application code (Svelte components, SvelteKit routes, stores) must interact with data exclusively through the repository layer in `src/lib/db/`. They must never import the `db` object or drizzle query builders directly.
+
+The drizzle `db` object is private to `src/lib/db/`. It is exposed to the rest of the app through `getDb()` and the repository functions in `src/lib/db/repos/`.
+
+This rule exists because the `db` object is tied to a specific driver. If a component imported it directly, that component would be coupled to whichever driver is active at import time, making it impossible to test against the in-memory driver or to swap runtimes.
+
+## StorageDriver is the single storage seam
+
+`StorageDriver` (`src/lib/db/driver/types.ts`) is the interface that all storage backends implement. It has three core methods:
+
+- `query(sql, params?)` — run a statement that returns rows (SELECT).
+- `batch(stmts)` — run many statements in one round-trip.
+- `exec(sql)` — run a statement that returns no rows (DDL, INSERT, UPDATE, DELETE).
+
+Three concrete implementations satisfy this interface:
+
+| Driver | Runtime | Description |
+|---|---|---|
+| OPFS Worker | Browser | SQLite-WASM + Origin Private File System. Runs in a Web Worker; communicates with the main thread over `postMessage`. |
+| Tauri SQL plugin | Desktop | Native SQLite via `@tauri-apps/plugin-sql`. |
+| In-memory sql.js | Tests | Ephemeral SQLite for Vitest. |
+
+Drizzle, the schema, and the repository layer live on the main thread. Drivers are dumb SQL executors — the OPFS worker literally just runs SQL strings and returns row data.
+
+## Runtime selection
+
+Runtime selection happens in `src/lib/db/driver/client.ts` via the `isTauri()` guard from `@tauri-apps/api/core`. If the code is running inside a Tauri webview, the Tauri SQL plugin driver is instantiated. Otherwise, the OPFS worker driver is used.
+
+This is the only place in the codebase where runtime detection occurs. All code above the driver layer is runtime-agnostic.
+
+## No secrets in settings
+
+The `settings` table is a key/value store for non-secret configuration. Provider configuration (base URL, default model, template type, display name) lives in `settings` as JSON values.
+
+API keys are **never** stored in `settings`. They are stored in:
+
+- **Desktop:** the OS keychain via the Rust `keyring` crate. The plaintext key never enters the webview JavaScript context. The Tauri bridge exposes only `key_has` (boolean), `key_set`, and `key_delete` commands.
+- **Browser:** IndexedDB under the same origin as the app.
+
+A one-time `migrateLegacyKeys()` boot step moves any legacy `providerKey:<id>` rows out of `settings` into the runtime key store. This handles upgrades from pre-P5 builds.
+
+The `ProviderConfig` type in the codebase intentionally omits any key field. The settings UI stores a key, then immediately masks the input with a "Replace key" affordance. The key is never echoed back after save.
