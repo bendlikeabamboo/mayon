@@ -784,7 +784,7 @@
 						{supportsDeep}
 						providerName={activeProviderName}
 						modelId={activeModelId}
-						progress={gate?.progress}
+						chatId={chatStore.chat.id}
 					/>
 				</div>
 			</div>

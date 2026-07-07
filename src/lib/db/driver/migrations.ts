@@ -79,6 +79,11 @@ const migrations: MigrationMeta[] = [
 		],
 		folderMillis: 1783164800000,
 		hash: '6042942feb9e6abbe4cfa57be4c4f57757aa3ec02881f1603f248f5a28f3ded0'
+	},
+	{
+		sql: ['ALTER TABLE `chats` ADD `mcp_config` text;'],
+		folderMillis: 1783418066260,
+		hash: '2aca6730b865b3512ce519585a1aa19c2de1c9e695533bea92b6296bbdb739f1'
 	}
 ];
 

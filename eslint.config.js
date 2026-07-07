@@ -15,6 +15,7 @@ export default ts.config(
 			'coverage/',
 			'.kilo/',
 			'docs/',
+			'tests/fixtures/',
 			// Generated: bundled migration SQL/journal — do not lint by hand.
 			'src/lib/db/driver/migrations.ts'
 		]

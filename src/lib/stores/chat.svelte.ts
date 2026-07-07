@@ -31,6 +31,7 @@ import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { runAgentTurn } from '$lib/agent/loop';
+import { getToolDefinitions } from '$lib/agent/registry';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 import { generateBrief } from '$lib/ai/generate/generate-brief';
 import { toastState } from '$lib/stores/toasts.svelte';
@@ -241,6 +242,28 @@ class ChatState {
 			}
 
 			const toolCallCounter = { count: 0 };
+			const chatMcpConfig = await repos.mcp.getChatMcpConfig(chatId);
+			const enabledServers = (await repos.mcp.listServers()).filter((s) => s.enabled);
+			const mcpDisabled: string[] = [];
+			for (const server of enabledServers) {
+				if (chatMcpConfig === null) continue;
+				const entry = chatMcpConfig[server.id];
+				if (!entry) continue;
+				if (entry.enabled === false) {
+					const prefix = `mcp.${server.id}.`;
+					for (const def of getToolDefinitions()) {
+						if (def.id.startsWith(prefix)) mcpDisabled.push(def.id);
+					}
+				} else if (entry.tools && entry.tools.length > 0) {
+					const prefix = `mcp.${server.id}.`;
+					for (const def of getToolDefinitions()) {
+						if (def.id.startsWith(prefix) && !entry.tools.includes(def.id)) {
+							mcpDisabled.push(def.id);
+						}
+					}
+				}
+			}
+
 			const { aborted } = await runAgentTurn({
 				model,
 				config,
@@ -250,7 +273,8 @@ class ChatState {
 				effort,
 				disabledToolIds: [
 					...disabledToolsForBrief(rootBriefRaw),
-					...(this.manualBranchPending ? ['branch_chat'] : [])
+					...(this.manualBranchPending ? ['branch_chat'] : []),
+					...mcpDisabled
 				],
 				updateStreamBuffer: (n) => (this.streamBuffer = n),
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),

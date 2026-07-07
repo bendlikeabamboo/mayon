@@ -22,3 +22,4 @@ export {
 	renderSnippet,
 	deepLink
 } from './search';
+export { mcpRepo } from './mcp';

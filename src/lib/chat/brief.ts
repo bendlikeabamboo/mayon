@@ -18,6 +18,7 @@ import {
 	strategyForBrief
 } from './strategies';
 import { type PersonaId, DEFAULT_PERSONA, isPersonaId, personaForId } from './personas';
+import { buildMcpRuntimeState } from '$lib/mcp/lifecycle';
 
 export type { ScopeStrategy, ScopeStrategyId } from './strategies';
 export {
@@ -241,7 +242,7 @@ export function disabledToolsForBrief(rootBrief: string | null): string[] {
  * "Just start chatting" chats too. Pure string; the loop joins it into `system`.
  */
 export function buildCapabilitiesPreamble(): string {
-	return [
+	const lines: string[] = [
 		"You have access to tools that let you inspect the learner's context (checklist progress, artifacts, summaries).",
 		'Use them when they clearly help the lesson — e.g. to check where the learner is before giving feedback.',
 		'Prefer continuing the lesson over invoking tools. Use them judiciously, not every turn.',
@@ -251,7 +252,25 @@ export function buildCapabilitiesPreamble(): string {
 		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.',
 		'When it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn.',
 		'The create_quiz / create_lab tools create and persist the artifact themselves and return a link. When you call one, emit NONE of its content as chat text. After it succeeds, acknowledge in 1–2 sentences and point the learner to the link.'
-	].join('\n');
+	];
+
+	const mcpState = buildMcpRuntimeState();
+	const serverIds = Object.keys(mcpState);
+	if (serverIds.length > 0) {
+		const summaries = serverIds.map((id) => {
+			const st = mcpState[id];
+			const toolNames = st.toolIds.map((tid) => {
+				const parts = tid.split('.');
+				return parts[parts.length - 1];
+			});
+			return `${id} (${st.toolIds.length} tool${st.toolIds.length === 1 ? '' : 's'}: ${toolNames.join(', ')})`;
+		});
+		lines.push(
+			`MCP tools available: ${summaries.join('; ')}. Use them when the user asks to search the web or perform tasks that match these tools' capabilities.`
+		);
+	}
+
+	return lines.join('\n');
 }
 
 // ─────────────────────────── summary ──────────────────────────

@@ -60,9 +60,17 @@ interface CollectedToolCall {
 function buildSdkTools(enabled: boolean, disabledToolIds?: string[]): ToolSet {
 	if (!enabled) return {};
 	const disabled = new Set(disabledToolIds ?? []);
+	const defs = getToolDefinitions().filter((d) => !disabled.has(d.id));
+	const MAX_TOOL_DEFS = 64;
+	const dropped = defs.slice(MAX_TOOL_DEFS);
+	if (dropped.length > 0) {
+		for (const d of dropped) {
+			console.warn(`[mcp] tool cap: dropped ${d.id} (exceeds ${MAX_TOOL_DEFS} tool definitions)`);
+		}
+	}
+	const capped = defs.slice(0, MAX_TOOL_DEFS);
 	const out: ToolSet = {};
-	for (const def of getToolDefinitions()) {
-		if (disabled.has(def.id)) continue;
+	for (const def of capped) {
 		out[def.id] = tool({
 			description: def.description,
 			inputSchema: jsonSchema(def.parameters)

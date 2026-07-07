@@ -47,6 +47,10 @@ export function getToolDefinitions(): ToolDefinition[] {
 	return [...TOOLS.values()].map((t) => t.def);
 }
 
+export function deregisterTool(id: string): void {
+	TOOLS.delete(id);
+}
+
 export function getToolDefinition(id: string): ToolDefinition | undefined {
 	return TOOLS.get(id)?.def;
 }

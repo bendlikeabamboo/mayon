@@ -1,5 +1,6 @@
 mod backup;
 mod keys;
+mod mcp;
 mod transport;
 
 use tauri::Manager;
@@ -22,6 +23,7 @@ pub fn run() {
 		.plugin(tauri_plugin_process::init())
 		.plugin(tauri_plugin_updater::Builder::new().build())
 		.manage(transport::StreamHandles::default())
+		.manage(mcp::McpHandles::default())
 		.setup(|app| {
 			if cfg!(debug_assertions) {
 				app.handle().plugin(
@@ -38,6 +40,10 @@ pub fn run() {
 			keys::key_delete,
 			transport::llm_stream,
 			transport::llm_stream_cancel,
+			mcp::mcp_spawn,
+			mcp::mcp_call,
+			mcp::mcp_notify,
+			mcp::mcp_close,
 			backup::backup_database,
 			backup::restore_database,
 		])

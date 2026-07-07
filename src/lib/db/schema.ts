@@ -37,6 +37,13 @@ export const chats = sqliteTable('chats', {
 	 * behave exactly as before (no system note).
 	 */
 	brief: text('brief'),
+	/**
+	 * Per-chat MCP server enablement, stored as a JSON string
+	 * (`ChatMcpConfig` in `src/lib/mcp/types.ts`). `NULL` = "inherit all
+	 * globally-enabled servers"; an explicit `{}` disables all MCP tools for the
+	 * chat. Nullable + additive: old rows get `NULL` and behave exactly as before.
+	 */
+	mcpConfig: text('mcp_config'),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });

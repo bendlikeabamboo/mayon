@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Brain, Send, Square } from '@lucide/svelte';
+	import { Brain, Send, Square, Plug } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		DropdownMenu,
@@ -9,6 +9,7 @@
 		DropdownMenuCheckboxItem
 	} from '$lib/components/ui/dropdown-menu/index.js';
 	import { repos } from '$lib/db';
+	import { buildMcpRuntimeState } from '$lib/mcp/lifecycle';
 	import type { ReasoningEffort } from '$lib/ai/types';
 
 	/**
@@ -28,7 +29,8 @@
 		supportsDeep = true,
 		providerName,
 		modelId,
-		progress
+		progress,
+		chatId
 	}: {
 		prompt?: string;
 		streaming?: boolean;
@@ -39,6 +41,7 @@
 		providerName?: string;
 		modelId?: string;
 		progress?: string | null;
+		chatId?: string;
 	} = $props();
 	/** Reasoning effort: off (disabled), on (provider default), deep (extra reasoning). */
 	let effort = $state<ReasoningEffort>('on');
@@ -96,6 +99,59 @@
 			send();
 		}
 	}
+
+	let mcpServers = $state<Array<{ id: string; name: string; toolCount: number; enabled: boolean }>>(
+		[]
+	);
+	let mcpLoading = $state(false);
+
+	async function loadMcpServers() {
+		if (!chatId) return;
+		mcpLoading = true;
+		try {
+			const [servers, mcpRuntimeState, chatMcpConfig] = await Promise.all([
+				repos.mcp.listServers(),
+				Promise.resolve(buildMcpRuntimeState()),
+				repos.mcp.getChatMcpConfig(chatId)
+			]);
+			mcpServers = servers
+				.filter((s) => s.enabled)
+				.map((s) => {
+					const runtime = mcpRuntimeState[s.id];
+					const entry = chatMcpConfig?.[s.id];
+					return {
+						id: s.id,
+						name: s.name,
+						toolCount: runtime?.toolIds.length ?? 0,
+						enabled: entry ? entry.enabled : true
+					};
+				});
+		} finally {
+			mcpLoading = false;
+		}
+	}
+
+	$effect(() => {
+		void chatId;
+		void loadMcpServers();
+	});
+
+	async function toggleMcpServer(serverId: string) {
+		if (!chatId) return;
+		const chatMcpConfig = await repos.mcp.getChatMcpConfig(chatId);
+		const cfg = chatMcpConfig ? { ...chatMcpConfig } : {};
+		const entry = cfg[serverId];
+		if (entry) {
+			entry.enabled = !entry.enabled;
+		} else {
+			cfg[serverId] = { enabled: false };
+		}
+		await repos.mcp.setChatMcpConfig(chatId, cfg);
+		await loadMcpServers();
+	}
+
+	const hasMcpServers = $derived(mcpServers.length > 0);
+	const mcpAllDisabled = $derived(mcpServers.length > 0 && mcpServers.every((s) => !s.enabled));
 </script>
 
 <div class="flex flex-col gap-1.5">
@@ -130,21 +186,50 @@
 			placeholder="Message the active provider…  (⌘/Ctrl+Enter to send)"
 			class="min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			disabled={streaming}></textarea>
-		{#snippet triggerChild({ props }: { props: Record<string, unknown> })}
-			<Button
-				{...props}
-				variant={effort === 'off' ? 'outline' : 'secondary'}
-				size="icon"
-				disabled={streaming}
-				title="Thinking"
-				aria-label="Thinking"
-				aria-pressed={effort !== 'off'}
-			>
-				<Brain class="size-4" />
-			</Button>
-		{/snippet}
+		{#if hasMcpServers}
+			<DropdownMenu>
+				<DropdownMenuTrigger>
+					<Button
+						variant={mcpAllDisabled ? 'outline' : 'secondary'}
+						size="icon"
+						disabled={streaming || mcpLoading}
+						title="MCP Tools"
+						aria-label="MCP Tools"
+					>
+						<Plug class="size-4" />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent side="top" align="end" class="w-64">
+					<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">MCP Servers</div>
+					{#each mcpServers as server (server.id)}
+						<DropdownMenuCheckboxItem
+							checked={server.enabled}
+							onCheckedChange={() => void toggleMcpServer(server.id)}
+						>
+							<div class="flex flex-col">
+								<span>{server.name}</span>
+								<span class="text-xs text-muted-foreground">
+									{server.toolCount} tool{server.toolCount === 1 ? '' : 's'}
+								</span>
+							</div>
+						</DropdownMenuCheckboxItem>
+					{/each}
+				</DropdownMenuContent>
+			</DropdownMenu>
+		{/if}
 		<DropdownMenu>
-			<DropdownMenuTrigger child={triggerChild} />
+			<DropdownMenuTrigger>
+				<Button
+					variant={effort === 'off' ? 'outline' : 'secondary'}
+					size="icon"
+					disabled={streaming}
+					title="Thinking"
+					aria-label="Thinking"
+					aria-pressed={effort !== 'off'}
+				>
+					<Brain class="size-4" />
+				</Button>
+			</DropdownMenuTrigger>
 			<DropdownMenuContent side="top" align="end" class="w-56">
 				<DropdownMenuCheckboxItem
 					checked={effort === 'off'}

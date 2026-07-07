@@ -14,6 +14,7 @@ import { quizzesRepo, quizQuestionsRepo } from './repositories/quizzes';
 import { quizAttemptsRepo, quizAnswersRepo } from './repositories/quiz-attempts';
 import { agentTracesRepo } from './repositories/agent-traces';
 import { searchRepo } from './repositories/search';
+import { mcpRepo } from './repositories/mcp';
 
 /** Typed repository namespace — the only sanctioned way to touch the database. */
 export const repos = {
@@ -28,7 +29,8 @@ export const repos = {
 	quizAttempts: quizAttemptsRepo,
 	quizAnswers: quizAnswersRepo,
 	agentTraces: agentTracesRepo,
-	search: searchRepo
+	search: searchRepo,
+	mcp: mcpRepo
 };
 
 export type { LabChecklistItem } from './repositories/labs';
