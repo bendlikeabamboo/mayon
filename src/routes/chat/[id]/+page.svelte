@@ -775,10 +775,6 @@
 						</div>
 					{/if}
 
-					{#if gate?.progress}
-						<p class="text-xs font-medium text-muted-foreground">{gate.progress}</p>
-					{/if}
-
 					<Composer
 						bind:streaming={chatStore.streaming}
 						bind:prompt={composerPrompt}
@@ -788,6 +784,7 @@
 						{supportsDeep}
 						providerName={activeProviderName}
 						modelId={activeModelId}
+						progress={gate?.progress}
 					/>
 				</div>
 			</div>

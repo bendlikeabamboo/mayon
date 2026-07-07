@@ -27,7 +27,8 @@
 		suggestedReplies,
 		supportsDeep = true,
 		providerName,
-		modelId
+		modelId,
+		progress
 	}: {
 		prompt?: string;
 		streaming?: boolean;
@@ -37,6 +38,7 @@
 		supportsDeep?: boolean;
 		providerName?: string;
 		modelId?: string;
+		progress?: string | null;
 	} = $props();
 	/** Reasoning effort: off (disabled), on (provider default), deep (extra reasoning). */
 	let effort = $state<ReasoningEffort>('on');
@@ -97,10 +99,18 @@
 </script>
 
 <div class="flex flex-col gap-1.5">
-	{#if providerName && modelId}
-		<span class="px-1 text-[11px] leading-none text-muted-foreground"
-			>{providerName} · {modelId}</span
-		>
+	{#if (providerName && modelId) || progress}
+		<div class="flex items-center gap-1.5 px-1 text-[11px] leading-none text-muted-foreground">
+			{#if providerName && modelId}
+				<span>{providerName} · {modelId}</span>
+			{/if}
+			{#if providerName && modelId && progress}
+				<span aria-hidden="true">|</span>
+			{/if}
+			{#if progress}
+				<span>{progress}</span>
+			{/if}
+		</div>
 	{/if}
 	{#if showChips}
 		<div class="flex flex-wrap gap-1.5">
