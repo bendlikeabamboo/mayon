@@ -395,7 +395,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 							signal: deps.signal,
 							budget: turnBudget,
 							model: deps.model,
-							config: deps.config
+							config: deps.config,
+							requestApproval: deps.requestApproval,
+							onTrace: deps.onTrace
 						});
 						const def = getToolDefinition(tc.toolName);
 						if (def?.risk === 'low') {
@@ -471,7 +473,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 								signal: deps.signal,
 								budget: turnBudget,
 								model: deps.model,
-								config: deps.config
+								config: deps.config,
+								requestApproval: deps.requestApproval,
+								onTrace: deps.onTrace
 							});
 							if (getToolDefinition(tc.toolName)?.generative) {
 								deps.notifyGenerativeStatus?.(null);

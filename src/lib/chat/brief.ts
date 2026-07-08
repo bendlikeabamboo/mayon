@@ -19,6 +19,7 @@ import {
 } from './strategies';
 import { type PersonaId, DEFAULT_PERSONA, isPersonaId, personaForId } from './personas';
 import { buildMcpRuntimeState } from '$lib/mcp/lifecycle';
+import { listMountedResources } from '$lib/mcp/resources';
 
 export type { ScopeStrategy, ScopeStrategyId } from './strategies';
 export {
@@ -267,6 +268,14 @@ export function buildCapabilitiesPreamble(): string {
 		});
 		lines.push(
 			`MCP tools available: ${summaries.join('; ')}. Use them when the user asks to search the web or perform tasks that match these tools' capabilities.`
+		);
+	}
+
+	const mountedResources = listMountedResources();
+	if (mountedResources.length > 0) {
+		const resCount = mountedResources.reduce((n, e) => n + e.resources.length, 0);
+		lines.push(
+			`You can read MCP resources on demand with the mcp_read_resource tool (pass serverId + uri); ${resCount} resource${resCount === 1 ? '' : 's'} available across ${mountedResources.length} server${mountedResources.length === 1 ? '' : 's'}.`
 		);
 	}
 

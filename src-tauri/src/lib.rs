@@ -43,6 +43,7 @@ pub fn run() {
 			mcp::mcp_spawn,
 			mcp::mcp_call,
 			mcp::mcp_notify,
+			mcp::mcp_respond,
 			mcp::mcp_close,
 			backup::backup_database,
 			backup::restore_database,

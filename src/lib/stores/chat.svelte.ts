@@ -52,6 +52,27 @@ export interface ApprovalEntry {
 
 export type PublicApprovalEntry = Omit<ApprovalEntry, 'resolve'>;
 
+export interface McpSamplingEntry {
+	id: string;
+	serverName: string;
+	prompt: string;
+	maxTokens: number;
+	remainingBudget: number;
+	resolve: (approved: boolean) => void;
+}
+
+export type PublicMcpSamplingEntry = Omit<McpSamplingEntry, 'resolve'>;
+
+export interface ElicitationEntry {
+	id: string;
+	serverName: string;
+	schema: Record<string, unknown>;
+	message: string;
+	resolve: (outcome: { accepted: boolean; data?: Record<string, unknown> }) => void;
+}
+
+export type PublicElicitationEntry = Omit<ElicitationEntry, 'resolve'>;
+
 /**
  * Raised when an expound excerpt overlaps an existing span for the same source
  * message (a word can't belong to two expounds; one branch per excerpt falls
@@ -106,6 +127,10 @@ class ChatState {
 	private inferController: AbortController | null = null;
 
 	pendingApprovals = $state<ApprovalEntry[]>([]);
+
+	pendingMcpSampling = $state<McpSamplingEntry[]>([]);
+
+	pendingElicitations = $state<ElicitationEntry[]>([]);
 
 	/** First-turn-only: suppress `branch_chat` after a manual branch (UX1a). */
 	manualBranchPending = $state<boolean>(false);
@@ -225,6 +250,7 @@ class ChatState {
 		const startTime = Date.now();
 		let model: LanguageModel | undefined;
 		let config: ProviderConfig | undefined;
+		let mcpSession: { unmountAll: () => void } | null = null;
 
 		try {
 			const [_ctx, sdk] = await Promise.all([assembleContext(chatId), getActiveSdkProvider()]);
@@ -244,6 +270,15 @@ class ChatState {
 			const toolCallCounter = { count: 0 };
 			const chatMcpConfig = await repos.mcp.getChatMcpConfig(chatId);
 			const enabledServers = (await repos.mcp.listServers()).filter((s) => s.enabled);
+			try {
+				const { connectSession } = await import('$lib/mcp/lifecycle');
+				mcpSession = await connectSession(enabledServers, (e) => {
+					builder.emit(e);
+					diagnosticsStore.liveEmit(e);
+				});
+			} catch (err) {
+				console.warn('[mcp] session connect failed:', err);
+			}
 			const mcpDisabled: string[] = [];
 			for (const server of enabledServers) {
 				if (chatMcpConfig === null) continue;
@@ -261,6 +296,19 @@ class ChatState {
 							mcpDisabled.push(def.id);
 						}
 					}
+				}
+			}
+
+			{
+				const { resourceServerIds } = await import('$lib/mcp/resources');
+				const enabledResourceServers = enabledServers.filter((s) => {
+					if (chatMcpConfig === null || chatMcpConfig[s.id]?.enabled !== false) {
+						return resourceServerIds().has(s.id);
+					}
+					return false;
+				});
+				if (enabledResourceServers.length === 0 && resourceServerIds().size > 0) {
+					mcpDisabled.push('mcp_read_resource');
 				}
 			}
 
@@ -362,10 +410,19 @@ class ChatState {
 				});
 			}
 		} finally {
+			mcpSession?.unmountAll();
 			for (const a of this.pendingApprovals) {
 				a.resolve({ approved: false, aborted: true });
 			}
 			this.pendingApprovals = [];
+			for (const e of this.pendingMcpSampling) {
+				e.resolve(false);
+			}
+			this.pendingMcpSampling = [];
+			for (const e of this.pendingElicitations) {
+				e.resolve({ accepted: false });
+			}
+			this.pendingElicitations = [];
 			if (this.rafId !== null) {
 				cancelAnimationFrame(this.rafId);
 				this.rafId = null;
@@ -578,6 +635,72 @@ class ChatState {
 		if (idx === -1) return;
 		this.pendingApprovals[idx].resolve({ approved: false });
 		this.pendingApprovals = this.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
+	}
+
+	approveSampling(id: string): void {
+		const idx = this.pendingMcpSampling.findIndex((e) => e.id === id);
+		if (idx === -1) return;
+		this.pendingMcpSampling[idx].resolve(true);
+		this.pendingMcpSampling = this.pendingMcpSampling.filter((e) => e.id !== id);
+	}
+
+	declineSampling(id: string): void {
+		const idx = this.pendingMcpSampling.findIndex((e) => e.id === id);
+		if (idx === -1) return;
+		this.pendingMcpSampling[idx].resolve(false);
+		this.pendingMcpSampling = this.pendingMcpSampling.filter((e) => e.id !== id);
+	}
+
+	submitElicitation(id: string, data: Record<string, unknown>): void {
+		const idx = this.pendingElicitations.findIndex((e) => e.id === id);
+		if (idx === -1) return;
+		this.pendingElicitations[idx].resolve({ accepted: true, data });
+		this.pendingElicitations = this.pendingElicitations.filter((e) => e.id !== id);
+	}
+
+	cancelElicitation(id: string): void {
+		const idx = this.pendingElicitations.findIndex((e) => e.id === id);
+		if (idx === -1) return;
+		this.pendingElicitations[idx].resolve({ accepted: false });
+		this.pendingElicitations = this.pendingElicitations.filter((e) => e.id !== id);
+	}
+
+	requestSamplingImpl(req: {
+		id: string;
+		serverName: string;
+		prompt: string;
+		maxTokens: number;
+		remainingBudget: number;
+	}): Promise<boolean> {
+		return new Promise((resolve) => {
+			const entry: McpSamplingEntry = { ...req, resolve };
+			this.pendingMcpSampling = [...this.pendingMcpSampling, entry];
+			const onAbort = () => {
+				resolve(false);
+				this.pendingMcpSampling = this.pendingMcpSampling.filter((e) => e !== entry);
+			};
+			this.controller?.signal.addEventListener('abort', onAbort, { once: true });
+		});
+	}
+
+	requestElicitationImpl(req: {
+		id: string;
+		serverName: string;
+		schema: Record<string, unknown>;
+		message: string;
+	}): Promise<{ accepted: boolean; data?: Record<string, unknown> }> {
+		return new Promise((resolve) => {
+			const entry: ElicitationEntry = {
+				...req,
+				resolve: (outcome) => resolve(outcome)
+			};
+			this.pendingElicitations = [...this.pendingElicitations, entry];
+			const onAbort = () => {
+				resolve({ accepted: false });
+				this.pendingElicitations = this.pendingElicitations.filter((e) => e !== entry);
+			};
+			this.controller?.signal.addEventListener('abort', onAbort, { once: true });
+		});
 	}
 
 	private notifyLowRiskImpl(toolLabel: string, summary: string): void {

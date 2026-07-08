@@ -41,10 +41,17 @@
 	let importDraft = $state('');
 	let importError = $state<string | null>(null);
 	let testing = $state<Record<string, boolean>>({});
-	let testResults = $state<Record<string, { tools: number } | { error: string }>>({});
+	let testResults = $state<
+		Record<
+			string,
+			| { tools: number; resources?: number; prompts?: number }
+			| { error: string; corsBlocked?: boolean }
+		>
+	>({});
 	let trustingId = $state<string | null>(null);
 	let _envDrafts = $state<Record<string, Record<string, string>>>({});
 	let secretDrafts = $state<Record<string, string>>({});
+	let _headerDrafts = $state<Record<string, string>>({});
 
 	const inputClass =
 		'h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -159,6 +166,62 @@
 		updateServer(id, { resultCapBytes: isNaN(n) ? undefined : n });
 	}
 
+	async function addHeader(id: string) {
+		const s = servers.find((x) => x.id === id);
+		if (!s) return;
+		const name = `HEADER_${Object.keys(s.headers ?? {}).length + 1}`;
+		const headers = { ...(s.headers ?? {}), [name]: { value: '' } };
+		updateServer(id, { headers });
+		await persist();
+	}
+
+	function removeHeader(id: string, name: string) {
+		const s = servers.find((x) => x.id === id);
+		if (!s) return;
+		const headers = { ...(s.headers ?? {}) };
+		const entry = headers[name];
+		if (entry?.secretRef) {
+			void deleteMcpSecret(id, name);
+			secretFlags = {
+				...secretFlags,
+				[id]: (secretFlags[id] ?? []).filter((n) => n !== name)
+			};
+		}
+		delete headers[name];
+		updateServer(id, { headers: Object.keys(headers).length > 0 ? headers : undefined });
+		void persist();
+	}
+
+	async function saveHeaderSecret(serverId: string, name: string, raw: string) {
+		const trimmed = raw.trim();
+		if (trimmed) {
+			await setMcpSecret(serverId, name, trimmed);
+		} else {
+			await deleteMcpSecret(serverId, name);
+		}
+		const s = servers.find((x) => x.id === serverId);
+		if (s && s.headers && s.headers[name]) {
+			updateServer(serverId, {
+				headers: { ...s.headers, [name]: { secretRef: `mcp:${serverId}:${name}` } }
+			});
+			void persist();
+		}
+		_headerDrafts = { ..._headerDrafts, [serverId]: '' };
+		setStatus('Secret saved.');
+	}
+
+	async function saveHeaderValue(serverId: string, name: string, raw: string) {
+		const s = servers.find((x) => x.id === serverId);
+		if (s && s.headers && s.headers[name]) {
+			updateServer(serverId, {
+				headers: { ...s.headers, [name]: { value: raw.trim() || '' } }
+			});
+			await persist();
+		}
+		_headerDrafts = { ..._headerDrafts, [serverId]: '' };
+		setStatus('Header saved.');
+	}
+
 	async function addEnvVar(id: string) {
 		const s = servers.find((x) => x.id === id);
 		if (!s) return;
@@ -208,8 +271,18 @@
 		testResults = { ...testResults, [id]: { error: '' } };
 		const result = await testConnection(s);
 		if ('tools' in result) {
-			testResults = { ...testResults, [id]: { tools: result.tools.length } };
-			setStatus(`Connected: ${result.tools.length} tools discovered.`);
+			testResults = {
+				...testResults,
+				[id]: {
+					tools: result.tools.length,
+					resources: result.resources?.length,
+					prompts: result.prompts?.length
+				}
+			};
+			const parts = [`${result.tools.length} tools`];
+			if (result.resources?.length) parts.push(`${result.resources.length} resources`);
+			if (result.prompts?.length) parts.push(`${result.prompts.length} prompts`);
+			setStatus(`Connected: ${parts.join(', ')} discovered.`);
 		} else {
 			testResults = { ...testResults, [id]: { error: result.error } };
 			setStatus(`Connection failed: ${result.error}`);
@@ -239,7 +312,12 @@
 	async function removeServer(id: string) {
 		const s = servers.find((x) => x.id === id);
 		const envNames = s ? Object.keys(s.env ?? {}) : [];
-		await deleteServerSecrets(id, envNames);
+		const headerSecretNames = s
+			? Object.entries(s.headers ?? {})
+					.filter(([, v]) => v.secretRef)
+					.map(([k]) => k)
+			: [];
+		await deleteServerSecrets(id, [...envNames, ...headerSecretNames]);
 		servers = servers.filter((x) => x.id !== id);
 		if (expandedId === id) expandedId = null;
 		if (trustingId === id) trustingId = null;
@@ -259,7 +337,12 @@
 			setStatus(`Imported ${imported.length} server(s).`);
 			for (const s of imported) {
 				trustFlags[s.id] = await isTrusted(s);
-				secretFlags[s.id] = Object.keys(s.env ?? {});
+				secretFlags[s.id] = [
+					...Object.keys(s.env ?? {}),
+					...Object.entries(s.headers ?? {})
+						.filter(([, v]) => v.secretRef)
+						.map(([k]) => k)
+				];
 			}
 		} catch (err) {
 			importError = err instanceof Error ? err.message : String(err);
@@ -464,6 +547,94 @@
 										onchange={() => commitField(s.id)}
 									/>
 								</label>
+
+								<div class="space-y-2">
+									<div class="flex items-center justify-between">
+										<span class="text-xs text-muted-foreground">Headers</span>
+										<Button variant="ghost" size="sm" onclick={() => addHeader(s.id)}>
+											<Plus class="size-3" /> Add
+										</Button>
+									</div>
+									{#if s.headers && Object.keys(s.headers).length > 0}
+										<div class="space-y-2">
+											{#each Object.entries(s.headers) as [name, entry] (name)}
+												<div class="flex items-center gap-2">
+													<span class="min-w-[8rem] text-xs font-mono text-muted-foreground"
+														>{name}</span
+													>
+													{#if entry.secretRef}
+														{#if _headerDrafts[s.id]}
+															<input
+																type="password"
+																class={inputClass}
+																placeholder="paste value"
+																value={_headerDrafts[s.id]}
+																oninput={(e) =>
+																	(_headerDrafts = {
+																		..._headerDrafts,
+																		[s.id]: e.currentTarget.value
+																	})}
+															/>
+															<Button
+																variant="outline"
+																size="sm"
+																onclick={() =>
+																	saveHeaderSecret(s.id, name, _headerDrafts[s.id] ?? '')}
+															>
+																Save
+															</Button>
+														{:else}
+															<input
+																type="password"
+																class={inputClass}
+																disabled
+																placeholder="•••••••• (saved)"
+															/>
+															<Button
+																variant="outline"
+																size="sm"
+																onclick={() => {
+																	_headerDrafts = { ..._headerDrafts, [s.id]: '' };
+																}}
+															>
+																Replace
+															</Button>
+														{/if}
+													{:else}
+														<input
+															class={inputClass}
+															placeholder="value"
+															value={entry.value ?? ''}
+															oninput={(e) =>
+																(_headerDrafts = {
+																	..._headerDrafts,
+																	[s.id]: e.currentTarget.value
+																})}
+														/>
+														<Button
+															variant="outline"
+															size="sm"
+															onclick={() => saveHeaderValue(s.id, name, _headerDrafts[s.id] ?? '')}
+														>
+															Set
+														</Button>
+													{/if}
+													<Button
+														variant="ghost"
+														size="icon"
+														class="shrink-0"
+														title="Remove header"
+														onclick={() => removeHeader(s.id, name)}
+													>
+														<Trash2 class="size-3" />
+													</Button>
+												</div>
+											{/each}
+										</div>
+									{:else}
+										<p class="text-xs text-muted-foreground">No headers configured.</p>
+									{/if}
+								</div>
 							{/if}
 
 							<div class="space-y-2">
@@ -587,8 +758,21 @@
 								>
 									{#if 'tools' in result}
 										<CheckCircle2 class="size-3 inline" /> Connected: {result.tools} tool(s) discovered.
+										{#if result.resources}
+											<span class="ml-1">{result.resources} resource(s)</span>
+										{/if}
+										{#if result.prompts}
+											<span class="ml-1">{result.prompts} prompt(s)</span>
+										{/if}
 									{:else}
-										<ShieldAlert class="size-3 inline" /> {result.error}
+										<ShieldAlert class="size-3 inline" />
+										{result.error}
+										{#if result.corsBlocked}
+											<span class="block mt-1 opacity-80">
+												Use the Mayon desktop app, which routes requests through the native shell
+												and avoids CORS entirely.
+											</span>
+										{/if}
 									{/if}
 								</div>
 							{/if}
@@ -618,6 +802,19 @@
 											<p>
 												<span class="text-muted-foreground">Env vars:</span>
 												{Object.keys(s.env).join(', ')}
+											</p>
+										{/if}
+										{#if s.headers && Object.keys(s.headers).length > 0}
+											<p>
+												<span class="text-muted-foreground">Headers:</span>
+												{Object.keys(s.headers).join(', ')}
+											</p>
+										{/if}
+										{#if s.transport === 'http' && Object.entries(s.headers ?? {}).some(([, v]) => v.secretRef)}
+											<p class="text-amber-500/80">
+												Header secrets are read into the browser to send each request (same as
+												provider API keys in the browser). Use a stdio server on desktop to keep
+												secrets out of the page.
 											</p>
 										{/if}
 									</div>

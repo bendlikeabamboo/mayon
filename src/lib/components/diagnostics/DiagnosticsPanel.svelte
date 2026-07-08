@@ -528,6 +528,32 @@
 								{/if}
 							</div>
 						{/each}
+						{#if parsed.mcpEvents && parsed.mcpEvents.length > 0}
+							<div class="mt-4">
+								<h4 class="text-sm font-medium text-muted-foreground mb-2">MCP Events</h4>
+								{#each parsed.mcpEvents as ev (ev.kind + ev.serverId)}
+									<div class="text-xs font-mono p-2 rounded bg-muted mb-1">
+										<span class="font-bold">{ev.kind}</span>
+										<span class="text-muted-foreground ml-2">{ev.serverName}</span>
+										{#if ev.kind === 'mcp-sampling'}
+											<span class="ml-2">{ev.approved ? 'approved' : 'denied'}</span>
+											{#if ev.tokensUsed}
+												<span class="ml-1">({ev.tokensUsed} tokens)</span>
+											{/if}
+										{/if}
+										{#if ev.kind === 'mcp-elicitation'}
+											<span class="ml-2">{ev.accepted ? 'accepted' : 'declined'}</span>
+										{/if}
+										{#if ev.kind === 'mcp-lifecycle'}
+											<span class="ml-2">{ev.action}</span>
+											{#if ev.detail}
+												<span class="ml-1 text-destructive">({ev.detail})</span>
+											{/if}
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{/if}
 					{:else}
 						{@const parsed = selectedParsed}
 						{@const request = parsed.request}

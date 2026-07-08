@@ -230,6 +230,58 @@ describe('assembleContext', () => {
 		});
 	});
 
+	describe('attachment system notes', () => {
+		it('injects attached resources as leading system notes', async () => {
+			const { chat } = await seedChat('Root', [{ role: 'user', content: 'u0' }]);
+			await repos.mcp.addAttachment(chat.id, {
+				serverId: 'srv-1',
+				serverName: 'My Server',
+				uri: 'file:///readme.md',
+				name: 'readme.md',
+				content: 'Attachment content here',
+				attachedAt: 1000
+			});
+
+			const ctx = await assembleContext(chat.id);
+			const systemNotes = ctx.filter((m) => m.role === 'system');
+			expect(systemNotes.length).toBe(1);
+			expect(systemNotes[0].content).toContain('Attached MCP resource');
+			expect(systemNotes[0].content).toContain('My Server');
+			expect(systemNotes[0].content).toContain('readme.md');
+			expect(systemNotes[0].content).toContain('Attachment content here');
+		});
+
+		it('multiple attachments produce multiple system notes', async () => {
+			const { chat } = await seedChat('Root', [{ role: 'user', content: 'u0' }]);
+			await repos.mcp.addAttachment(chat.id, {
+				serverId: 'srv-1',
+				serverName: 'S1',
+				uri: 'file:///a.txt',
+				name: 'a.txt',
+				content: 'content a',
+				attachedAt: 1000
+			});
+			await repos.mcp.addAttachment(chat.id, {
+				serverId: 'srv-2',
+				serverName: 'S2',
+				uri: 'file:///b.txt',
+				name: 'b.txt',
+				content: 'content b',
+				attachedAt: 1000
+			});
+
+			const ctx = await assembleContext(chat.id);
+			const systemNotes = ctx.filter((m) => m.role === 'system');
+			expect(systemNotes.length).toBe(2);
+		});
+
+		it('no attachment notes when no attachments exist', async () => {
+			const { chat } = await seedChat('Root', [{ role: 'user', content: 'u0' }]);
+			const ctx = await assembleContext(chat.id);
+			expect(ctx.every((m) => m.role !== 'system')).toBe(true);
+		});
+	});
+
 	it('throws when the target chat does not exist', async () => {
 		await expect(assembleContext('nope')).rejects.toThrow(/not found/);
 	});

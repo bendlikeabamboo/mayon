@@ -3,6 +3,8 @@ import { registerTool, deregisterTool, getToolDefinition } from '$lib/agent/regi
 import type { ToolDefinition, ToolResult, ToolContext } from '$lib/agent/registry';
 import { annotationsToRisk } from './risk';
 import { truncateResult, withTimeout } from './caps';
+import { mountResources, unmountResources } from './resources';
+import { mountPrompts, unmountPrompts } from './prompts';
 
 export type UnmountFn = () => void;
 
@@ -43,24 +45,30 @@ export async function mountMcpServer(
 				def,
 				async run(args: unknown, ctx: ToolContext): Promise<ToolResult> {
 					try {
-						if (!args || typeof args !== 'object') {
-							return { ok: false, summary: 'rejected: invalid args' };
+						const priorCtx = client.turnContext;
+						client.turnContext = ctx;
+						try {
+							if (!args || typeof args !== 'object') {
+								return { ok: false, summary: 'rejected: invalid args' };
+							}
+							const result = await withTimeout(
+								client.toolsCall(tool.name, args as Record<string, unknown>),
+								timeoutMs,
+								ctx.signal
+							);
+							if (result.isError) {
+								return { ok: false, summary: 'tool returned error', detail: result };
+							}
+							const text = result.content.map((c) => c.text ?? '').join('');
+							const truncated = truncateResult(text, capBytes);
+							return {
+								ok: true,
+								summary: truncated,
+								detail: { serverId, toolName: tool.name, content: result.content }
+							};
+						} finally {
+							client.turnContext = priorCtx;
 						}
-						const result = await withTimeout(
-							client.toolsCall(tool.name, args as Record<string, unknown>),
-							timeoutMs,
-							ctx.signal
-						);
-						if (result.isError) {
-							return { ok: false, summary: 'tool returned error', detail: result };
-						}
-						const text = result.content.map((c) => c.text ?? '').join('');
-						const truncated = truncateResult(text, capBytes);
-						return {
-							ok: true,
-							summary: truncated,
-							detail: { serverId, toolName: tool.name, content: result.content }
-						};
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
 						if (msg.includes('timed out') || msg.includes('Abort')) {
@@ -76,6 +84,9 @@ export async function mountMcpServer(
 
 	await doMount();
 
+	await mountResources(serverId, client, { callTimeoutMs: timeoutMs, resultCapBytes: capBytes });
+	await mountPrompts(serverId, client);
+
 	unsubToolsChanged = client.subscribeToolsListChanged(() => {
 		for (const id of registeredIds) {
 			deregisterTool(id);
@@ -89,6 +100,8 @@ export async function mountMcpServer(
 			unsubToolsChanged();
 			unsubToolsChanged = undefined;
 		}
+		unmountResources(serverId);
+		unmountPrompts(serverId);
 		for (const id of registeredIds) {
 			deregisterTool(id);
 		}

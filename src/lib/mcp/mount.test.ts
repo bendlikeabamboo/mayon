@@ -11,12 +11,16 @@ import {
 import type { ToolContext } from '$lib/agent/registry';
 import type { LanguageModel } from 'ai';
 import type { ProviderConfig } from '$lib/ai/types';
+import type { McpNotification, McpTool, McpToolCallResult, McpResource, McpPrompt } from './types';
+import { truncateResult } from './caps';
+import { annotationsToRisk } from './risk';
 import { mountMcpServer } from './mount';
 import { McpClient } from './client';
 import type { McpTransport } from './transport';
-import type { McpNotification, McpTool, McpToolCallResult } from './types';
-import { truncateResult } from './caps';
-import { annotationsToRisk } from './risk';
+import { RESOURCE_SERVERS } from './resources';
+import { PROMPT_SERVERS } from './prompts';
+import { listMountedResources } from './resources';
+import { listMountedPrompts as listPromptsFromModule } from './prompts';
 
 class FakeMcpTransport implements McpTransport {
 	private handlers: Array<(n: McpNotification) => void> = [];
@@ -24,8 +28,11 @@ class FakeMcpTransport implements McpTransport {
 	constructor(
 		private opts: {
 			tools?: McpTool[];
+			resources?: McpResource[];
+			prompts?: McpPrompt[];
 			callHandler?: (name: string, args: unknown) => McpToolCallResult | Promise<McpToolCallResult>;
 			requestOverride?: (method: string, params?: unknown) => Promise<unknown>;
+			capabilities?: Record<string, unknown>;
 		} = {}
 	) {}
 
@@ -35,6 +42,13 @@ class FakeMcpTransport implements McpTransport {
 
 	async request(method: string, params?: unknown): Promise<unknown> {
 		if (this.opts.requestOverride) return this.opts.requestOverride(method, params);
+		if (method === 'initialize') {
+			return {
+				protocolVersion: '2025-06-18',
+				capabilities: this.opts.capabilities ?? {},
+				serverInfo: { name: 'fake', version: '1.0.0' }
+			};
+		}
 		if (method === 'tools/list') {
 			return { tools: this.opts.tools ?? [] };
 		}
@@ -44,6 +58,12 @@ class FakeMcpTransport implements McpTransport {
 				return this.opts.callHandler(p.name, p.arguments);
 			}
 			return { content: [{ type: 'text', text: JSON.stringify(p.arguments) }], isError: false };
+		}
+		if (method === 'resources/list') {
+			return { resources: this.opts.resources ?? [] };
+		}
+		if (method === 'prompts/list') {
+			return { prompts: this.opts.prompts ?? [] };
 		}
 		return {};
 	}
@@ -76,6 +96,9 @@ function fakeCtx(): ToolContext {
 
 beforeEach(async () => {
 	await bootstrapWithDriver(await createMemoryDriver());
+	RESOURCE_SERVERS.clear();
+	PROMPT_SERVERS.clear();
+	deregisterTool('mcp_read_resource');
 });
 
 describe('truncateResult', () => {
@@ -367,5 +390,80 @@ describe('mountMcpServer', () => {
 		expect(result.summary).toBe('tool returned error');
 
 		unmount();
+	});
+
+	describe('resource + prompt mounting integration', () => {
+		it('mounts resources when server advertises resources capability', async () => {
+			const transport = new FakeMcpTransport({
+				tools: [],
+				resources: [{ uri: 'file:///a.txt', name: 'a.txt' }],
+				capabilities: { resources: {} }
+			});
+			const client = new McpClient(transport);
+			await client.initialize();
+
+			const unmount = await mountMcpServer('res-srv', client);
+			expect(listMountedResources()).toHaveLength(1);
+			expect(getToolDefinition('mcp_read_resource')).toBeDefined();
+
+			unmount();
+			expect(listMountedResources()).toHaveLength(0);
+			expect(getToolDefinition('mcp_read_resource')).toBeUndefined();
+		});
+
+		it('mounts prompts when server advertises prompts capability', async () => {
+			const transport = new FakeMcpTransport({
+				tools: [],
+				prompts: [{ name: 'summarize', description: 'Summarize' }],
+				capabilities: { prompts: {} }
+			});
+			const client = new McpClient(transport);
+			await client.initialize();
+
+			const unmount = await mountMcpServer('prompt-srv', client);
+			expect(listPromptsFromModule()).toHaveLength(1);
+
+			unmount();
+			expect(listPromptsFromModule()).toHaveLength(0);
+		});
+
+		it('no-op for resources/prompts when capabilities are empty', async () => {
+			const transport = new FakeMcpTransport({
+				tools: [{ name: 'x', inputSchema: { type: 'object', properties: {} } }],
+				capabilities: {}
+			});
+			const client = new McpClient(transport);
+			await client.initialize();
+
+			const unmount = await mountMcpServer('tools-only', client);
+			expect(listMountedResources()).toHaveLength(0);
+			expect(listPromptsFromModule()).toHaveLength(0);
+			expect(getToolDefinition('mcp_read_resource')).toBeUndefined();
+
+			unmount();
+		});
+
+		it('mounts tools + resources + prompts together', async () => {
+			const transport = new FakeMcpTransport({
+				tools: [{ name: 'search', inputSchema: { type: 'object', properties: {} } }],
+				resources: [{ uri: 'file:///a.txt', name: 'a.txt' }],
+				prompts: [{ name: 'explain', description: 'Explain' }],
+				capabilities: { resources: {}, prompts: {} }
+			});
+			const client = new McpClient(transport);
+			await client.initialize();
+
+			const unmount = await mountMcpServer('full', client);
+			expect(getToolDefinition('mcp.full.search')).toBeDefined();
+			expect(listMountedResources()).toHaveLength(1);
+			expect(listPromptsFromModule()).toHaveLength(1);
+			expect(getToolDefinition('mcp_read_resource')).toBeDefined();
+
+			unmount();
+			expect(getToolDefinition('mcp.full.search')).toBeUndefined();
+			expect(listMountedResources()).toHaveLength(0);
+			expect(listPromptsFromModule()).toHaveLength(0);
+			expect(getToolDefinition('mcp_read_resource')).toBeUndefined();
+		});
 	});
 });

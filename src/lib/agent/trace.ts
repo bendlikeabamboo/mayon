@@ -16,6 +16,21 @@ export type TraceEvent =
 			kind: 'usage';
 			usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 			modelId: string;
+	  }
+	| {
+			kind: 'mcp-sampling';
+			serverId: string;
+			serverName: string;
+			approved: boolean;
+			tokensUsed?: number;
+	  }
+	| { kind: 'mcp-elicitation'; serverId: string; serverName: string; accepted: boolean }
+	| {
+			kind: 'mcp-lifecycle';
+			serverId: string;
+			serverName: string;
+			action: 'connect' | 'disconnect' | 'error';
+			detail?: string;
 	  };
 
 interface TurnTrace {
@@ -38,6 +53,7 @@ interface TurnTrace {
 	}>;
 	finalText: string;
 	persisted: { messageId: string; empty: boolean } | null;
+	mcpEvents?: Array<{ kind: string; serverId: string; serverName: string; [k: string]: unknown }>;
 }
 
 interface IterationState {
@@ -97,6 +113,8 @@ export class TraceBuilder {
 	private errorMessage: string | null = null;
 	private _assistantMessageId: string | null = null;
 	private _empty = false;
+	#mcpEvents: Array<{ kind: string; serverId: string; serverName: string; [k: string]: unknown }> =
+		[];
 
 	set assistantMessageId(v: string | null) {
 		this._assistantMessageId = v;
@@ -220,6 +238,33 @@ export class TraceBuilder {
 
 			case 'usage':
 				break;
+
+			case 'mcp-sampling':
+				this.#mcpEvents.push({
+					kind: event.kind,
+					serverId: event.serverId,
+					serverName: event.serverName,
+					approved: event.approved,
+					tokensUsed: event.tokensUsed
+				});
+				break;
+			case 'mcp-elicitation':
+				this.#mcpEvents.push({
+					kind: event.kind,
+					serverId: event.serverId,
+					serverName: event.serverName,
+					accepted: event.accepted
+				});
+				break;
+			case 'mcp-lifecycle':
+				this.#mcpEvents.push({
+					kind: event.kind,
+					serverId: event.serverId,
+					serverName: event.serverName,
+					action: event.action,
+					detail: event.detail
+				});
+				break;
 		}
 	}
 
@@ -231,7 +276,8 @@ export class TraceBuilder {
 			error: this.errorMessage,
 			iterations: this.iterations,
 			finalText,
-			persisted: this.persistedInfo
+			persisted: this.persistedInfo,
+			mcpEvents: this.#mcpEvents.length > 0 ? this.#mcpEvents : undefined
 		};
 
 		return JSON.stringify(trace);

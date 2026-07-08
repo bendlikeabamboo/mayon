@@ -28,6 +28,13 @@ export interface ToolContext {
 	budget: { subCalls: number; maxSubCalls: number };
 	model: LanguageModel;
 	config: ProviderConfig;
+	requestApproval?: (req: {
+		toolCallId: string;
+		toolName: string;
+		description: string;
+		args: unknown;
+	}) => Promise<{ approved: boolean; aborted?: boolean }>;
+	onTrace?: (e: import('./trace').TraceEvent) => void;
 }
 
 export interface Tool {

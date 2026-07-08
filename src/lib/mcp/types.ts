@@ -61,6 +61,9 @@ export interface McpServerConfig {
 	enabled: boolean;
 	trustedHash?: string;
 	allowSampling?: boolean;
+	allowElicitation?: boolean;
+	samplingMaxCallsPerTurn?: number;
+	samplingMaxTokensPerTurn?: number;
 	callTimeoutMs?: number;
 	resultCapBytes?: number;
 	createdAt: number;
@@ -68,6 +71,38 @@ export interface McpServerConfig {
 
 export interface ChatMcpConfig {
 	[serverId: string]: { enabled: boolean; tools?: string[] };
+}
+
+export interface McpResourceContents {
+	uri: string;
+	mimeType?: string;
+	type: 'text' | 'blob';
+	text?: string;
+	[key: string]: unknown;
+}
+
+export interface McpResourceReadResult {
+	contents: McpResourceContents[];
+}
+
+export interface McpPromptMessage {
+	role: 'user' | 'assistant';
+	content: { type: 'text'; text: string } | { type: string; [k: string]: unknown };
+}
+
+export interface McpPromptGetResult {
+	description?: string;
+	messages: McpPromptMessage[];
+}
+
+export interface McpAttachedResource {
+	serverId: string;
+	serverName: string;
+	uri: string;
+	name: string;
+	mimeType?: string;
+	content: string;
+	attachedAt: number;
 }
 
 export interface McpServerTemplate {

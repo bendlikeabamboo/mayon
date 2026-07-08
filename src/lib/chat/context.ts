@@ -68,10 +68,12 @@ export async function assembleContext(targetChatId: string): Promise<ChatMessage
 	//    inherit the root's brief via `rootId`; their own `brief` column is null.
 	const briefNote = await briefSystemNoteFor(target);
 	const excerptNote = await excerptSystemNoteFor(target.id);
+	const attachmentNotes = await attachmentSystemNotesFor(target.id);
 
 	const out: ChatMessage[] = [];
 	if (briefNote) out.push(briefNote);
 	if (excerptNote) out.push(excerptNote);
+	out.push(...attachmentNotes);
 	for (const m of collected) {
 		const msg: ChatMessage = { role: m.role, content: m.content };
 		if (m.toolCallId) msg.toolCallId = m.toolCallId;
@@ -146,6 +148,15 @@ async function excerptSystemNoteFor(targetChatId: string): Promise<ChatMessage |
 		role: 'system',
 		content: `This conversation was branched from the following excerpt of an earlier chat:\n\n"""\n${src.excerpt}\n"""`
 	};
+}
+
+async function attachmentSystemNotesFor(targetChatId: string): Promise<ChatMessage[]> {
+	const attachments = await repos.mcp.listAttachments(targetChatId);
+	if (attachments.length === 0) return [];
+	return attachments.map((att) => ({
+		role: 'system' as const,
+		content: `[Attached MCP resource — ${att.serverName}: ${att.name} (${att.uri})]\n${att.content}`
+	}));
 }
 
 /**

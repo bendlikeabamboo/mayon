@@ -43,6 +43,8 @@
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
+	import SamplingApprovalCard from '$lib/components/mcp/SamplingApprovalCard.svelte';
+	import ElicitationDialog from '$lib/components/mcp/ElicitationDialog.svelte';
 	import ExpoundCard from '$lib/components/chat/ExpoundCard.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
@@ -710,6 +712,20 @@
 							entry={a}
 							onApprove={() => chatStore.approve(a.toolCallId)}
 							onDecline={() => chatStore.decline(a.toolCallId)}
+						/>
+					{/each}
+					{#each chatStore.pendingMcpSampling as e (e.id)}
+						<SamplingApprovalCard
+							entry={e}
+							onApprove={() => chatStore.approveSampling(e.id)}
+							onDecline={() => chatStore.declineSampling(e.id)}
+						/>
+					{/each}
+					{#each chatStore.pendingElicitations as e (e.id)}
+						<ElicitationDialog
+							entry={e}
+							onSubmit={(data: Record<string, unknown>) => chatStore.submitElicitation(e.id, data)}
+							onCancel={() => chatStore.cancelElicitation(e.id)}
 						/>
 					{/each}
 

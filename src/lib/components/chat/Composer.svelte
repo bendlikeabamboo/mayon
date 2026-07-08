@@ -1,15 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Brain, Send, Square, Plug } from '@lucide/svelte';
+	import { Brain, Send, Square, Plug, FileText, MessageSquarePlus, X } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		DropdownMenu,
 		DropdownMenuTrigger,
 		DropdownMenuContent,
-		DropdownMenuCheckboxItem
+		DropdownMenuCheckboxItem,
+		DropdownMenuItem
 	} from '$lib/components/ui/dropdown-menu/index.js';
 	import { repos } from '$lib/db';
-	import { buildMcpRuntimeState } from '$lib/mcp/lifecycle';
+	import {
+		buildMcpRuntimeState,
+		getMountedResources,
+		getMountedPrompts,
+		readResourceForAttach,
+		type MountedResourceInfo,
+		type MountedPromptInfo
+	} from '$lib/mcp/lifecycle';
+	import { renderPrompt } from '$lib/mcp/prompts';
 	import type { ReasoningEffort } from '$lib/ai/types';
 
 	/**
@@ -152,6 +161,95 @@
 
 	const hasMcpServers = $derived(mcpServers.length > 0);
 	const mcpAllDisabled = $derived(mcpServers.length > 0 && mcpServers.every((s) => !s.enabled));
+
+	let mountedResources = $state<MountedResourceInfo[]>([]);
+	let mountedPrompts = $state<MountedPromptInfo[]>([]);
+	let attachments = $state<
+		Array<{ serverId: string; uri: string; name: string; serverName: string }>
+	>([]);
+	let resourceLoading = $state(false);
+
+	async function loadMcpResources() {
+		if (!chatId) return;
+		try {
+			mountedResources = await getMountedResources();
+			mountedPrompts = await getMountedPrompts();
+			const raw = await repos.mcp.listAttachments(chatId);
+			attachments = raw.map((a) => ({
+				serverId: a.serverId,
+				uri: a.uri,
+				name: a.name,
+				serverName: a.serverName
+			}));
+		} catch {
+			// ignore
+		}
+	}
+
+	$effect(() => {
+		void chatId;
+		void loadMcpResources();
+	});
+
+	const hasResources = $derived(mountedResources.some((s) => s.resources.length > 0));
+	const hasPrompts = $derived(mountedPrompts.some((s) => s.prompts.length > 0));
+
+	async function attachResource(
+		serverId: string,
+		uri: string,
+		name: string,
+		serverName: string,
+		mimeType?: string
+	) {
+		if (!chatId || resourceLoading) return;
+		resourceLoading = true;
+		try {
+			const result = await readResourceForAttach(serverId, uri);
+			if ('error' in result) {
+				toastError(result.error);
+				return;
+			}
+			await repos.mcp.addAttachment(chatId, {
+				serverId,
+				serverName,
+				uri,
+				name,
+				mimeType,
+				content: result.content,
+				attachedAt: Date.now()
+			});
+			await loadMcpResources();
+		} finally {
+			resourceLoading = false;
+		}
+	}
+
+	async function detachResource(serverId: string, uri: string) {
+		if (!chatId) return;
+		await repos.mcp.removeAttachment(chatId, serverId, uri);
+		await loadMcpResources();
+	}
+
+	async function insertPrompt(serverId: string, name: string, _serverName: string) {
+		if (!chatId) return;
+		const result = await renderPrompt(serverId, name);
+		if (result.error) {
+			toastError(result.error);
+			return;
+		}
+		prompt = prompt ? prompt + '\n\n' + result.text : result.text;
+	}
+
+	let toastMessage = $state('');
+	let toastVisible = $state(false);
+
+	function toastError(msg: string) {
+		toastMessage = msg;
+		toastVisible = true;
+		setTimeout(() => {
+			toastVisible = false;
+		}, 3000);
+	}
 </script>
 
 <div class="flex flex-col gap-1.5">
@@ -166,6 +264,30 @@
 			{#if progress}
 				<span>{progress}</span>
 			{/if}
+		</div>
+	{/if}
+	{#if toastVisible}
+		<div class="px-1 py-0.5 text-xs text-destructive">{toastMessage}</div>
+	{/if}
+	{#if attachments.length > 0}
+		<div class="flex flex-wrap gap-1.5">
+			{#each attachments as att (att.serverId + ':' + att.uri)}
+				<div
+					class="inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs"
+				>
+					<FileText class="size-3 text-muted-foreground" />
+					<span class="text-muted-foreground">{att.serverName}:</span>
+					<span>{att.name}</span>
+					<button
+						type="button"
+						class="ml-0.5 text-muted-foreground hover:text-foreground"
+						onclick={() => void detachResource(att.serverId, att.uri)}
+						aria-label="Detach resource"
+					>
+						<X class="size-3" />
+					</button>
+				</div>
+			{/each}
 		</div>
 	{/if}
 	{#if showChips}
@@ -213,6 +335,85 @@
 								</span>
 							</div>
 						</DropdownMenuCheckboxItem>
+					{/each}
+				</DropdownMenuContent>
+			</DropdownMenu>
+		{/if}
+		{#if hasResources}
+			<DropdownMenu>
+				<DropdownMenuTrigger>
+					<Button
+						variant="secondary"
+						size="icon"
+						disabled={streaming || resourceLoading}
+						title="MCP Resources"
+						aria-label="MCP Resources"
+					>
+						<FileText class="size-4" />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent side="top" align="end" class="w-72">
+					<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">Resources</div>
+					{#each mountedResources as server (server.serverId)}
+						{#if server.resources.length > 0}
+							<div class="px-2 py-1 text-xs font-medium text-muted-foreground">
+								{server.serverName}
+							</div>
+							{#each server.resources as res (res.uri)}
+								<DropdownMenuItem
+									onclick={() =>
+										void attachResource(
+											server.serverId,
+											res.uri,
+											res.name,
+											server.serverName,
+											res.mimeType
+										)}
+								>
+									<div class="flex flex-col">
+										<span>{res.name}</span>
+										<span class="text-xs text-muted-foreground">{res.uri}</span>
+									</div>
+								</DropdownMenuItem>
+							{/each}
+						{/if}
+					{/each}
+				</DropdownMenuContent>
+			</DropdownMenu>
+		{/if}
+		{#if hasPrompts}
+			<DropdownMenu>
+				<DropdownMenuTrigger>
+					<Button
+						variant="secondary"
+						size="icon"
+						disabled={streaming}
+						title="Insert MCP prompt"
+						aria-label="Insert MCP prompt"
+					>
+						<MessageSquarePlus class="size-4" />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent side="top" align="end" class="w-72">
+					<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">Insert MCP prompt</div>
+					{#each mountedPrompts as server (server.serverId)}
+						{#if server.prompts.length > 0}
+							<div class="px-2 py-1 text-xs font-medium text-muted-foreground">
+								{server.serverName}
+							</div>
+							{#each server.prompts as pr (server.serverId + ':' + pr.name)}
+								<DropdownMenuItem
+									onclick={() => void insertPrompt(server.serverId, pr.name, server.serverName)}
+								>
+									<div class="flex flex-col">
+										<span>{pr.name}</span>
+										{#if pr.description}
+											<span class="text-xs text-muted-foreground">{pr.description}</span>
+										{/if}
+									</div>
+								</DropdownMenuItem>
+							{/each}
+						{/if}
 					{/each}
 				</DropdownMenuContent>
 			</DropdownMenu>

@@ -108,6 +108,26 @@ pub async fn mcp_spawn(
 				if let Some(id) = value.get("id").and_then(|v| v.as_i64()) {
 					if let Some(tx) = pending_clone.lock().await.remove(&id) {
 						let _ = tx.send(value);
+					} else if value.get("method").is_some() {
+						let method = value
+							.get("method")
+							.and_then(|v| v.as_str())
+							.unwrap_or("")
+							.to_string();
+						let params = value
+							.get("params")
+							.cloned()
+							.unwrap_or(serde_json::Value::Null);
+						let _ = app_clone.emit(
+							&format!("mcp-request:{}", server_id_clone),
+							serde_json::json!({
+								"type": "Request",
+								"server_id": server_id_clone,
+								"id": id,
+								"method": method,
+								"params": params,
+							}),
+						);
 					}
 				} else {
 					let method = value
@@ -265,5 +285,40 @@ pub async fn mcp_close(
 		}
 		let _ = child.child.kill().await;
 	}
+	Ok(())
+}
+
+#[tauri::command]
+pub async fn mcp_respond(
+	state: State<'_, McpHandles>,
+	server_id: String,
+	response_json: String,
+) -> Result<(), String> {
+	let handles = state.0.lock().map_err(|e| e.to_string())?;
+	let child = handles
+		.get(&server_id)
+		.ok_or("MCP server not found")?
+		.clone();
+	drop(handles);
+
+	let mut child = child.lock().await;
+
+	let response: serde_json::Value =
+		serde_json::from_str(&response_json)
+			.map_err(|e| format!("invalid JSON-RPC response: {e}"))?;
+
+	let line = serde_json::to_string(&response).map_err(|e| e.to_string())? + "\n";
+
+	child
+		.stdin
+		.write_all(line.as_bytes())
+		.await
+		.map_err(|e| format!("write to MCP stdin: {e}"))?;
+	child
+		.stdin
+		.flush()
+		.await
+		.map_err(|e| format!("flush MCP stdin: {e}"))?;
+
 	Ok(())
 }

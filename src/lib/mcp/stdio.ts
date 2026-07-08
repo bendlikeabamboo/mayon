@@ -1,13 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { isTauri } from '$lib/db';
-import type { McpTransport } from './transport';
+import type { McpServerRequest, McpTransport } from './transport';
 import type { McpNotification, McpServerInfo } from './types';
 
 export class StdioMcpTransport implements McpTransport {
 	private _serverId: string;
 	private _unlisten: UnlistenFn | null = null;
+	private _requestUnlisten: UnlistenFn | null = null;
 	private _notificationHandler: ((n: McpNotification) => void) | null = null;
+	private _requestHandler: ((req: McpServerRequest) => void) | null = null;
 
 	constructor(
 		private config: {
@@ -63,6 +65,10 @@ export class StdioMcpTransport implements McpTransport {
 			this._unlisten();
 			this._unlisten = null;
 		}
+		if (this._requestUnlisten) {
+			this._requestUnlisten();
+			this._requestUnlisten = null;
+		}
 		await invoke('mcp_close', { serverId: this._serverId });
 	}
 
@@ -86,5 +92,48 @@ export class StdioMcpTransport implements McpTransport {
 
 	removeNotification(_handler: (n: McpNotification) => void): void {
 		this._notificationHandler = null;
+	}
+
+	onRequest(handler: (req: McpServerRequest) => void): void {
+		this._requestHandler = handler;
+		if (this._requestUnlisten) return;
+		listen<{
+			type: string;
+			server_id: string;
+			id: string | number;
+			method: string;
+			params: unknown;
+		}>(`mcp-request:${this._serverId}`, (event) => {
+			if (event.payload.type === 'Request') {
+				this._requestHandler?.({
+					id: event.payload.id,
+					method: event.payload.method,
+					params: event.payload.params
+				});
+			}
+		}).then((unlisten) => {
+			this._requestUnlisten = unlisten;
+		});
+	}
+
+	removeRequest(_handler: (req: McpServerRequest) => void): void {
+		this._requestHandler = null;
+	}
+
+	async respond(
+		id: string | number,
+		result: unknown,
+		error?: { code: number; message: string }
+	): Promise<void> {
+		const response: Record<string, unknown> = { jsonrpc: '2.0', id };
+		if (error) {
+			response.error = error;
+		} else {
+			response.result = result;
+		}
+		await invoke('mcp_respond', {
+			serverId: this._serverId,
+			responseJson: JSON.stringify(response)
+		});
 	}
 }

@@ -52,7 +52,7 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
 	{
 		label: 'Custom HTTP',
 		description:
-			'Add a custom HTTP MCP server by specifying the URL. HTTP transport support lands in M2.',
+			'Add a custom HTTP MCP server (streamable-HTTP, 2025-06-18) by specifying the URL and any headers.',
 		transport: 'http',
 		url: '',
 		headers: {},

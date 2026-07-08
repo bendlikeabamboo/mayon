@@ -7,6 +7,7 @@ import {
 	PERSONAS,
 	PERSONA_IDS,
 	buildBriefSystemNote,
+	buildCapabilitiesPreamble,
 	isPersonaId,
 	parseBrief,
 	personaForId,
@@ -421,5 +422,17 @@ describe('personas', () => {
 				expect(note.content).not.toContain(p.block);
 			}
 		});
+	});
+});
+
+describe('buildCapabilitiesPreamble', () => {
+	it('includes the tool capability lines', () => {
+		const preamble = buildCapabilitiesPreamble();
+		expect(preamble).toContain('tools that let you inspect');
+	});
+
+	it('omits MCP resources line when no resources are mounted', () => {
+		const preamble = buildCapabilitiesPreamble();
+		expect(preamble).not.toContain('mcp_read_resource');
 	});
 });
