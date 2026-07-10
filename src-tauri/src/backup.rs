@@ -47,14 +47,21 @@ pub fn restore_database(
 	let conn = Connection::open_with_flags(&source, OpenFlags::SQLITE_OPEN_READ_ONLY)
 		.map_err(|e| e.to_string())?;
 
-	let mut stmt = conn
-		.prepare("SELECT name FROM sqlite_master WHERE type='table'")
-		.map_err(|e| e.to_string())?;
-	let tables: std::collections::HashSet<String> = stmt
-		.query_map([], |r| r.get::<_, String>(0))
-		.map_err(|e| e.to_string())?
-		.filter_map(|x| x.ok())
-		.collect();
+	let tables: std::collections::HashSet<String> = {
+		let mut stmt = conn
+			.prepare("SELECT name FROM sqlite_master WHERE type='table'")
+			.map_err(|e| e.to_string())?;
+		let rows = stmt
+			.query_map([], |r| r.get::<_, String>(0))
+			.map_err(|e| e.to_string())?;
+		let mut set = std::collections::HashSet::new();
+		for row in rows {
+			if let Ok(name) = row {
+				set.insert(name);
+			}
+		}
+		set
+	};
 
 	for t in REQUIRED_TABLES {
 		if !tables.contains(*t) {

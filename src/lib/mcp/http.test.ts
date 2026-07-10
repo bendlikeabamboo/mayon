@@ -345,6 +345,31 @@ describe('HttpMcpTransport', () => {
 			expect(body.method).toBe('notifications/cancelled');
 			expect(body.params).toEqual({ reason: 'abort' });
 		});
+
+		it('includes session-id and protocol-version headers', async () => {
+			const t = makeTransport();
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>)
+				.mockResolvedValueOnce(
+					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+						headers: { 'mcp-session-id': 'sess-nt' }
+					})
+				)
+				.mockResolvedValueOnce(cannedResponse(''));
+
+			await t.request('initialize', {});
+			t.notify('notifications/cancelled', { reason: 'test' });
+
+			await vi.waitFor(() => {
+				expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+			});
+
+			const [, init2] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
+			const headers = (init2 as RequestInit).headers as Record<string, string>;
+			expect(headers['mcp-session-id']).toBe('sess-nt');
+			expect(headers['mcp-protocol-version']).toBe('2025-06-18');
+		});
 	});
 
 	describe('close()', () => {
@@ -377,6 +402,135 @@ describe('HttpMcpTransport', () => {
 
 			await expect(req).rejects.toBeInstanceOf(DOMException);
 			expect(handlerCalled).toBe(false);
+		});
+
+		it('sends DELETE with session-id before aborting', async () => {
+			const t = makeTransport();
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>)
+				.mockResolvedValueOnce(
+					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+						headers: { 'mcp-session-id': 'sess-del' }
+					})
+				)
+				.mockResolvedValueOnce(cannedResponse(''));
+
+			await t.request('initialize', {});
+			await t.close();
+
+			await vi.waitFor(() => {
+				expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+			});
+
+			const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
+			expect(url).toBe('http://localhost:9000/mcp');
+			expect((init as RequestInit).method).toBe('DELETE');
+			const headers = (init as RequestInit).headers as Record<string, string>;
+			expect(headers['mcp-session-id']).toBe('sess-del');
+		});
+
+		it('aborts all concurrent requests', async () => {
+			const t = makeTransport({ callTimeoutMs: 60000 });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((_input, init) => {
+				const signal = (init as RequestInit).signal!;
+				return new Promise((_, reject) => {
+					signal.addEventListener(
+						'abort',
+						() => reject(new DOMException('Aborted', 'AbortError')),
+						{ once: true }
+					);
+				});
+			});
+
+			const req1 = t.request('slow1');
+			const req2 = t.request('slow2');
+			await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+
+			await t.close();
+
+			await expect(req1).rejects.toBeInstanceOf(DOMException);
+			await expect(req2).rejects.toBeInstanceOf(DOMException);
+		});
+	});
+
+	describe('protocol-version header', () => {
+		it('sends mcp-protocol-version on every request', async () => {
+			const t = makeTransport();
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+				cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }))
+			);
+
+			await t.request('ping');
+
+			const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+			const headers = (init as RequestInit).headers as Record<string, string>;
+			expect(headers['mcp-protocol-version']).toBe('2025-06-18');
+		});
+	});
+
+	describe('CORS session-id diagnostic', () => {
+		it('warns when cross-origin response has no mcp-session-id', async () => {
+			g.location = { href: 'http://localhost:5173/', origin: 'http://localhost:5173' };
+			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+			const t = makeTransport({ url: 'https://remote-mcp.example.com/mcp' });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+				cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }))
+			);
+
+			await t.request('initialize', {});
+
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+			expect(warnSpy.mock.calls[0][0]).toContain('mcp-session-id');
+		});
+
+		it('does not warn when same-origin response has no mcp-session-id', async () => {
+			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+			const t = makeTransport({ url: 'http://localhost:9000/mcp' });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+				cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }))
+			);
+
+			await t.request('initialize', {});
+
+			expect(warnSpy).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('404 session clear', () => {
+		it('clears session-id on 404 so next request has no session header', async () => {
+			const t = makeTransport();
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>)
+				.mockResolvedValueOnce(
+					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+						headers: { 'mcp-session-id': 'sess-404' }
+					})
+				)
+				.mockResolvedValueOnce(cannedResponse('', { status: 404 }))
+				.mockResolvedValueOnce(
+					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 3, result: {} }))
+				);
+
+			await t.request('initialize', {});
+			await expect(t.request('tools/list', {})).rejects.toThrow('HTTP 404');
+
+			await t.request('ping', {});
+
+			const [, init3] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[2];
+			const headers = (init3 as RequestInit).headers as Record<string, string>;
+			expect(headers['mcp-session-id']).toBeUndefined();
 		});
 	});
 });

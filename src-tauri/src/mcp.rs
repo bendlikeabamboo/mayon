@@ -9,10 +9,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{oneshot, Mutex};
 
 /// Managed state: spawned MCP server children keyed by server_id.
 #[derive(Default)]
@@ -20,12 +20,11 @@ pub struct McpHandles(
 	pub std::sync::Mutex<HashMap<String, Arc<Mutex<McpChild>>>>,
 );
 
-struct McpChild {
+pub struct McpChild {
 	child: Child,
 	stdin: tokio::process::ChildStdin,
 	reader_handle: Option<tauri::async_runtime::JoinHandle<()>>,
-	notification_tx: mpsc::UnboundedSender<serde_json::Value>,
-	pending: Mutex<HashMap<i64, oneshot::Sender<serde_json::Value>>>,
+	pending: Arc<Mutex<HashMap<i64, oneshot::Sender<serde_json::Value>>>>,
 	next_id: Mutex<i64>,
 	server_id: String,
 }
@@ -33,12 +32,12 @@ struct McpChild {
 /// Env var key injection descriptor from JS. Secret resolved from OS keychain.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct EnvKeyRef {
+pub struct EnvKeyRef {
 	name: String,
 	key_id: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 enum McpEvent {
 	Notification {
@@ -88,8 +87,6 @@ pub async fn mcp_spawn(
 	let stdin = child.stdin.take().ok_or("failed to get stdin")?;
 	let stdout = child.stdout.take().ok_or("failed to get stdout")?;
 
-	let (notification_tx, mut notification_rx) =
-		mpsc::unbounded_channel::<serde_json::Value>();
 	let pending: Arc<Mutex<HashMap<i64, oneshot::Sender<serde_json::Value>>>> =
 		Arc::new(Mutex::new(HashMap::new()));
 	let pending_clone = pending.clone();
@@ -147,7 +144,6 @@ pub async fn mcp_spawn(
 							params,
 						},
 					);
-					let _ = notification_rx.send(value);
 				}
 			}
 		}
@@ -157,7 +153,6 @@ pub async fn mcp_spawn(
 		child,
 		stdin,
 		reader_handle: Some(reader_handle),
-		notification_tx,
 		pending,
 		next_id: Mutex::new(1),
 		server_id: server_id.clone(),
@@ -180,12 +175,13 @@ pub async fn mcp_call(
 	timeout_ms: Option<u64>,
 ) -> Result<String, String> {
 	let timeout = timeout_ms.unwrap_or(30000);
-	let handles = state.0.lock().map_err(|e| e.to_string())?;
-	let child = handles
-		.get(&server_id)
-		.ok_or("MCP server not found")?
-		.clone();
-	drop(handles);
+	let child = {
+		let handles = state.0.lock().map_err(|e| e.to_string())?;
+		handles
+			.get(&server_id)
+			.ok_or("MCP server not found")?
+			.clone()
+	};
 
 	let mut child = child.lock().await;
 
@@ -199,11 +195,11 @@ pub async fn mcp_call(
 	let request: serde_json::Value =
 		serde_json::from_str(&request_json).map_err(|e| format!("invalid JSON-RPC: {e}"))?;
 
-	let envelope = serde_json::json!({
-		"jsonrpc": "2.0",
-		"id": id,
-		...request
-	});
+	let mut envelope = request;
+	if let Some(obj) = envelope.as_object_mut() {
+		obj.insert("jsonrpc".to_string(), serde_json::json!("2.0"));
+		obj.insert("id".to_string(), serde_json::json!(id));
+	}
 	let line = serde_json::to_string(&envelope).map_err(|e| e.to_string())? + "\n";
 
 	let (tx, rx) = oneshot::channel();
@@ -236,12 +232,13 @@ pub async fn mcp_notify(
 	server_id: String,
 	notification_json: String,
 ) -> Result<(), String> {
-	let handles = state.0.lock().map_err(|e| e.to_string())?;
-	let child = handles
-		.get(&server_id)
-		.ok_or("MCP server not found")?
-		.clone();
-	drop(handles);
+	let child = {
+		let handles = state.0.lock().map_err(|e| e.to_string())?;
+		handles
+			.get(&server_id)
+			.ok_or("MCP server not found")?
+			.clone()
+	};
 
 	let mut child = child.lock().await;
 
@@ -249,10 +246,10 @@ pub async fn mcp_notify(
 		serde_json::from_str(&notification_json)
 			.map_err(|e| format!("invalid JSON-RPC notification: {e}"))?;
 
-	let envelope = serde_json::json!({
-		"jsonrpc": "2.0",
-		...notification
-	});
+	let mut envelope = notification;
+	if let Some(obj) = envelope.as_object_mut() {
+		obj.insert("jsonrpc".to_string(), serde_json::json!("2.0"));
+	}
 	let line = serde_json::to_string(&envelope).map_err(|e| e.to_string())? + "\n";
 
 	child
@@ -294,12 +291,13 @@ pub async fn mcp_respond(
 	server_id: String,
 	response_json: String,
 ) -> Result<(), String> {
-	let handles = state.0.lock().map_err(|e| e.to_string())?;
-	let child = handles
-		.get(&server_id)
-		.ok_or("MCP server not found")?
-		.clone();
-	drop(handles);
+	let child = {
+		let handles = state.0.lock().map_err(|e| e.to_string())?;
+		handles
+			.get(&server_id)
+			.ok_or("MCP server not found")?
+			.clone()
+	};
 
 	let mut child = child.lock().await;
 

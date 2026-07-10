@@ -8,7 +8,9 @@
 		ShieldAlert,
 		Trash2,
 		Unplug,
-		Wrench
+		Wrench,
+		Monitor,
+		Globe
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
@@ -25,7 +27,7 @@
 	import { parseClaudeDesktopConfig } from '$lib/mcp/import';
 	import { testConnection } from '$lib/mcp/lifecycle';
 	import { setMcpSecret, deleteMcpSecret, deleteServerSecrets } from '$lib/mcp/keystore';
-	import { repos } from '$lib/db';
+	import { repos, isTauri } from '$lib/db';
 	import { uuid } from '$lib/db/ids';
 	import type { McpServerConfig } from '$lib/mcp/types';
 
@@ -52,6 +54,16 @@
 	let _envDrafts = $state<Record<string, Record<string, string>>>({});
 	let secretDrafts = $state<Record<string, string>>({});
 	let _headerDrafts = $state<Record<string, string>>({});
+	let draftServer = $state<McpServerConfig | null>(null);
+	let draftSecretDraft = $state<Record<string, string>>({});
+
+	const isDesktop = isTauri();
+
+	function isTemplateAvailable(t: McpServerTemplate): boolean {
+		if (!t.platforms) return true;
+		if (isDesktop) return t.platforms.includes('desktop');
+		return t.platforms.includes('web');
+	}
 
 	const inputClass =
 		'h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -94,8 +106,9 @@
 	}
 
 	function addFromTemplate(t: McpServerTemplate) {
+		if (!isTemplateAvailable(t)) return;
 		const id = uuid();
-		const config: McpServerConfig = {
+		draftServer = {
 			id,
 			name: t.label,
 			transport: t.transport,
@@ -108,9 +121,119 @@
 			trustedHash: undefined,
 			createdAt: Date.now()
 		};
-		servers = [...servers, config];
+		draftSecretDraft = {};
 		adding = false;
-		void persist();
+	}
+
+	function updateDraft(patch: Partial<McpServerConfig>) {
+		if (!draftServer) return;
+		draftServer = { ...draftServer, ...patch };
+	}
+
+	async function confirmDraft() {
+		if (!draftServer) return;
+		servers = [...servers, draftServer];
+		const savedId = draftServer.id;
+		draftServer = null;
+		draftSecretDraft = {};
+		await persist();
+		const s = servers.find((x) => x.id === savedId);
+		if (s) {
+			trustFlags[savedId] = await isTrusted(s);
+			secretFlags[savedId] = Object.keys(s.env ?? {});
+		}
+		setStatus('Server created.');
+	}
+
+	function cancelDraft() {
+		draftServer = null;
+		draftSecretDraft = {};
+	}
+
+	function onDraftNameInput(value: string) {
+		updateDraft({ name: value });
+	}
+
+	function onDraftCommandInput(value: string) {
+		updateDraft({ command: value || undefined });
+	}
+
+	function onDraftArgsInput(value: string) {
+		const args = value.split(/\s+/).filter(Boolean);
+		updateDraft({ args: args.length > 0 ? args : undefined });
+	}
+
+	function onDraftUrlInput(value: string) {
+		updateDraft({ url: value || undefined });
+	}
+
+	function onDraftCwdInput(value: string) {
+		updateDraft({ cwd: value || undefined });
+	}
+
+	function onDraftTimeoutInput(value: string) {
+		const n = parseInt(value, 10);
+		updateDraft({ callTimeoutMs: isNaN(n) ? undefined : n });
+	}
+
+	function onDraftResultCapInput(value: string) {
+		const n = parseInt(value, 10);
+		updateDraft({ resultCapBytes: isNaN(n) ? undefined : n });
+	}
+
+	async function draftAddHeader() {
+		if (!draftServer) return;
+		const name = `header-${Object.keys(draftServer.headers ?? {}).length + 1}`;
+		const headers = { ...(draftServer.headers ?? {}), [name]: { value: '' } };
+		updateDraft({ headers });
+	}
+
+	function draftRemoveHeader(name: string) {
+		if (!draftServer) return;
+		const headers = { ...(draftServer.headers ?? {}) };
+		delete headers[name];
+		updateDraft({ headers: Object.keys(headers).length > 0 ? headers : undefined });
+	}
+
+	function draftRenameHeader(oldName: string, newName: string) {
+		if (!draftServer || !draftServer.headers || !newName.trim()) return;
+		if (oldName === newName) return;
+		const headers: Record<string, { secretRef?: string; value?: string }> = {};
+		for (const [k, v] of Object.entries(draftServer.headers)) {
+			headers[k === oldName ? newName.trim() : k] = v;
+		}
+		updateDraft({ headers });
+	}
+
+	function onDraftHeaderValueInput(name: string, value: string) {
+		if (!draftServer) return;
+		updateDraft({
+			headers: { ...draftServer.headers, [name]: { value } }
+		});
+	}
+
+	async function draftAddEnvVar() {
+		if (!draftServer) return;
+		const name = `ENV_VAR_${Object.keys(draftServer.env ?? {}).length + 1}`;
+		const env = { ...(draftServer.env ?? {}), [name]: { secretRef: '' } };
+		updateDraft({ env });
+	}
+
+	function draftRemoveEnvVar(name: string) {
+		if (!draftServer) return;
+		const env = { ...(draftServer.env ?? {}) };
+		delete env[name];
+		updateDraft({ env: Object.keys(env).length > 0 ? env : undefined });
+	}
+
+	function draftRenameEnvVar(oldName: string, newName: string) {
+		if (!draftServer || !draftServer.env || !newName.trim()) return;
+		if (oldName === newName) return;
+		const env: Record<string, { secretRef: string }> = {};
+		for (const [k, v] of Object.entries(draftServer.env)) {
+			env[k === oldName ? newName.trim() : k] = v;
+		}
+		updateDraft({ env });
 	}
 
 	function toggleEnabled(id: string) {
@@ -169,7 +292,7 @@
 	async function addHeader(id: string) {
 		const s = servers.find((x) => x.id === id);
 		if (!s) return;
-		const name = `HEADER_${Object.keys(s.headers ?? {}).length + 1}`;
+		const name = `header-${Object.keys(s.headers ?? {}).length + 1}`;
 		const headers = { ...(s.headers ?? {}), [name]: { value: '' } };
 		updateServer(id, { headers });
 		await persist();
@@ -189,6 +312,19 @@
 		}
 		delete headers[name];
 		updateServer(id, { headers: Object.keys(headers).length > 0 ? headers : undefined });
+		void persist();
+	}
+
+	function renameHeader(id: string, oldName: string, newName: string) {
+		const s = servers.find((x) => x.id === id);
+		if (!s || !s.headers || !newName.trim() || oldName === newName) return;
+		const entry = s.headers[oldName];
+		if (!entry) return;
+		const headers: Record<string, { secretRef?: string; value?: string }> = {};
+		for (const [k, v] of Object.entries(s.headers)) {
+			headers[k === oldName ? newName.trim() : k] = v;
+		}
+		updateServer(id, { headers });
 		void persist();
 	}
 
@@ -244,6 +380,34 @@
 		};
 		void deleteMcpSecret(id, name);
 		void persist();
+	}
+
+	async function renameEnvVar(id: string, oldName: string, newName: string) {
+		const s = servers.find((x) => x.id === id);
+		if (!s || !s.env || !newName.trim() || oldName === newName) return;
+		const entry = s.env[oldName];
+		if (!entry) return;
+		const trimmedNew = newName.trim();
+		const env: Record<string, { secretRef: string }> = {};
+		for (const [k, v] of Object.entries(s.env)) {
+			if (k === oldName) {
+				env[trimmedNew] = { secretRef: entry.secretRef ? '' : v.secretRef };
+			} else {
+				env[k] = v;
+			}
+		}
+		if (entry.secretRef) {
+			await deleteMcpSecret(id, oldName);
+			env[trimmedNew] = { secretRef: `mcp:${id}:${trimmedNew}` };
+			secretDrafts = { ...secretDrafts, [id]: '' };
+			secretFlags = {
+				...secretFlags,
+				[id]: (secretFlags[id] ?? []).map((n) => (n === oldName ? trimmedNew : n))
+			};
+			setStatus('Renamed — please re-enter the secret value.');
+		}
+		updateServer(id, { env });
+		await persist();
 	}
 
 	async function saveEnvSecret(serverId: string, name: string, raw: string) {
@@ -386,18 +550,238 @@
 			<p class="text-sm font-medium">Pick a template</p>
 			<div class="grid gap-2 sm:grid-cols-2">
 				{#each MCP_SERVER_TEMPLATES as t (t.label)}
+					{@const available = isTemplateAvailable(t)}
 					<button
 						type="button"
-						class="rounded-md border border-input bg-background p-3 text-left text-sm transition-colors hover:bg-accent"
+						class="rounded-md border border-input p-3 text-left text-sm transition-colors {available
+							? 'bg-background hover:bg-accent cursor-pointer'
+							: 'bg-muted/50 opacity-50 cursor-not-allowed'}"
 						onclick={() => addFromTemplate(t)}
+						disabled={!available}
+						title={!available
+							? isDesktop
+								? 'This template is only available in the browser.'
+								: 'This template is only available in the desktop app.'
+							: undefined}
 					>
-						<span class="block font-medium">{t.label}</span>
+						<div class="flex items-center justify-between gap-2">
+							<span class="block font-medium">{t.label}</span>
+							{#if t.platforms}
+								<span
+									class="flex items-center gap-0.5 text-xs text-muted-foreground"
+									title={t.platforms.includes('web') && t.platforms.includes('desktop')
+										? 'Available everywhere'
+										: t.platforms.includes('desktop')
+											? 'Desktop only'
+											: 'Web only'}
+								>
+									{#if t.platforms.includes('web') && t.platforms.includes('desktop')}
+										<Monitor class="size-3" /><Globe class="size-3" />
+									{:else if t.platforms.includes('desktop')}
+										<Monitor class="size-3" />
+									{:else}
+										<Globe class="size-3" />
+									{/if}
+								</span>
+							{/if}
+						</div>
 						<span class="block text-xs text-muted-foreground">{t.description}</span>
 					</button>
 				{/each}
 			</div>
 			<div class="flex justify-end">
 				<Button variant="ghost" size="sm" onclick={() => (adding = false)}>Cancel</Button>
+			</div>
+		</div>
+	{/if}
+
+	{#if draftServer}
+		{@const ds = draftServer}
+		<div class="space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
+			<p class="text-sm font-medium text-blue-600 dark:text-blue-400">New Server (not yet saved)</p>
+			<div class="space-y-3">
+				<label class="space-y-1 text-xs text-muted-foreground">
+					<span>Name</span>
+					<input
+						class={inputClass}
+						value={ds.name}
+						oninput={(e) => onDraftNameInput(e.currentTarget.value)}
+						placeholder="Server name"
+					/>
+				</label>
+				{#if ds.transport === 'stdio'}
+					<div class="grid gap-2 sm:grid-cols-2">
+						<label class="space-y-1 text-xs text-muted-foreground">
+							<span>Command</span>
+							<input
+								class={inputClass}
+								value={ds.command ?? ''}
+								oninput={(e) => onDraftCommandInput(e.currentTarget.value)}
+							/>
+						</label>
+						<label class="space-y-1 text-xs text-muted-foreground">
+							<span>Arguments (space-separated)</span>
+							<input
+								class={inputClass}
+								value={ds.args?.join(' ') ?? ''}
+								oninput={(e) => onDraftArgsInput(e.currentTarget.value)}
+							/>
+						</label>
+					</div>
+					<label class="space-y-1 text-xs text-muted-foreground">
+						<span>Working directory</span>
+						<input
+							class={inputClass}
+							value={ds.cwd ?? ''}
+							oninput={(e) => onDraftCwdInput(e.currentTarget.value)}
+							placeholder="(default)"
+						/>
+					</label>
+				{:else}
+					<label class="space-y-1 text-xs text-muted-foreground">
+						<span>Server URL</span>
+						<input
+							class={inputClass}
+							value={ds.url ?? ''}
+							oninput={(e) => onDraftUrlInput(e.currentTarget.value)}
+							placeholder="https://..."
+						/>
+					</label>
+
+					<div class="space-y-2">
+						<div class="flex items-center justify-between">
+							<span class="text-xs text-muted-foreground">Headers</span>
+							<Button variant="ghost" size="sm" onclick={draftAddHeader}>
+								<Plus class="size-3" /> Add
+							</Button>
+						</div>
+						{#if ds.headers && Object.keys(ds.headers).length > 0}
+							<div class="space-y-2">
+								{#each Object.entries(ds.headers) as [name, entry] (name)}
+									<div class="flex items-center gap-2">
+										<input
+											class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+											value={name}
+											oninput={(e) => draftRenameHeader(name, e.currentTarget.value)}
+											placeholder="Header-Name"
+										/>
+										<input
+											class={inputClass}
+											placeholder="value"
+											value={entry.value ?? ''}
+											oninput={(e) => onDraftHeaderValueInput(name, e.currentTarget.value)}
+										/>
+										<Button
+											variant="ghost"
+											size="icon"
+											class="shrink-0"
+											title="Remove header"
+											onclick={() => draftRemoveHeader(name)}
+										>
+											<Trash2 class="size-3" />
+										</Button>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">No headers configured.</p>
+						{/if}
+					</div>
+				{/if}
+
+				<div class="space-y-2">
+					<div class="flex items-center justify-between">
+						<span class="text-xs text-muted-foreground">Environment Variables</span>
+						<Button variant="ghost" size="sm" onclick={draftAddEnvVar}>
+							<Plus class="size-3" /> Add
+						</Button>
+					</div>
+					{#if ds.env && Object.keys(ds.env).length > 0}
+						<div class="space-y-2">
+							{#each Object.entries(ds.env) as [name, _entry] (name)}
+								<div class="flex items-center gap-2">
+									<input
+										class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										value={name}
+										oninput={(e) => draftRenameEnvVar(name, e.currentTarget.value)}
+										placeholder="VAR_NAME"
+									/>
+									{#if draftSecretDraft[name] !== undefined}
+										<input
+											type="password"
+											class={inputClass}
+											placeholder="paste value"
+											value={draftSecretDraft[name]}
+											oninput={(e) =>
+												(draftSecretDraft = {
+													...draftSecretDraft,
+													[name]: e.currentTarget.value
+												})}
+										/>
+									{:else}
+										<input
+											type="password"
+											class={inputClass}
+											disabled
+											placeholder="•••••••• (set after creation)"
+										/>
+										<Button
+											variant="outline"
+											size="sm"
+											onclick={() => {
+												draftSecretDraft = { ...draftSecretDraft, [name]: '' };
+											}}
+										>
+											Set
+										</Button>
+									{/if}
+									<Button
+										variant="ghost"
+										size="icon"
+										class="shrink-0"
+										title="Remove variable"
+										onclick={() => draftRemoveEnvVar(name)}
+									>
+										<Trash2 class="size-3" />
+									</Button>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<p class="text-xs text-muted-foreground">No environment variables configured.</p>
+					{/if}
+				</div>
+
+				<div class="grid gap-2 sm:grid-cols-2">
+					<label class="space-y-1 text-xs text-muted-foreground">
+						<span>Call timeout (ms)</span>
+						<input
+							type="number"
+							class={inputClass}
+							value={ds.callTimeoutMs ?? ''}
+							oninput={(e) => onDraftTimeoutInput(e.currentTarget.value)}
+							placeholder="30000"
+						/>
+					</label>
+					<label class="space-y-1 text-xs text-muted-foreground">
+						<span>Result cap (bytes)</span>
+						<input
+							type="number"
+							class={inputClass}
+							value={ds.resultCapBytes ?? ''}
+							oninput={(e) => onDraftResultCapInput(e.currentTarget.value)}
+							placeholder="262144"
+						/>
+					</label>
+				</div>
+
+				<div class="flex items-center gap-2">
+					<Button variant="default" size="sm" onclick={confirmDraft}>
+						<CheckCircle2 class="size-3" />
+						Create Server
+					</Button>
+					<Button variant="ghost" size="sm" onclick={cancelDraft}>Cancel</Button>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -559,9 +943,12 @@
 										<div class="space-y-2">
 											{#each Object.entries(s.headers) as [name, entry] (name)}
 												<div class="flex items-center gap-2">
-													<span class="min-w-[8rem] text-xs font-mono text-muted-foreground"
-														>{name}</span
-													>
+													<input
+														class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+														value={name}
+														oninput={(e) => renameHeader(s.id, name, e.currentTarget.value)}
+														placeholder="Header-Name"
+													/>
 													{#if entry.secretRef}
 														{#if _headerDrafts[s.id]}
 															<input
@@ -648,9 +1035,12 @@
 									<div class="space-y-2">
 										{#each Object.entries(s.env) as [name, _entry] (name)}
 											<div class="flex items-center gap-2">
-												<span class="min-w-[8rem] text-xs font-mono text-muted-foreground"
-													>{name}</span
-												>
+												<input
+													class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+													value={name}
+													oninput={(e) => renameEnvVar(s.id, name, e.currentTarget.value)}
+													placeholder="VAR_NAME"
+												/>
 												{#if secretDrafts[s.id] && secretDrafts[s.id] !== 'cleared'}
 													<input
 														type="password"

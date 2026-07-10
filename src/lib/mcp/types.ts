@@ -116,4 +116,5 @@ export interface McpServerTemplate {
 	headers?: Record<string, { secretRef?: string; value?: string }>;
 	requiresTrust: boolean;
 	discoverableTools?: string;
+	platforms?: ('web' | 'desktop')[];
 }

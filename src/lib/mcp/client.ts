@@ -11,6 +11,7 @@ import type {
 	McpToolCallResult
 } from './types';
 import type { McpServerRequest, McpTransport } from './transport';
+import { ProviderHttpError } from '$lib/ai/types';
 import type { ToolContext } from '$lib/agent/registry';
 
 const CLIENT_INFO = { name: 'mayon', version: '0.1.0' };
@@ -30,6 +31,7 @@ function buildClientCapabilities(
 
 export class McpClient {
 	#state: 'idle' | 'connected' | 'closed' = 'idle';
+	#reinitializing = false;
 
 	#serverInfo: McpServerInfo | null = null;
 	#serverCapabilities: Record<string, unknown> = {};
@@ -83,18 +85,19 @@ export class McpClient {
 			this.#serverCapabilities = result.capabilities as Record<string, unknown>;
 		}
 
+		this.transport.notify?.('notifications/initialized', {});
 		this.#state = 'connected';
 		this.startRequestListening();
 		return this.#serverInfo;
 	}
 
 	async toolsList(): Promise<McpTool[]> {
-		const result = (await this.transport.request('tools/list')) as { tools: McpTool[] };
+		const result = (await this.#request('tools/list')) as { tools: McpTool[] };
 		return result.tools;
 	}
 
 	async toolsCall(name: string, args: Record<string, unknown>): Promise<McpToolCallResult> {
-		return (await this.transport.request('tools/call', {
+		return (await this.#request('tools/call', {
 			name,
 			arguments: args
 		})) as McpToolCallResult;
@@ -112,25 +115,43 @@ export class McpClient {
 		};
 	}
 
+	async #request(method: string, params?: unknown): Promise<unknown> {
+		try {
+			return await this.transport.request(method, params);
+		} catch (err) {
+			if (!this.#reinitializing && err instanceof ProviderHttpError && err.status === 404) {
+				this.#reinitializing = true;
+				try {
+					this.#state = 'idle';
+					await this.initialize();
+				} finally {
+					this.#reinitializing = false;
+				}
+				return this.transport.request(method, params);
+			}
+			throw err;
+		}
+	}
+
 	async resourcesList(): Promise<McpResource[]> {
-		const result = (await this.transport.request('resources/list')) as { resources: McpResource[] };
+		const result = (await this.#request('resources/list')) as { resources: McpResource[] };
 		return result.resources ?? [];
 	}
 
 	async resourcesRead(uri: string): Promise<McpResourceReadResult> {
-		const result = (await this.transport.request('resources/read', {
+		const result = (await this.#request('resources/read', {
 			uri
 		})) as McpResourceReadResult;
 		return result?.contents ? result : { contents: [] };
 	}
 
 	async promptsList(): Promise<McpPrompt[]> {
-		const result = (await this.transport.request('prompts/list')) as { prompts: McpPrompt[] };
+		const result = (await this.#request('prompts/list')) as { prompts: McpPrompt[] };
 		return result.prompts ?? [];
 	}
 
 	async promptsGet(name: string, args?: Record<string, unknown>): Promise<McpPromptGetResult> {
-		return (await this.transport.request('prompts/get', {
+		return (await this.#request('prompts/get', {
 			name,
 			arguments: args ?? {}
 		})) as McpPromptGetResult;

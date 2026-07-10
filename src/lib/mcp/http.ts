@@ -1,6 +1,7 @@
 import { classifyFetchError, httpStatusToError } from '$lib/ai/errors';
 import { MissingKeyError } from '$lib/ai/types';
 import { parseSseFrames } from './sse';
+import { MCP_PROTOCOL_VERSION } from './types';
 import type { McpNotification } from './types';
 import type { McpServerConfig, McpServerInfo } from './types';
 import type { McpServerRequest, McpTransport } from './transport';
@@ -10,7 +11,7 @@ export class HttpMcpTransport implements McpTransport {
 	#sessionId: string | null = null;
 	#notificationHandler: ((n: McpNotification) => void) | null = null;
 	#requestHandler: ((req: McpServerRequest) => void) | null = null;
-	#activeAc: AbortController | null = null;
+	#activeControllers = new Set<AbortController>();
 
 	private serverId: string;
 	private url: string;
@@ -43,7 +44,7 @@ export class HttpMcpTransport implements McpTransport {
 		const expectedId = this.#nextId++;
 		const envelope = { jsonrpc: '2.0' as const, id: expectedId, method, params: params ?? {} };
 		const ac = new AbortController();
-		this.#activeAc = ac;
+		this.#activeControllers.add(ac);
 		const t = setTimeout(() => ac.abort(), this.callTimeoutMs);
 
 		let res: Response;
@@ -59,7 +60,7 @@ export class HttpMcpTransport implements McpTransport {
 			throw classifyFetchError(err, this.url);
 		} finally {
 			clearTimeout(t);
-			this.#activeAc = null;
+			this.#activeControllers.delete(ac);
 		}
 
 		if (!this.#sessionId) {
@@ -67,7 +68,21 @@ export class HttpMcpTransport implements McpTransport {
 			if (sid) this.#sessionId = sid;
 		}
 
+		if (
+			!this.#sessionId &&
+			res.ok &&
+			typeof globalThis.location !== 'undefined' &&
+			new URL(this.url).origin !== globalThis.location.origin
+		) {
+			console.warn(
+				'[mcp] No mcp-session-id in response. If the server uses sessions, ensure Access-Control-Expose-Headers includes "mcp-session-id".'
+			);
+		}
+
 		if (!res.ok) {
+			if (res.status === 404 && this.#sessionId) {
+				this.#sessionId = null;
+			}
 			throw await httpStatusToError(res);
 		}
 
@@ -209,7 +224,8 @@ export class HttpMcpTransport implements McpTransport {
 	async #buildHeaders(): Promise<Record<string, string>> {
 		const h: Record<string, string> = {
 			'content-type': 'application/json',
-			accept: 'application/json, text/event-stream'
+			accept: 'application/json, text/event-stream',
+			'mcp-protocol-version': MCP_PROTOCOL_VERSION
 		};
 
 		if (this.#sessionId) {
@@ -233,12 +249,16 @@ export class HttpMcpTransport implements McpTransport {
 
 	notify(method: string, params?: unknown): void {
 		const envelope = { jsonrpc: '2.0' as const, method, params: params ?? {} };
-		fetch(this.url, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(envelope),
-			cache: 'no-store'
-		}).catch(() => {});
+		this.#buildHeaders()
+			.then((headers) =>
+				fetch(this.url, {
+					method: 'POST',
+					headers,
+					body: JSON.stringify(envelope),
+					cache: 'no-store'
+				})
+			)
+			.catch(() => {});
 	}
 
 	onNotification(handler: (n: McpNotification) => void): void {
@@ -281,10 +301,21 @@ export class HttpMcpTransport implements McpTransport {
 	}
 
 	async close(): Promise<void> {
-		if (this.#activeAc) {
-			this.#activeAc.abort();
-			this.#activeAc = null;
+		if (this.#sessionId) {
+			this.#buildHeaders()
+				.then((headers) =>
+					fetch(this.url, {
+						method: 'DELETE',
+						headers,
+						cache: 'no-store'
+					})
+				)
+				.catch(() => {});
 		}
+		for (const ac of this.#activeControllers) {
+			ac.abort();
+		}
+		this.#activeControllers.clear();
 		this.#notificationHandler = null;
 		this.#requestHandler = null;
 	}

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { McpTool, McpResource, McpPrompt } from './types';
 import { McpClient } from './client';
 import { FakeMcpTransport } from './fake-transport';
+import { ProviderHttpError } from '$lib/ai/types';
 
 const fakeServerInfo = { name: 'test-server', version: '1.0.0' };
 const fakeTools: McpTool[] = [
@@ -73,6 +74,53 @@ describe('McpClient', () => {
 		const client = new McpClient(transport);
 		await client.initialize();
 		await expect(client.toolsList()).rejects.toThrow('server unavailable');
+	});
+
+	it('sends notifications/initialized after handshake', async () => {
+		const { client, transport } = makeClient();
+		await client.initialize();
+		expect(transport.sentNotifications).toContainEqual({
+			method: 'notifications/initialized',
+			params: {}
+		});
+	});
+
+	it('re-initializes on 404 session expiry and retries', async () => {
+		const transport = new FakeMcpTransport({ serverInfo: fakeServerInfo, tools: fakeTools });
+		const originalRequest = transport.request.bind(transport);
+		let toolsListAttempts = 0;
+		transport.request = vi.fn(async (method: string, params?: unknown) => {
+			if (method === 'tools/list') {
+				toolsListAttempts++;
+				if (toolsListAttempts === 1) {
+					throw new ProviderHttpError('Session not found', 404);
+				}
+			}
+			return originalRequest(method, params);
+		});
+		const client = new McpClient(transport);
+		await client.initialize();
+
+		const tools = await client.toolsList();
+		expect(tools).toEqual(fakeTools);
+		expect(toolsListAttempts).toBe(2);
+
+		const initNotifs = transport.sentNotifications.filter(
+			(n) => n.method === 'notifications/initialized'
+		);
+		expect(initNotifs).toHaveLength(2);
+	});
+
+	it('404 on initialize does not recurse', async () => {
+		const transport = new FakeMcpTransport({ serverInfo: fakeServerInfo, tools: fakeTools });
+		transport.request = vi.fn(async (method: string) => {
+			if (method === 'initialize') {
+				throw new ProviderHttpError('Not found', 404);
+			}
+			return {};
+		});
+		const client = new McpClient(transport);
+		await expect(client.initialize()).rejects.toThrow();
 	});
 
 	it('state transitions: idle → connected → closed', async () => {
