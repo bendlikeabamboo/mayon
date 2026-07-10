@@ -30,8 +30,10 @@
 	},
 	"plugins": {
 		"updater": {
-			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZBODE3QTkwNEE1RDRDRDgKUldUWVRGMUtrSHFCK2oyL2k0d3JPWFI3TXNFZytsWE0zRnRQZ0ZlclM3amCwY1YwSmVlMFQzc1YK",
-			"endpoints": ["https://github.com/bendlikeabamboo/mayon/releases/latest/download/latest.json"]
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUxREUzQkVDMUQ4MjM4QjkKUldTNU9JSWQ3RHZlNFpISUxxSGNPdHkweGxGN1hFa3dSZ2xPWWxsUmh3bTd6a0dtWW9UKzZtbDEK",
+			"endpoints": [
+				"https://github.com/bendlikeabamboo/mayon/releases/latest/download/latest.json"
+			]
 		}
 	},
 	"bundle": {
