@@ -40,6 +40,12 @@ function crossOriginIsolation(): PluginOption {
 
 export default defineConfig({
 	plugins: [tailwindcss(), crossOriginIsolation(), sveltekit()],
+	server: {
+		proxy: {
+			'/api': 'http://localhost:4319',
+			'/ws': { target: 'http://localhost:4319', ws: true }
+		}
+	},
 	// @sqlite.org/sqlite-wasm ships its own nested worker + .wasm assets and must
 	// not be pre-bundled by esbuild (otherwise the wasm loader breaks in dev).
 	optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },

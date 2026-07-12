@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatProviderError, DESKTOP_FALLBACK_HINT } from './errors';
+import { formatProviderError, SIDECAR_FALLBACK_HINT } from './errors';
 import {
 	CorsBlockedError,
 	MissingKeyError,
@@ -24,7 +24,7 @@ describe('formatProviderError', () => {
 	it('maps CorsBlockedError with the desktop-fallback hint', () => {
 		const out = formatProviderError(new CorsBlockedError());
 		expect(out.title).toBe('Blocked by the browser');
-		expect(out.hint).toBe(DESKTOP_FALLBACK_HINT);
+		expect(out.hint).toBe(SIDECAR_FALLBACK_HINT);
 	});
 
 	it('maps ProviderHttpError with status + body, and a retry hint on 5xx', () => {

@@ -1,7 +1,5 @@
-import { getDriver, isTauri } from './driver/client';
-import { rebootstrapWith } from './driver/client';
+import { getDriver, rebootstrapWith } from './driver/client';
 import migrations from './driver/migrations';
-import type { DbRuntime } from '$lib/stores/db.svelte';
 
 export const REQUIRED_TABLES: string[] = [
 	'chats',
@@ -50,11 +48,9 @@ export function checkBackup(input: CheckBackupInput): CheckBackupResult {
 	return { ok: true };
 }
 
-export async function validateBackupBytes(bytes: Uint8Array): Promise<CheckBackupResult> {
-	const { default: initSqlJs } = await import('sql.js');
-	const SQL = await initSqlJs();
-
-	const headerOk =
+export function isSqliteHeader(bytes: Uint8Array): boolean {
+	if (bytes.length < 16) return false;
+	return (
 		bytes[0] === 0x53 &&
 		bytes[1] === 0x51 &&
 		bytes[2] === 0x4c &&
@@ -70,8 +66,16 @@ export async function validateBackupBytes(bytes: Uint8Array): Promise<CheckBacku
 		bytes[12] === 0x74 &&
 		bytes[13] === 0x20 &&
 		bytes[14] === 0x33 &&
-		bytes[15] === 0x00;
-	if (!headerOk) return checkBackup({ headerOk: false, tables: new Set(), maxAppliedMillis: null });
+		bytes[15] === 0x00
+	);
+}
+
+export async function validateBackupBytes(bytes: Uint8Array): Promise<CheckBackupResult> {
+	const { default: initSqlJs } = await import('sql.js');
+	const SQL = await initSqlJs();
+
+	if (!isSqliteHeader(bytes))
+		return checkBackup({ headerOk: false, tables: new Set(), maxAppliedMillis: null });
 
 	const testDb = new SQL.Database(bytes as Buffer);
 	try {
@@ -107,7 +111,7 @@ function formatDate(): string {
 	return `${y}${m}${day}`;
 }
 
-function downloadBlob(bytes: Uint8Array, filename: string) {
+export function downloadBlob(bytes: Uint8Array, filename: string) {
 	const blob = new Blob([new Uint8Array(bytes)], { type: 'application/x-sqlite3' });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement('a');
@@ -118,19 +122,8 @@ function downloadBlob(bytes: Uint8Array, filename: string) {
 }
 
 export async function createBackup(): Promise<void> {
-	if (isTauri()) {
-		const { save } = await import('@tauri-apps/plugin-dialog');
-		const target = await save({
-			filters: [{ name: 'SQLite', extensions: ['sqlite'] }],
-			defaultPath: `mayon-${formatDate()}.sqlite`
-		});
-		if (!target) return;
-		const { invoke } = await import('@tauri-apps/api/core');
-		await invoke('backup_database', { target });
-	} else {
-		const bytes = await getDriver().snapshot!();
-		downloadBlob(bytes, `mayon-${formatDate()}.sqlite`);
-	}
+	const bytes = await getDriver().snapshot!();
+	downloadBlob(bytes, `mayon-${formatDate()}.sqlite`);
 }
 
 export async function restoreBackupFromBytes(bytes: Uint8Array): Promise<void> {
@@ -143,14 +136,5 @@ export async function restoreBackupFromBytes(bytes: Uint8Array): Promise<void> {
 
 	await getDriver().restore!(bytes);
 	await rebootstrapWith();
-	location.reload();
-}
-
-export async function restoreBackupFromPath(path: string): Promise<void> {
-	await getDriver().dispose?.();
-	const { invoke } = await import('@tauri-apps/api/core');
-	const { createTauriDriver } = await import('./driver/tauri');
-	await invoke('restore_database', { source: path, knownMax: maxKnownMigrationMillis() });
-	await rebootstrapWith({ driver: await createTauriDriver(), runtime: 'tauri' as DbRuntime });
 	location.reload();
 }

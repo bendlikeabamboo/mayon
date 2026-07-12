@@ -5,6 +5,8 @@
 	import QuizPromptConfig from '$lib/components/quizzes/QuizPromptConfig.svelte';
 	import LearnerProfileConfig from '$lib/components/chat/LearnerProfileConfig.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
+	import SandboxDbSection from '$lib/components/settings/SandboxDbSection.svelte';
+	import { sidecarStatus } from '$lib/sidecar/status.svelte';
 </script>
 
 <ProviderConfig>
@@ -13,4 +15,7 @@
 	<LabPromptConfig />
 	<QuizPromptConfig />
 	<DataSection />
+	{#if sidecarStatus.has('sandbox-db')}
+		<SandboxDbSection />
+	{/if}
 </ProviderConfig>

@@ -1,0 +1,35 @@
+import { sidecarClient } from './client';
+import { sidecarStatus } from './status.svelte';
+import { downloadBlob, isSqliteHeader } from '$lib/db/backup';
+
+function formatDate(): string {
+	const d = new Date();
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	return `${y}${m}${day}`;
+}
+
+export async function downloadSandboxBackup(): Promise<void> {
+	if (!sidecarStatus.has('backup')) throw new Error('Sidecar backup cap not available');
+
+	const res = await sidecarClient.http('/api/backup/sandbox');
+	if (!res.ok) throw new Error(`Backup download failed: ${res.status}`);
+
+	const bytes = new Uint8Array(await res.arrayBuffer());
+	downloadBlob(bytes, `mayon-sandbox-${formatDate()}.sqlite`);
+}
+
+export async function restoreSandboxBackup(file: File): Promise<void> {
+	if (!sidecarStatus.has('backup')) throw new Error('Sidecar backup cap not available');
+
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	if (!isSqliteHeader(bytes)) throw new Error('Not a valid SQLite file');
+
+	const res = await sidecarClient.http('/api/backup/sandbox', {
+		method: 'PUT',
+		headers: { 'content-type': 'application/octet-stream' },
+		body: bytes
+	});
+	if (!res.ok) throw new Error(`Restore failed: ${res.status}`);
+}

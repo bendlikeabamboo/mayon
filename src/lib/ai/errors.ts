@@ -22,9 +22,8 @@ export interface FormattedProviderError {
 	hint?: string;
 }
 
-/** Desktop-fallback copy reused for CORS / unsafe-browser errors. */
-export const DESKTOP_FALLBACK_HINT =
-	'Browser calls to this provider may be blocked by CORS. Use the Mayon desktop app, which routes requests through the native shell and avoids CORS entirely.';
+export const SIDECAR_FALLBACK_HINT =
+	'Browser calls to this provider may be blocked by CORS. Run the Mayon sidecar (docker compose up) for CORS-free access, or use a different provider.';
 
 /**
  * Map a thrown error to a user-facing payload. Unknown errors get a generic
@@ -49,7 +48,7 @@ export function formatProviderError(err: unknown): FormattedProviderError {
 		return {
 			title: 'Blocked by the browser',
 			message: err.message,
-			hint: DESKTOP_FALLBACK_HINT
+			hint: SIDECAR_FALLBACK_HINT
 		};
 	}
 	if (err instanceof ProviderHttpError) {

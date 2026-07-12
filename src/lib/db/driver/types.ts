@@ -1,9 +1,8 @@
 /**
  * The single storage seam. Drizzle + schema + repositories live on the main thread;
  * drivers are dumb SQL executors (the OPFS worker literally only runs SQL over
- * `postMessage`). The same contract is satisfied by three runtimes:
+ * `postMessage`). The same contract is satisfied by two runtimes:
  *   - browser: sqlite-wasm + OPFS (in a Web Worker)
- *   - desktop: @tauri-apps/plugin-sql (native SQLite)
  *   - tests:   in-memory sql.js
  */
 export interface QueryResult<T = unknown> {
@@ -22,9 +21,9 @@ export interface StorageDriver {
 	batch(stmts: BatchStatement[]): Promise<QueryResult[]>;
 	/** Run a statement that returns no rows (DDL / INSERT / UPDATE / DELETE). */
 	exec(sql: string): Promise<void>;
-	/** Whole-DB snapshot as bytes (browser + in-memory). Optional on desktop. */
+	/** Whole-DB snapshot as bytes (browser + in-memory). */
 	snapshot?(): Promise<Uint8Array>;
-	/** Replace the live DB with `bytes` (browser + in-memory). Optional on desktop. */
+	/** Replace the live DB with `bytes` (browser + in-memory). */
 	restore?(bytes: Uint8Array): Promise<void>;
 	/** Release the underlying connection/worker so a fresh driver can replace it. */
 	dispose?(): Promise<void>;

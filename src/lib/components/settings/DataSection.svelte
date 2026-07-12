@@ -1,14 +1,21 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { isTauri, repos } from '$lib/db';
-	import { createBackup, restoreBackupFromBytes, restoreBackupFromPath } from '$lib/db/backup';
+	import { repos } from '$lib/db';
+	import { createBackup, restoreBackupFromBytes } from '$lib/db/backup';
 	import { chatStore } from '$lib/stores/chat.svelte';
+	import { sidecarStatus } from '$lib/sidecar/status.svelte';
+	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/sidecar/sandbox-backup';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let status = $state<string | null>(null);
 
 	let fileInputEl: HTMLInputElement | undefined = $state();
+	let sandboxFileInputEl: HTMLInputElement | undefined = $state();
+
+	let sandboxBusy = $state(false);
+	let sandboxError = $state<string | null>(null);
+	let sandboxStatus = $state<string | null>(null);
 
 	async function handleBackup() {
 		busy = true;
@@ -16,7 +23,7 @@
 		status = null;
 		try {
 			await createBackup();
-			status = isTauri() ? 'Backup saved.' : 'Backup downloaded.';
+			status = 'Backup downloaded.';
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 		} finally {
@@ -29,16 +36,7 @@
 		error = null;
 		status = null;
 		try {
-			if (isTauri()) {
-				const { open } = await import('@tauri-apps/plugin-dialog');
-				const p = await open({
-					filters: [{ name: 'SQLite', extensions: ['sqlite'] }],
-					multiple: false
-				});
-				if (p) await restoreBackupFromPath(p as string);
-			} else {
-				fileInputEl?.click();
-			}
+			fileInputEl?.click();
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 			busy = false;
@@ -74,6 +72,42 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	async function handleSandboxDownload() {
+		sandboxBusy = true;
+		sandboxError = null;
+		sandboxStatus = null;
+		try {
+			await downloadSandboxBackup();
+			sandboxStatus = 'Sandbox backup downloaded.';
+		} catch (err) {
+			sandboxError = err instanceof Error ? err.message : String(err);
+		} finally {
+			sandboxBusy = false;
+		}
+	}
+
+	function handleSandboxRestoreClick() {
+		sandboxFileInputEl?.click();
+	}
+
+	async function handleSandboxFileInput(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		sandboxBusy = true;
+		sandboxError = null;
+		sandboxStatus = null;
+		try {
+			await restoreSandboxBackup(file);
+			sandboxStatus = 'Sandbox DB restored.';
+		} catch (err) {
+			sandboxError = err instanceof Error ? err.message : String(err);
+		} finally {
+			sandboxBusy = false;
+		}
+		if (input) input.value = '';
 	}
 </script>
 
@@ -115,4 +149,45 @@
 	<Button variant="outline" size="sm" {disabled} onclick={handleRebuildIndex}>
 		Rebuild search index
 	</Button>
+
+	{#if sidecarStatus.has('backup')}
+		<hr class="border-border" />
+
+		<h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Sandbox DB</h3>
+
+		<p class="text-xs text-muted-foreground">
+			Back up the sidecar sandbox DB (MCP-tool data). This is separate from your chats, labs, and
+			quizzes above.
+		</p>
+
+		<input
+			bind:this={sandboxFileInputEl}
+			type="file"
+			accept=".sqlite"
+			class="hidden"
+			onchange={handleSandboxFileInput}
+		/>
+
+		<div class="flex gap-2">
+			<Button variant="outline" size="sm" disabled={sandboxBusy} onclick={handleSandboxDownload}>
+				Download sandbox backup
+			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={sandboxBusy}
+				onclick={handleSandboxRestoreClick}
+			>
+				Restore sandbox backup
+			</Button>
+		</div>
+
+		{#if sandboxStatus}
+			<p class="text-xs text-muted-foreground" role="status">{sandboxStatus}</p>
+		{/if}
+
+		{#if sandboxError}
+			<p class="text-xs text-destructive" role="alert">{sandboxError}</p>
+		{/if}
+	{/if}
 </section>

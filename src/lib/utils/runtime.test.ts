@@ -4,7 +4,6 @@ import type { DbRuntime } from '$lib/stores/db.svelte.js';
 
 describe('runtimeLabel', () => {
 	const cases: Array<[DbRuntime, string]> = [
-		['tauri', 'Desktop app'],
 		['browser', 'Web'],
 		['memory', 'Web'],
 		['unknown', '']

@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mockIsTauri = vi.fn();
-vi.mock('$lib/db', () => ({
-	isTauri: () => mockIsTauri()
-}));
-
 vi.mock('$lib/ai/keystore/browser', () => ({
 	createBrowserKeyStore: () => ({
 		get: vi.fn(),
@@ -14,17 +9,37 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
+vi.mock('$lib/sidecar/status.svelte', () => ({
+	sidecarStatus: { has: vi.fn().mockReturnValue(false) }
+}));
+
 import { createMcpTransport } from './client-factory';
 import { HttpMcpTransport } from './http';
-import { StdioMcpTransport } from './stdio';
+import { SidecarStdioMcpTransport } from './sidecar-stdio';
+import { sidecarStatus } from '$lib/sidecar/status.svelte';
 
 describe('createMcpTransport', () => {
 	afterEach(() => {
-		vi.clearAllMocks();
+		vi.restoreAllMocks();
 	});
 
-	it('returns StdioMcpTransport for stdio config (desktop)', () => {
-		mockIsTauri.mockReturnValue(true);
+	it('throws "requires sidecar" for stdio config when sidecar not connected', () => {
+		vi.mocked(sidecarStatus.has).mockReturnValue(false);
+		expect(() =>
+			createMcpTransport({
+				id: 's1',
+				name: 'Test',
+				transport: 'stdio',
+				command: 'node',
+				args: ['-e', '1'],
+				enabled: false,
+				createdAt: Date.now()
+			})
+		).toThrow('stdio MCP servers require the Mayon sidecar');
+	});
+
+	it('returns SidecarStdioMcpTransport for stdio config when sidecar connected', () => {
+		vi.mocked(sidecarStatus.has).mockReturnValue(true);
 		const transport = createMcpTransport({
 			id: 's1',
 			name: 'Test',
@@ -34,11 +49,10 @@ describe('createMcpTransport', () => {
 			enabled: false,
 			createdAt: Date.now()
 		});
-		expect(transport).toBeInstanceOf(StdioMcpTransport);
+		expect(transport).toBeInstanceOf(SidecarStdioMcpTransport);
 	});
 
-	it('returns HttpMcpTransport for http config with url (browser)', () => {
-		mockIsTauri.mockReturnValue(false);
+	it('returns HttpMcpTransport for http config with url', () => {
 		const transport = createMcpTransport({
 			id: 'h1',
 			name: 'HTTP Server',
@@ -50,21 +64,7 @@ describe('createMcpTransport', () => {
 		expect(transport).toBeInstanceOf(HttpMcpTransport);
 	});
 
-	it('returns HttpMcpTransport for http config on desktop (secretRef will fail at request time)', () => {
-		mockIsTauri.mockReturnValue(true);
-		const transport = createMcpTransport({
-			id: 'h2',
-			name: 'HTTP Desktop',
-			transport: 'http',
-			url: 'https://mcp.example.com/mcp',
-			enabled: false,
-			createdAt: Date.now()
-		});
-		expect(transport).toBeInstanceOf(HttpMcpTransport);
-	});
-
 	it('throws when http config has no url', () => {
-		mockIsTauri.mockReturnValue(false);
 		expect(() =>
 			createMcpTransport({
 				id: 'h3',
@@ -77,7 +77,6 @@ describe('createMcpTransport', () => {
 	});
 
 	it('throws for unsupported transport', () => {
-		mockIsTauri.mockReturnValue(false);
 		expect(() =>
 			createMcpTransport({
 				id: 'x1',

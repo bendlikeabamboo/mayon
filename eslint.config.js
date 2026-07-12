@@ -10,14 +10,15 @@ export default ts.config(
 			'build/',
 			'.svelte-kit/',
 			'dist/',
-			'src-tauri/',
 			'drizzle/',
 			'coverage/',
 			'.kilo/',
 			'docs/',
 			'tests/fixtures/',
 			// Generated: bundled migration SQL/journal — do not lint by hand.
-			'src/lib/db/driver/migrations.ts'
+			'src/lib/db/driver/migrations.ts',
+			'sidecar/dist/',
+			'packages/*/dist/'
 		]
 	},
 	js.configs.recommended,

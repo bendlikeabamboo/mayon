@@ -11,6 +11,7 @@
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import DbStatus from './DbStatus.svelte';
+	import SidecarStatus from './SidecarStatus.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
 	import { runtimeLabel } from '$lib/utils/runtime';
@@ -81,6 +82,11 @@
 			<DbStatus />
 		{:else}
 			<DbStatus collapsed />
+		{/if}
+		{#if !collapsed}
+			<SidecarStatus />
+		{:else}
+			<SidecarStatus collapsed />
 		{/if}
 	</div>
 </aside>

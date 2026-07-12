@@ -19,8 +19,7 @@
 	import type { ProviderConfig } from '$lib/ai/types';
 	import { uuid } from '$lib/db/ids';
 
-	// API keys live in the runtime KeyStore — the OS keychain on desktop (plaintext
-	// never enters JS), IndexedDB in the browser — not the local settings store.
+	// API keys live in the runtime KeyStore (IndexedDB) — not the local settings store.
 	// The "replace key" affordance below never echoes a stored key back; it only
 	// writes/deletes.
 
@@ -204,8 +203,8 @@
 	<div class="space-y-1">
 		<h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
 		<p class="text-sm text-muted-foreground">
-			Configure AI providers. Provider handles persist locally; API keys are stored in the OS
-			keychain (desktop) or IndexedDB (browser), never in the local settings store.
+			Configure AI providers. Provider handles persist locally; API keys are stored in IndexedDB,
+			never in the local settings store.
 		</p>
 	</div>
 

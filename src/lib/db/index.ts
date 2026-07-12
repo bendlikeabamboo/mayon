@@ -1,7 +1,7 @@
 // Public boundary for the data layer. Components/stores import from here ONLY:
 //   import { repos, getDb } from '$lib/db';
 // The drizzle `db` object stays private to this directory.
-export { bootstrapDb, getDb, getDriver, isTauri, rebootstrapWith } from './driver/client';
+export { bootstrapDb, getDb, getDriver, rebootstrapWith } from './driver/client';
 export type { StorageDriver } from './driver/types';
 
 import { settingsRepo } from './repositories/settings';

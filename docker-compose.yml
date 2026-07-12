@@ -3,4 +3,16 @@ services:
     build: .
     ports:
       - '8080:80'
+    depends_on: [sidecar]
     restart: unless-stopped
+  sidecar:
+    build:
+      context: .
+      dockerfile: sidecar/Dockerfile
+    expose:
+      - '4319'
+    volumes:
+      - sidecar-data:/data
+    restart: unless-stopped
+volumes:
+  sidecar-data:

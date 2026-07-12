@@ -3,10 +3,12 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 RUN corepack enable
-RUN corepack prepare pnpm@10 --activate
+RUN corepack prepare pnpm@10.15.0 --activate
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/shared/package.json packages/shared/
+COPY sidecar/package.json sidecar/
+RUN pnpm install --frozen-lockfile --filter mayon...
 
 COPY . .
 RUN pnpm build

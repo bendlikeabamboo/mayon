@@ -4,11 +4,6 @@ import { runMigrations } from './migrator';
 import migrations from './migrations';
 import { dbStatus, type DbRuntime } from '$lib/stores/db.svelte';
 
-/** Detect the Tauri desktop shell. Uses the reliable internal global check. */
-export function isTauri(): boolean {
-	return '__TAURI_INTERNALS__' in globalThis;
-}
-
 function opfsAvailable(): boolean {
 	return (
 		typeof navigator !== 'undefined' &&
@@ -17,15 +12,10 @@ function opfsAvailable(): boolean {
 	);
 }
 
-/** Select the right driver for the current runtime (dynamic import per bundle). */
 async function createDriver(): Promise<StorageDriver> {
-	if (isTauri()) {
-		const { createTauriDriver } = await import('./tauri');
-		return createTauriDriver();
-	}
 	if (!opfsAvailable()) {
 		throw new Error(
-			'OPFS is not available in this browser. Use the Mayon desktop app, or a modern browser with OPFS enabled.'
+			'OPFS is not available in this browser. Use a modern browser with OPFS enabled.'
 		);
 	}
 	const { createOpfsDriver } = await import('./opfs-driver');
@@ -57,7 +47,7 @@ export async function bootstrapWithDriver(
  */
 export function bootstrapDb(): Promise<Db> {
 	if (driverPromise) return driverPromise;
-	const runtime: DbRuntime = isTauri() ? 'tauri' : 'browser';
+	const runtime: DbRuntime = 'browser';
 	dbStatus.runtime = runtime;
 	dbStatus.status = 'initializing';
 	driverPromise = (async () => {

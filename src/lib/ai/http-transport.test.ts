@@ -1,4 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('$lib/sidecar/status.svelte', () => ({
+	sidecarStatus: {
+		has: vi.fn().mockReturnValue(false),
+		connected: false,
+		caps: [],
+		version: null,
+		error: null,
+		markConnected: vi.fn(),
+		markDisconnected: vi.fn()
+	}
+}));
 import { createFetchTransport } from './http-transport';
 import type { BrowserKeyStore } from './keystore/browser';
 import {
@@ -8,6 +20,7 @@ import {
 	ProviderHttpError,
 	RateLimitError
 } from './types';
+import { sidecarStatus } from '$lib/sidecar/status.svelte';
 
 /** Minimal `location` shape read by `classifyFetchError`'s cross-origin check. */
 type LocationLike = { href: string; origin: string };
@@ -192,5 +205,46 @@ describe('createFetchTransport', () => {
 		await expect(transport.request({ url: 'http://localhost:9999/api' })).rejects.toBeInstanceOf(
 			NetworkError
 		);
+	});
+
+	it('routes through /api/llm/proxy when llm-proxy cap is present', async () => {
+		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		const transport = createFetchTransport(makeFakeStore({ p1: 'secret' }));
+
+		const fakeRes = new Response('proxied stream', {
+			status: 200,
+			headers: { 'content-type': 'text/event-stream' }
+		});
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
+
+		const stream = await transport.request({
+			url: 'https://api.example.test/v1/chat',
+			auth: { header: 'Authorization', scheme: 'Bearer', keyId: 'p1' }
+		});
+
+		expect(globalThis.fetch).toHaveBeenCalledOnce();
+		const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(url).toBe('/api/llm/proxy');
+		expect((init as RequestInit).method).toBe('POST');
+		const sentBody = JSON.parse((init as RequestInit).body as string);
+		expect(sentBody.headers['authorization']).toBe('Bearer secret');
+		expect(await collectStream(stream)).toBe('proxied stream');
+	});
+
+	it('calls direct fetch when llm-proxy cap is absent', async () => {
+		vi.mocked(sidecarStatus.has).mockReturnValue(false);
+		const transport = createFetchTransport(makeFakeStore({ p1: 'secret' }));
+
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(cannedResponse('direct'));
+
+		const stream = await transport.request({
+			url: 'https://api.example.test/v1/chat',
+			auth: { header: 'Authorization', scheme: 'Bearer', keyId: 'p1' }
+		});
+
+		expect(globalThis.fetch).toHaveBeenCalledOnce();
+		const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(url).toBe('https://api.example.test/v1/chat');
+		expect(await collectStream(stream)).toBe('direct');
 	});
 });

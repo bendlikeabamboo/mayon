@@ -2,13 +2,10 @@ node_modules/
 build/
 .svelte-kit/
 dist/
-src-tauri/target/
-src-tauri/gen/
 .git/
 .env*
 docs/_book/
 coverage/
-.tauri/
 .vite/
 .kilo/
 refinement/

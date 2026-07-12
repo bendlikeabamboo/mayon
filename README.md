@@ -16,19 +16,13 @@ telemetry.
   from any chat.
 - **Quizzes** — MCQ, flashcard, and short-answer questions with AI grading and
   score tracking.
-- **Local-first / offline** — browser SPA (OPFS + IndexedDB) or Tauri desktop
-  (native SQLite + OS keychain). No server required.
+- **Local-first / offline** — browser SPA (OPFS + IndexedDB). No account, no
+  server required. An optional local sidecar (`docker compose up`) unlocks
+  stdio MCP tools, CORS-free LLM access, and a sandbox DB.
 - **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, Ollama, OpenRouter, and
   more; switch providers freely.
-- **Two runtimes** — one codebase ships as a browser SPA and an installable
-  desktop app.
 
 ## Get Mayon
-
-### Desktop
-
-Download the latest installer for your platform from
-[GitHub Releases](https://github.com/bendlikeabamboo/mayon/releases/latest).
 
 ### Web demo
 
@@ -50,13 +44,11 @@ docker compose up -d
 
 ## Build from source
 
-**Prerequisites:** Node 22, pnpm 10. For the desktop shell: Rust 1.95 and
-Linux GTK/WebKit dev libs (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+**Prerequisites:** Node 22, pnpm 10 (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ```bash
 pnpm install
 pnpm dev          # browser SPA at http://localhost:5173
-pnpm tauri dev    # desktop app
 ```
 
 ## Documentation

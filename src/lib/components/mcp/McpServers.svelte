@@ -27,9 +27,10 @@
 	import { parseClaudeDesktopConfig } from '$lib/mcp/import';
 	import { testConnection } from '$lib/mcp/lifecycle';
 	import { setMcpSecret, deleteMcpSecret, deleteServerSecrets } from '$lib/mcp/keystore';
-	import { repos, isTauri } from '$lib/db';
+	import { repos } from '$lib/db';
 	import { uuid } from '$lib/db/ids';
 	import type { McpServerConfig } from '$lib/mcp/types';
+	import { sidecarStatus } from '$lib/sidecar/status.svelte';
 
 	let servers = $state<McpServerConfig[]>([]);
 	let trustFlags = $state<Record<string, boolean>>({});
@@ -57,12 +58,9 @@
 	let draftServer = $state<McpServerConfig | null>(null);
 	let draftSecretDraft = $state<Record<string, string>>({});
 
-	const isDesktop = isTauri();
-
 	function isTemplateAvailable(t: McpServerTemplate): boolean {
-		if (!t.platforms) return true;
-		if (isDesktop) return t.platforms.includes('desktop');
-		return t.platforms.includes('web');
+		if (t.transport === 'stdio') return sidecarStatus.has('stdio-mcp');
+		return true;
 	}
 
 	const inputClass =
@@ -558,11 +556,7 @@
 							: 'bg-muted/50 opacity-50 cursor-not-allowed'}"
 						onclick={() => addFromTemplate(t)}
 						disabled={!available}
-						title={!available
-							? isDesktop
-								? 'This template is only available in the browser.'
-								: 'This template is only available in the desktop app.'
-							: undefined}
+						title={!available ? 'This template requires the Mayon sidecar.' : undefined}
 					>
 						<div class="flex items-center justify-between gap-2">
 							<span class="block font-medium">{t.label}</span>
@@ -572,7 +566,7 @@
 									title={t.platforms.includes('web') && t.platforms.includes('desktop')
 										? 'Available everywhere'
 										: t.platforms.includes('desktop')
-											? 'Desktop only'
+											? 'Requires sidecar'
 											: 'Web only'}
 								>
 									{#if t.platforms.includes('web') && t.platforms.includes('desktop')}
@@ -1159,8 +1153,8 @@
 										{result.error}
 										{#if result.corsBlocked}
 											<span class="block mt-1 opacity-80">
-												Use the Mayon desktop app, which routes requests through the native shell
-												and avoids CORS entirely.
+												Run the Mayon sidecar (<code>docker compose up</code>) to route this request
+												and avoid CORS.
 											</span>
 										{/if}
 									{/if}

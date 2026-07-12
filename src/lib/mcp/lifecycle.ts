@@ -1,4 +1,5 @@
 import { CorsBlockedError } from '$lib/ai/errors';
+import { sidecarStatus } from '$lib/sidecar/status.svelte';
 import type { McpServerConfig, McpServerInfo, McpTool, McpResource, McpPrompt } from './types';
 import { createMcpTransport } from './client-factory';
 import { McpClient } from './client';
@@ -7,7 +8,7 @@ import { isTrusted } from './trust';
 import { getToolDefinitions } from '$lib/agent/registry';
 import { listMountedResources, readResource } from './resources';
 import { listMountedPrompts } from './prompts';
-import { repos, isTauri } from '$lib/db';
+import { repos } from '$lib/db';
 
 export interface McpServerStatus {
 	connected: boolean;
@@ -65,8 +66,10 @@ export async function connectSession(
 				console.warn(`[mcp] skipping untrusted server: ${config.name} (${config.id})`);
 				continue;
 			}
-			if (config.transport === 'stdio' && !isTauri()) {
-				console.info(`[mcp] skipping stdio server in browser: ${config.name} (${config.id})`);
+			if (config.transport === 'stdio' && !sidecarStatus.has('stdio-mcp')) {
+				console.info(
+					`[mcp] skipping stdio server (sidecar not connected): ${config.name} (${config.id})`
+				);
 				continue;
 			}
 			const transport = createMcpTransport(config);

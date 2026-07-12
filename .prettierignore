@@ -1,8 +1,6 @@
 build/
 .svelte-kit/
 dist/
-src-tauri/target/
-src-tauri/gen/
 coverage/
 drizzle/
 pnpm-lock.yaml
