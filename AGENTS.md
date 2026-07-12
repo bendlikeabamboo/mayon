@@ -145,9 +145,12 @@ test`.
 
 ## Manual acceptance gates (P4)
 
-P4 ships an isolated sandbox SQLite in the server, exposed via `POST /api/db/query`
+P4 ships an isolated sandbox SQLite in the server, exposed via `POST /api/sandbox/query`
 and a read-write inspector under `/settings`. OPFS remains the app's sole primary
-store; this DB never holds app data or secrets.
+store; this DB never holds app data or secrets. (The sandbox inspector's route moved
+from `/api/db/query` to `/api/sandbox/query` in P-pg-1; `/api/db/query` is now the
+PG-backed primary-DB route. `GET /api/health` may also advertise a `'pg'` cap when the
+server's Postgres pool is live.)
 
 - **Browser + server:** `docker compose up` → header badge shows **Server:
   connected** with `sandbox-db` in the cap list → `/settings` shows the

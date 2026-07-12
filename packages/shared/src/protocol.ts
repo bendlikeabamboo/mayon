@@ -1,4 +1,4 @@
-export type ServerCap = 'stdio-mcp' | 'sandbox-db' | 'llm-proxy' | 'backup';
+export type ServerCap = 'stdio-mcp' | 'sandbox-db' | 'llm-proxy' | 'backup' | 'pg';
 export interface HealthResponse {
 	ok: true;
 	version: string;

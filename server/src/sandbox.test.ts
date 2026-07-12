@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 
-describe('POST /api/db/query', () => {
+describe('POST /api/sandbox/query', () => {
 	let app: ReturnType<typeof buildApp>;
 	let memApp: ReturnType<typeof buildApp>;
 	let tmpDir: string;
@@ -32,17 +32,17 @@ describe('POST /api/db/query', () => {
 			const appRef = memApp;
 			await appRef.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: 'CREATE TABLE test_query(id INTEGER PRIMARY KEY, name TEXT)' }
 			});
 			await appRef.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: "INSERT INTO test_query(name) VALUES('alice')" }
 			});
 			const res = await appRef.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'query', sql: 'SELECT * FROM test_query' }
 			});
 			expect(res.statusCode).toBe(200);
@@ -54,7 +54,7 @@ describe('POST /api/db/query', () => {
 		it('round-trips bound ? params', async () => {
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'query', sql: 'SELECT ? as v, ? as doubled', params: [7, 14] }
 			});
 			expect(res.statusCode).toBe(200);
@@ -67,12 +67,12 @@ describe('POST /api/db/query', () => {
 		it('reports changes and lastInsertRowid', async () => {
 			await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: 'CREATE TABLE test_exec(x INTEGER)' }
 			});
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: 'INSERT INTO test_exec(x) VALUES(42)' }
 			});
 			expect(res.statusCode).toBe(200);
@@ -86,12 +86,12 @@ describe('POST /api/db/query', () => {
 		it('runs all statements in a transaction and returns per-statement results', async () => {
 			await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: 'CREATE TABLE test_batch(id INTEGER PRIMARY KEY, v TEXT)' }
 			});
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: {
 					op: 'batch',
 					stmts: [
@@ -113,12 +113,12 @@ describe('POST /api/db/query', () => {
 		it('rolls back on a failing statement', async () => {
 			await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: 'CREATE TABLE test_rollback(id INTEGER PRIMARY KEY)' }
 			});
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: {
 					op: 'batch',
 					stmts: [
@@ -134,7 +134,7 @@ describe('POST /api/db/query', () => {
 
 			const check = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'query', sql: 'SELECT count(*) FROM test_rollback' }
 			});
 			expect(check.json().rows[0][0]).toBe(0);
@@ -145,7 +145,7 @@ describe('POST /api/db/query', () => {
 		it('returns 400-class on malformed body (no content-type → 415)', async () => {
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				payload: 'not json'
 			});
 			expect(res.statusCode).toBeGreaterThanOrEqual(400);
@@ -154,7 +154,7 @@ describe('POST /api/db/query', () => {
 		it('returns 400 on missing op (schema validation)', async () => {
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { sql: 'SELECT 1' }
 			});
 			expect(res.statusCode).toBe(400);
@@ -163,7 +163,7 @@ describe('POST /api/db/query', () => {
 		it('returns 400 on bad SQL', async () => {
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'query', sql: 'SELECT FROM nowhere' }
 			});
 			expect(res.statusCode).toBe(400);
@@ -173,7 +173,7 @@ describe('POST /api/db/query', () => {
 		it('returns 400 on unknown op', async () => {
 			const res = await memApp.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'explode' }
 			});
 			expect(res.statusCode).toBe(400);
@@ -184,14 +184,14 @@ describe('POST /api/db/query', () => {
 		it('rows survive a separate connection to the same file', async () => {
 			const res = await app.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: 'CREATE TABLE persist_test(id INTEGER PRIMARY KEY, v TEXT)' }
 			});
 			expect(res.statusCode).toBe(200);
 
 			const ins = await app.inject({
 				method: 'POST',
-				url: '/api/db/query',
+				url: '/api/sandbox/query',
 				body: { op: 'exec', sql: "INSERT INTO persist_test(v) VALUES('survived')" }
 			});
 			expect(ins.statusCode).toBe(200);
