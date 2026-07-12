@@ -1,28 +1,40 @@
 import Fastify from 'fastify';
 import fp from '@fastify/websocket';
 import { fileURLToPath } from 'node:url';
-import type { HealthResponse } from '@mayon/shared';
+import type { HealthResponse, ServerCap } from '@mayon/shared';
 import { VERSION } from './version';
 import { registerMcpBridge } from './mcp';
 import { registerLlmProxy } from './llm-proxy';
 import { createSandboxDb, registerSandboxDb } from './db';
 import { registerBackup } from './backup';
+import { createPgPool, probePg, registerPgDb } from './pg';
+import type { PgPoolLike } from './pg';
 
 const HOST = '0.0.0.0';
 const PORT = parseInt(process.env.PORT ?? '4319', 10);
 
 const SANDBOX_DB_PATH = process.env.SANDBOX_DB_PATH ?? '/data/sandbox.sqlite';
 
-export function buildApp(dbPath = SANDBOX_DB_PATH) {
+const BASE_CAPS: ServerCap[] = ['stdio-mcp', 'llm-proxy', 'sandbox-db', 'backup'];
+
+export interface BuildAppOptions {
+	pgPool?: PgPoolLike;
+	pgReady?: boolean;
+}
+
+export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 	const app = Fastify();
 
 	app.register(fp);
 	app.register(async (fastify) => {
+		const caps: ServerCap[] = [...BASE_CAPS];
+		if (opts.pgReady === true) caps.push('pg');
+
 		fastify.get<{ Reply: HealthResponse }>('/api/health', async (_req, reply) => {
 			return reply.send({
 				ok: true,
 				version: VERSION,
-				caps: ['stdio-mcp', 'llm-proxy', 'sandbox-db', 'backup'],
+				caps,
 				sandboxDbPath: dbPath
 			});
 		});
@@ -34,7 +46,10 @@ export function buildApp(dbPath = SANDBOX_DB_PATH) {
 		registerSandboxDb(fastify, sandboxDb);
 		registerBackup(fastify, sandboxDb, dbPath);
 
+		registerPgDb(fastify, opts.pgPool);
+
 		fastify.addHook('onClose', async () => {
+			await opts.pgPool?.end();
 			sandboxDb.close();
 		});
 	});
@@ -43,7 +58,23 @@ export function buildApp(dbPath = SANDBOX_DB_PATH) {
 }
 
 export async function start() {
-	const app = buildApp();
+	const databaseUrl = process.env.DATABASE_URL;
+	let pgPool: PgPoolLike | undefined;
+	let pgReady = false;
+	if (databaseUrl) {
+		const pool = createPgPool(databaseUrl);
+		pgReady = await probePg(pool);
+		if (pgReady) {
+			pgPool = pool;
+			console.log('pg: ready');
+		} else {
+			await pool.end();
+		}
+	} else {
+		console.log('pg: DATABASE_URL not set (pg cap disabled)');
+	}
+
+	const app = buildApp(SANDBOX_DB_PATH, { pgPool, pgReady });
 	await app.listen({ port: PORT, host: HOST });
 	console.log(`server listening on :${PORT}`);
 }

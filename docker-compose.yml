@@ -13,6 +13,28 @@ services:
       - '4319'
     volumes:
       - sidecar-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-mayon}:${POSTGRES_PASSWORD:-mayon}@db:5432/${POSTGRES_DB:-mayon}
+    restart: unless-stopped
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mayon}
+      POSTGRES_USER: ${POSTGRES_USER:-mayon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mayon}
+    expose:
+      - '5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 volumes:
   sidecar-data:
+  pg-data:

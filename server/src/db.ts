@@ -41,7 +41,7 @@ export function createSandboxDb(path?: string): Database.Database {
 
 export function registerSandboxDb(app: FastifyInstance, db: Database.Database): void {
 	app.post(
-		'/api/db/query',
+		'/api/sandbox/query',
 		{
 			schema: {
 				body: {
