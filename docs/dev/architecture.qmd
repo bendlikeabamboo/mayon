@@ -13,31 +13,31 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 - Chat with an AI about a topic. When a response is too dense, **highlight a span** and **branch** a new conversation rooted in that excerpt — the child inherits the excerpt plus the full history up to that point.
 - Every branch is a node in a **navigable tree** (sidebar tree + breadcrumb path to root) with optional **cross-links** between otherwise separate chats.
 - From any chat, generate AI **labs** (hands-on guide + progress checklist) and **quizzes** (mixed MCQ / flashcard / AI-graded short answer). Both are **leaf artifacts** on a chat (they do not branch).
-- Personal, single-user, offline. Ships as a browser SPA; an optional local sidecar container unlocks browser-impossible capabilities.
+- Personal, single-user, offline. Ships as a browser SPA; an optional local server container unlocks browser-impossible capabilities.
 
 ## Locked decisions
 
 | Area | Decision |
 |---|---|
-| Form factor | SvelteKit static SPA + optional Docker sidecar |
+| Form factor | SvelteKit static SPA + optional Docker server |
 | Framework | SvelteKit, Svelte 5 (runes), SPA via `adapter-static` |
 | UI | Tailwind v4 + shadcn-svelte (bits-ui), lucide icons |
-| Database | SQLite — WASM+OPFS (browser); drizzle-kit schema; sidecar sandbox SQLite (optional) |
+| Database | SQLite — WASM+OPFS (browser); drizzle-kit schema; server sandbox SQLite (optional) |
 | AI | Provider-agnostic adapters (OpenAI/Anthropic/Gemini/Ollama), streaming |
 | Branch context | Excerpt + full history up to the fork point |
 | Branch storage | **Reference-based** — child reads ancestor messages up to a fork-point cutoff (no duplication) |
-| Transport | Browser streaming `fetch` (IndexedDB keys); sidecar CORS proxy when available |
+| Transport | Browser streaming `fetch` (IndexedDB keys); server CORS proxy when available |
 | Labs/Quizzes | Leaf artifacts generated from a single chat |
 | Toolchain | pnpm 10, Node 22 (no bun, no Rust) |
 
 ### Key tradeoffs
 
 - **Reference-based branching:** single source of truth, light storage; the accepted cost is that a pre-branch edit in a parent propagates to descendants. If immutability is ever needed, add a content-hash/version column later (no schema break).
-- **Browser-direct, sidecar-proxy optional:** keys stay in IndexedDB and the browser resolves them into request headers. CORS-blocked providers (e.g. Anthropic) stream through the sidecar's CORS proxy when the sidecar is connected; otherwise a clear "run the sidecar" fallback is shown.
+- **Browser-direct, server-proxy optional:** keys stay in IndexedDB and the browser resolves them into request headers. CORS-blocked providers (e.g. Anthropic) stream through the server's CORS proxy when the server is connected; otherwise a clear "run the server" fallback is shown.
 
 ## System architecture
 
-One codebase, browser-only runtime. Application logic is framework-agnostic; the bottom **drivers** swap via interfaces. An optional sidecar container extends capabilities the browser cannot provide.
+One codebase, browser-only runtime. Application logic is framework-agnostic; the bottom **drivers** swap via interfaces. An optional server container extends capabilities the browser cannot provide.
 
 ```
 ┌───────────────────────────────────────────────────────────┐
@@ -52,12 +52,12 @@ One codebase, browser-only runtime. Application logic is framework-agnostic; the
 ├───────────────────────────────────────────────────────────┤
 │  Browser runtime                                           │
 │  • SQLite-WASM + OPFS (primary store)                     │
-│  • LLM via streaming fetch (or sidecar CORS proxy)        │
+│  • LLM via streaming fetch (or server CORS proxy)        │
 │  • key in IndexedDB                                        │
 └───────────────────────────────────────────────────────────┘
         StorageDriver interface            ProviderTransport interface
 
-Sidecar (optional, Docker):
+Server (optional, Docker):
 │ • Sandbox SQLite (WAL) via POST /api/db/query
 │ • LLM CORS proxy · MCP stdio bridge
 │ • Non-primary; never holds app data
@@ -65,7 +65,7 @@ Sidecar (optional, Docker):
 
 One seam makes storage swappable:
 
-- **`StorageDriver`** — same SQL schema and repository code over a WASM SQLite (browser), in-memory (tests), or the sidecar sandbox SQLite.
+- **`StorageDriver`** — same SQL schema and repository code over a WASM SQLite (browser), in-memory (tests), or the server sandbox SQLite.
 
 ## UI stack
 
@@ -241,7 +241,7 @@ The fork's **excerpt** is injected as a branching seed (a system note) so the ch
 
 - **`Provider` interface:** `chatStream(messages, opts): AsyncIterable<Token>`, plus `generateLab`, `generateQuiz`, `gradeAnswer` (structured output / tool calls).
 - **Adapters:** OpenAI, Anthropic, Gemini, Ollama (local) — all configurable in Settings.
-- **Transport:** browser streaming `fetch` (keys resolved from IndexedDB). When the sidecar is connected with the `llm-proxy` cap, requests to CORS-blocked providers route through the sidecar's `POST /api/llm/proxy`.
+- **Transport:** browser streaming `fetch` (keys resolved from IndexedDB). When the server is connected with the `llm-proxy` cap, requests to CORS-blocked providers route through the server's `POST /api/llm/proxy`.
 - **Key handling:** IndexedDB under the same origin as the app.
 - **Generation helpers** use provider structured-output to produce typed lab/quiz payloads.
 - **Grading:** MCQ/flashcard auto-scored; short-answer AI-graded against the stored rubric.
@@ -268,8 +268,8 @@ src/
     components/ MessageList, Highlighter, Composer, TreeSidebar, Breadcrumb,
                LabRunner, QuizRunner, ProviderSettings
   routes/      /chat /lab /quiz /tree /settings
-sidecar/       Node/TS: stdio MCP bridge, LLM CORS proxy, sandbox DB, backup
-packages/shared/  Wire-protocol types shared by web + sidecar
+server/       Node/TS: stdio MCP bridge, LLM CORS proxy, sandbox DB, backup
+packages/shared/  Wire-protocol types shared by web + server
 ```
 
 ## Future seams (out of scope)

@@ -7,7 +7,7 @@ RUN corepack prepare pnpm@10.15.0 --activate
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/shared/package.json packages/shared/
-COPY sidecar/package.json sidecar/
+COPY server/package.json server/
 RUN pnpm install --frozen-lockfile --filter mayon...
 
 COPY . .
@@ -17,6 +17,8 @@ FROM nginx:alpine
 
 COPY --from=build /app/build /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+RUN mkdir -p /var/cache/nginx && chown -R nginx:nginx /var/cache/nginx /run
 
 EXPOSE 80
 

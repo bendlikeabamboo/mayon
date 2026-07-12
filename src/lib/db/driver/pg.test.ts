@@ -4,9 +4,9 @@ import { chats } from '$lib/db/schema';
 import { createDb } from '$lib/db/driver/proxy';
 import { runMigrations } from '$lib/db/driver/migrator';
 import { createMemoryDriver } from '$lib/db/driver/memory';
-import { createSidecarDriver } from '$lib/db/driver/sidecar';
+import { createRemotePgDriver } from '$lib/db/driver/pg';
 import migrations from '$lib/db/driver/migrations';
-import type { StorageDriver } from '$lib/db/driver/types';
+import type { BatchStatement, StorageDriver } from '$lib/db/driver/types';
 
 function mockFetch(
 	responses: Record<string, Response> & { _default?: Response }
@@ -20,7 +20,7 @@ function mockFetch(
 	});
 }
 
-describe('SidecarDriver', () => {
+describe('RemotePgDriver', () => {
 	const originalFetch = globalThis.fetch;
 
 	afterEach(() => {
@@ -34,7 +34,7 @@ describe('SidecarDriver', () => {
 				headers: { 'content-type': 'application/json' }
 			})
 		});
-		const driver = createSidecarDriver();
+		const driver = createRemotePgDriver();
 		const result = await driver.query('SELECT 1 as a, 2 as b');
 		expect(result.rows).toEqual([[1, 'x']]);
 	});
@@ -51,7 +51,7 @@ describe('SidecarDriver', () => {
 				{ status: 200, headers: { 'content-type': 'application/json' } }
 			)
 		});
-		const driver = createSidecarDriver();
+		const driver = createRemotePgDriver();
 		const result = await driver.batch([{ sql: 'SELECT 10 as c' }, { sql: 'SELECT 20 as c' }]);
 		expect(result).toHaveLength(2);
 		expect(result[0].rows).toEqual([[10]]);
@@ -65,7 +65,7 @@ describe('SidecarDriver', () => {
 				headers: { 'content-type': 'application/json' }
 			})
 		});
-		const driver = createSidecarDriver();
+		const driver = createRemotePgDriver();
 		await expect(driver.exec('CREATE TABLE t(x)')).resolves.toBeUndefined();
 	});
 
@@ -79,14 +79,14 @@ describe('SidecarDriver', () => {
 				}
 			)
 		});
-		const driver = createSidecarDriver();
+		const driver = createRemotePgDriver();
 		await expect(driver.query('SELECT X')).rejects.toThrow('query failed');
 	});
 });
 
-describe('SidecarDriver contract proof (drizzle round-trip)', () => {
+describe('RemotePgDriver contract proof (drizzle round-trip)', () => {
 	let memoryDriver: StorageDriver;
-	let sidecarDriver: StorageDriver;
+	let remotePgDriver: StorageDriver;
 	let intercepted: { sql: string; params?: unknown[] }[] = [];
 
 	beforeEach(async () => {
@@ -98,22 +98,22 @@ describe('SidecarDriver contract proof (drizzle round-trip)', () => {
 			const driver = memoryDriver;
 
 			if (body.op === 'query') {
-				intercepted.push({ sql: body.sql, params: body.params });
-				const result = await driver.query(body.sql, body.params);
+				intercepted.push({ sql: body.sql as string, params: body.params as unknown[] });
+				const result = await driver.query(body.sql as string, body.params as unknown[]);
 				return new Response(JSON.stringify({ columns: [], rows: result.rows }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' }
 				});
 			}
 			if (body.op === 'batch') {
-				const results = await driver.batch(body.stmts);
+				const results = await driver.batch(body.stmts as BatchStatement[]);
 				return new Response(
 					JSON.stringify({ results: results.map((r) => ({ columns: [], rows: r.rows })) }),
 					{ status: 200, headers: { 'content-type': 'application/json' } }
 				);
 			}
 			if (body.op === 'exec') {
-				await driver.exec(body.sql);
+				await driver.exec(body.sql as string);
 				return new Response(JSON.stringify({ changes: 0, lastInsertRowid: null }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' }
@@ -122,20 +122,20 @@ describe('SidecarDriver contract proof (drizzle round-trip)', () => {
 			return new Response(JSON.stringify({ error: 'unknown op' }), { status: 400 });
 		});
 
-		sidecarDriver = createSidecarDriver();
-		await runMigrations(sidecarDriver, migrations);
+		remotePgDriver = createRemotePgDriver();
+		await runMigrations(remotePgDriver, migrations);
 	});
 
 	afterEach(() => {
 		(memoryDriver as unknown as { dispose?: () => Promise<void> }).dispose?.();
 	});
 
-	it('runs migrations through the sidecar driver', () => {
+	it('runs migrations through the remote Pg driver', () => {
 		expect(intercepted.length).toBeGreaterThan(0);
 	});
 
 	it('inserts and reads a chats row via drizzle proxy', async () => {
-		const db = createDb(sidecarDriver);
+		const db = createDb(remotePgDriver);
 		const now = Date.now();
 
 		await db

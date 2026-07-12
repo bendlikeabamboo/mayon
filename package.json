@@ -11,7 +11,8 @@
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild",
-			"@sqlite.org/sqlite-wasm"
+			"@sqlite.org/sqlite-wasm",
+			"better-sqlite3"
 		]
 	},
 	"scripts": {
@@ -27,7 +28,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
 		"bundle:migrations": "tsx src/lib/db/driver/bundle-migrations.ts",
-		"dev:sidecar": "pnpm --filter @mayon/sidecar dev",
+		"dev:server": "pnpm --filter @mayon/server dev",
 		"test:all": "pnpm -r --include-workspace-root test"
 	},
 	"dependencies": {

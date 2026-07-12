@@ -27,18 +27,28 @@
 
 <Button
 	variant="ghost"
-	size={collapsed ? 'icon' : 'sm'}
-	class={collapsed ? '' : 'w-full justify-start gap-2'}
+	size="sm"
+	class={collapsed ? 'w-full justify-start gap-0' : 'w-full justify-start gap-2'}
 	title={label}
 	aria-label={label}
 	onclick={toggle}
 >
 	{#if icon === Sun}
-		<Sun class="size-4 shrink-0" />
+		<Sun class="relative z-10 size-4 shrink-0" />
 	{:else if icon === Moon}
-		<Moon class="size-4 shrink-0" />
+		<Moon class="relative z-10 size-4 shrink-0" />
 	{:else}
-		<Monitor class="size-4 shrink-0" />
+		<Monitor class="relative z-10 size-4 shrink-0" />
 	{/if}
-	{#if !collapsed}{name}{/if}
+	<span
+		class="overflow-hidden whitespace-nowrap transition-all duration-200 ease-out"
+		class:max-w-0={collapsed}
+		class:opacity-0={collapsed}
+		class:-translate-x-2={collapsed}
+		class:max-w-[10rem]={!collapsed}
+		class:opacity-100={!collapsed}
+		class:translate-x-0={!collapsed}
+	>
+		{name}
+	</span>
 </Button>

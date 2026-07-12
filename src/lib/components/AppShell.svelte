@@ -15,7 +15,7 @@
 	import { page } from '$app/state';
 	import Sidebar from './Sidebar.svelte';
 	import DbStatus from './DbStatus.svelte';
-	import SidecarStatus from './SidecarStatus.svelte';
+	import ServerStatus from './ServerStatus.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import Toaster from './Toaster.svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
@@ -115,7 +115,7 @@
 						<ThemeToggle />
 						<span class="px-2 text-xs text-muted-foreground">{runtimeLabel(dbStatus.runtime)}</span>
 						<DbStatus />
-						<SidecarStatus />
+						<ServerStatus />
 					</div>
 				</aside>
 			</SheetContent>

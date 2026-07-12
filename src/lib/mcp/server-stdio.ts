@@ -1,12 +1,12 @@
 import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
 import { MissingKeyError } from '$lib/ai/types';
-import { sidecarClient } from '$lib/sidecar/client';
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { serverClient } from '$lib/server/client';
+import { serverStatus } from '$lib/server/status.svelte';
 import type { McpNotification } from './types';
 import type { McpServerConfig, McpServerInfo } from './types';
 import type { McpServerRequest, McpTransport } from './transport';
 
-export class SidecarStdioMcpTransport implements McpTransport {
+export class ServerStdioMcpTransport implements McpTransport {
 	#pending = new Map<
 		number,
 		{
@@ -28,12 +28,12 @@ export class SidecarStdioMcpTransport implements McpTransport {
 	constructor(opts: { config: McpServerConfig; wsFactory?: () => WebSocket }) {
 		this.config = opts.config;
 		this.serverId = opts.config.id;
-		this.wsFactory = opts.wsFactory ?? (() => sidecarClient.ws());
+		this.wsFactory = opts.wsFactory ?? (() => serverClient.ws());
 	}
 
 	async start(): Promise<McpServerInfo> {
-		if (!sidecarStatus.has('stdio-mcp')) {
-			throw new Error('stdio MCP servers require the Mayon sidecar (run: docker compose up)');
+		if (!serverStatus.has('stdio-mcp')) {
+			throw new Error('stdio MCP servers require the Mayon server (run: docker compose up)');
 		}
 
 		const env: Record<string, string> = {};

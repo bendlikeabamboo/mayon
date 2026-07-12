@@ -1,5 +1,5 @@
-import { sidecarClient } from './client';
-import { sidecarStatus } from './status.svelte';
+import { serverClient } from './client';
+import { serverStatus } from './status.svelte';
 import { downloadBlob, isSqliteHeader } from '$lib/db/backup';
 
 function formatDate(): string {
@@ -11,9 +11,9 @@ function formatDate(): string {
 }
 
 export async function downloadSandboxBackup(): Promise<void> {
-	if (!sidecarStatus.has('backup')) throw new Error('Sidecar backup cap not available');
+	if (!serverStatus.has('backup')) throw new Error('Server backup cap not available');
 
-	const res = await sidecarClient.http('/api/backup/sandbox');
+	const res = await serverClient.http('/api/backup/sandbox');
 	if (!res.ok) throw new Error(`Backup download failed: ${res.status}`);
 
 	const bytes = new Uint8Array(await res.arrayBuffer());
@@ -21,12 +21,12 @@ export async function downloadSandboxBackup(): Promise<void> {
 }
 
 export async function restoreSandboxBackup(file: File): Promise<void> {
-	if (!sidecarStatus.has('backup')) throw new Error('Sidecar backup cap not available');
+	if (!serverStatus.has('backup')) throw new Error('Server backup cap not available');
 
 	const bytes = new Uint8Array(await file.arrayBuffer());
 	if (!isSqliteHeader(bytes)) throw new Error('Not a valid SQLite file');
 
-	const res = await sidecarClient.http('/api/backup/sandbox', {
+	const res = await serverClient.http('/api/backup/sandbox', {
 		method: 'PUT',
 		headers: { 'content-type': 'application/octet-stream' },
 		body: bytes

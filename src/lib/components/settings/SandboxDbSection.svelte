@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { sidecarStatus } from '$lib/sidecar/status.svelte';
-	import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/sidecar/sandbox-db';
+	import { serverStatus } from '$lib/server/status.svelte';
+	import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/server/sandbox-db';
 	import { onMount } from 'svelte';
 
 	let sql = $state("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
@@ -51,9 +51,9 @@
 	let copied = $state(false);
 
 	async function copyPath() {
-		if (!sidecarStatus.sandboxDbPath) return;
+		if (!serverStatus.sandboxDbPath) return;
 		try {
-			await navigator.clipboard.writeText(sidecarStatus.sandboxDbPath);
+			await navigator.clipboard.writeText(serverStatus.sandboxDbPath);
 			copied = true;
 			setTimeout(() => (copied = false), 1500);
 		} catch {
@@ -78,7 +78,7 @@
 		class="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs font-mono"
 	>
 		<span class="text-muted-foreground">Path:</span>
-		<span>{sidecarStatus.sandboxDbPath}</span>
+		<span>{serverStatus.sandboxDbPath}</span>
 		<button
 			class="ml-auto text-muted-foreground hover:text-foreground"
 			onclick={copyPath}

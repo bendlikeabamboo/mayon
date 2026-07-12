@@ -1,4 +1,4 @@
-import { sidecarStatus } from './status.svelte';
+import { serverStatus } from './status.svelte';
 
 function createProxyFetch(): typeof globalThis.fetch {
 	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -33,7 +33,7 @@ function createProxyFetch(): typeof globalThis.fetch {
 }
 
 export function getLlmFetch(): typeof globalThis.fetch {
-	if (sidecarStatus.has('llm-proxy')) {
+	if (serverStatus.has('llm-proxy')) {
 		return createProxyFetch();
 	}
 	return globalThis.fetch;

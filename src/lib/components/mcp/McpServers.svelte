@@ -30,7 +30,7 @@
 	import { repos } from '$lib/db';
 	import { uuid } from '$lib/db/ids';
 	import type { McpServerConfig } from '$lib/mcp/types';
-	import { sidecarStatus } from '$lib/sidecar/status.svelte';
+	import { serverStatus } from '$lib/server/status.svelte';
 
 	let servers = $state<McpServerConfig[]>([]);
 	let trustFlags = $state<Record<string, boolean>>({});
@@ -59,7 +59,7 @@
 	let draftSecretDraft = $state<Record<string, string>>({});
 
 	function isTemplateAvailable(t: McpServerTemplate): boolean {
-		if (t.transport === 'stdio') return sidecarStatus.has('stdio-mcp');
+		if (t.transport === 'stdio') return serverStatus.has('stdio-mcp');
 		return true;
 	}
 
@@ -556,7 +556,7 @@
 							: 'bg-muted/50 opacity-50 cursor-not-allowed'}"
 						onclick={() => addFromTemplate(t)}
 						disabled={!available}
-						title={!available ? 'This template requires the Mayon sidecar.' : undefined}
+						title={!available ? 'This template requires the Mayon server.' : undefined}
 					>
 						<div class="flex items-center justify-between gap-2">
 							<span class="block font-medium">{t.label}</span>
@@ -566,7 +566,7 @@
 									title={t.platforms.includes('web') && t.platforms.includes('desktop')
 										? 'Available everywhere'
 										: t.platforms.includes('desktop')
-											? 'Requires sidecar'
+											? 'Requires server'
 											: 'Web only'}
 								>
 									{#if t.platforms.includes('web') && t.platforms.includes('desktop')}
@@ -1153,8 +1153,8 @@
 										{result.error}
 										{#if result.corsBlocked}
 											<span class="block mt-1 opacity-80">
-												Run the Mayon sidecar (<code>docker compose up</code>) to route this request
-												and avoid CORS.
+												Start the Mayon server (<code>docker compose up</code>) to route this
+												request and avoid CORS.
 											</span>
 										{/if}
 									{/if}

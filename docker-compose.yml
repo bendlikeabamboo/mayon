@@ -3,12 +3,12 @@ services:
     build: .
     ports:
       - '8080:80'
-    depends_on: [sidecar]
+    depends_on: [server]
     restart: unless-stopped
-  sidecar:
+  server:
     build:
       context: .
-      dockerfile: sidecar/Dockerfile
+      dockerfile: server/Dockerfile
     expose:
       - '4319'
     volumes:

@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import fp from '@fastify/websocket';
+import { fileURLToPath } from 'node:url';
 import type { HealthResponse } from '@mayon/shared';
 import { VERSION } from './version';
 import { registerMcpBridge } from './mcp';
@@ -44,5 +45,12 @@ export function buildApp(dbPath = SANDBOX_DB_PATH) {
 export async function start() {
 	const app = buildApp();
 	await app.listen({ port: PORT, host: HOST });
-	console.log(`sidecar listening on :${PORT}`);
+	console.log(`server listening on :${PORT}`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	start().catch((err) => {
+		console.error('Failed to start server:', err);
+		process.exit(1);
+	});
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/sidecar/sandbox-db';
+import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/server/sandbox-db';
 
 function mockFetch(response: Response): typeof globalThis.fetch {
 	return vi.fn(() => Promise.resolve(response));
@@ -62,6 +62,6 @@ describe('sandbox-db client', () => {
 
 	it('throws generic error on non-JSON failure', async () => {
 		globalThis.fetch = mockFetch(new Response('internal error', { status: 500 }));
-		await expect(sandboxQuery('SELECT 1')).rejects.toThrow('sidecar DB request failed');
+		await expect(sandboxQuery('SELECT 1')).rejects.toThrow('server DB request failed');
 	});
 });

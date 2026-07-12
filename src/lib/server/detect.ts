@@ -1,6 +1,6 @@
 import type { HealthResponse } from '@mayon/shared';
 
-export async function detectSidecar(): Promise<HealthResponse | null> {
+export async function detectServer(): Promise<HealthResponse | null> {
 	try {
 		const res = await fetch('/api/health', { signal: AbortSignal.timeout(1500) });
 		if (!res.ok) return null;

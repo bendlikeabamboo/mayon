@@ -9,22 +9,22 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
-vi.mock('$lib/sidecar/status.svelte', () => ({
-	sidecarStatus: { has: vi.fn().mockReturnValue(false) }
+vi.mock('$lib/server/status.svelte', () => ({
+	serverStatus: { has: vi.fn().mockReturnValue(false) }
 }));
 
 import { createMcpTransport } from './client-factory';
 import { HttpMcpTransport } from './http';
-import { SidecarStdioMcpTransport } from './sidecar-stdio';
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { ServerStdioMcpTransport } from './server-stdio';
+import { serverStatus } from '$lib/server/status.svelte';
 
 describe('createMcpTransport', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it('throws "requires sidecar" for stdio config when sidecar not connected', () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(false);
+	it('throws "requires server" for stdio config when server not connected', () => {
+		vi.mocked(serverStatus.has).mockReturnValue(false);
 		expect(() =>
 			createMcpTransport({
 				id: 's1',
@@ -35,11 +35,11 @@ describe('createMcpTransport', () => {
 				enabled: false,
 				createdAt: Date.now()
 			})
-		).toThrow('stdio MCP servers require the Mayon sidecar');
+		).toThrow('stdio MCP servers require the Mayon server');
 	});
 
-	it('returns SidecarStdioMcpTransport for stdio config when sidecar connected', () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+	it('returns ServerStdioMcpTransport for stdio config when server connected', () => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 		const transport = createMcpTransport({
 			id: 's1',
 			name: 'Test',
@@ -49,7 +49,7 @@ describe('createMcpTransport', () => {
 			enabled: false,
 			createdAt: Date.now()
 		});
-		expect(transport).toBeInstanceOf(SidecarStdioMcpTransport);
+		expect(transport).toBeInstanceOf(ServerStdioMcpTransport);
 	});
 
 	it('returns HttpMcpTransport for http config with url', () => {

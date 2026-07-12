@@ -1,14 +1,14 @@
 import type { DbQueryResult } from '@mayon/shared';
-import { sidecarClient } from '$lib/sidecar/client';
+import { serverClient } from '$lib/server/client';
 
 async function post(body: unknown): Promise<unknown> {
-	const res = await sidecarClient.http('/api/db/query', {
+	const res = await serverClient.http('/api/db/query', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify(body)
 	});
 	if (!res.ok) {
-		const errBody = (await res.json().catch(() => ({ error: 'sidecar DB request failed' }))) as {
+		const errBody = (await res.json().catch(() => ({ error: 'server DB request failed' }))) as {
 			error: string;
 			detail?: string;
 		};

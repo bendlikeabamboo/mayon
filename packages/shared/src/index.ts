@@ -1,5 +1,5 @@
 export type {
-	SidecarCap,
+	ServerCap,
 	HealthResponse,
 	McpSpawn,
 	McpFrameKind,

@@ -1,16 +1,16 @@
 import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { serverStatus } from '$lib/server/status.svelte';
 import type { McpTransport } from './transport';
 import type { McpServerConfig } from './types';
 import { HttpMcpTransport } from './http';
-import { SidecarStdioMcpTransport } from './sidecar-stdio';
+import { ServerStdioMcpTransport } from './server-stdio';
 
 export function createMcpTransport(config: McpServerConfig): McpTransport {
 	if (config.transport === 'stdio') {
-		if (!sidecarStatus.has('stdio-mcp')) {
-			throw new Error('stdio MCP servers require the Mayon sidecar (run: docker compose up)');
+		if (!serverStatus.has('stdio-mcp')) {
+			throw new Error('stdio MCP servers require the Mayon server (run: docker compose up)');
 		}
-		return new SidecarStdioMcpTransport({ config });
+		return new ServerStdioMcpTransport({ config });
 	}
 
 	if (config.transport === 'http') {

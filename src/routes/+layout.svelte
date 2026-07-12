@@ -9,8 +9,8 @@
 	import { repos } from '$lib/db';
 	import { runSelfCheck } from '$lib/db/self-check';
 	import { bindThemePersistence, themeState, type Theme } from '$lib/stores/theme.svelte';
-	import { detectSidecar } from '$lib/sidecar/detect';
-	import { sidecarStatus } from '$lib/sidecar/status.svelte';
+	import { detectServer } from '$lib/server/detect';
+	import { serverStatus } from '$lib/server/status.svelte';
 
 	let { children } = $props();
 
@@ -29,9 +29,9 @@
 			// Error already surfaced via the dbStatus store -> DbStatus badge.
 		});
 
-	void detectSidecar().then((h) => {
-		if (h) sidecarStatus.markConnected(h);
-		else sidecarStatus.markDisconnected();
+	void detectServer().then((h) => {
+		if (h) serverStatus.markConnected(h);
+		else serverStatus.markDisconnected();
 	});
 </script>
 

@@ -3,8 +3,8 @@
 	import { repos } from '$lib/db';
 	import { createBackup, restoreBackupFromBytes } from '$lib/db/backup';
 	import { chatStore } from '$lib/stores/chat.svelte';
-	import { sidecarStatus } from '$lib/sidecar/status.svelte';
-	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/sidecar/sandbox-backup';
+	import { serverStatus } from '$lib/server/status.svelte';
+	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/server/sandbox-backup';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -150,13 +150,13 @@
 		Rebuild search index
 	</Button>
 
-	{#if sidecarStatus.has('backup')}
+	{#if serverStatus.has('backup')}
 		<hr class="border-border" />
 
 		<h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Sandbox DB</h3>
 
 		<p class="text-xs text-muted-foreground">
-			Back up the sidecar sandbox DB (MCP-tool data). This is separate from your chats, labs, and
+			Back up the server sandbox DB (MCP-tool data). This is separate from your chats, labs, and
 			quizzes above.
 		</p>
 

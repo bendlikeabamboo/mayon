@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { detectSidecar } from './detect';
+import { detectServer } from './detect';
 
 const originalFetch = globalThis.fetch;
 
@@ -8,30 +8,30 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe('detectSidecar', () => {
+describe('detectServer', () => {
 	it('returns HealthResponse on 200 with ok:true', async () => {
 		globalThis.fetch = vi
 			.fn()
 			.mockResolvedValue(
 				new Response(JSON.stringify({ ok: true, version: '0.0.1', caps: [] }), { status: 200 })
 			);
-		const result = await detectSidecar();
+		const result = await detectServer();
 		expect(result).toEqual({ ok: true, version: '0.0.1', caps: [] });
 	});
 
 	it('returns null on 500', async () => {
 		globalThis.fetch = vi.fn().mockResolvedValue(new Response('err', { status: 500 }));
-		expect(await detectSidecar()).toBeNull();
+		expect(await detectServer()).toBeNull();
 	});
 
 	it('returns null on 404', async () => {
 		globalThis.fetch = vi.fn().mockResolvedValue(new Response('not found', { status: 404 }));
-		expect(await detectSidecar()).toBeNull();
+		expect(await detectServer()).toBeNull();
 	});
 
 	it('returns null on network error', async () => {
 		globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
-		expect(await detectSidecar()).toBeNull();
+		expect(await detectServer()).toBeNull();
 	});
 
 	it('returns null on timeout', async () => {
@@ -43,7 +43,7 @@ describe('detectSidecar', () => {
 					reject(new DOMException('The operation was aborted', 'AbortError'));
 				})
 		);
-		const p = detectSidecar();
+		const p = detectServer();
 		vi.advanceTimersByTime(2000);
 		expect(await p).toBeNull();
 	});
@@ -54,7 +54,7 @@ describe('detectSidecar', () => {
 			throw new Error('unexpected sync throw');
 		});
 		try {
-			await detectSidecar();
+			await detectServer();
 		} catch (e) {
 			errors.push(e);
 		}

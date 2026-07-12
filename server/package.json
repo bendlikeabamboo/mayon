@@ -1,5 +1,5 @@
 {
-	"name": "@mayon/sidecar",
+	"name": "@mayon/server",
 	"private": true,
 	"type": "module",
 	"version": "0.0.1",

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './server';
 import type Fastify from 'fastify';
 
-describe('sidecar server', () => {
+describe('server', () => {
 	let app: Fastify.Instance;
 
 	beforeAll(async () => {

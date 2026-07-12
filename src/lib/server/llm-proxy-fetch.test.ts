@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/sidecar/status.svelte', () => ({
-	sidecarStatus: {
+vi.mock('$lib/server/status.svelte', () => ({
+	serverStatus: {
 		has: vi.fn().mockReturnValue(false),
 		connected: false,
 		caps: [],
@@ -12,8 +12,8 @@ vi.mock('$lib/sidecar/status.svelte', () => ({
 	}
 }));
 
-import { getLlmFetch } from '$lib/sidecar/llm-proxy-fetch';
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { getLlmFetch } from '$lib/server/llm-proxy-fetch';
+import { serverStatus } from '$lib/server/status.svelte';
 
 describe('getLlmFetch', () => {
 	const originalFetch = globalThis.fetch;
@@ -28,7 +28,7 @@ describe('getLlmFetch', () => {
 	});
 
 	it('returns globalThis.fetch directly when llm-proxy cap is absent', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(false);
+		vi.mocked(serverStatus.has).mockReturnValue(false);
 
 		const fetchFn = getLlmFetch();
 		expect(fetchFn).toBe(globalThis.fetch);
@@ -49,7 +49,7 @@ describe('getLlmFetch', () => {
 	});
 
 	it('proxies through /api/llm/proxy when llm-proxy cap is present', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 
 		const fakeRes = new Response('streamed', {
 			status: 200,
@@ -83,7 +83,7 @@ describe('getLlmFetch', () => {
 	});
 
 	it('handles GET requests (no body) through the proxy', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 
 		const fakeRes = new Response('[]', { status: 200 });
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
@@ -104,7 +104,7 @@ describe('getLlmFetch', () => {
 	});
 
 	it('omits body from proxy request when init.body is not a string', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 
 		const fakeRes = new Response('ok', { status: 200 });
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);

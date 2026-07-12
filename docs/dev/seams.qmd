@@ -30,15 +30,15 @@ Three concrete implementations satisfy this interface:
 |---|---|---|
 | OPFS Worker | Browser | SQLite-WASM + Origin Private File System. Runs in a Web Worker; communicates with the main thread over `postMessage`. |
 | In-memory sql.js | Tests | Ephemeral SQLite for Vitest. |
-| SidecarDriver | Browser + sidecar | Non-primary SQLite in the Docker sidecar, via `POST /api/db/query`. Satisfies the `StorageDriver` contract for sandbox/MCP use; never wired as the app's primary store. |
+| RemotePgDriver | Browser + server | Non-primary SQLite in the Docker server, via `POST /api/db/query`. Satisfies the `StorageDriver` contract for sandbox/MCP use; never wired as the app's primary store. |
 
 Drizzle, the schema, and the repository layer live on the main thread. Drivers are dumb SQL executors — the OPFS worker literally just runs SQL strings and returns row data.
 
-The sidecar SQLite uses WAL mode with `busy_timeout = 5000` for concurrency safety (the sidecar process and spawned MCP servers may open the same `/data/sandbox.sqlite` file).
+The server SQLite uses WAL mode with `busy_timeout = 5000` for concurrency safety (the server process and spawned MCP servers may open the same `/data/sandbox.sqlite` file).
 
 ## Runtime selection
 
-The app is browser-only. `bootstrapDb()` in `src/lib/db/driver/client.ts` always instantiates the OPFS worker driver. There is no runtime fork — the Tauri desktop shell has been removed. An optional sidecar is detected at boot via `detectSidecar()` and progressively enables features based on advertised capabilities, but it never replaces the primary OPFS store.
+The app is browser-only. `bootstrapDb()` in `src/lib/db/driver/client.ts` always instantiates the OPFS worker driver. There is no runtime fork — the Tauri desktop shell has been removed. An optional server is detected at boot via `detectServer()` and progressively enables features based on advertised capabilities, but it never replaces the primary OPFS store.
 
 All code above the driver layer is runtime-agnostic.
 
@@ -50,6 +50,6 @@ API keys are **never** stored in `settings`. They are stored in:
 
 - **Browser:** IndexedDB under the same origin as the app.
 
-The sidecar never persists secrets. When the browser asks the sidecar to spawn a stdio MCP server or proxy an LLM request, it resolves the secret locally and includes it in the same-origin request. Transit is same-origin over the internal docker network / localhost (no key regression vs. the browser-fetch path, which already holds the key in JS).
+The server never persists secrets. When the browser asks the server to spawn a stdio MCP server or proxy an LLM request, it resolves the secret locally and includes it in the same-origin request. Transit is same-origin over the internal docker network / localhost (no key regression vs. the browser-fetch path, which already holds the key in JS).
 
 The `ProviderConfig` type in the codebase intentionally omits any key field. The settings UI stores a key, then immediately masks the input with a "Replace key" affordance. The key is never echoed back after save.

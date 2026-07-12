@@ -11,7 +11,7 @@
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import DbStatus from './DbStatus.svelte';
-	import SidecarStatus from './SidecarStatus.svelte';
+	import ServerStatus from './ServerStatus.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
 	import { runtimeLabel } from '$lib/utils/runtime';
@@ -37,56 +37,77 @@
 </script>
 
 <aside
-	class="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200"
-	class:w-16={collapsed}
+	class="flex h-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out"
+	class:w-14={collapsed}
 	class:w-60={!collapsed}
 >
-	<div class="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
+	<div
+		class="flex h-14 items-center border-b border-sidebar-border transition-all duration-200 ease-out"
+		class:px-4={!collapsed}
+		class:px-3={collapsed}
+		class:gap-2={!collapsed}
+		class:gap-0={collapsed}
+	>
 		<div
-			class="grid size-7 shrink-0 place-items-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground font-bold"
+			class="relative z-10 grid size-7 shrink-0 place-items-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground font-bold"
 		>
 			M
 		</div>
-		{#if !collapsed}<span class="font-semibold tracking-tight">Mayon</span>{/if}
+		<span
+			class="overflow-hidden whitespace-nowrap font-semibold tracking-tight transition-all duration-200 ease-out"
+			class:max-w-0={collapsed}
+			class:opacity-0={collapsed}
+			class:-translate-x-2={collapsed}
+			class:max-w-[10rem]={!collapsed}
+			class:opacity-100={!collapsed}
+			class:translate-x-0={!collapsed}
+		>
+			Mayon
+		</span>
 	</div>
 
 	<nav class="flex flex-1 flex-col gap-1 p-2">
 		{#each nav as item (item.href)}
 			<a
 				href={item.href}
-				class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+				class="relative flex items-center rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out"
+				class:gap-3={!collapsed}
+				class:gap-0={collapsed}
 				class:bg-sidebar-accent={isActive(item.href)}
 				class:text-sidebar-accent-foreground={isActive(item.href)}
 				class:text-muted-foreground={!isActive(item.href)}
 				class:hover:bg-sidebar-accent={true}
 				class:tip={collapsed}
-				class:relative={collapsed}
 				data-tip={item.label}
 			>
-				<item.icon class="size-4 shrink-0" />
-				{#if !collapsed}{item.label}{/if}
+				<item.icon class="relative z-10 size-4 shrink-0" />
+				<span
+					class="overflow-hidden whitespace-nowrap transition-all duration-200 ease-out"
+					class:max-w-0={collapsed}
+					class:opacity-0={collapsed}
+					class:-translate-x-3={collapsed}
+					class:max-w-[12rem]={!collapsed}
+					class:opacity-100={!collapsed}
+					class:translate-x-0={!collapsed}
+				>
+					{item.label}
+				</span>
 			</a>
 		{/each}
 	</nav>
 
-	<div
-		class="flex flex-col border-t border-sidebar-border p-2 {collapsed
-			? 'items-center gap-1'
-			: 'gap-1'}"
-	>
+	<div class="flex flex-col gap-1 border-t border-sidebar-border p-2">
 		<ThemeToggle {collapsed} />
-		{#if !collapsed}
-			<span class="px-2 text-xs text-muted-foreground">{runtimeLabel(dbStatus.runtime)}</span>
-		{/if}
-		{#if !collapsed}
-			<DbStatus />
-		{:else}
-			<DbStatus collapsed />
-		{/if}
-		{#if !collapsed}
-			<SidecarStatus />
-		{:else}
-			<SidecarStatus collapsed />
-		{/if}
+		<span
+			class="overflow-hidden whitespace-nowrap px-2 text-xs text-muted-foreground transition-all duration-200 ease-out"
+			class:max-w-0={collapsed}
+			class:opacity-0={collapsed}
+			class:max-w-[12rem]={!collapsed}
+			class:opacity-100={!collapsed}
+		>
+			{runtimeLabel(dbStatus.runtime)}
+		</span>
+		<DbStatus {collapsed} />
+		<ServerStatus {collapsed} />
 	</div>
 </aside>

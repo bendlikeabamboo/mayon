@@ -1,8 +1,8 @@
-export type SidecarCap = 'stdio-mcp' | 'sandbox-db' | 'llm-proxy' | 'backup';
+export type ServerCap = 'stdio-mcp' | 'sandbox-db' | 'llm-proxy' | 'backup';
 export interface HealthResponse {
 	ok: true;
 	version: string;
-	caps: SidecarCap[];
+	caps: ServerCap[];
 	sandboxDbPath?: string;
 }
 
@@ -35,7 +35,7 @@ export interface McpSpawn {
 	cwd?: string;
 }
 /**
- * Wire protocol frame kinds for the sidecar stdio bridge.
+ * Wire protocol frame kinds for the server stdio bridge.
  *
  * Client → server: `spawn`, `stdin`, `kill`
  * Server → client: `spawned`, `stdout`, `stderr`, `exit`

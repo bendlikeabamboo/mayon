@@ -9,8 +9,8 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
-vi.mock('$lib/sidecar/status.svelte', () => ({
-	sidecarStatus: {
+vi.mock('$lib/server/status.svelte', () => ({
+	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
 		caps: ['stdio-mcp'],
@@ -20,9 +20,9 @@ vi.mock('$lib/sidecar/status.svelte', () => ({
 	}
 }));
 
-import { SidecarStdioMcpTransport } from './sidecar-stdio';
+import { ServerStdioMcpTransport } from './server-stdio';
 import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { serverStatus } from '$lib/server/status.svelte';
 import { MissingKeyError } from '$lib/ai/types';
 
 class FakeWS extends EventTarget {
@@ -57,7 +57,7 @@ function dispatch(ws: FakeWS, data: Record<string, unknown>) {
 	ws.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data) }));
 }
 
-describe('SidecarStdioMcpTransport', () => {
+describe('ServerStdioMcpTransport', () => {
 	let ws: FakeWS;
 
 	beforeEach(() => {
@@ -69,7 +69,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('start() resolves env secrets and sends spawn frame', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -95,7 +95,7 @@ describe('SidecarStdioMcpTransport', () => {
 		const store = getStore();
 		store.get.mockResolvedValueOnce(null);
 
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -104,7 +104,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('start() rejects on exit frame', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -122,19 +122,19 @@ describe('SidecarStdioMcpTransport', () => {
 		await expect(startPromise).rejects.toThrow('ENOENT');
 	});
 
-	it('start() throws when sidecar not connected', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValueOnce(false);
+	it('start() throws when server not connected', async () => {
+		vi.mocked(serverStatus.has).mockReturnValueOnce(false);
 
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
 
-		await expect(transport.start()).rejects.toThrow('stdio MCP servers require the Mayon sidecar');
+		await expect(transport.start()).rejects.toThrow('stdio MCP servers require the Mayon server');
 	});
 
 	it('request() resolves on matching stdout frame', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -167,7 +167,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('request() rejects on error response', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -198,7 +198,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('notification routing: no id -> onNotification', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -224,7 +224,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('server request: id + method -> onRequest', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -253,7 +253,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('respond() writes JSON-RPC reply to stdin', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -272,7 +272,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('callTimeoutMs expiry rejects pending request', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig({ callTimeoutMs: 100 }),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -285,7 +285,7 @@ describe('SidecarStdioMcpTransport', () => {
 	});
 
 	it('close() sends kill, closes WS, rejects remaining pending', async () => {
-		const transport = new SidecarStdioMcpTransport({
+		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),
 			wsFactory: () => ws as unknown as WebSocket
 		});
@@ -306,7 +306,7 @@ describe('SidecarStdioMcpTransport', () => {
 		await expect(pending).rejects.toThrow('transport closed');
 	});
 
-	async function completeStart(transport: SidecarStdioMcpTransport): Promise<void> {
+	async function completeStart(transport: ServerStdioMcpTransport): Promise<void> {
 		const p = transport.start();
 		await new Promise<void>((r) => setTimeout(r, 0));
 		dispatch(ws, { kind: 'spawned', serverId: 'test-server' });

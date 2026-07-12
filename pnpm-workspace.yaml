@@ -1,4 +1,4 @@
 packages:
   - '.'
-  - 'sidecar'
+  - 'server'
   - 'packages/*'

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/sidecar/status.svelte', () => ({
-	sidecarStatus: {
+vi.mock('$lib/server/status.svelte', () => ({
+	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
 		caps: ['backup'],
@@ -23,9 +23,9 @@ vi.mock('$lib/db/backup', () => ({
 		bytes[3] === 0x69
 }));
 
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { serverStatus } from '$lib/server/status.svelte';
 import { downloadBlob } from '$lib/db/backup';
-import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/sidecar/sandbox-backup';
+import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/server/sandbox-backup';
 
 describe('downloadSandboxBackup', () => {
 	const originalFetch = globalThis.fetch;
@@ -33,7 +33,7 @@ describe('downloadSandboxBackup', () => {
 	beforeEach(() => {
 		globalThis.fetch = vi.fn();
 		vi.clearAllMocks();
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 	});
 
 	afterEach(() => {
@@ -41,8 +41,8 @@ describe('downloadSandboxBackup', () => {
 	});
 
 	it('throws when backup cap is absent', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(false);
-		await expect(downloadSandboxBackup()).rejects.toThrow('Sidecar backup cap not available');
+		vi.mocked(serverStatus.has).mockReturnValue(false);
+		await expect(downloadSandboxBackup()).rejects.toThrow('Server backup cap not available');
 	});
 
 	it('downloads a backup and calls downloadBlob', async () => {
@@ -75,7 +75,7 @@ describe('restoreSandboxBackup', () => {
 	beforeEach(() => {
 		globalThis.fetch = vi.fn();
 		vi.clearAllMocks();
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 	});
 
 	afterEach(() => {
@@ -83,9 +83,9 @@ describe('restoreSandboxBackup', () => {
 	});
 
 	it('throws when backup cap is absent', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(false);
+		vi.mocked(serverStatus.has).mockReturnValue(false);
 		const file = new File([new ArrayBuffer(16)], 'test.sqlite');
-		await expect(restoreSandboxBackup(file)).rejects.toThrow('Sidecar backup cap not available');
+		await expect(restoreSandboxBackup(file)).rejects.toThrow('Server backup cap not available');
 	});
 
 	it('rejects non-SQLite file before uploading', async () => {
@@ -94,7 +94,7 @@ describe('restoreSandboxBackup', () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
-	it('PUTs valid SQLite file to sidecar', async () => {
+	it('PUTs valid SQLite file to server', async () => {
 		const buf = new Uint8Array(100);
 		buf[0] = 0x53;
 		buf[1] = 0x51;

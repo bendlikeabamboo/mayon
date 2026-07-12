@@ -17,7 +17,7 @@ telemetry.
 - **Quizzes** — MCQ, flashcard, and short-answer questions with AI grading and
   score tracking.
 - **Local-first / offline** — browser SPA (OPFS + IndexedDB). No account, no
-  server required. An optional local sidecar (`docker compose up`) unlocks
+  server required. An optional local server (`docker compose up`) unlocks
   stdio MCP tools, CORS-free LLM access, and a sandbox DB.
 - **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, Ollama, OpenRouter, and
   more; switch providers freely.

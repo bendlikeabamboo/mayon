@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/sidecar/status.svelte', () => ({
-	sidecarStatus: {
+vi.mock('$lib/server/status.svelte', () => ({
+	serverStatus: {
 		has: vi.fn().mockReturnValue(false),
 		connected: false,
 		caps: [],
@@ -20,7 +20,7 @@ import {
 	ProviderHttpError,
 	RateLimitError
 } from './types';
-import { sidecarStatus } from '$lib/sidecar/status.svelte';
+import { serverStatus } from '$lib/server/status.svelte';
 
 /** Minimal `location` shape read by `classifyFetchError`'s cross-origin check. */
 type LocationLike = { href: string; origin: string };
@@ -208,7 +208,7 @@ describe('createFetchTransport', () => {
 	});
 
 	it('routes through /api/llm/proxy when llm-proxy cap is present', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(true);
+		vi.mocked(serverStatus.has).mockReturnValue(true);
 		const transport = createFetchTransport(makeFakeStore({ p1: 'secret' }));
 
 		const fakeRes = new Response('proxied stream', {
@@ -232,7 +232,7 @@ describe('createFetchTransport', () => {
 	});
 
 	it('calls direct fetch when llm-proxy cap is absent', async () => {
-		vi.mocked(sidecarStatus.has).mockReturnValue(false);
+		vi.mocked(serverStatus.has).mockReturnValue(false);
 		const transport = createFetchTransport(makeFakeStore({ p1: 'secret' }));
 
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(cannedResponse('direct'));

@@ -16,10 +16,8 @@
 				: 'DB error'
 	);
 
-	const badgeClass = $derived(
+	const badgeColor = $derived(
 		cn(
-			'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium',
-			collapsed && 'gap-0 px-0 py-1',
 			dbStatus.status === 'initializing' && 'bg-muted text-muted-foreground',
 			dbStatus.status === 'ready' &&
 				dbStatus.selfCheck !== 'fail' &&
@@ -45,16 +43,39 @@
 		</Button>
 	</div>
 {:else}
-	<div class={badgeClass} title={dbStatus.error ?? `Database: ${dbStatus.status}`}>
-		{#if dbStatus.status === 'initializing'}
-			<Loader2 class="size-3.5 animate-spin" />
-		{:else if dbStatus.status === 'ready'}
-			<CheckCircle2 class="size-3.5" />
-		{:else}
-			<AlertCircle class="size-3.5" />
-		{/if}
-		{#if !collapsed}
-			<span>{statusLabel}</span>
-		{/if}
+	<div class="flex w-full items-center">
+		<div
+			class={cn(
+				'flex items-center rounded-md py-1 text-xs font-medium transition-all duration-200 ease-out grow justify-start px-3',
+				collapsed ? 'gap-0' : 'gap-1.5',
+				badgeColor
+			)}
+			title={dbStatus.error ?? `Database: ${dbStatus.status}`}
+		>
+			{#if dbStatus.status === 'initializing'}
+				<span class="relative z-10 grid size-4 shrink-0 place-items-center">
+					<Loader2 class="size-3.5 animate-spin" />
+				</span>
+			{:else if dbStatus.status === 'ready'}
+				<span class="relative z-10 grid size-4 shrink-0 place-items-center">
+					<CheckCircle2 class="size-3.5" />
+				</span>
+			{:else}
+				<span class="relative z-10 grid size-4 shrink-0 place-items-center">
+					<AlertCircle class="size-3.5" />
+				</span>
+			{/if}
+			<span
+				class="min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 ease-out"
+				class:max-w-0={collapsed}
+				class:opacity-0={collapsed}
+				class:-translate-x-1.5={collapsed}
+				class:max-w-60={!collapsed}
+				class:opacity-100={!collapsed}
+				class:translate-x-0={!collapsed}
+			>
+				{statusLabel}
+			</span>
+		</div>
 	</div>
 {/if}

@@ -1,4 +1,4 @@
-export class SidecarClient {
+export class ServerClient {
 	http(path: string, init?: RequestInit) {
 		return fetch(path, init);
 	}
@@ -8,4 +8,4 @@ export class SidecarClient {
 	}
 }
 
-export const sidecarClient = new SidecarClient();
+export const serverClient = new ServerClient();

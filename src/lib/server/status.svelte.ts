@@ -1,13 +1,13 @@
-import type { SidecarCap } from '@mayon/shared';
+import type { ServerCap } from '@mayon/shared';
 
-class SidecarStatusState {
+class ServerStatusState {
 	connected = $state(false);
-	caps = $state<SidecarCap[]>([]);
+	caps = $state<ServerCap[]>([]);
 	version = $state<string | null>(null);
 	error = $state<string | null>(null);
 	sandboxDbPath = $state<string | null>(null);
 
-	markConnected(h: { version: string; caps: SidecarCap[]; sandboxDbPath?: string }) {
+	markConnected(h: { version: string; caps: ServerCap[]; sandboxDbPath?: string }) {
 		this.connected = true;
 		this.caps = h.caps;
 		this.version = h.version;
@@ -23,9 +23,9 @@ class SidecarStatusState {
 		this.error = err ?? null;
 	}
 
-	has(cap: SidecarCap) {
+	has(cap: ServerCap) {
 		return this.caps.includes(cap);
 	}
 }
 
-export const sidecarStatus = new SidecarStatusState();
+export const serverStatus = new ServerStatusState();
