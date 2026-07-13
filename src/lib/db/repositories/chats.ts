@@ -94,7 +94,7 @@ export const chatsRepo = {
 		model?: string;
 	}): Promise<Chat> {
 		const db = await awaitDb();
-		const parents = await db.select().from(chats).where(eq(chats.id, opts.parentId)).all();
+		const parents = await db.select().from(chats).where(eq(chats.id, opts.parentId));
 		const parent = parents[0];
 		if (!parent) throw new Error(`Parent chat ${opts.parentId} not found`);
 		const id = uuid();
@@ -113,7 +113,7 @@ export const chatsRepo = {
 	},
 
 	async getById(id: string): Promise<Chat | null> {
-		const rows = await (await awaitDb()).select().from(chats).where(eq(chats.id, id)).all();
+		const rows = await (await awaitDb()).select().from(chats).where(eq(chats.id, id));
 		return rows[0] ?? null;
 	},
 
@@ -123,8 +123,7 @@ export const chatsRepo = {
 			.select()
 			.from(chats)
 			.where(isNull(chats.parentId))
-			.orderBy(desc(chats.updatedAt))
-			.all();
+			.orderBy(desc(chats.updatedAt));
 	},
 
 	/** Direct children of a chat (tree expansion). */
@@ -133,8 +132,7 @@ export const chatsRepo = {
 			.select()
 			.from(chats)
 			.where(eq(chats.parentId, parentId))
-			.orderBy(asc(chats.createdAt))
-			.all();
+			.orderBy(asc(chats.createdAt));
 	},
 
 	/** All descendants of a root (fast via root_id). Tree-walk primitive for P2. */
@@ -143,38 +141,27 @@ export const chatsRepo = {
 			.select()
 			.from(chats)
 			.where(eq(chats.rootId, rootId))
-			.orderBy(asc(chats.depth), asc(chats.createdAt))
-			.all();
+			.orderBy(asc(chats.depth), asc(chats.createdAt));
 	},
 
 	async updateTitle(id: string, title: string): Promise<void> {
-		await (await awaitDb())
-			.update(chats)
-			.set({ title, updatedAt: now() })
-			.where(eq(chats.id, id))
-			.run();
+		await (await awaitDb()).update(chats).set({ title, updatedAt: now() }).where(eq(chats.id, id));
 	},
 
-	/**
-	 * Set (or clear) a root's Learning Brief. Pass `null` to clear. Storing a
-	 * brief JSON-serializes it; `parseBrief` is the safe inverse. Branches never
-	 * have their own brief (they inherit the root's), so this is root-only.
-	 */
 	async updateBrief(id: string, brief: LearningBrief | null): Promise<void> {
 		const json = brief ? JSON.stringify(brief) : null;
 		await (await awaitDb())
 			.update(chats)
 			.set({ brief: json, updatedAt: now() })
-			.where(eq(chats.id, id))
-			.run();
+			.where(eq(chats.id, id));
 	},
 
 	async touch(id: string): Promise<void> {
-		await (await awaitDb()).update(chats).set({ updatedAt: now() }).where(eq(chats.id, id)).run();
+		await (await awaitDb()).update(chats).set({ updatedAt: now() }).where(eq(chats.id, id));
 	},
 
 	async delete(id: string): Promise<void> {
-		await (await awaitDb()).delete(chats).where(eq(chats.id, id)).run();
+		await (await awaitDb()).delete(chats).where(eq(chats.id, id));
 	},
 
 	async deleteSubtree(rootId: string): Promise<void> {
@@ -187,12 +174,12 @@ export const chatsRepo = {
 			{ sql: 'CREATE TEMP TABLE _delete_set(id TEXT PRIMARY KEY)' },
 			{
 				sql: `INSERT INTO _delete_set(id)
-					WITH RECURSIVE desc(id) AS (
+					WITH RECURSIVE descendants(id) AS (
 						SELECT id FROM chats WHERE id = ?
 						UNION ALL
-						SELECT c.id FROM chats c JOIN desc ON c.parent_id = desc.id
+						SELECT c.id FROM chats c JOIN descendants ON c.parent_id = descendants.id
 					)
-					SELECT id FROM desc`,
+					SELECT id FROM descendants`,
 				params: [id]
 			},
 			...cascadeStatements({ sql: 'id IN (SELECT id FROM _delete_set)' }),

@@ -38,8 +38,7 @@ export const mcpRepo = {
 		const rows = await (await awaitDb())
 			.select({ mcpConfig: chats.mcpConfig })
 			.from(chats)
-			.where(eq(chats.id, chatId))
-			.all();
+			.where(eq(chats.id, chatId));
 		const raw = rows[0]?.mcpConfig;
 		if (!raw) return null;
 		try {
@@ -55,8 +54,7 @@ export const mcpRepo = {
 		)
 			.update(chats)
 			.set({ mcpConfig: cfg ? JSON.stringify(cfg) : null, updatedAt: now() })
-			.where(eq(chats.id, chatId))
-			.run();
+			.where(eq(chats.id, chatId));
 	},
 
 	async listAttachments(chatId: string): Promise<McpAttachedResource[]> {

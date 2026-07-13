@@ -27,16 +27,15 @@
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
-		"bundle:migrations": "tsx src/lib/db/driver/bundle-migrations.ts",
 		"dev:server": "pnpm --filter @mayon/server dev",
 		"test:all": "pnpm -r --include-workspace-root test"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^4.0.1",
-		"@mayon/shared": "workspace:*",
 		"@ai-sdk/google": "^4.0.2",
 		"@ai-sdk/openai-compatible": "^3.0.2",
 		"@fontsource/newsreader": "^5.2.10",
+		"@mayon/shared": "workspace:*",
 		"@sqlite.org/sqlite-wasm": "3.53.0-build1",
 		"@sveltejs/kit": "^2.68.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -67,6 +66,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
+		"@electric-sql/pglite": "^0.5.4",
 		"@eslint/js": "^10.0.1",
 		"@internationalized/date": "^3.12.2",
 		"@lucide/svelte": "^1.23.0",
@@ -74,6 +74,7 @@
 		"@tailwindcss/vite": "^4.3.1",
 		"@types/katex": "^0.16.8",
 		"@types/node": "^26.0.1",
+		"@types/pg": "^8.20.0",
 		"@types/sql.js": "^1.4.11",
 		"drizzle-kit": "^0.31.10",
 		"eslint": "^10.5.0",

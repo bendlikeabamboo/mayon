@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { getToolDefinition, deregisterTool, toolsRun } from '$lib/agent/registry';
 import type { ToolContext } from '$lib/agent/registry';
 import type { LanguageModel } from 'ai';
@@ -72,7 +72,8 @@ function fakeCtx(): ToolContext {
 }
 
 beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
 	deregisterTool('mcp_read_resource');
 	RESOURCE_SERVERS.clear();
 });

@@ -130,10 +130,12 @@
 	/>
 
 	<div class="flex gap-2">
-		<Button variant="outline" size="sm" {disabled} onclick={handleBackup}>Download backup</Button>
-		<Button variant="outline" size="sm" {disabled} onclick={handleRestore}>
-			Restore from backup
-		</Button>
+		{#if !serverStatus.has('pg')}
+			<Button variant="outline" size="sm" {disabled} onclick={handleBackup}>Download backup</Button>
+			<Button variant="outline" size="sm" {disabled} onclick={handleRestore}>
+				Restore from backup
+			</Button>
+		{/if}
 	</div>
 
 	{#if status}

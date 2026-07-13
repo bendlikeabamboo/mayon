@@ -29,8 +29,7 @@ export const messagesRepo = {
 			.from(messages)
 			.where(eq(messages.chatId, chatId))
 			.orderBy(desc(messages.ord))
-			.limit(1)
-			.all();
+			.limit(1);
 		const nextOrd = last.length ? last[0].ord + 1 : 0;
 		return insertMessage({
 			id: uuid(),
@@ -64,8 +63,7 @@ export const messagesRepo = {
 			.select()
 			.from(messages)
 			.where(eq(messages.chatId, chatId))
-			.orderBy(asc(messages.ord))
-			.all();
+			.orderBy(asc(messages.ord));
 	},
 
 	/**
@@ -78,19 +76,19 @@ export const messagesRepo = {
 			cutoffOrd == null
 				? eq(messages.chatId, chatId)
 				: and(eq(messages.chatId, chatId), lte(messages.ord, cutoffOrd));
-		return db.select().from(messages).where(cond).orderBy(asc(messages.ord)).all();
+		return db.select().from(messages).where(cond).orderBy(asc(messages.ord));
 	},
 
 	async getById(id: string): Promise<Message | null> {
-		const rows = await (await awaitDb()).select().from(messages).where(eq(messages.id, id)).all();
+		const rows = await (await awaitDb()).select().from(messages).where(eq(messages.id, id));
 		return rows[0] ?? null;
 	},
 
 	async delete(id: string): Promise<void> {
-		await (await awaitDb()).delete(messages).where(eq(messages.id, id)).run();
+		await (await awaitDb()).delete(messages).where(eq(messages.id, id));
 	},
 
 	async deleteByChat(chatId: string): Promise<void> {
-		await (await awaitDb()).delete(messages).where(eq(messages.chatId, chatId)).run();
+		await (await awaitDb()).delete(messages).where(eq(messages.chatId, chatId));
 	}
 };

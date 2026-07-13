@@ -42,7 +42,7 @@ P-pg-3). Consequences:
 |---|---|---|
 | L1 | **Single `pg-core` schema** (`schema.ts` flipped; no dual schema). | User-locked. One source of truth; tests exercise the prod PG dialect. Dual schema was rejected (drift risk; tests can't exercise prod SQL). |
 | L2 | **Browser flips to `RemotePgDriver` as primary** in P-pg-2 (absorbs P-pg-3 driver-wiring). | Forced by L1: OPFS SQLite cannot run pg-core SQL. The epic's P-pg-2 acceptance ("repos round-trip through the browser against compose up") requires the browser to talk to PG. |
-| L3 | **PG test driver = shared testcontainer + per-test schema.** `vitest globalSetup` starts one `postgres:17-alpine` container, migrates a template; each test gets a unique schema (`CREATE SCHEMA`, `SET search_path`, migrate into it, drop on teardown). | User-locked (epic D7 Option A, minimal form). Self-contained: `pnpm test` needs only Docker (CI ubuntu-latest has it). P-pg-7 may switch to truncate-for-speed. |
+| L3 | **PG test driver = pglite (`@electric-sql/pglite`).** Each test gets a fresh in-memory Postgres 17 (compiled to WASM, runs in-process in Node/CI with no Docker). Full PG feature support — recursive CTEs, temp tables, `information_schema`, constraints. Supersedes the original testcontainers decision: pglite exercises real PG SQL without the Docker-in-CI dependency. | User-locked (epic D7 revised). Self-contained: `pnpm test` needs only Node. CI ubuntu-latest works with zero extra services. |
 | L4 | **JSON columns stay `text`-as-JSON** (`checklist`,`payload`,`value`,`brief`,`mcp_config`,`metadata`,`trace`,`reasoning`). Repos keep `JSON.stringify`/`JSON.parse` unchanged. | User-locked (epic D2 default). Minimal churn; bounds P-pg-2. A later migration can convert to `jsonb` if queryability is needed. |
 | L5 | **`createDb` switches `sqlite-proxy`→`pg-proxy`**, same 3-arg factory. Drivers feed drizzle **positional-array rows** (`{ rows: unknown[][] }`) — unchanged contract; drizzle's proxy maps positional→object via per-query `fields`/`isResponseInArrayMode` (verified in installed `drizzle-orm@0.45.2` `sqlite-proxy/session.d.ts` + `pg-proxy/session.d.ts`). **Fallback:** if pg-proxy rejects positional rows, `RemotePgDriver`/PG-test-driver zip `columns`+positional rows into named objects. | Preserves the working contract; minimizes diff. One empirical unknown, gated by the early chats round-trip test. |
 | L6 | **Server runs drizzle native `migrate()`** (`drizzle-orm/node-postgres/migrator`) against the pool at boot. `'pg'` cap gates on pool connect **+ migrations applied**. | Epic P-pg-2 step 5. Server has Node `fs`; reads `drizzle/`. The custom bundled-migrator pipeline is dead and removed. |
@@ -75,7 +75,7 @@ P-pg-3). Consequences:
 
 - **Single `pg-core` schema.** No `sqlite-core` table defs remain in `schema.ts`.
 - **Browser primary = `RemotePgDriver`** (PG over the server). OPFS is no longer primary.
-- **`pnpm test` (root) green with only Docker running** (testcontainers); `pnpm --filter @mayon/server test` green.
+- **`pnpm test` (root) green with only Node running** (pglite in-process); `pnpm --filter @mayon/server test` green.
 - **No secrets in SPA; PG port not published.**
 - **Sandbox SQLite (`/api/sandbox/query`) untouched** — still `better-sqlite3`, still optional.
 - **No full-screen "Server unreachable" UX** (P-pg-3). No `pg_dump`/`pg_restore` (P-pg-5). No FTS (P-pg-4). No OPFS→PG importer (P-pg-6). No OPFS/WASM/COEP removal (P-pg-7).
@@ -179,25 +179,21 @@ P-pg-3). Consequences:
   in `src/` or `server/`.
 
 ### T8 — PG test driver + test setup (`src/lib/db/driver/pg-test.ts`, new)
-- Add `testcontainers` to root `devDependencies`.
+- Add `@electric-sql/pglite` to root `devDependencies`.
 - `src/lib/db/driver/pg-test.ts`:
-  - `globalSetup` (vitest): start `PostgreSqlContainer` (`postgres:17-alpine`); expose
-    `TEST_DATABASE_URL` via a global/env; run drizzle `migrate()` once into `public` (template
-    sanity) — actual per-test isolation uses schemas.
-  - `createPgTestDriver(): Promise<StorageDriver>` — acquires a `pg.Client` (or pool client),
-      creates a unique schema `t<random>`, `SET search_path TO t<random>`, runs `migrate()`
-      into it, returns a `StorageDriver` whose `query`/`batch`/`exec` call the client (reuse
-      `translatePlaceholders`-style mapping or `pgQueryHandler` logic in-process). Returns
-      positional `{rows: unknown[][]}` (L5 contract). `dispose()` drops the schema + releases
-      the client. (No `snapshot`/`restore`.)
+  - `createPgTestDriver(): Promise<StorageDriver>` — creates a fresh in-memory
+      PGlite DB (`new PGlite()`), runs drizzle `migrate()` into it, returns a
+      `StorageDriver` whose `query`/`batch`/`exec` call PGlite's `query()` (which
+      returns `{ rows: object[] }` — zip into positional arrays `{columns, rows}`
+      to match the L5 contract). Returns positional `{rows: unknown[][]}` (L5
+      contract). `dispose()` is a no-op (DB is GC'd). (No `snapshot`/`restore`.)
   - `bootstrapTestDb(): Promise<Db>` — `bootstrapWithDriver(await createPgTestDriver(), 'pg')`.
-- `vite.config.ts` `test`: add `globalSetup` hook; keep `environment:'node'`.
+- `vite.config.ts` `test`: no globalSetup needed (pglite is in-process); keep
+  `environment:'node'`.
 - All ~20 test sites: `import { createMemoryDriver }` → `import { bootstrapTestDb }`;
   `beforeEach` body `bootstrapWithDriver(await createMemoryDriver())` → `bootstrapTestDb()`.
-  Add `afterEach` cleanup (dispose the schema) where a test holds the driver (or rely on
-  `bootstrapTestDb` registering disposal).
-- CI (`.github/actions/ci/action.yml`): `pnpm test` now needs Docker — ubuntu-latest has it;
-  no change required, but verify the testcontainer can reach the daemon (add a comment).
+- CI (`.github/actions/ci/action.yml`): `pnpm test` needs only Node — no Docker,
+  no PG service. No change required.
 
 ### T9 — Rewrite/remove SQLite-specific tests
 - `src/lib/db/driver/proxy.test.ts`: rewrite as `pg-proxy` seam proof — `bootstrapTestDb()`,
@@ -250,10 +246,10 @@ P-pg-3). Consequences:
 - `drizzle.config.ts`/`.env.example` already PG (P-pg-1 set `DATABASE_URL`).
 
 ### T13 — Verify
-- `pnpm install` (adds `drizzle-orm` to server, `testcontainers` to root; removes nothing
+- `pnpm install` (adds `drizzle-orm` to server, `@electric-sql/pglite` to root; removes nothing
   automatically — deleted files' imports must be gone).
 - `pnpm check` — pg-core type inference works; no `sqlite-core` refs in `src/lib/db/schema.ts`.
-- `pnpm lint && pnpm check && pnpm test` (root) — green (testcontainer PG; Docker running).
+- `pnpm lint && pnpm check && pnpm test` (root) — green (pglite in-process; no Docker needed).
 - `pnpm --filter @mayon/server test` — green (mock-pool hermetic tests from P-pg-1 still pass;
   add a migration-success/migration-failure unit test for `runPgMigrations` with a mock).
 - `docker compose build && docker compose up`:
@@ -276,7 +272,7 @@ P-pg-3). Consequences:
 
 ## Definition of Done
 
-- `pnpm lint && pnpm check && pnpm test` (root) green (testcontainer PG).
+- `pnpm lint && pnpm check && pnpm test` (root) green (pglite in-process).
 - `pnpm --filter @mayon/server test` green.
 - `docker compose up` → `'pg'` cap (pool+migrations); badge **DB ready (pg)**; self-check
   passes; chats+messages round-trip via `repos`; sandbox inspector unaffected; server-down and
@@ -299,10 +295,9 @@ P-pg-3). Consequences:
 - **`deleteBranch` raw SQL (`CREATE TEMP TABLE`, `WITH RECURSIVE`, `?`)** under PG. Mitigation:
   PG supports temp tables + recursive CTEs; `?`→`$n` via `translatePlaceholders` (L7). Verify in
   the cascade regression test (repositories.test.ts delete suite).
-- **Per-test-schema migrations slow the suite** (~20 tests × full migrate). Mitigation: acceptable
-  for P-pg-2; P-pg-7 switches to truncate-or-template-clone if >~30s.
-- **CI Docker daemon reachability for testcontainers.** Mitigation: ubuntu-latest has Docker;
-  verify in CI run; if flaky, fall back to a `postgres` service in the CI action (L3 alt).
+- **Per-test pglite migrations slow the suite** (~20 tests × full migrate). Mitigation: acceptable
+  for P-pg-2; P-pg-7 switches to truncate-or-reuse if >~30s.
+- **CI Node-only test suite.** Mitigation: pglite runs in-process with no Docker; CI needs no extra services.
 - **Leftover `sqlite_master`/`PRAGMA`/`snapshot` assertions** in tests not enumerated here.
   Mitigation: T13 grep + `pnpm test` failures surface them; rewrite to PG equivalents.
 - **`bootstrapDb` now server-coupled** breaks `pnpm dev` without the server. Mitigation: document
@@ -321,7 +316,7 @@ P-pg-3). Consequences:
 - P-pg-5: `pg_dump -Fc` download / `pg_restore` upload, app-DB backup/restore (replaces the
   suspended stub).
 - P-pg-6: OPFS→PG importer.
-- P-pg-7: testcontainer-vs-truncate strategy decision, OPFS/WASM/`sql.js`/COEP removal,
+- P-pg-7: pglite-vs-faster strategy decision (if suite grows), OPFS/WASM/`sql.js`/COEP removal,
   `sidecar-data` volume rename, full architectural doc/AGENTS gate rewrite.
 - Resolving epic D2 fully (jsonb migration) — deferred (L4 keeps `text`).
 - Sandbox DB folding into PG (separate epic, D11).

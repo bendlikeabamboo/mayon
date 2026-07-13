@@ -21,7 +21,7 @@
 
 	function breakdown(type: QuizQuestionType): { correct: number; total: number } {
 		const qs = quizzesStore.questions.filter((q) => q.type === type);
-		const correct = qs.filter((q) => quizzesStore.answers[q.id]?.isCorrect === 1).length;
+		const correct = qs.filter((q) => quizzesStore.answers[q.id]?.isCorrect === true).length;
 		return { correct, total: qs.length };
 	}
 </script>

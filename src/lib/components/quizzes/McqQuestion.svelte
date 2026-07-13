@@ -73,7 +73,7 @@
 		<Button variant="default" size="sm" onclick={() => onAnswer(localPick!)}>Submit answer</Button>
 	{/if}
 	{#if answer}
-		{#if answer.isCorrect === 1}
+		{#if answer.isCorrect === true}
 			<p class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Correct</p>
 		{:else}
 			<p class="text-xs font-medium text-red-600 dark:text-red-400">Incorrect</p>

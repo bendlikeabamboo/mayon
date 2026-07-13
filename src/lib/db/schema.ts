@@ -1,30 +1,30 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { bigint, integer, pgTable, text, boolean, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 /**
- * Mayon data model — single source of truth, mirrored 1:1 in both runtimes
- * (browser SQLite-WASM and desktop native SQLite). Spec: `refinement/architecture.md` §5.1.
+ * Mayon data model — single source of truth.
+ * Server-owned Postgres database. Spec: `refinement/architecture.md` §5.1.
  *
  * Encoding conventions (P0):
  * - IDs are text UUIDs (`crypto.randomUUID()`).
- * - Timestamps are epoch-milliseconds (`integer`), set by the app layer.
+ * - Timestamps are epoch-milliseconds (`bigint` with `mode: 'number'`, since PG
+ *   `integer` is 32-bit and cannot hold epoch-ms which exceed 2.1B). Set by the
+ *   app layer.
  * - JSON columns (`checklist`, `payload`, `value`) are stored as `text`; the app
  *   serializes/parses. Drizzle stays schema-agnostic of their inner shape.
  * - Enums (`role`, `quiz_questions.type`) are `text` constrained to a string union.
- * - Foreign keys are real (enforced by SQLite `PRAGMA foreign_keys = ON`).
+ * - Foreign keys are real (enforced by Postgres).
  */
 
 // ───────────────────────────── chats ─────────────────────────────
 // A node in the conversation tree.
-export const chats = sqliteTable('chats', {
+export const chats = pgTable('chats', {
 	id: text('id').primaryKey(),
-	parentId: text('parent_id').references((): AnySQLiteColumn => chats.id),
+	parentId: text('parent_id').references((): AnyPgColumn => chats.id),
 	rootId: text('root_id')
 		.notNull()
-		.references((): AnySQLiteColumn => chats.id),
-	branchPointMessageId: text('branch_point_message_id').references(
-		(): AnySQLiteColumn => messages.id
-	),
+		.references((): AnyPgColumn => chats.id),
+	branchPointMessageId: text('branch_point_message_id').references((): AnyPgColumn => messages.id),
 	title: text('title').notNull(),
 	depth: integer('depth').notNull(),
 	provider: text('provider'),
@@ -44,13 +44,13 @@ export const chats = sqliteTable('chats', {
 	 * chat. Nullable + additive: old rows get `NULL` and behave exactly as before.
 	 */
 	mcpConfig: text('mcp_config'),
-	createdAt: integer('created_at').notNull(),
-	updatedAt: integer('updated_at').notNull()
+	createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+	updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 });
 
 // ─────────────────────────── messages ────────────────────────────
 // Content of a single chat.
-export const messages = sqliteTable('messages', {
+export const messages = pgTable('messages', {
 	id: text('id').primaryKey(),
 	chatId: text('chat_id')
 		.notNull()
@@ -63,12 +63,12 @@ export const messages = sqliteTable('messages', {
 	toolCallId: text('tool_call_id'),
 	toolName: text('tool_name'),
 	metadata: text('metadata'),
-	createdAt: integer('created_at').notNull()
+	createdAt: bigint('created_at', { mode: 'number' }).notNull()
 });
 
 // ──────────────────────── branch_sources ─────────────────────────
 // The exact span a branch originated from (traceability).
-export const branchSources = sqliteTable('branch_sources', {
+export const branchSources = pgTable('branch_sources', {
 	id: text('id').primaryKey(),
 	sourceMessageId: text('source_message_id')
 		.notNull()
@@ -81,12 +81,12 @@ export const branchSources = sqliteTable('branch_sources', {
 		.references(() => chats.id),
 	customInstructions: text('custom_instructions'),
 	addFormats: text('add_formats'),
-	createdAt: integer('created_at').notNull()
+	createdAt: bigint('created_at', { mode: 'number' }).notNull()
 });
 
 // ────────────────────────── cross_links ──────────────────────────
 // References between otherwise separate chats.
-export const crossLinks = sqliteTable('cross_links', {
+export const crossLinks = pgTable('cross_links', {
 	id: text('id').primaryKey(),
 	fromChatId: text('from_chat_id')
 		.notNull()
@@ -95,12 +95,12 @@ export const crossLinks = sqliteTable('cross_links', {
 		.notNull()
 		.references(() => chats.id),
 	note: text('note'),
-	createdAt: integer('created_at').notNull()
+	createdAt: bigint('created_at', { mode: 'number' }).notNull()
 });
 
 // ───────────────────────────── labs ──────────────────────────────
 // Leaf artifact on a chat (does not branch).
-export const labs = sqliteTable('labs', {
+export const labs = pgTable('labs', {
 	id: text('id').primaryKey(),
 	chatId: text('chat_id')
 		.notNull()
@@ -112,22 +112,22 @@ export const labs = sqliteTable('labs', {
 		.notNull()
 		.default(sql`'[]'`),
 	model: text('model'),
-	createdAt: integer('created_at').notNull(),
-	updatedAt: integer('updated_at').notNull()
+	createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+	updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
 });
 
 // ─────────────────────────── quizzes ─────────────────────────────
-export const quizzes = sqliteTable('quizzes', {
+export const quizzes = pgTable('quizzes', {
 	id: text('id').primaryKey(),
 	chatId: text('chat_id')
 		.notNull()
 		.references(() => chats.id),
 	model: text('model'),
-	createdAt: integer('created_at').notNull()
+	createdAt: bigint('created_at', { mode: 'number' }).notNull()
 });
 
 // ──────────────────────── quiz_questions ─────────────────────────
-export const quizQuestions = sqliteTable('quiz_questions', {
+export const quizQuestions = pgTable('quiz_questions', {
 	id: text('id').primaryKey(),
 	quizId: text('quiz_id')
 		.notNull()
@@ -140,18 +140,18 @@ export const quizQuestions = sqliteTable('quiz_questions', {
 });
 
 // ──────────────────────── quiz_attempts ──────────────────────────
-export const quizAttempts = sqliteTable('quiz_attempts', {
+export const quizAttempts = pgTable('quiz_attempts', {
 	id: text('id').primaryKey(),
 	quizId: text('quiz_id')
 		.notNull()
 		.references(() => quizzes.id),
 	score: integer('score'),
-	startedAt: integer('started_at').notNull(),
-	finishedAt: integer('finished_at')
+	startedAt: bigint('started_at', { mode: 'number' }).notNull(),
+	finishedAt: bigint('finished_at', { mode: 'number' })
 });
 
 // ───────────────────────── quiz_answers ──────────────────────────
-export const quizAnswers = sqliteTable('quiz_answers', {
+export const quizAnswers = pgTable('quiz_answers', {
 	id: text('id').primaryKey(),
 	attemptId: text('attempt_id')
 		.notNull()
@@ -160,14 +160,14 @@ export const quizAnswers = sqliteTable('quiz_answers', {
 		.notNull()
 		.references(() => quizQuestions.id),
 	answer: text('answer').notNull(),
-	isCorrect: integer('is_correct'),
+	isCorrect: boolean('is_correct'),
 	aiFeedback: text('ai_feedback'),
-	gradedAt: integer('graded_at')
+	gradedAt: bigint('graded_at', { mode: 'number' })
 });
 
 // ─────────────────────── agent_traces ─────────────────────────────
 // Per-turn diagnostics emitted by the agent runtime.
-export const agentTraces = sqliteTable('agent_traces', {
+export const agentTraces = pgTable('agent_traces', {
 	id: text('id').primaryKey(),
 	chatId: text('chat_id')
 		.notNull()
@@ -179,14 +179,14 @@ export const agentTraces = sqliteTable('agent_traces', {
 	kind: text('kind').notNull().default('chat'),
 	labId: text('lab_id').references(() => labs.id, { onDelete: 'no action' }),
 	quizId: text('quiz_id').references(() => quizzes.id, { onDelete: 'no action' }),
-	createdAt: integer('created_at').notNull(),
+	createdAt: bigint('created_at', { mode: 'number' }).notNull(),
 	durationMs: integer('duration_ms'),
 	trace: text('trace').notNull()
 });
 
 // ─────────────────────────── settings ────────────────────────────
 // Key/value store; values are JSON strings. NO secrets (keys are P1).
-export const settings = sqliteTable('settings', {
+export const settings = pgTable('settings', {
 	key: text('key').primaryKey(),
 	value: text('value').notNull()
 });

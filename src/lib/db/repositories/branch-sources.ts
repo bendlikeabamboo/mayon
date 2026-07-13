@@ -36,8 +36,7 @@ export const branchSourcesRepo = {
 		const rows = await (await awaitDb())
 			.select()
 			.from(branchSources)
-			.where(eq(branchSources.branchChatId, branchChatId))
-			.all();
+			.where(eq(branchSources.branchChatId, branchChatId));
 		return rows[0] ?? null;
 	},
 
@@ -45,7 +44,6 @@ export const branchSourcesRepo = {
 		return (await awaitDb())
 			.select()
 			.from(branchSources)
-			.where(eq(branchSources.sourceMessageId, sourceMessageId))
-			.all();
+			.where(eq(branchSources.sourceMessageId, sourceMessageId));
 	}
 };

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
@@ -92,7 +92,7 @@ function mockDefaultProvider(): void {
 }
 
 beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
+	await bootstrapWithDriver((await bootstrapTestDb()).driver, 'pg');
 	mockedGetActiveSdkProvider.mockReset();
 	mockedGenerateText.mockReset();
 	mockedGenerateObject.mockReset();

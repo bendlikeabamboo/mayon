@@ -1,6 +1,13 @@
 import pg from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';
 import type { DbQueryRequest, DbQueryResponse, DbQueryResult } from '@mayon/shared';
+import * as schema from '@mayon/schema';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface PgQueryResult {
 	rows: Record<string, unknown>[];
@@ -95,6 +102,19 @@ export async function pgQueryHandler(
 
 	const res = await pool.query(translatePlaceholders(req.sql));
 	return { changes: res.rowCount ?? 0, lastInsertRowid: null };
+}
+
+export async function runPgMigrations(pool: pg.Pool, migrationsDir: string): Promise<boolean> {
+	try {
+		const db = drizzle(pool, { schema });
+		await migrate(db, { migrationsFolder: migrationsDir });
+		console.log('pg: migrations applied');
+		return true;
+	} catch (err) {
+		const detail = err instanceof Error ? err.message : String(err);
+		console.error('pg: migrations failed —', detail);
+		return false;
+	}
 }
 
 export function registerPgDb(app: FastifyInstance, pool: PgPoolLike | undefined): void {

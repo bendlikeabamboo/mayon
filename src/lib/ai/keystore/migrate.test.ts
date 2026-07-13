@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { KeyStore } from './types';
 
@@ -44,8 +44,9 @@ import { migrateLegacyKeys } from './migrate';
 describe('migrateLegacyKeys', () => {
 	beforeEach(async () => {
 		mocks.reset();
-		// Fresh in-memory DB per test (same bootstrap pattern as repositories.test.ts).
-		await bootstrapWithDriver(await createMemoryDriver());
+		// Fresh per-test PG schema via bootstrapTestDb.
+		const { driver } = await bootstrapTestDb();
+		await bootstrapWithDriver(driver, 'pg');
 		// Seed legacy rows + an unrelated key. No `keysMigrated` flag yet.
 		await repos.settings.set('providerKey:p1', 'secret-1');
 		await repos.settings.set('providerKey:p2', 'secret-2');

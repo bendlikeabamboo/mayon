@@ -22,6 +22,7 @@ WORKDIR /app
 COPY --from=build /app/deployed/node_modules ./node_modules
 COPY --from=build /app/deployed/package.json ./package.json
 COPY --from=build /app/server/dist ./dist
+COPY ./drizzle ./drizzle
 
 ENV PORT=4319
 

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { runSelfCheck } from '$lib/db/self-check';
 import { dbStatus } from '$lib/stores/db.svelte';
 
 beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
 });
 
 describe('boot-time self-check', () => {

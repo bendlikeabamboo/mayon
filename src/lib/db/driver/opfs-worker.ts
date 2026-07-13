@@ -1,10 +1,9 @@
 /// <reference lib="webworker" />
 import sqlite3InitModule, { type Database, type SqlValue } from '@sqlite.org/sqlite-wasm';
-import { checkBackup, REQUIRED_TABLES } from '$lib/db/backup';
 
 interface DriverRequest {
 	id: number;
-	op: 'query' | 'exec' | 'batch' | 'snapshot' | 'restore' | 'validate';
+	op: 'query' | 'exec' | 'batch' | 'snapshot' | 'restore';
 	sql?: string;
 	params?: unknown[];
 	stmts?: { sql: string; params?: unknown[] }[];
@@ -17,7 +16,6 @@ interface DriverResponse {
 	rows?: unknown[];
 	results?: { rows: unknown[] }[];
 	bytes?: ArrayBuffer;
-	validate?: { ok: boolean; reason?: string };
 	error?: string;
 }
 
@@ -40,8 +38,6 @@ try {
 } catch (err) {
 	reply({ id: -1, ok: false, error: err instanceof Error ? err.message : String(err) });
 }
-
-const REQUIRED_TABLES_SET = new Set(REQUIRED_TABLES);
 
 ctx.onmessage = async (e: MessageEvent<DriverRequest>) => {
 	const req = e.data;
@@ -97,9 +93,6 @@ ctx.onmessage = async (e: MessageEvent<DriverRequest>) => {
 			db = new OpfsDb!('file:mayon.sqlite?vfs=opfs');
 			db.exec('PRAGMA foreign_keys = ON');
 			reply({ id: req.id, ok: true });
-		} else if (req.op === 'validate') {
-			const result = validateBytesInWorker(new Uint8Array(req.bytes!));
-			reply({ id: req.id, ok: true, validate: result });
 		}
 	} catch (err) {
 		try {
@@ -114,69 +107,3 @@ ctx.onmessage = async (e: MessageEvent<DriverRequest>) => {
 		});
 	}
 };
-
-function validateBytesInWorker(bytes: Uint8Array): { ok: boolean; reason?: string } {
-	const header = new Uint8Array(bytes.buffer, 0, 16);
-	const headerOk =
-		header[0] === 0x53 &&
-		header[1] === 0x51 &&
-		header[2] === 0x4c &&
-		header[3] === 0x69 &&
-		header[4] === 0x74 &&
-		header[5] === 0x65 &&
-		header[6] === 0x20 &&
-		header[7] === 0x66 &&
-		header[8] === 0x6f &&
-		header[9] === 0x72 &&
-		header[10] === 0x6d &&
-		header[11] === 0x61 &&
-		header[12] === 0x74 &&
-		header[13] === 0x20 &&
-		header[14] === 0x33 &&
-		header[15] === 0x00;
-	if (!headerOk) return { ok: false, reason: 'Not a valid SQLite database.' };
-
-	const sqlite3 = sqlite3Module!;
-	const testDb = new sqlite3.oo1.DB(':memory:');
-	try {
-		testDb.exec({ sql: 'ATTACH DATABASE :mem AS backup', bind: [bytes] });
-	} catch {
-		try {
-			testDb.close();
-		} catch {
-			// ignore
-		}
-		return { ok: false, reason: 'Failed to read backup database.' };
-	}
-
-	const tablesRows = testDb.exec({
-		sql: "SELECT name FROM backup.sqlite_master WHERE type='table'",
-		rowMode: 'array',
-		returnValue: 'resultRows'
-	}) as SqlValue[][];
-	const tables = new Set(tablesRows.map((r) => String(r[0])));
-
-	for (const t of REQUIRED_TABLES_SET) {
-		if (!tables.has(t)) {
-			testDb.close();
-			return { ok: false, reason: `Backup is missing required table: ${t}.` };
-		}
-	}
-
-	let maxAppliedMillis: number | null = null;
-	try {
-		const migRows = testDb.exec({
-			sql: 'SELECT MAX(created_at) FROM backup.__drizzle_migrations',
-			rowMode: 'array',
-			returnValue: 'resultRows'
-		}) as SqlValue[][];
-		if (migRows.length > 0 && migRows[0][0] !== null) {
-			maxAppliedMillis = Number(migRows[0][0]);
-		}
-	} catch {
-		// table absent → null → treat as legacy/old
-	}
-
-	testDb.close();
-	return checkBackup({ headerOk: true, tables, maxAppliedMillis });
-}

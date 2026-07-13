@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { modelMessageSchema } from 'ai';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import { assembleContext, toCoreMessages } from './context';
 import type { ChatMessage } from '$lib/ai/types';
 import type { LearningBrief } from './brief';
 
 beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
 });
 
 /**

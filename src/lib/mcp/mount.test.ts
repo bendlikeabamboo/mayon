@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import {
 	getToolDefinitions,
 	getToolDefinition,
@@ -95,7 +95,8 @@ function fakeCtx(): ToolContext {
 }
 
 beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
 	RESOURCE_SERVERS.clear();
 	PROMPT_SERVERS.clear();
 	deregisterTool('mcp_read_resource');

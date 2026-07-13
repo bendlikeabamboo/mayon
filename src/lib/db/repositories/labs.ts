@@ -25,11 +25,9 @@ async function update(id: string, patch: Partial<typeof labs.$inferInsert>): Pro
 	)
 		.update(labs)
 		.set({ ...patch, updatedAt: now() })
-		.where(eq(labs.id, id))
-		.run();
+		.where(eq(labs.id, id));
 }
 
-/** Labs — leaf artifact on a chat (hands-on guide + checklist). */
 export const labsRepo = {
 	async create(opts: {
 		chatId: string;
@@ -57,29 +55,26 @@ export const labsRepo = {
 	},
 
 	async getById(id: string): Promise<Lab | null> {
-		const rows = await (await awaitDb()).select().from(labs).where(eq(labs.id, id)).all();
+		const rows = await (await awaitDb()).select().from(labs).where(eq(labs.id, id));
 		return rows[0] ?? null;
 	},
 
 	async listByChat(chatId: string): Promise<Lab[]> {
-		return (await awaitDb()).select().from(labs).where(eq(labs.chatId, chatId)).all();
+		return (await awaitDb()).select().from(labs).where(eq(labs.chatId, chatId));
 	},
 
-	/** All labs, newest first (the `/lab` index page groups by chat client-side). */
 	async listAll(): Promise<Lab[]> {
-		return (await awaitDb()).select().from(labs).orderBy(desc(labs.createdAt)).all();
+		return (await awaitDb()).select().from(labs).orderBy(desc(labs.createdAt));
 	},
 
 	async updateContent(id: string, content: string): Promise<void> {
 		await update(id, { content });
 	},
 
-	/** Replace the full checklist. */
 	async setChecklist(id: string, checklist: LabChecklistItem[]): Promise<void> {
 		await update(id, { checklist: JSON.stringify(checklist) });
 	},
 
-	/** Flip one checklist item's `done` flag (interactive lab runner). */
 	async toggleChecklistItem(id: string, itemId: string): Promise<LabChecklistItem[] | null> {
 		const lab = await this.getById(id);
 		if (!lab) return null;
@@ -96,7 +91,7 @@ export const labsRepo = {
 		} catch {
 			/* best-effort cascade */
 		}
-		await (await awaitDb()).delete(labs).where(eq(labs.id, id)).run();
+		await (await awaitDb()).delete(labs).where(eq(labs.id, id));
 	},
 
 	parseChecklist

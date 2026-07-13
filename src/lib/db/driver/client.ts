@@ -1,26 +1,9 @@
 import type { QueryResult, StorageDriver } from './types';
 import { createDb, type Db } from './proxy';
-import { runMigrations } from './migrator';
-import migrations from './migrations';
 import { dbStatus, type DbRuntime } from '$lib/stores/db.svelte';
 
-function opfsAvailable(): boolean {
-	return (
-		typeof navigator !== 'undefined' &&
-		'storage' in navigator &&
-		typeof navigator.storage?.getDirectory === 'function'
-	);
-}
-
-async function createDriver(): Promise<StorageDriver> {
-	if (!opfsAvailable()) {
-		throw new Error(
-			'OPFS is not available in this browser. Use a modern browser with OPFS enabled.'
-		);
-	}
-	const { createOpfsDriver } = await import('./opfs-driver');
-	return createOpfsDriver();
-}
+/** Browser primary: Postgres over the server (RemotePgDriver). */
+import { createRemotePgDriver } from './pg';
 
 let driverRef: StorageDriver | null = null;
 let dbRef: Db | null = null;
@@ -33,7 +16,7 @@ export async function bootstrapWithDriver(
 ): Promise<Db> {
 	dbStatus.status = 'initializing';
 	dbStatus.runtime = runtime;
-	await runMigrations(driver, migrations);
+	// Migrations are run server-side in P-pg-2; browser no longer runs runMigrations.
 	const db = createDb(driver);
 	driverRef = driver;
 	dbRef = db;
@@ -44,15 +27,24 @@ export async function bootstrapWithDriver(
 /**
  * Boot the data layer exactly once for the current runtime. Updates the global
  * `dbStatus` store so the UI can react. On failure, clears the cache to allow retry.
+ *
+ * In P-pg-2: flips to RemotePgDriver and gates on server 'pg' cap.
  */
-export function bootstrapDb(): Promise<Db> {
+export async function bootstrapDb(): Promise<Db> {
 	if (driverPromise) return driverPromise;
-	const runtime: DbRuntime = 'browser';
+	const runtime: DbRuntime = 'pg';
 	dbStatus.runtime = runtime;
 	dbStatus.status = 'initializing';
 	driverPromise = (async () => {
 		try {
-			const driver = await createDriver();
+			const { detectServer } = await import('$lib/server/detect');
+			const serverStatus = await detectServer();
+			if (!serverStatus || !serverStatus.caps.includes('pg')) {
+				const msg = 'Server/PG unavailable — run docker compose up';
+				dbStatus.markError(msg);
+				throw new Error(msg);
+			}
+			const driver = createRemotePgDriver();
 			return await bootstrapWithDriver(driver, runtime);
 		} catch (err) {
 			driverPromise = null;
@@ -89,6 +81,9 @@ export function getDriver(): StorageDriver {
 	return driverRef;
 }
 
+/**
+ * Reboot for backup/restore (P-pg-5 will repurpose). Migrations are server-side.
+ */
 export async function rebootstrapWith(next?: {
 	driver?: StorageDriver;
 	runtime?: DbRuntime;
@@ -106,7 +101,7 @@ export async function rebootstrapWith(next?: {
 	driverPromise = null;
 	dbRef = null;
 	if (!driverRef) throw new Error('rebootstrap called before bootstrap');
-	await runMigrations(driverRef, migrations);
+	// Migrations are server-side; skip runMigrations.
 	dbRef = createDb(driverRef);
 	dbStatus.markReady(dbStatus.runtime);
 	driverPromise = Promise.resolve(dbRef);

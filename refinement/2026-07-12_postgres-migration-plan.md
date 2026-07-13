@@ -448,17 +448,20 @@ Postgres without loss. **Highest-risk phase** — touches real user data.
 docs.
 
 **Tests:**
-- Decide PG test strategy (lock decision):
-  - **Option A (recommended):** **Testcontainers** — a real PG per test *file*
-    (not per test) via a shared container + per-test schema/truncation. Slower
-    than in-memory but exercises real PG SQL (FTS, jsonb, constraints).
-  - **Option B:** keep a fast in-memory tier (sql.js) for pure logic tests that
-    don't depend on PG semantics, plus a smaller PG integration suite.
-  - Pick A if the suite stays under ~30s; pick B if it balloons.
-- Rewrite test setup: replace `createMemoryDriver()` with a PG-backed test
-  driver (or keep memory for non-SQL unit tests).
-- The vitest config (`vite.config.ts:56`, `environment: 'node'`) stays; add
-  testcontainer lifecycle hooks.
+- Decide PG test strategy (locked — **pglite**):
+  - **Chosen (P-pg-2):** **pglite** (`@electric-sql/pglite`) — real Postgres 17
+    compiled to WASM. Runs in-process in Node/Vitest with no Docker. Full PG
+    feature support (recursive CTEs, temp tables, `information_schema`, GIN,
+    `tsvector`, etc.). Each test gets a fresh in-memory DB via
+    `PGlite.create()`. Supersedes the original testcontainers Option A.
+  - **Original Option A (testcontainers)** — superseded: required Docker in CI,
+    added startup latency, and provided no SQL fidelity advantage over pglite.
+  - **Original Option B (sql.js memory tier)** — superseded: sql.js is SQLite and
+    cannot run pg-core SQL.
+- Rewrite test setup: replace `createMemoryDriver()` with a pglite-backed test
+  driver (`bootstrapTestDb()`).
+- The vitest config (`vite.config.ts`, `environment: 'node'`) stays; no
+  testcontainer lifecycle hooks needed.
 
 **Cleanup (remove):**
 - `src/lib/db/driver/opfs-driver.ts`, `opfs-worker.ts` — OPFS gone.
@@ -544,7 +547,7 @@ docs.
 | D4 | Enums | `text` + `CHECK` for now; `CREATE TYPE` later. |
 | D5 | Timestamps | Keep epoch-ms `integer`/`bigint` for now; `timestamptz` is a separate cleanup. |
 | D6 | FTS ranking | `ts_rank_cd`; `paradedb` BM25 only if quality regresses. |
-| D7 | Test strategy | Testcontainers PG per test file (Option A); fall back to B if too slow. |
+| D7 | Test strategy | **pglite** (`@electric-sql/pglite`) — real Postgres compiled to WASM, runs in-process in Node/CI with zero Docker. Supersedes the original testcontainers recommendation (Option A): pglite exercises real PG SQL (recursive CTEs, temp tables, jsonb, constraints) without the Docker-in-CI dependency. |
 | D8 | Backup format | `pg_dump -Fc` (custom format). No zip unless bundling a manifest. |
 | D9 | Restore semantics | Drop+recreate `public` schema, then `pg_restore --no-owner --no-privileges`. |
 | D10 | Importer semantics | Replace (drop+recreate+insert) for v1; merge later if asked. |
@@ -559,7 +562,7 @@ docs.
 |---|---|---|---|
 | Importer loses/corrupts user data (P-pg-6) | Medium | **Critical** | Always pre-dump PG; dry-run mode; idempotent upserts; FK-ordered inserts; test against real legacy backups. |
 | FTS quality regression vs FTS5/bm25 (P-pg-4) | Medium | Medium | `ts_rank_cd` first; `paradedb` as fallback; keep `stripIndexNoise` parity. |
-| Test suite becomes too slow (P-pg-7) | Medium | Medium | Per-file container reuse; truncation over recreate; keep memory tier for pure-logic tests. |
+| Test suite becomes too slow | Low | Medium | pglite (in-process PG WASM) — no container startup; each test gets a fresh in-memory DB in <100ms. Truncation/DB-per-test as needed if it balloons. |
 | Latency regression hurts UX (P-pg-3) | Medium | Medium | Pooling, keep-alive, batching; server-side `assembleContext` if needed. |
 | `pg_restore` version mismatch | Low | Medium | Document "same or newer PG"; pin image tag in compose. |
 | Rename (P-pg-0) misses a reference | Low | Low | Grep sweep in P-pg-7; type-check catches most. |

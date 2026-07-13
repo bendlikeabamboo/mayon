@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import { DEFAULT_PROFILE } from '$lib/chat/brief';
 import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
 
 beforeEach(async () => {
-	// Fresh in-memory DB per test; repositories resolve the live db via getDb().
-	await bootstrapWithDriver(await createMemoryDriver());
+	// Fresh per-test PG schema via bootstrapTestDb; repositories resolve via getDb().
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
 });
 
 describe('chats repository', () => {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { McpClient } from './client';
 import type { McpNotification, McpPrompt } from './types';
 import type { McpTransport } from './transport';
@@ -60,7 +60,8 @@ class PromptFakeTransport implements McpTransport {
 }
 
 beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
 	PROMPT_SERVERS.clear();
 });
 

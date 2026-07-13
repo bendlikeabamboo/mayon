@@ -35,17 +35,17 @@ export const quizzesRepo = {
 	},
 
 	async getById(id: string): Promise<Quiz | null> {
-		const rows = await (await awaitDb()).select().from(quizzes).where(eq(quizzes.id, id)).all();
+		const rows = await (await awaitDb()).select().from(quizzes).where(eq(quizzes.id, id));
 		return rows[0] ?? null;
 	},
 
 	async listByChat(chatId: string): Promise<Quiz[]> {
-		return (await awaitDb()).select().from(quizzes).where(eq(quizzes.chatId, chatId)).all();
+		return (await awaitDb()).select().from(quizzes).where(eq(quizzes.chatId, chatId));
 	},
 
 	/** All quizzes, newest first (the `/quiz` index page groups by chat client-side). */
 	async listAll(): Promise<Quiz[]> {
-		return (await awaitDb()).select().from(quizzes).orderBy(desc(quizzes.createdAt)).all();
+		return (await awaitDb()).select().from(quizzes).orderBy(desc(quizzes.createdAt));
 	},
 
 	async delete(id: string): Promise<void> {
@@ -54,7 +54,7 @@ export const quizzesRepo = {
 		} catch {
 			/* best-effort cascade */
 		}
-		await (await awaitDb()).delete(quizzes).where(eq(quizzes.id, id)).run();
+		await (await awaitDb()).delete(quizzes).where(eq(quizzes.id, id));
 	}
 };
 
@@ -89,8 +89,7 @@ export const quizQuestionsRepo = {
 			.select()
 			.from(quizQuestions)
 			.where(eq(quizQuestions.quizId, quizId))
-			.orderBy(asc(quizQuestions.ord))
-			.all();
+			.orderBy(asc(quizQuestions.ord));
 	},
 
 	parsePayload<T = QuizPayload>(raw: string): T {

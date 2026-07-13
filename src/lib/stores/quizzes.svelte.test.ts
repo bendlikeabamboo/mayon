@@ -1,11 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { McqPayload, FlashcardPayload, ShortPayload } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
 import type { GeneratedQuiz, GradedAnswer } from '$lib/ai/generate/quiz';
 import type { LanguageModel } from 'ai';
+
+beforeEach(async () => {
+	await bootstrapWithDriver((await bootstrapTestDb()).driver, 'pg');
+	mockedGetActiveSdkProvider.mockReset();
+	mockedGenerateText.mockReset();
+	quizzesStore.list = [];
+	quizzesStore.current = null;
+	quizzesStore.questions = [];
+	quizzesStore.activeAttempt = null;
+	quizzesStore.answers = {};
+	quizzesStore.history = [];
+	quizzesStore.generating = false;
+	quizzesStore.loading = false;
+	quizzesStore.gradingQuestionId = null;
+	quizzesStore.error = null;
+});
 
 vi.mock('$lib/ai/client', () => ({
 	getActiveSdkProvider: vi.fn()
@@ -70,22 +86,6 @@ const oneShortQuiz: GeneratedQuiz = {
 const gradedCorrect: GradedAnswer = { isCorrect: true, feedback: 'good' };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
-	mockedGetActiveSdkProvider.mockReset();
-	mockedGenerateText.mockReset();
-	quizzesStore.list = [];
-	quizzesStore.current = null;
-	quizzesStore.questions = [];
-	quizzesStore.activeAttempt = null;
-	quizzesStore.answers = {};
-	quizzesStore.history = [];
-	quizzesStore.generating = false;
-	quizzesStore.loading = false;
-	quizzesStore.gradingQuestionId = null;
-	quizzesStore.error = null;
-});
 
 async function seedChat(): Promise<string> {
 	const chat = await repos.chats.createRoot({ title: 'C' });
@@ -193,7 +193,7 @@ describe('quizzesStore.startAttempt + answerMcq', () => {
 		);
 		await quizzesStore.answerMcq(mcqId, mcqPayload.answerIndex);
 		expect(quizzesStore.answers[mcqId]).toBeDefined();
-		expect(quizzesStore.answers[mcqId].isCorrect).toBe(1);
+		expect(quizzesStore.answers[mcqId].isCorrect).toBe(true);
 	});
 
 	it('auto-scores an incorrect mcq pick as wrong', async () => {
@@ -211,7 +211,7 @@ describe('quizzesStore.startAttempt + answerMcq', () => {
 		const wrongIndex = mcqPayload.answerIndex === 0 ? 1 : 0;
 		await quizzesStore.answerMcq(quizzesStore.questions[0].id, wrongIndex);
 
-		expect(quizzesStore.answers[quizzesStore.questions[0].id].isCorrect).toBe(0);
+		expect(quizzesStore.answers[quizzesStore.questions[0].id].isCorrect).toBe(false);
 		expect(quizzesStore.score).toBe(0);
 	});
 });
@@ -228,11 +228,11 @@ describe('quizzesStore.answerFlashcard', () => {
 
 		await quizzesStore.startAttempt();
 		await quizzesStore.answerFlashcard(fcId, true);
-		expect(quizzesStore.answers[fcId].isCorrect).toBe(1);
+		expect(quizzesStore.answers[fcId].isCorrect).toBe(true);
 
 		await quizzesStore.startAttempt();
 		await quizzesStore.answerFlashcard(fcId, false);
-		expect(quizzesStore.answers[fcId].isCorrect).toBe(0);
+		expect(quizzesStore.answers[fcId].isCorrect).toBe(false);
 	});
 });
 
@@ -258,12 +258,12 @@ describe('quizzesStore.answerShort', () => {
 		await quizzesStore.answerShort(shortId, 'my answer');
 
 		expect(quizzesStore.answers[shortId]).toBeDefined();
-		expect(quizzesStore.answers[shortId].isCorrect).toBe(1);
+		expect(quizzesStore.answers[shortId].isCorrect).toBe(true);
 		expect(quizzesStore.answers[shortId].aiFeedback).toBe('good');
 		const rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
 		const row = rows.find((r) => r.questionId === shortId);
 		expect(row).toBeDefined();
-		expect(row!.isCorrect).toBe(1);
+		expect(row!.isCorrect).toBe(true);
 		expect(row!.aiFeedback).toBe('good');
 	});
 
@@ -319,7 +319,7 @@ describe('quizzesStore.answerShort', () => {
 		expect(quizzesStore.answers[shortId].isCorrect).toBeNull();
 
 		await quizzesStore.regrade(shortId);
-		expect(quizzesStore.answers[shortId].isCorrect).toBe(1);
+		expect(quizzesStore.answers[shortId].isCorrect).toBe(true);
 		expect(quizzesStore.answers[shortId].aiFeedback).toBe('good');
 	});
 });
