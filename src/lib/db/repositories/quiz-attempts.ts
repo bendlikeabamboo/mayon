@@ -22,10 +22,7 @@ export const quizAttemptsRepo = {
 	},
 
 	async getById(id: string): Promise<QuizAttempt | null> {
-		const rows = await (await awaitDb())
-			.select()
-			.from(quizAttempts)
-			.where(eq(quizAttempts.id, id));
+		const rows = await (await awaitDb()).select().from(quizAttempts).where(eq(quizAttempts.id, id));
 		return rows[0] ?? null;
 	},
 

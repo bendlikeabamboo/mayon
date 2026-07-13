@@ -45,10 +45,7 @@ export const agentTracesRepo = {
 	},
 
 	async getById(id: string): Promise<AgentTrace | null> {
-		const rows = await (await awaitDb())
-			.select()
-			.from(agentTraces)
-			.where(eq(agentTraces.id, id));
+		const rows = await (await awaitDb()).select().from(agentTraces).where(eq(agentTraces.id, id));
 		return rows[0] ?? null;
 	},
 

@@ -89,7 +89,7 @@ describe('RemotePgDriver contract proof (drizzle round-trip with PG backend)', (
 
 	beforeEach(async () => {
 		intercepted = [];
-		const { db: testDb, driver } = await bootstrapTestDb();
+		const { driver } = await bootstrapTestDb();
 		testDriver = driver;
 
 		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -105,10 +105,10 @@ describe('RemotePgDriver contract proof (drizzle round-trip with PG backend)', (
 			}
 			if (body.op === 'batch') {
 				const results = await testDriver.batch(body.stmts as BatchStatement[]);
-				return new Response(
-					JSON.stringify({ results: results.map((r) => ({ rows: r.rows })) }),
-					{ status: 200, headers: { 'content-type': 'application/json' } }
-				);
+				return new Response(JSON.stringify({ results: results.map((r) => ({ rows: r.rows })) }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				});
 			}
 			if (body.op === 'exec') {
 				await testDriver.exec(body.sql as string);
@@ -127,20 +127,18 @@ describe('RemotePgDriver contract proof (drizzle round-trip with PG backend)', (
 		const dbProxy = createDb(remotePgDriver);
 		const now = Date.now();
 
-		await dbProxy
-			.insert(chats)
-			.values({
-				id: 'contract-test-1',
-				parentId: null,
-				rootId: 'contract-test-1',
-				branchPointMessageId: null,
-				title: 'Contract proof',
-				depth: 0,
-				provider: 'test',
-				model: 'test-model',
-				createdAt: now,
-				updatedAt: now
-			});
+		await dbProxy.insert(chats).values({
+			id: 'contract-test-1',
+			parentId: null,
+			rootId: 'contract-test-1',
+			branchPointMessageId: null,
+			title: 'Contract proof',
+			depth: 0,
+			provider: 'test',
+			model: 'test-model',
+			createdAt: now,
+			updatedAt: now
+		});
 
 		const result = await dbProxy.select().from(chats).where(eq(chats.id, 'contract-test-1'));
 		expect(result).toHaveLength(1);

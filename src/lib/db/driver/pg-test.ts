@@ -1,87 +1,64 @@
-import pg from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import * as schema from '../schema';
-import type { StorageDriver, QueryResult } from './types';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
+import { migrate } from 'drizzle-orm/pglite/migrator';
+import type { StorageDriver, QueryResult, BatchStatement } from './types';
 import { createDb } from './proxy';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, '../../../drizzle');
+const MIGRATIONS_DIR = path.join(__dirname, '../../../../drizzle');
 
-let pool: pg.Pool | null = null;
-
-export async function setupGlobalTestPg(): Promise<void> {
-	if (pool) return;
-	pool = new pg.Pool({
-		connectionString:
-			process.env.TEST_DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/test'
-	});
-	try {
-		await pool.connect();
-		const db = drizzle(pool, { schema });
-		await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
-		console.log('[pg-test] migrations applied (template)');
-	} catch (err) {
-		console.error('[pg-test] globalSetup failed —', err);
-		await pool.end();
-		pool = null;
-		throw err;
-	}
-}
-
-export async function teardownGlobalTestPg(): Promise<void> {
-	if (pool) {
-		await pool.end();
-		pool = null;
-	}
+/**
+ * Convert SQLite-style `?` / `?n` placeholders to PG-native `$n`.
+ * Idempotent: existing `$n` passes through untouched.
+ * Mirrors `server/src/pg.ts:translatePlaceholders` (kept in sync until P-pg-4
+ * ports the last raw-`?` caller).
+ */
+function translatePlaceholders(sql: string): string {
+	let n = 0;
+	return sql.replace(
+		/\?(\d+)?|\$(\d+)/g,
+		(match, qDigits: string | undefined, dollarDigits: string | undefined) => {
+			if (dollarDigits !== undefined) {
+				return match;
+			}
+			if (qDigits !== undefined) {
+				const num = parseInt(qDigits, 10);
+				if (num > n) n = num;
+				return `$${num}`;
+			}
+			n += 1;
+			return `$${n}`;
+		}
+	);
 }
 
 function createPgTestDriver(): StorageDriver {
-	if (!pool) throw new Error('Test PG pool not initialized. Call setupGlobalTestPg() first.');
-	const client = new pg.Client({
-		connectionString:
-			process.env.TEST_DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/test'
-	});
-	const schemaName = `t${Math.random().toString(36).slice(2)}`;
+	const client = new PGlite();
 
 	async function query<T = unknown>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
-		await client.query(`SET search_path TO "${schemaName}"`);
-		const res = await client.query(sql, params);
-		const columns = res.fields.map((f) => f.name);
-		const rows = res.rows.map((r) => res.fields.map((f) => r[f.name])) as T[][];
-		return { columns, rows: rows as T[] };
+		const res = await client.query(translatePlaceholders(sql), params);
+		const cols = (res.fields as Array<{ name: string }>).map((f) => f.name);
+		const rawRows = res.rows as Record<string, unknown>[];
+		const rows = rawRows.map((r) => cols.map((c) => r[c]));
+		return { columns: cols, rows: rows as unknown as T[] };
 	}
 
-	async function batch(stmts: Array<{ sql: string; params?: unknown[] }>): Promise<QueryResult[]> {
-		await client.query('BEGIN');
-		await client.query(`SET search_path TO "${schemaName}"`);
+	async function batch(stmts: BatchStatement[]): Promise<QueryResult[]> {
 		const results: QueryResult[] = [];
-		try {
-			for (const stmt of stmts) {
-				const res = await client.query(stmt.sql, stmt.params);
-				if (res.fields.length > 0) {
-					const columns = res.fields.map((f) => f.name);
-					const rows = res.rows.map((r: Record<string, unknown>) =>
-						res.fields.map((f) => r[f.name])
-					);
-					results.push({ columns, rows });
-				} else {
-					results.push({ columns: [], rows: [] });
-				}
-			}
-			await client.query('COMMIT');
-			return results;
-		} catch (err) {
-			await client.query('ROLLBACK');
-			throw err;
+		for (const stmt of stmts) {
+			const res = await client.query(translatePlaceholders(stmt.sql), stmt.params ?? []);
+			const cols = (res.fields as Array<{ name: string }>).map((f) => f.name);
+			const rawRows = res.rows as Record<string, unknown>[];
+			const rows = rawRows.map((r) => cols.map((c) => r[c]));
+			results.push({ columns: cols, rows });
 		}
+		return results;
 	}
 
 	async function exec(sql: string): Promise<void> {
-		await client.query(`SET search_path TO "${schemaName}"`);
-		await client.query(sql);
+		await client.exec(translatePlaceholders(sql));
 	}
 
 	return {
@@ -89,17 +66,11 @@ function createPgTestDriver(): StorageDriver {
 		batch,
 		exec,
 		async init() {
-			await client.connect();
-			await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
-			await client.query(`SET search_path TO "${schemaName}"`);
-			const db = drizzle(client, { schema });
+			const db = drizzle(client);
 			await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
 		},
 		async dispose() {
-			if (schemaName) {
-				await client.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-			}
-			await client.end();
+			await client.close();
 		}
 	};
 }

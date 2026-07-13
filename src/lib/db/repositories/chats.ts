@@ -145,10 +145,7 @@ export const chatsRepo = {
 	},
 
 	async updateTitle(id: string, title: string): Promise<void> {
-		await (await awaitDb())
-			.update(chats)
-			.set({ title, updatedAt: now() })
-			.where(eq(chats.id, id));
+		await (await awaitDb()).update(chats).set({ title, updatedAt: now() }).where(eq(chats.id, id));
 	},
 
 	async updateBrief(id: string, brief: LearningBrief | null): Promise<void> {
@@ -177,12 +174,12 @@ export const chatsRepo = {
 			{ sql: 'CREATE TEMP TABLE _delete_set(id TEXT PRIMARY KEY)' },
 			{
 				sql: `INSERT INTO _delete_set(id)
-					WITH RECURSIVE desc(id) AS (
+					WITH RECURSIVE descendants(id) AS (
 						SELECT id FROM chats WHERE id = ?
 						UNION ALL
-						SELECT c.id FROM chats c JOIN desc ON c.parent_id = desc.id
+						SELECT c.id FROM chats c JOIN descendants ON c.parent_id = descendants.id
 					)
-					SELECT id FROM desc`,
+					SELECT id FROM descendants`,
 				params: [id]
 			},
 			...cascadeStatements({ sql: 'id IN (SELECT id FROM _delete_set)' }),

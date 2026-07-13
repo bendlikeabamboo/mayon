@@ -8,7 +8,7 @@ CREATE TABLE "agent_traces" (
 	"kind" text DEFAULT 'chat' NOT NULL,
 	"lab_id" text,
 	"quiz_id" text,
-	"created_at" integer NOT NULL,
+	"created_at" bigint NOT NULL,
 	"duration_ms" integer,
 	"trace" text NOT NULL
 );
@@ -22,7 +22,7 @@ CREATE TABLE "branch_sources" (
 	"branch_chat_id" text NOT NULL,
 	"custom_instructions" text,
 	"add_formats" text,
-	"created_at" integer NOT NULL
+	"created_at" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chats" (
@@ -36,8 +36,8 @@ CREATE TABLE "chats" (
 	"model" text,
 	"brief" text,
 	"mcp_config" text,
-	"created_at" integer NOT NULL,
-	"updated_at" integer NOT NULL
+	"created_at" bigint NOT NULL,
+	"updated_at" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cross_links" (
@@ -45,7 +45,7 @@ CREATE TABLE "cross_links" (
 	"from_chat_id" text NOT NULL,
 	"to_chat_id" text NOT NULL,
 	"note" text,
-	"created_at" integer NOT NULL
+	"created_at" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "labs" (
@@ -55,8 +55,8 @@ CREATE TABLE "labs" (
 	"content" text NOT NULL,
 	"checklist" text DEFAULT '[]' NOT NULL,
 	"model" text,
-	"created_at" integer NOT NULL,
-	"updated_at" integer NOT NULL
+	"created_at" bigint NOT NULL,
+	"updated_at" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "messages" (
@@ -70,7 +70,7 @@ CREATE TABLE "messages" (
 	"tool_call_id" text,
 	"tool_name" text,
 	"metadata" text,
-	"created_at" integer NOT NULL
+	"created_at" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "quiz_answers" (
@@ -80,15 +80,15 @@ CREATE TABLE "quiz_answers" (
 	"answer" text NOT NULL,
 	"is_correct" boolean,
 	"ai_feedback" text,
-	"graded_at" integer
+	"graded_at" bigint
 );
 --> statement-breakpoint
 CREATE TABLE "quiz_attempts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"quiz_id" text NOT NULL,
 	"score" integer,
-	"started_at" integer NOT NULL,
-	"finished_at" integer
+	"started_at" bigint NOT NULL,
+	"finished_at" bigint
 );
 --> statement-breakpoint
 CREATE TABLE "quiz_questions" (
@@ -104,7 +104,7 @@ CREATE TABLE "quizzes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"chat_id" text NOT NULL,
 	"model" text,
-	"created_at" integer NOT NULL
+	"created_at" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "settings" (

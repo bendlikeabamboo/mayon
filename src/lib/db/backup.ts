@@ -20,5 +20,11 @@ export function downloadBlob(bytes: Uint8Array, filename: string) {
 }
 
 export function isSqliteHeader(bytes: Uint8Array): boolean {
-	return bytes.length >= 16 && bytes[0] === 0x53 && bytes[1] === 0x51 && bytes[2] === 0x4c && bytes[3] === 0x69;
+	return (
+		bytes.length >= 16 &&
+		bytes[0] === 0x53 &&
+		bytes[1] === 0x51 &&
+		bytes[2] === 0x4c &&
+		bytes[3] === 0x69
+	);
 }
