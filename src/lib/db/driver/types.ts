@@ -6,6 +6,7 @@
  *   - tests:   in-memory sql.js
  */
 export interface QueryResult<T = unknown> {
+	columns?: string[];
 	rows: T[];
 }
 
@@ -27,6 +28,8 @@ export interface StorageDriver {
 	restore?(bytes: Uint8Array): Promise<void>;
 	/** Release the underlying connection/worker so a fresh driver can replace it. */
 	dispose?(): Promise<void>;
+	/** One-time init (e.g. connect + create schema + run migrations). */
+	init?(): Promise<void>;
 }
 
 /** A migration as bundled at build time (mirrors drizzle's on-disk format, minus `fs`). */

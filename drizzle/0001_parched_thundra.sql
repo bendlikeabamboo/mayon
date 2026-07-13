@@ -1,1 +1,0 @@
-ALTER TABLE `chats` ADD `brief` text;

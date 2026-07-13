@@ -1,5 +1,5 @@
 export type DbStatusValue = 'initializing' | 'ready' | 'error';
-export type DbRuntime = 'browser' | 'tauri' | 'memory' | 'unknown';
+export type DbRuntime = 'browser' | 'tauri' | 'memory' | 'pg' | 'unknown';
 export type SelfCheckValue = 'pending' | 'pass' | 'fail';
 
 class DbStatusState {

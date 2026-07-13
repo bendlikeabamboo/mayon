@@ -46,12 +46,25 @@ new migration offline (no runtime `fs`).
 - **`StorageDriver`** (`src/lib/db/driver/types.ts`) is the single storage seam:
   `query` / `batch` / `exec`. Drizzle + schema + repositories live on the main thread;
   drivers are dumb SQL executors (the OPFS worker literally just runs SQL over `postMessage`).
-- **Runtime is browser-only.** OPFS SQLite + IndexedDB keys are the source of truth.
-  The optional server is detected at boot via `detectServer()` and progressively
-  enables features (stdio MCP, LLM CORS proxy, sandbox DB, backup) based on advertised
-  capabilities.
+- **Runtime is browser-only.** Postgres via the server is the primary store (P-pg-2). The optional server is detected at boot via `detectServer()` and progressively enables features (stdio MCP, LLM CORS proxy, sandbox DB, backup, PG) based on advertised capabilities.
 - **No secrets in `settings`.** Provider config holds non-secret handle fields only; API
   the browser resolves them locally and includes them in same-origin proxied requests.
+
+## Manual acceptance gates (P-pg-2)
+
+P-pg-2 flips the browser's primary driver to Postgres via the server and makes the schema,
+proxy, and migrations Postgres-native. The app is server-required for function in this phase.
+
+- **Browser + server + PG:** `docker compose up` → server logs `pg: ready` and `pg: migrations applied`; header badge reaches **DB ready (pg)**; `GET /api/health` returns `caps` including `'pg'`. Dev self-check passes (writes/reads/deletes a chats row via repos). Create a chat, append a message, and read it back — data round-trips through the browser against the PG primary.
+- **Server-down:** `docker compose stop server` → reload → badge shows **DB error** (full-screen "Server unreachable" UX is P-pg-3). `POST /api/db/query` returns 503.
+- **PG-down:** `docker compose stop db` → restart server → `'pg'` cap absent from `/api/health`; `/api/db/query` returns 503.
+- **Sandbox regression:** Settings → Sandbox DB inspector still works (`/api/sandbox/query` untouched).
+- **Migrations:** a single `drizzle/0000_*.sql` migration exists (dialect `postgresql`). The server runs drizzle's native `migrate()` at boot; migrations gate on pool connect + migrations applied (`'pg'` cap).
+- **OPFS backup suspended:** the Settings → Data UI hides "Download backup" and "Restore from backup" buttons until P-pg-5. `backup.ts` throws "Backup/restore returns in P-pg-5 (pg_dump/pg_restore)."
+- **Search stubbed:** `repos.search.search()` returns `[]`; `fts5Available()` returns `false`; `rebuildIndex()` is a no-op. (FTS port to `tsvector`/GIN/`ts_headline` is P-pg-4.)
+- **Tests:** `pnpm lint && pnpm check && pnpm test` green with testcontainers PG; `pnpm --filter @mayon/server test` green. All tests now use a per-test-schema PG driver (`bootstrapTestDb`).
+
+> The schema flip to `pg-core`, proxy flip to `pg-proxy`, server native `migrate()`, browser RemotePgDriver wiring, and testcontainer setup are covered by the automated test suites.
 
 ## Manual acceptance gates (P0)
 

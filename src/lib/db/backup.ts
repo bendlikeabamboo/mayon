@@ -1,114 +1,12 @@
-import { getDriver, rebootstrapWith } from './driver/client';
-import migrations from './driver/migrations';
+// Backup/restore suspended in P-pg-2 (RemotePgDriver has no snapshot/restore).
+// Returns in P-pg-5 (pg_dump/pg_restore).
 
-export const REQUIRED_TABLES: string[] = [
-	'chats',
-	'messages',
-	'branch_sources',
-	'cross_links',
-	'labs',
-	'quizzes',
-	'quiz_questions',
-	'quiz_attempts',
-	'quiz_answers',
-	'agent_traces',
-	'settings'
-];
-
-export function maxKnownMigrationMillis(): number {
-	return Math.max(...migrations.map((m) => m.folderMillis));
+export function createBackup(): Promise<void> {
+	throw new Error('Backup/restore returns in P-pg-5 (pg_dump/pg_restore).');
 }
 
-export interface CheckBackupInput {
-	headerOk: boolean;
-	tables: Set<string> | Iterable<string>;
-	maxAppliedMillis: number | null;
-}
-
-export interface CheckBackupResult {
-	ok: boolean;
-	reason?: string;
-}
-
-export function checkBackup(input: CheckBackupInput): CheckBackupResult {
-	if (!input.headerOk) return { ok: false, reason: 'Not a valid SQLite database.' };
-
-	const tablesSet = input.tables instanceof Set ? input.tables : new Set(input.tables);
-	for (const t of REQUIRED_TABLES) {
-		if (!tablesSet.has(t)) {
-			return { ok: false, reason: `Backup is missing required table: ${t}.` };
-		}
-	}
-
-	const maxKnown = maxKnownMigrationMillis();
-	if (input.maxAppliedMillis !== null && input.maxAppliedMillis > maxKnown) {
-		return { ok: false, reason: 'Backup is from a newer app version.' };
-	}
-
-	return { ok: true };
-}
-
-export function isSqliteHeader(bytes: Uint8Array): boolean {
-	if (bytes.length < 16) return false;
-	return (
-		bytes[0] === 0x53 &&
-		bytes[1] === 0x51 &&
-		bytes[2] === 0x4c &&
-		bytes[3] === 0x69 &&
-		bytes[4] === 0x74 &&
-		bytes[5] === 0x65 &&
-		bytes[6] === 0x20 &&
-		bytes[7] === 0x66 &&
-		bytes[8] === 0x6f &&
-		bytes[9] === 0x72 &&
-		bytes[10] === 0x6d &&
-		bytes[11] === 0x61 &&
-		bytes[12] === 0x74 &&
-		bytes[13] === 0x20 &&
-		bytes[14] === 0x33 &&
-		bytes[15] === 0x00
-	);
-}
-
-export async function validateBackupBytes(bytes: Uint8Array): Promise<CheckBackupResult> {
-	const { default: initSqlJs } = await import('sql.js');
-	const SQL = await initSqlJs();
-
-	if (!isSqliteHeader(bytes))
-		return checkBackup({ headerOk: false, tables: new Set(), maxAppliedMillis: null });
-
-	const testDb = new SQL.Database(bytes as Buffer);
-	try {
-		const masterRows = testDb.exec("SELECT name FROM sqlite_master WHERE type='table'");
-		const tables = new Set<string>();
-		if (masterRows.length > 0) {
-			for (const row of masterRows[0].values) {
-				tables.add(String(row[0]));
-			}
-		}
-
-		let maxAppliedMillis: number | null = null;
-		try {
-			const migRows = testDb.exec('SELECT MAX(created_at) FROM __drizzle_migrations');
-			if (migRows.length > 0 && migRows[0].values[0][0] !== null) {
-				maxAppliedMillis = Number(migRows[0].values[0][0]);
-			}
-		} catch {
-			// table absent → null
-		}
-
-		return checkBackup({ headerOk: true, tables, maxAppliedMillis });
-	} finally {
-		testDb.close();
-	}
-}
-
-function formatDate(): string {
-	const d = new Date();
-	const y = d.getFullYear();
-	const m = String(d.getMonth() + 1).padStart(2, '0');
-	const day = String(d.getDate()).padStart(2, '0');
-	return `${y}${m}${day}`;
+export function restoreBackupFromBytes(_bytes: Uint8Array): Promise<void> {
+	throw new Error('Backup/restore returns in P-pg-5 (pg_dump/pg_restore).');
 }
 
 export function downloadBlob(bytes: Uint8Array, filename: string) {
@@ -121,20 +19,6 @@ export function downloadBlob(bytes: Uint8Array, filename: string) {
 	URL.revokeObjectURL(url);
 }
 
-export async function createBackup(): Promise<void> {
-	const bytes = await getDriver().snapshot!();
-	downloadBlob(bytes, `mayon-${formatDate()}.sqlite`);
-}
-
-export async function restoreBackupFromBytes(bytes: Uint8Array): Promise<void> {
-	const validation = await validateBackupBytes(bytes);
-	if (!validation.ok) throw new Error(validation.reason ?? 'Invalid backup.');
-
-	const safety = await getDriver().snapshot!();
-	const ts = Date.now();
-	downloadBlob(safety, `mayon-pre-restore-${ts}.sqlite`);
-
-	await getDriver().restore!(bytes);
-	await rebootstrapWith();
-	location.reload();
+export function isSqliteHeader(bytes: Uint8Array): boolean {
+	return bytes.length >= 16 && bytes[0] === 0x53 && bytes[1] === 0x51 && bytes[2] === 0x4c && bytes[3] === 0x69;
 }

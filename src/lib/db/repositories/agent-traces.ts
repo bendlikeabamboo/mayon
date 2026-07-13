@@ -15,8 +15,7 @@ export const agentTracesRepo = {
 			.select()
 			.from(agentTraces)
 			.where(and(...conditions))
-			.orderBy(desc(agentTraces.createdAt))
-			.all();
+			.orderBy(desc(agentTraces.createdAt));
 	},
 
 	async listByLab(labId: string): Promise<AgentTrace[]> {
@@ -24,8 +23,7 @@ export const agentTracesRepo = {
 			.select()
 			.from(agentTraces)
 			.where(eq(agentTraces.labId, labId))
-			.orderBy(desc(agentTraces.createdAt))
-			.all();
+			.orderBy(desc(agentTraces.createdAt));
 	},
 
 	async listByQuiz(quizId: string): Promise<AgentTrace[]> {
@@ -33,8 +31,7 @@ export const agentTracesRepo = {
 			.select()
 			.from(agentTraces)
 			.where(eq(agentTraces.quizId, quizId))
-			.orderBy(desc(agentTraces.createdAt))
-			.all();
+			.orderBy(desc(agentTraces.createdAt));
 	},
 
 	async create(input: typeof agentTraces.$inferInsert): Promise<AgentTrace> {
@@ -51,21 +48,20 @@ export const agentTracesRepo = {
 		const rows = await (await awaitDb())
 			.select()
 			.from(agentTraces)
-			.where(eq(agentTraces.id, id))
-			.all();
+			.where(eq(agentTraces.id, id));
 		return rows[0] ?? null;
 	},
 
 	async deleteByChat(chatId: string): Promise<void> {
-		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.chatId, chatId)).run();
+		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.chatId, chatId));
 	},
 
 	async deleteByLab(labId: string): Promise<void> {
-		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.labId, labId)).run();
+		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.labId, labId));
 	},
 
 	async deleteByQuiz(quizId: string): Promise<void> {
-		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.quizId, quizId)).run();
+		await (await awaitDb()).delete(agentTraces).where(eq(agentTraces.quizId, quizId));
 	},
 
 	async deleteByRoot(rootId: string): Promise<void> {

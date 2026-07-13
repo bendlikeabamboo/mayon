@@ -40,7 +40,7 @@
 			<Markdown raw={payload.back} />
 		</div>
 		{#if answer}
-			{#if answer.isCorrect === 1}
+			{#if answer.isCorrect === true}
 				<p class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Marked: Got it</p>
 			{:else}
 				<p class="text-xs font-medium text-red-600 dark:text-red-400">Marked: Missed</p>

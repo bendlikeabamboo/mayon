@@ -15,7 +15,7 @@ import { DEFAULT_PROFILE } from '$lib/chat/brief';
  */
 export const settingsRepo = {
 	async get<T>(key: string): Promise<T | null> {
-		const rows = await (await awaitDb()).select().from(settings).where(eq(settings.key, key)).all();
+		const rows = await (await awaitDb()).select().from(settings).where(eq(settings.key, key));
 		if (rows.length === 0) return null;
 		try {
 			return JSON.parse(rows[0].value) as T;
@@ -31,16 +31,15 @@ export const settingsRepo = {
 		)
 			.insert(settings)
 			.values({ key, value: json })
-			.onConflictDoUpdate({ target: settings.key, set: { value: json } })
-			.run();
+			.onConflictDoUpdate({ target: settings.key, set: { value: json } });
 	},
 
 	async delete(key: string): Promise<void> {
-		await (await awaitDb()).delete(settings).where(eq(settings.key, key)).run();
+		await (await awaitDb()).delete(settings).where(eq(settings.key, key));
 	},
 
 	async keys(): Promise<string[]> {
-		const rows = await (await awaitDb()).select({ key: settings.key }).from(settings).all();
+		const rows = await (await awaitDb()).select({ key: settings.key }).from(settings);
 		return rows.map((r) => r.key);
 	},
 

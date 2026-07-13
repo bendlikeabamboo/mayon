@@ -78,7 +78,7 @@ class QuizzesState {
 	/** Live score: only definitely-correct answers are counted. A `null` grade
 	 *  (pending/failed short answer) is excluded. */
 	get score(): number {
-		return Object.values(this.answers).filter((a) => a.isCorrect === 1).length;
+		return Object.values(this.answers).filter((a) => a.isCorrect === true).length;
 	}
 
 	/** True once every question has a recorded answer row. */
@@ -375,7 +375,7 @@ class QuizzesState {
 			...this.answers,
 			[questionId]: {
 				...row,
-				isCorrect: grade.isCorrect ? 1 : 0,
+				isCorrect: grade.isCorrect ?? null,
 				aiFeedback: grade.aiFeedback,
 				gradedAt: Date.now()
 			}
@@ -438,7 +438,7 @@ class QuizzesState {
 				...this.answers,
 				[questionId]: {
 					...this.answers[questionId],
-					isCorrect: graded.isCorrect ? 1 : 0,
+					isCorrect: graded.isCorrect ?? null,
 					aiFeedback: graded.feedback,
 					gradedAt: Date.now()
 				}
@@ -489,7 +489,7 @@ class QuizzesState {
 		if (this.activeAttempt.finishedAt != null) return;
 		if (this.questions.length === 0) return;
 		if (Object.keys(this.answers).length !== this.questions.length) return;
-		const correctCount = Object.values(this.answers).filter((a) => a.isCorrect === 1).length;
+		const correctCount = Object.values(this.answers).filter((a) => a.isCorrect === true).length;
 		await repos.quizAttempts.finish(this.activeAttempt.id, correctCount);
 		const finishedAt = Date.now();
 		this.activeAttempt = { ...this.activeAttempt, finishedAt, score: correctCount };

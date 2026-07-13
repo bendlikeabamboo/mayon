@@ -1,13 +1,14 @@
 import Fastify from 'fastify';
 import fp from '@fastify/websocket';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import type { HealthResponse, ServerCap } from '@mayon/shared';
 import { VERSION } from './version';
 import { registerMcpBridge } from './mcp';
 import { registerLlmProxy } from './llm-proxy';
 import { createSandboxDb, registerSandboxDb } from './db';
 import { registerBackup } from './backup';
-import { createPgPool, probePg, registerPgDb } from './pg';
+import { createPgPool, probePg, registerPgDb, runPgMigrations } from './pg';
 import type { PgPoolLike } from './pg';
 
 const HOST = '0.0.0.0';
@@ -61,12 +62,19 @@ export async function start() {
 	const databaseUrl = process.env.DATABASE_URL;
 	let pgPool: PgPoolLike | undefined;
 	let pgReady = false;
+	const migrationsDir = process.env.MIGRATIONS_DIR ?? path.join(process.cwd(), 'drizzle');
 	if (databaseUrl) {
 		const pool = createPgPool(databaseUrl);
 		pgReady = await probePg(pool);
 		if (pgReady) {
 			pgPool = pool;
 			console.log('pg: ready');
+			const migrationsOk = await runPgMigrations(pool, migrationsDir);
+			pgReady = pgReady && migrationsOk;
+			if (!pgReady) {
+				await pool.end();
+				pgPool = undefined;
+			}
 		} else {
 			await pool.end();
 		}

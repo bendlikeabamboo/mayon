@@ -67,14 +67,14 @@
 
 	{#if !answer}
 		<Button size="sm" onclick={submit} disabled={!canSubmit}>Submit</Button>
-	{:else if answer.isCorrect === 1}
+	{:else if answer.isCorrect === true}
 		<div class="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm">
 			<p class="font-medium text-emerald-600 dark:text-emerald-400">Correct</p>
 			{#if answer.aiFeedback}
 				<div class="mt-1 text-foreground"><Markdown raw={answer.aiFeedback} /></div>
 			{/if}
 		</div>
-	{:else if answer.isCorrect === 0}
+	{:else if answer.isCorrect === false}
 		<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
 			<p class="font-medium text-red-600 dark:text-red-400">Incorrect</p>
 			{#if answer.aiFeedback}

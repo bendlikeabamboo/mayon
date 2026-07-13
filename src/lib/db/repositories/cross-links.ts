@@ -24,11 +24,10 @@ export const crossLinksRepo = {
 		return (await awaitDb())
 			.select()
 			.from(crossLinks)
-			.where(or(eq(crossLinks.fromChatId, chatId), eq(crossLinks.toChatId, chatId)))
-			.all();
+			.where(or(eq(crossLinks.fromChatId, chatId), eq(crossLinks.toChatId, chatId)));
 	},
 
 	async delete(id: string): Promise<void> {
-		await (await awaitDb()).delete(crossLinks).where(eq(crossLinks.id, id)).run();
+		await (await awaitDb()).delete(crossLinks).where(eq(crossLinks.id, id));
 	}
 };

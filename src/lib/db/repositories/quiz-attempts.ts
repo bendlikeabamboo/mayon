@@ -18,16 +18,14 @@ export const quizAttemptsRepo = {
 		await (await awaitDb())
 			.update(quizAttempts)
 			.set({ score, finishedAt: now() })
-			.where(eq(quizAttempts.id, id))
-			.run();
+			.where(eq(quizAttempts.id, id));
 	},
 
 	async getById(id: string): Promise<QuizAttempt | null> {
 		const rows = await (await awaitDb())
 			.select()
 			.from(quizAttempts)
-			.where(eq(quizAttempts.id, id))
-			.all();
+			.where(eq(quizAttempts.id, id));
 		return rows[0] ?? null;
 	},
 
@@ -37,8 +35,7 @@ export const quizAttemptsRepo = {
 			.select()
 			.from(quizAttempts)
 			.where(eq(quizAttempts.quizId, quizId))
-			.orderBy(desc(quizAttempts.startedAt))
-			.all();
+			.orderBy(desc(quizAttempts.startedAt));
 	}
 };
 
@@ -75,12 +72,11 @@ export const quizAnswersRepo = {
 		)
 			.update(quizAnswers)
 			.set({
-				isCorrect: opts.isCorrect == null ? null : opts.isCorrect ? 1 : 0,
+				isCorrect: opts.isCorrect == null ? null : opts.isCorrect,
 				aiFeedback: opts.aiFeedback ?? null,
 				gradedAt: now()
 			})
-			.where(eq(quizAnswers.id, id))
-			.run();
+			.where(eq(quizAnswers.id, id));
 	},
 
 	async listByAttempt(attemptId: string): Promise<QuizAnswer[]> {
@@ -88,7 +84,6 @@ export const quizAnswersRepo = {
 			.select()
 			.from(quizAnswers)
 			.where(eq(quizAnswers.attemptId, attemptId))
-			.orderBy(asc(quizAnswers.id))
-			.all();
+			.orderBy(asc(quizAnswers.id));
 	}
 };

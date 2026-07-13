@@ -8,7 +8,11 @@
 		"verbatimModuleSyntax": true,
 		"types": ["node"],
 		"lib": ["ES2022"],
-		"composite": true
+		"composite": true,
+		"baseUrl": ".",
+		"paths": {
+			"@mayon/schema": ["../src/lib/db/schema.ts"]
+		}
 	},
 	"include": ["src"],
 	"references": [{ "path": "../packages/shared" }]

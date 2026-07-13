@@ -1,10 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { GeneratedLabSchema, type GeneratedLab } from '$lib/ai/generate/lab';
+
+beforeEach(async () => {
+	await bootstrapWithDriver((await bootstrapTestDb()).driver, 'pg');
+	mockedGetActiveSdkProvider.mockReset();
+	mockedGenerateText.mockReset();
+	labsStore.list = [];
+	labsStore.current = null;
+	labsStore.error = null;
+	labsStore.rawOffer = null;
+	labsStore.generating = false;
+});
 
 vi.mock('$lib/ai/client', () => ({
 	getActiveSdkProvider: vi.fn()
@@ -53,17 +64,6 @@ const validLab: GeneratedLab = GeneratedLabSchema.parse({
 	intro: 'intro',
 	steps: ['step one'],
 	checklist: [{ text: 'done criterion' }]
-});
-
-beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
-	mockedGetActiveSdkProvider.mockReset();
-	mockedGenerateText.mockReset();
-	labsStore.list = [];
-	labsStore.current = null;
-	labsStore.error = null;
-	labsStore.rawOffer = null;
-	labsStore.generating = false;
 });
 
 async function seedChat(): Promise<string> {

@@ -1,11 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { createMemoryDriver } from '$lib/db/driver/memory';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { McqPayload, FlashcardPayload, ShortPayload } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
 import type { GeneratedQuiz, GradedAnswer } from '$lib/ai/generate/quiz';
 import type { LanguageModel } from 'ai';
+
+beforeEach(async () => {
+	await bootstrapWithDriver((await bootstrapTestDb()).driver, 'pg');
+	mockedGetActiveSdkProvider.mockReset();
+	mockedGenerateText.mockReset();
+	quizzesStore.list = [];
+	quizzesStore.current = null;
+	quizzesStore.questions = [];
+	quizzesStore.activeAttempt = null;
+	quizzesStore.answers = {};
+	quizzesStore.history = [];
+	quizzesStore.generating = false;
+	quizzesStore.loading = false;
+	quizzesStore.gradingQuestionId = null;
+	quizzesStore.error = null;
+});
 
 vi.mock('$lib/ai/client', () => ({
 	getActiveSdkProvider: vi.fn()
@@ -70,22 +86,6 @@ const oneShortQuiz: GeneratedQuiz = {
 const gradedCorrect: GradedAnswer = { isCorrect: true, feedback: 'good' };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-beforeEach(async () => {
-	await bootstrapWithDriver(await createMemoryDriver());
-	mockedGetActiveSdkProvider.mockReset();
-	mockedGenerateText.mockReset();
-	quizzesStore.list = [];
-	quizzesStore.current = null;
-	quizzesStore.questions = [];
-	quizzesStore.activeAttempt = null;
-	quizzesStore.answers = {};
-	quizzesStore.history = [];
-	quizzesStore.generating = false;
-	quizzesStore.loading = false;
-	quizzesStore.gradingQuestionId = null;
-	quizzesStore.error = null;
-});
 
 async function seedChat(): Promise<string> {
 	const chat = await repos.chats.createRoot({ title: 'C' });

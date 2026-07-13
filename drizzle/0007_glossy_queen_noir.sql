@@ -1,1 +1,0 @@
-ALTER TABLE `chats` ADD `mcp_config` text;
