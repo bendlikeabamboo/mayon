@@ -10,6 +10,8 @@ COPY server/package.json server/
 RUN pnpm install --frozen-lockfile --filter @mayon/server...
 
 COPY packages/shared packages/shared
+# Required by server/tsconfig.json path alias "@mayon/schema" -> "../src/lib/db/schema.ts"
+COPY src/lib/db/schema.ts src/lib/db/schema.ts
 COPY server server
 RUN pnpm --filter @mayon/server build
 
