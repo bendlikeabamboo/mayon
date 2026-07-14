@@ -10,10 +10,7 @@ let dbRef: Db | null = null;
 let driverPromise: Promise<Db> | null = null;
 
 /** Core boot: run migrations over an injected driver and build the drizzle instance. */
-export async function bootstrapWithDriver(
-	driver: StorageDriver,
-	runtime: DbRuntime = 'memory'
-): Promise<Db> {
+export async function bootstrapWithDriver(driver: StorageDriver, runtime: DbRuntime): Promise<Db> {
 	dbStatus.status = 'initializing';
 	dbStatus.runtime = runtime;
 	// Migrations are run server-side in P-pg-2; browser no longer runs runMigrations.

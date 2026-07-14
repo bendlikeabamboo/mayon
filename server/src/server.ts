@@ -10,6 +10,7 @@ import { createSandboxDb, registerSandboxDb } from './db';
 import { registerBackup } from './backup';
 import { createPgPool, probePg, registerPgDb, runPgMigrations } from './pg';
 import { registerPgBackup } from './pg-backup';
+import { registerPgImport } from './pg-import';
 import { runFtsBootstrap } from './fts';
 import type { PgPoolLike } from './pg';
 
@@ -24,6 +25,7 @@ export interface BuildAppOptions {
 	pgPool?: PgPoolLike;
 	pgReady?: boolean;
 	databaseUrl?: string;
+	safetyDir?: string;
 }
 
 export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
@@ -60,6 +62,11 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 
 		registerPgDb(fastify, opts.pgPool);
 		registerPgBackup(fastify, { pool: opts.pgPool, databaseUrl: opts.databaseUrl ?? '' });
+		registerPgImport(fastify, {
+			pool: opts.pgPool,
+			databaseUrl: opts.databaseUrl ?? '',
+			safetyDir: opts.safetyDir
+		});
 
 		fastify.addHook('onClose', async () => {
 			await opts.pgPool?.end();

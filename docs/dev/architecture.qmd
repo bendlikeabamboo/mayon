@@ -13,16 +13,16 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 - Chat with an AI about a topic. When a response is too dense, **highlight a span** and **branch** a new conversation rooted in that excerpt — the child inherits the excerpt plus the full history up to that point.
 - Every branch is a node in a **navigable tree** (sidebar tree + breadcrumb path to root) with optional **cross-links** between otherwise separate chats.
 - From any chat, generate AI **labs** (hands-on guide + progress checklist) and **quizzes** (mixed MCQ / flashcard / AI-graded short answer). Both are **leaf artifacts** on a chat (they do not branch).
-- Personal, single-user, offline. Ships as a browser SPA; an optional local server container unlocks browser-impossible capabilities.
+- Personal, single-user. Ships as a browser SPA that connects to a local Mayon server container with Postgres.
 
 ## Locked decisions
 
 | Area | Decision |
 |---|---|
-| Form factor | SvelteKit static SPA + optional Docker server |
+| Form factor | SvelteKit static SPA + required Docker server |
 | Framework | SvelteKit, Svelte 5 (runes), SPA via `adapter-static` |
 | UI | Tailwind v4 + shadcn-svelte (bits-ui), lucide icons |
-| Database | SQLite — WASM+OPFS (browser); drizzle-kit schema; server sandbox SQLite (optional) |
+| Database | Postgres via server; drizzle-kit schema; pglite for tests |
 | AI | Provider-agnostic adapters (OpenAI/Anthropic/Gemini/Ollama), streaming |
 | Branch context | Excerpt + full history up to the fork point |
 | Branch storage | **Reference-based** — child reads ancestor messages up to a fork-point cutoff (no duplication) |
@@ -33,11 +33,11 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 ### Key tradeoffs
 
 - **Reference-based branching:** single source of truth, light storage; the accepted cost is that a pre-branch edit in a parent propagates to descendants. If immutability is ever needed, add a content-hash/version column later (no schema break).
-- **Browser-direct, server-proxy optional:** keys stay in IndexedDB and the browser resolves them into request headers. CORS-blocked providers (e.g. Anthropic) stream through the server's CORS proxy when the server is connected; otherwise a clear "run the server" fallback is shown.
+- **Server-required:** the app connects to a local Mayon server container for its primary Postgres store. CORS-blocked providers (e.g. Anthropic) stream through the server's CORS proxy; a clear "run the server" message is shown when the server is unreachable.
 
 ## System architecture
 
-One codebase, browser-only runtime. Application logic is framework-agnostic; the bottom **drivers** swap via interfaces. An optional server container extends capabilities the browser cannot provide.
+One codebase. A SvelteKit SPA connects to a local server container that provides Postgres, MCP tooling, LLM proxying, and backup.
 
 ```
 ┌───────────────────────────────────────────────────────────┐
@@ -50,26 +50,22 @@ One codebase, browser-only runtime. Application logic is framework-agnostic; the
 │  lib/chat    tree ops · branch-from-highlight · crosslinks │
 │  lib/db      schema · migrations · repositories           │
 ├───────────────────────────────────────────────────────────┤
-│  Browser runtime                                           │
-│  • SQLite-WASM + OPFS (primary store)                     │
-│  • LLM via streaming fetch (or server CORS proxy)        │
+│  Postgres (server, primary store)                          │
+│  • RemotePgDriver: browser → POST /api/db/query           │
+│  • Sandbox SQLite: MCP tools only, not app data           │
+│  • LLM CORS proxy · MCP stdio bridge                       │
 │  • key in IndexedDB                                        │
 └───────────────────────────────────────────────────────────┘
         StorageDriver interface            ProviderTransport interface
-
-Server (optional, Docker):
-│ • Sandbox SQLite (WAL) via POST /api/db/query
-│ • LLM CORS proxy · MCP stdio bridge
-│ • Non-primary; never holds app data
 ```
 
 One seam makes storage swappable:
 
-- **`StorageDriver`** — same SQL schema and repository code over a WASM SQLite (browser), in-memory (tests), or the server sandbox SQLite.
+- **`StorageDriver`** — same SQL schema and repository code over Postgres via RemotePgDriver (browser → server), pglite (tests), or the server sandbox SQLite (MCP tools).
 
 ## UI stack
 
-- **SvelteKit** in SPA/static mode (no SSR for a local app) — instant loads.
+- **SvelteKit** in SPA/static mode (no SSR) — instant loads.
 - **Svelte 5 runes** (`$state` / `$derived`) — minimal re-renders, ideal for streaming.
 - **Tailwind v4** + **shadcn-svelte** (on **bits-ui**) — accessible, modern components.
 - **lucide-svelte** icons; **marked** + **DOMPurify** for markdown; **KaTeX** (math) and **shiki** (code) optional.
@@ -78,7 +74,7 @@ One seam makes storage swappable:
 
 ## Database
 
-SQLite everywhere. Schema + migrations via **drizzle-kit**; queries through a typed **repository layer** over the `StorageDriver`. IDs are text UUIDs; timestamps are epoch-ms integers.
+Postgres is the primary store. Schema + migrations via **drizzle-kit**; queries through a typed **repository layer** over the `StorageDriver`. IDs are text UUIDs; timestamps are epoch-ms integers.
 
 ### Tables
 
@@ -255,7 +251,7 @@ The fork's **excerpt** is injected as a branching seed (a system note) so the ch
 
 ## Performance posture
 
-Local SQLite reads are instant. Token streaming provides perceived-instant responses. The static SPA has no server round-trips. Optimistic UI is used everywhere. WASM database queries run in a Web Worker to keep them off the UI thread where latency would be observable.
+Token streaming provides perceived-instant responses. Optimistic UI is used everywhere. Database queries go to Postgres via the server over a local network connection.
 
 ## Project structure
 

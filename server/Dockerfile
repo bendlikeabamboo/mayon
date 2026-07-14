@@ -15,7 +15,7 @@ COPY src/lib/db/schema.ts src/lib/db/schema.ts
 COPY server server
 RUN pnpm --filter @mayon/server build
 
-RUN pnpm deploy --filter=@mayon/server --prod /app/deployed
+RUN pnpm deploy --filter=@mayon/server --prod --legacy /app/deployed
 
 FROM node:22-alpine
 

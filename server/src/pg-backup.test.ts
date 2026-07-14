@@ -69,6 +69,7 @@ function mockChild(opts: { exitCode?: number; stdoutData?: Buffer } = {}) {
 function makeMockPool() {
 	return {
 		query: vi.fn(),
+		connect: vi.fn().mockResolvedValue({ query: vi.fn(), release: vi.fn() }),
 		end: vi.fn().mockResolvedValue(undefined)
 	};
 }

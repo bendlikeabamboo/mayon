@@ -1,5 +1,5 @@
 export type DbStatusValue = 'initializing' | 'ready' | 'error';
-export type DbRuntime = 'browser' | 'tauri' | 'memory' | 'pg' | 'unknown';
+export type DbRuntime = 'pg' | 'unknown';
 export type SelfCheckValue = 'pending' | 'pass' | 'fail';
 export type DbErrorReason = 'server-unreachable' | 'generic';
 

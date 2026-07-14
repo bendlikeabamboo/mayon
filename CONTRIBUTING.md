@@ -6,21 +6,11 @@ Thank you for your interest in contributing! This guide covers the essentials fo
 
 ### Prerequisites
 
-| Tool            | Version | Notes                                      |
-| --------------- | ------- | ------------------------------------------ |
-| Node            | 22      | `.nvmrc` — use `nvm use`                   |
-| pnpm            | 10      | `packageManager` field in `package.json`   |
-| Rust            | 1.95    | `rust-toolchain.toml` — desktop shell only |
-| GTK/WebKit libs | —       | Linux only (see below)                     |
-
-On Linux (Debian/Ubuntu) you also need the Tauri system dependencies:
-
-```bash
-sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config
-```
-
-macOS and Windows need only their standard toolchains.
+| Tool   | Version | Notes                                    |
+| ------ | ------- | ---------------------------------------- |
+| Node   | 22      | `.nvmrc` — use `nvm use`                 |
+| pnpm   | 10      | `packageManager` field in `package.json` |
+| Docker | —       | Required to run Postgres + server        |
 
 ### Install
 
@@ -30,18 +20,18 @@ pnpm install
 
 ### Development Commands
 
-| Command                  | Description                                              |
-| ------------------------ | -------------------------------------------------------- |
-| `pnpm dev`               | SvelteKit SPA dev server at http://localhost:5173        |
-| `pnpm tauri:dev`         | Desktop shell (boots dev server internally)              |
-| `pnpm test`              | Vitest suite (in-memory SQLite driver)                   |
-| `pnpm test:watch`        | Vitest in watch mode                                     |
-| `pnpm check`             | `svelte-check` type-checking                             |
-| `pnpm lint`              | ESLint + Prettier check                                  |
-| `pnpm format`            | Prettier write                                           |
-| `pnpm build`             | Production SPA build into `build/`                       |
-| `pnpm db:generate`       | Generate drizzle migration from schema                   |
-| `pnpm bundle:migrations` | Bundle migrations into `src/lib/db/driver/migrations.ts` |
+| Command             | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| `pnpm dev`          | SvelteKit SPA dev server at http://localhost:5173       |
+| `pnpm dev:deps`     | Start Postgres + server in Docker (deps for `pnpm dev`) |
+| `docker compose up` | Full stack: web SPA + server + Postgres (web on :8080)  |
+| `pnpm test`         | Vitest suite (pglite Postgres test driver)              |
+| `pnpm test:watch`   | Vitest in watch mode                                    |
+| `pnpm check`        | `svelte-check` type-checking                            |
+| `pnpm lint`         | ESLint + Prettier check                                 |
+| `pnpm format`       | Prettier write                                          |
+| `pnpm build`        | Production SPA build into `build/`                      |
+| `pnpm db:generate`  | Generate drizzle migration from schema                  |
 
 ## Code Style
 
@@ -69,7 +59,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 feat: add Ollama provider template
-fix: resolve OPFS initialization race on Firefox
+fix: resolve race condition in database initialization
 docs: update CONTRIBUTING with new prerequisites
 refactor: extract StorageDriver seam from db module
 test: add streaming adapter unit tests
@@ -84,13 +74,13 @@ Before submitting a PR, ensure:
 - [ ] `pnpm check` passes with no type errors
 - [ ] `pnpm test` passes (all tests green)
 - [ ] `pnpm build` succeeds
-- [ ] If you changed `src/lib/db/schema.ts`: you ran `pnpm db:generate` and `pnpm bundle:migrations` and committed the results
+- [ ] If you changed `src/lib/db/schema.ts`: you ran `pnpm db:generate` and committed the results
 - [ ] No secrets, API keys, or credentials are committed
 - [ ] Commit messages follow Conventional Commits
 
 ## Testing
 
-The test suite runs against an in-memory SQLite driver via Vitest:
+The test suite runs against a pglite (Postgres-compatible) test driver via Vitest:
 
 ```bash
 pnpm test          # run once

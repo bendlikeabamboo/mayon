@@ -1,9 +1,9 @@
 /**
  * The single storage seam. Drizzle + schema + repositories live on the main thread;
- * drivers are dumb SQL executors (the OPFS worker literally only runs SQL over
- * `postMessage`). The same contract is satisfied by two runtimes:
- *   - browser: sqlite-wasm + OPFS (in a Web Worker)
- *   - tests:   in-memory sql.js
+ * drivers are dumb SQL executors. The same contract is satisfied by:
+ *   - browser: `RemotePgDriver` (HTTP bridge to the server's Postgres)
+ *   - tests:   `pg-test` driver (per-test-schema via testcontainers / pglite)
+ *   - server:  sandbox SQLite (isolated, exposed via `/api/sandbox/query`)
  */
 export interface QueryResult<T = unknown> {
 	columns?: string[];

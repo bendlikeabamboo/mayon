@@ -64,7 +64,7 @@ export const agentTracesRepo = {
 	async deleteByRoot(rootId: string): Promise<void> {
 		await getDriver().batch([
 			{
-				sql: 'DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE root_id = ?)',
+				sql: 'DELETE FROM agent_traces WHERE chat_id IN (SELECT id FROM chats WHERE root_id = $1)',
 				params: [rootId]
 			}
 		]);

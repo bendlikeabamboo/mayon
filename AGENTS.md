@@ -9,36 +9,31 @@ in `.kilo/plans/`.
 
 - **SvelteKit** (Svelte 5 runes) as a static SPA via `@sveltejs/adapter-static` (no SSR).
 - **Tailwind v4** (CSS-first, `@import "tailwindcss"`) + **shadcn-svelte** (bits-ui).
-- **SQLite** everywhere via one shared **drizzle** schema behind a single
-  `StorageDriver` seam (browser = sqlite-wasm + OPFS in a worker; tests = in-memory
-  sql.js). An optional local **server** container adds a sandbox SQLite for MCP tools.
-- **Optional server** (Node/TypeScript, Docker): unlocks browser-impossible capabilities
-  — stdio MCP runner, LLM CORS proxy, sandbox DB, backup. The app is 100% functional
-  without it.
+- **Postgres** everywhere via one shared **drizzle** schema behind a single
+  `StorageDriver` seam (browser → server via RemotePgDriver; tests = pglite).
+  The **server** container also hosts a sandbox SQLite for MCP tools.
+- **Server** (Node/TypeScript, Docker): required for app function
+  — Postgres primary store, stdio MCP runner, LLM CORS proxy, sandbox DB, backup.
 - **Toolchain pins:** Node 22 (`.nvmrc`), pnpm 10 (`packageManager`). No bun, no Rust.
 
 ## Commands
 
-| Command                            | What it does                                                                                                               |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install`                     | Install dependencies.                                                                                                      |
-| `pnpm dev`                         | Run the SvelteKit SPA dev server (http://localhost:5173).                                                                  |
-| `pnpm --filter @mayon/server dev`  | Run the server dev server (http://localhost:4319) in watch mode.                                                           |
-| `pnpm build`                       | Build the SPA into `build/`.                                                                                               |
-| `pnpm check`                       | Type-check with `svelte-check`.                                                                                            |
-| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                                                                 |
-| `pnpm format`                      | Prettier `--write`.                                                                                                        |
-| `pnpm test`                        | Vitest (in-memory driver) — run once.                                                                                      |
-| `pnpm test:watch`                  | Vitest in watch mode.                                                                                                      |
-| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                                                             |
-| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                              |
-| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                                    |
-| `pnpm bundle:migrations`           | Re-bundle `drizzle/` SQL + journal into `src/lib/db/driver/migrations.ts` (run after every `db:generate` before shipping). |
-| `pnpm dev:deps`                    | Start db + server in Docker (deps for `pnpm dev`).                                                                         |
-| `docker compose up`                | Run the web SPA + server together (web on :8080, server internal-only).                                                    |
-
-Always run `pnpm bundle:migrations` after `pnpm db:generate` so the SPA can run the
-new migration offline (no runtime `fs`).
+| Command                            | What it does                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `pnpm install`                     | Install dependencies.                                                         |
+| `pnpm dev`                         | Run the SvelteKit SPA dev server (http://localhost:5173).                     |
+| `pnpm --filter @mayon/server dev`  | Run the server dev server (http://localhost:4319) in watch mode.              |
+| `pnpm build`                       | Build the SPA into `build/`.                                                  |
+| `pnpm check`                       | Type-check with `svelte-check`.                                               |
+| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                    |
+| `pnpm format`                      | Prettier `--write`.                                                           |
+| `pnpm test`                        | Vitest (pglite test driver) — run once.                                       |
+| `pnpm test:watch`                  | Vitest in watch mode.                                                         |
+| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                |
+| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`. |
+| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                       |
+| `pnpm dev:deps`                    | Start db + server in Docker (deps for `pnpm dev`).                            |
+| `docker compose up`                | Run the web SPA + server together (web on :8080, server internal-only).       |
 
 ## Architecture boundaries (do not violate)
 
@@ -46,8 +41,8 @@ new migration offline (no runtime `fs`).
   `db` object is private to `src/lib/db/` (exposed via `getDb()` / `repos`).
 - **`StorageDriver`** (`src/lib/db/driver/types.ts`) is the single storage seam:
   `query` / `batch` / `exec`. Drizzle + schema + repositories live on the main thread;
-  drivers are dumb SQL executors (the OPFS worker literally just runs SQL over `postMessage`).
-- **Runtime is browser-only.** Postgres via the server is the primary store (P-pg-2). The optional server is detected at boot via `detectServer()` and progressively enables features (stdio MCP, LLM CORS proxy, sandbox DB, backup, PG) based on advertised capabilities.
+  drivers are dumb SQL executors (RemotePgDriver sends SQL over the network to Postgres).
+- **Runtime requires the server.** Postgres via the server is the primary store (P-pg-2). The server is detected at boot via `detectServer()` and progressively enables features (stdio MCP, LLM CORS proxy, sandbox DB, backup, PG) based on advertised capabilities.
 - **No secrets in `settings`.** Provider config holds non-secret handle fields only; API
   the browser resolves them locally and includes them in same-origin proxied requests.
 
@@ -61,8 +56,8 @@ proxy, and migrations Postgres-native. The app is server-required for function i
 - **PG-down:** `docker compose stop db` → restart server → `'pg'` cap absent from `/api/health`; `/api/db/query` returns 503.
 - **Sandbox regression:** Settings → Sandbox DB inspector still works (`/api/sandbox/query` untouched).
 - **Migrations:** a single `drizzle/0000_*.sql` migration exists (dialect `postgresql`). The server runs drizzle's native `migrate()` at boot; migrations gate on pool connect + migrations applied (`'pg'` cap).
-- **OPFS backup superseded:** app-DB backup/restore is now PG-native (`pg_dump -Fc` / `pg_restore`). The Settings → Data "Download backup" / "Restore from backup" buttons are gated on `serverStatus.has('pg')` and download/restore custom-format `.dump` files via the server. OPFS backup code removal is deferred to P-pg-7.
-- **Search:** `repos.search.search()` uses native PG `tsvector`/`GIN`/`ts_headline` (P-pg-4); `searchAvailable()` returns `true` with `'pg'` cap; `rebuildIndex()` is a no-op (GENERATED columns self-maintain). `translatePlaceholders` retained (`chats.ts` still emits raw `?`).
+- **OPFS backup superseded:** app-DB backup/restore is now PG-native (`pg_dump -Fc` / `pg_restore`). The Settings → Data "Download backup" / "Restore from backup" buttons are gated on `serverStatus.has('pg')` and download/restore custom-format `.dump` files via the server.
+- **Search:** `repos.search.search()` uses native PG `tsvector`/`GIN`/`ts_headline` (P-pg-4); `searchAvailable()` returns `true` with `'pg'` cap; `rebuildIndex()` is a no-op (GENERATED columns self-maintain).
 - **Tests:** `pnpm lint && pnpm check && pnpm test` green with testcontainers PG; `pnpm --filter @mayon/server test` green. All tests now use a per-test-schema PG driver (`bootstrapTestDb`).
 
 > The schema flip to `pg-core`, proxy flip to `pg-proxy`, server native `migrate()`, browser RemotePgDriver wiring, and testcontainer setup are covered by the automated test suites.
@@ -79,14 +74,12 @@ with noise stripping via an `IMMUTABLE` SQL function and `GENERATED ALWAYS AS` c
   `$$…$$` display-math block is **not** matched; the same token in plain text is matched.
 - **Graceful degradation:** server-down or FTS failure → `search()` degrades to `[]` (no crash).
 - **UI:** Settings "Rebuild search index" button is gone (GENERATED columns self-maintain).
-- **`translatePlaceholders` stays** (`chats.ts` still emits raw `?`); removal deferred to P-pg-7.
 - **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
   green. FTS bootstrap idempotency tested in `server/src/fts.test.ts`.
 
 ## Manual acceptance gates (P-pg-5)
 
-P-pg-5 ships PG-native backup and restore using `pg_dump -Fc` and `pg_restore`, superseding
-the suspended OPFS backup. Download produces a custom-format `.dump`; restore always takes a
+P-pg-5 ships PG-native backup and restore using `pg_dump -Fc` and `pg_restore`. Download produces a custom-format `.dump`; restore always takes a
 pre-restore safety dump (auto-downloaded to the browser), drops `public`+`drizzle` schemas,
 restores, then restarts the server.
 
@@ -108,6 +101,35 @@ restores, then restarts the server.
 - **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
   green (mocked spawns, `process.exit` mocked). Octet-stream parser registered exactly once.
 
+## Manual acceptance gates (P-pg-6)
+
+P-pg-6 ships a one-time importer that reads a legacy OPFS-era `.sqlite` backup and
+loads its rows into Postgres, **replacing** all current data. Uses `TRUNCATE … CASCADE`
+
+- `INSERT` in a single transaction (no server restart). `session_replication_role='replica'`
+  disables FK triggers for the import (requires superuser — the dockerized `mayon` user
+  is a superuser by default). FTS `GENERATED` columns self-maintain on insert; no rebuild.
+  API keys are **not** imported (re-enter provider keys after import on a new origin).
+
+* **Browser + server + PG:** `docker compose up` → Settings → Data → "Import from SQLite
+  backup" → select a real legacy `.sqlite` → **dry-run** shows per-table counts (chats, messages,
+  etc.) + skipped-table warnings → **Confirm** → a safety `mayon-pre-import-<ts>.dump`
+  auto-downloads → app reloads → chats/labs/quizzes/messages present; row counts match the
+  source; `quiz_answers.is_correct` round-trips as boolean; `search_vec` populated for
+  imported content (FTS self-maintained); re-import is idempotent.
+* **Rejection:** a non-SQLite file → "Not a valid SQLite file" error; a SQLite DB with no
+  recognized Mayon tables → "no Mayon tables found" error; in both cases the live DB is
+  untouched (no `TRUNCATE`).
+* **Drift tolerance:** a legacy backup missing newer PG columns (`brief`, `mcp_config`,
+  `tool_call_id`, `tool_name`, `metadata`, `model`, `tokens`) imports cleanly; omitted
+  columns receive their default/NULL.
+* **Server-down:** stop the server → import section hidden; the rest of the app is unaffected.
+* **Replace semantics:** the import `TRUNCATE`s all 11 Mayon tables then inserts; no partial
+  merge mode. A pre-import safety `pg_dump` always runs before any truncate; on failure the
+  transaction rolls back (live DB unchanged).
+* **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green (real pglite + better-sqlite3 round-trip; `pg_dump` spawn mocked).
+
 ## Manual acceptance gates (P-pg-3)
 
 P-pg-3 adds boot gating and failure UX now that the app requires the server.
@@ -124,14 +146,13 @@ There is no chat UI in P0 (lands in P2). The observable persistence signal is th
 (`DbStatus` badge). The self-check is dev-only (`import.meta.env.DEV`): on each boot it
 writes/reads/deletes a `chats` row via the repository and shows pass/fail.
 
-- **Browser (OPFS):** `pnpm dev` → open http://localhost:5173 → the header badge reaches
-  **DB ready** (`browser`) and (in dev) self-check passes; toggle the theme and **reload
-  the tab** → the theme survives (proving OPFS persistence). Storage lives in the origin's
-  OPFS as `file:mayon.sqlite`.
+- **Browser + server + PG:** `pnpm dev:deps` then `pnpm dev` → open http://localhost:5173 → the header badge reaches
+  **DB ready (pg)** and (in dev) self-check passes; toggle the theme and **reload
+  the tab** → the theme survives (proving persistence).
 - **First-run/empty DB:** migrations run clean (covered by the automated Vitest suite
-  against the in-memory driver).
-- **Unsupported browser:** if OPFS is unavailable, the badge shows a clear **DB error**
-  with a "use a modern browser" message (never silent).
+  against the pglite test driver).
+- **Server unreachable:** if the server is not running, a full-screen error is shown
+  with a `docker compose up` hint and a Retry button (never silent).
 
 ## Manual acceptance gates (P1)
 
@@ -210,11 +231,7 @@ test`.
 ## Manual acceptance gates (P4)
 
 P4 ships an isolated sandbox SQLite in the server, exposed via `POST /api/sandbox/query`
-and a read-write inspector under `/settings`. OPFS remains the app's sole primary
-store; this DB never holds app data or secrets. (The sandbox inspector's route moved
-from `/api/db/query` to `/api/sandbox/query` in P-pg-1; `/api/db/query` is now the
-PG-backed primary-DB route. `GET /api/health` may also advertise a `'pg'` cap when the
-server's Postgres pool is live.)
+and a read-write inspector under `/settings`. This DB never holds app data or secrets.
 
 - **Browser + server:** `docker compose up` → header badge shows **Server:
   connected** with `sandbox-db` in the cap list → `/settings` shows the
@@ -240,7 +257,7 @@ test`.
 
 P5 ships server-side snapshot/restore of the sandbox DB (MCP-tool data at
 `/data/sandbox.sqlite`) via two server routes, surfaced as a "Sandbox DB backup"
-affordance in Settings. The OPFS app-DB backup is unchanged.
+affordance in Settings.
 
 - **Browser + server:** `docker compose up` → header badge shows **Server:
   connected** with `backup` in the cap list; `GET /api/health` returns `caps:
@@ -253,7 +270,25 @@ affordance in Settings. The OPFS app-DB backup is unchanged.
   live DB is untouched.
 - **Consistency:** download a backup **while** an MCP tool is writing to the
   sandbox DB → the downloaded file is valid (not torn).
-- **Server down:** stop the server → the "Sandbox DB" section is hidden; the
-  OPFS Download/Restore buttons work exactly as before (no regression).
+- **Server down:** stop the server → the "Sandbox DB" section is hidden.
 - **Persistence:** `docker compose restart server` → sandbox data persists
-  (`sidecar-data` volume). Volume name `sidecar-data` is intentionally unchanged; its rename is deferred to P-pg-7.
+  (`server-data` volume).
+
+## Manual acceptance gates (P-pg-7)
+
+P-pg-7 closes the Postgres-migration epic: all OPFS/SQLite-WASM dead code removed,
+docs describe the server-required + PG-primary reality, and the `sidecar-data`
+volume is renamed to `server-data`.
+
+- **Clean build:** `pnpm install` (lockfile has no `sqlite-wasm`/`sql.js`);
+  `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green.
+- **Grep sweep:** zero hits for `sidecar|Sidecar|opfs|OPFS|sqlite-wasm|sql\.js|
+bundle:migrations|bundle-migrations|translatePlaceholders|crossOriginIsolation`
+  in `src/` and `server/` (historical refs in `refinement/` are allowed).
+- **Docker:** `docker compose up` — volume is now `server-data` (not `sidecar-data`);
+  sandbox DB is reset on upgrade (documented upgrade note).
+- **Docs:** no file in `docs/`, `AGENTS.md`, or `CONTRIBUTING.md` references
+  Tauri, OPFS, sqlite-wasm, `bundle:migrations`, or "browser-only".
+- **COEP removal:** `vite.config.ts` has no `crossOriginIsolation` plugin;
+  KaTeX math renders correctly in the browser (fonts in `static/fonts`).

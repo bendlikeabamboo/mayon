@@ -44,7 +44,7 @@ function cascadeStatements(cs: { sql: string; params?: unknown[] }): BatchStatem
 		},
 		{
 			sql: `DELETE FROM cross_links WHERE from_chat_id IN (SELECT id FROM chats WHERE ${cs.sql}) OR to_chat_id IN (SELECT id FROM chats WHERE ${cs.sql})`,
-			params: [...p, ...p]
+			params: p
 		},
 		{ sql: `DELETE FROM chats WHERE ${cs.sql}`, params: p }
 	];
@@ -165,7 +165,7 @@ export const chatsRepo = {
 	},
 
 	async deleteSubtree(rootId: string): Promise<void> {
-		await getDriver().batch(cascadeStatements({ sql: 'root_id = ?', params: [rootId] }));
+		await getDriver().batch(cascadeStatements({ sql: 'root_id = $1', params: [rootId] }));
 	},
 
 	async deleteBranch(id: string): Promise<void> {
@@ -175,7 +175,7 @@ export const chatsRepo = {
 			{
 				sql: `INSERT INTO _delete_set(id)
 					WITH RECURSIVE descendants(id) AS (
-						SELECT id FROM chats WHERE id = ?
+						SELECT id FROM chats WHERE id = $1
 						UNION ALL
 						SELECT c.id FROM chats c JOIN descendants ON c.parent_id = descendants.id
 					)

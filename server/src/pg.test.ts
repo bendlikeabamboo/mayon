@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { translatePlaceholders, pgQueryHandler } from './pg';
+import { pgQueryHandler } from './pg';
 import type { PgPoolLike, PgQueryResult } from './pg';
 
 function makeResult(partial: Partial<PgQueryResult>): PgQueryResult {
@@ -16,36 +16,6 @@ function mockPool(): {
 	return { pool: { query, end } as unknown as PgPoolLike, query, end };
 }
 
-describe('translatePlaceholders', () => {
-	it('converts positional ? to $1..$n sequentially', () => {
-		expect(translatePlaceholders('SELECT ?, ?')).toBe('SELECT $1, $2');
-		expect(translatePlaceholders('SELECT ?, ?, ?')).toBe('SELECT $1, $2, $3');
-	});
-
-	it('converts explicit ?n to $n', () => {
-		expect(translatePlaceholders('SELECT ?3')).toBe('SELECT $3');
-	});
-
-	it('mixes positional and explicit ? following SQLite numbering', () => {
-		expect(translatePlaceholders('SELECT ?, ?3, ?')).toBe('SELECT $1, $3, $4');
-	});
-
-	it('leaves PG-native $n untouched (idempotent)', () => {
-		expect(translatePlaceholders('SELECT $1::int AS x')).toBe('SELECT $1::int AS x');
-		expect(translatePlaceholders('SELECT $2 + $1')).toBe('SELECT $2 + $1');
-	});
-
-	it('is idempotent under repeated translation', () => {
-		const once = translatePlaceholders('SELECT ?, ?3, ?');
-		expect(translatePlaceholders(once)).toBe(once);
-	});
-
-	it('passes through SQL with no placeholders and empty input', () => {
-		expect(translatePlaceholders('SELECT 1')).toBe('SELECT 1');
-		expect(translatePlaceholders('')).toBe('');
-	});
-});
-
 describe('pgQueryHandler', () => {
 	describe('op: query', () => {
 		it('maps fields/rows to positional DbQueryResult and is idempotent on PG-native $n', async () => {
@@ -60,14 +30,14 @@ describe('pgQueryHandler', () => {
 			expect(query).toHaveBeenCalledWith('SELECT $1::int AS x', [42]);
 		});
 
-		it('translates SQLite ? placeholders before sending to the pool', async () => {
+		it('passes SQL and params directly to the pool', async () => {
 			const { pool, query } = mockPool();
 			query.mockResolvedValue(
 				makeResult({ rows: [{ v: 7, doubled: 14 }], fields: [{ name: 'v' }, { name: 'doubled' }] })
 			);
 			const result = await pgQueryHandler(pool, {
 				op: 'query',
-				sql: 'SELECT ? as v, ? as doubled',
+				sql: 'SELECT $1 as v, $2 as doubled',
 				params: [7, 14]
 			});
 			expect(result).toEqual({ columns: ['v', 'doubled'], rows: [[7, 14]] });

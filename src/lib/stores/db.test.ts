@@ -16,7 +16,7 @@ describe('DbStatusState', () => {
 
 	it('markError with server-unreachable reason', async () => {
 		const { dbStatus } = await import('./db.svelte');
-		dbStatus.markReady('memory');
+		dbStatus.markReady('pg');
 		dbStatus.markError('Cannot reach server', 'server-unreachable');
 		expect(dbStatus.status).toBe('error');
 		expect(dbStatus.error).toBe('Cannot reach server');

@@ -14,7 +14,7 @@ Application code (Svelte components, SvelteKit routes, stores) must interact wit
 
 The drizzle `db` object is private to `src/lib/db/`. It is exposed to the rest of the app through `getDb()` and the repository functions in `src/lib/db/repos/`.
 
-This rule exists because the `db` object is tied to a specific driver. If a component imported it directly, that component would be coupled to whichever driver is active at import time, making it impossible to test against the in-memory driver or to swap runtimes.
+This rule exists because the `db` object is tied to a specific driver. If a component imported it directly, that component would be coupled to whichever driver is active at import time, making it impossible to test against the test driver or to swap runtimes.
 
 ## StorageDriver is the single storage seam
 
@@ -28,17 +28,17 @@ Three concrete implementations satisfy this interface:
 
 | Driver | Runtime | Description |
 |---|---|---|
-| OPFS Worker | Browser | SQLite-WASM + Origin Private File System. Runs in a Web Worker; communicates with the main thread over `postMessage`. |
-| In-memory sql.js | Tests | Ephemeral SQLite for Vitest. |
-| RemotePgDriver | Browser + server | Non-primary SQLite in the Docker server, via `POST /api/db/query`. Satisfies the `StorageDriver` contract for sandbox/MCP use; never wired as the app's primary store. |
+| RemotePgDriver | Browser + server | Primary store. Sends SQL to Postgres via `POST /api/db/query`. |
+| pg-test (pglite) | Tests only | Ephemeral Postgres for Vitest via `bootstrapTestDb()`. |
+| Sandbox SQLite | Server only | At `/data/sandbox.sqlite`. For MCP tools, not app data. |
 
-Drizzle, the schema, and the repository layer live on the main thread. Drivers are dumb SQL executors — the OPFS worker literally just runs SQL strings and returns row data.
+Drizzle, the schema, and the repository layer live on the main thread. Drivers are dumb SQL executors — the RemotePgDriver sends SQL strings over the network and returns row data.
 
 The server SQLite uses WAL mode with `busy_timeout = 5000` for concurrency safety (the server process and spawned MCP servers may open the same `/data/sandbox.sqlite` file).
 
 ## Runtime selection
 
-The app is browser-only. `bootstrapDb()` in `src/lib/db/driver/client.ts` always instantiates the OPFS worker driver. There is no runtime fork — the Tauri desktop shell has been removed. An optional server is detected at boot via `detectServer()` and progressively enables features based on advertised capabilities, but it never replaces the primary OPFS store.
+The app requires the server. `bootstrapDb()` in `src/lib/db/driver/client.ts` connects to Postgres via `RemotePgDriver`, which sends SQL to `POST /api/db/query`. The server is detected at boot via `detectServer()` and must be available for the app to function.
 
 All code above the driver layer is runtime-agnostic.
 

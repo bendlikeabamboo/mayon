@@ -15,8 +15,14 @@ export interface PgQueryResult {
 	rowCount: number | null;
 }
 
+export interface PgPoolClient {
+	query(text: string, params?: unknown[]): Promise<PgQueryResult>;
+	release(err?: boolean): void;
+}
+
 export interface PgPoolLike {
 	query(text: string, params?: unknown[]): Promise<PgQueryResult>;
+	connect(): Promise<PgPoolClient>;
 	end(): Promise<void>;
 }
 
@@ -46,25 +52,6 @@ export async function probePg(
 	return false;
 }
 
-export function translatePlaceholders(sql: string): string {
-	let n = 0;
-	return sql.replace(
-		/\?(\d+)?|\$(\d+)/g,
-		(match, qDigits: string | undefined, dollarDigits: string | undefined) => {
-			if (dollarDigits !== undefined) {
-				return match;
-			}
-			if (qDigits !== undefined) {
-				const num = parseInt(qDigits, 10);
-				if (num > n) n = num;
-				return `$${num}`;
-			}
-			n += 1;
-			return `$${n}`;
-		}
-	);
-}
-
 function toResult(res: PgQueryResult): DbQueryResult {
 	const columns = res.fields.map((f) => f.name);
 	const rows = res.rows.map((r) => res.fields.map((f) => r[f.name]));
@@ -76,7 +63,7 @@ export async function pgQueryHandler(
 	req: DbQueryRequest
 ): Promise<DbQueryResponse> {
 	if (req.op === 'query') {
-		const res = await pool.query(translatePlaceholders(req.sql), req.params ?? []);
+		const res = await pool.query(req.sql, req.params ?? []);
 		return toResult(res);
 	}
 
@@ -85,7 +72,7 @@ export async function pgQueryHandler(
 		await pool.query('BEGIN');
 		try {
 			for (const stmt of req.stmts) {
-				const res = await pool.query(translatePlaceholders(stmt.sql), stmt.params ?? []);
+				const res = await pool.query(stmt.sql, stmt.params ?? []);
 				if (res.fields.length > 0) {
 					results.push(toResult(res));
 				} else {
@@ -100,7 +87,7 @@ export async function pgQueryHandler(
 		}
 	}
 
-	const res = await pool.query(translatePlaceholders(req.sql));
+	const res = await pool.query(req.sql);
 	return { changes: res.rowCount ?? 0, lastInsertRowid: null };
 }
 

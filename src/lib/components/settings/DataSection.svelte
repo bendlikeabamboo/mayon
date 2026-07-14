@@ -4,6 +4,8 @@
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { serverStatus } from '$lib/server/status.svelte';
 	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/server/sandbox-backup';
+	import { dryRunImport, importFromSqlite } from '$lib/server/db-import';
+	import type { ImportPreview } from '$lib/server/db-import';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -15,6 +17,13 @@
 	let sandboxBusy = $state(false);
 	let sandboxError = $state<string | null>(null);
 	let sandboxStatus = $state<string | null>(null);
+
+	let importBusy = $state(false);
+	let importError = $state<string | null>(null);
+	let importStatus = $state<string | null>(null);
+	let importPreview: ImportPreview | null = $state(null);
+	let importFileEl: HTMLInputElement | undefined = $state();
+	let currentImportFile: File | null = $state(null);
 
 	async function handleBackup() {
 		busy = true;
@@ -84,6 +93,54 @@
 		}
 		if (input) input.value = '';
 	}
+
+	function handleImportClick() {
+		importFileEl?.click();
+	}
+
+	async function handleImportFileInput(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		importBusy = true;
+		importError = null;
+		importPreview = null;
+		importStatus = null;
+		currentImportFile = file;
+		try {
+			importPreview = await dryRunImport(file);
+		} catch (err) {
+			importError = err instanceof Error ? err.message : String(err);
+		} finally {
+			importBusy = false;
+		}
+		if (input) input.value = '';
+	}
+
+	function cancelImport() {
+		importPreview = null;
+		importError = null;
+		currentImportFile = null;
+	}
+
+	async function confirmImport() {
+		if (!currentImportFile) return;
+		importBusy = true;
+		importError = null;
+		importStatus = null;
+		try {
+			const { summary } = await importFromSqlite(currentImportFile);
+			const total = Object.values(summary).reduce((a, b) => a + b, 0);
+			importStatus = `Imported ${total} rows.`;
+			location.reload();
+		} catch (err) {
+			importError = err instanceof Error ? err.message : String(err);
+		} finally {
+			importBusy = false;
+		}
+	}
+
+	const importDisabled = $derived(importBusy || chatStore.streaming);
 </script>
 
 <section class="space-y-3">
@@ -119,6 +176,77 @@
 
 	{#if error}
 		<p class="text-xs text-destructive" role="alert">{error}</p>
+	{/if}
+
+	{#if serverStatus.has('pg')}
+		<hr class="border-border" />
+
+		<h3 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+			Import from SQLite backup
+		</h3>
+
+		<p class="text-xs text-muted-foreground">
+			Load chats, labs, and quizzes from a legacy (pre-Postgres) SQLite backup. This
+			<strong>replaces all current data</strong>; a safety backup downloads first. API keys are not
+			included — re-enter provider keys after import.
+		</p>
+
+		<input
+			bind:this={importFileEl}
+			type="file"
+			accept=".sqlite,.db"
+			class="hidden"
+			onchange={handleImportFileInput}
+		/>
+
+		<div class="flex gap-2">
+			<Button variant="outline" size="sm" {importDisabled} onclick={handleImportClick}>
+				Import from SQLite backup
+			</Button>
+		</div>
+
+		{#if importPreview}
+			<div class="rounded border border-border p-3 space-y-2 text-xs">
+				<table class="w-full text-left">
+					<thead>
+						<tr>
+							<th class="font-medium text-muted-foreground">Table</th>
+							<th class="font-medium text-muted-foreground">Rows</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each Object.entries(importPreview.summary) as [table, count] (table)}
+							<tr>
+								<td>{table}</td>
+								<td>{count}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+				{#if importPreview.warnings.length > 0}
+					<div class="text-yellow-600">
+						{#each importPreview.warnings as w (w)}
+							<p>{w}</p>
+						{/each}
+					</div>
+				{/if}
+				<p class="text-destructive font-medium">This will replace all current data. Continue?</p>
+				<div class="flex gap-2">
+					<Button variant="destructive" size="sm" {importDisabled} onclick={confirmImport}>
+						Confirm
+					</Button>
+					<Button variant="outline" size="sm" onclick={cancelImport}>Cancel</Button>
+				</div>
+			</div>
+		{/if}
+
+		{#if importStatus}
+			<p class="text-xs text-muted-foreground" role="status">{importStatus}</p>
+		{/if}
+
+		{#if importError}
+			<p class="text-xs text-destructive" role="alert">{importError}</p>
+		{/if}
 	{/if}
 
 	{#if serverStatus.has('backup')}

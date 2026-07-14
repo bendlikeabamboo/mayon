@@ -12,7 +12,7 @@ services:
     expose:
       - '4319'
     volumes:
-      - sidecar-data:/data
+      - server-data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -36,5 +36,5 @@ services:
       retries: 10
     restart: unless-stopped
 volumes:
-  sidecar-data:
+  server-data:
   pg-data:

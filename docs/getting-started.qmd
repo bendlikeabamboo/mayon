@@ -4,56 +4,37 @@ title: "Getting Started"
 
 # Getting Started
 
-Mayon is available in three forms: a desktop installer, a browser-based web demo, and a self-hosted Docker image. Pick whichever suits your workflow.
+Mayon runs as a SvelteKit SPA backed by a Mayon server with Postgres, all orchestrated by Docker Compose.
 
-## Desktop app (recommended)
+## Docker (primary)
 
-Download the latest installer from the GitHub Releases page. Pre-built binaries are available for Windows, macOS, and Linux (deb/AppImage).
-
-<https://github.com/bendlikeabamboo/mayon/releases>
-
-On Linux you need the GTK and WebKit development libraries installed before the desktop app can run:
+Pull and run with Docker Compose:
 
 ```bash
-sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config
+git clone https://github.com/bendlikeabamboo/mayon.git
+cd mayon
+docker compose up
 ```
 
-For OS keychain support on Linux, ensure a Secret Service implementation is running (`gnome-keyring` or `kwallet`) and `libsecret-1-0` is installed.
+Open `http://localhost:8080` in your browser. Data is stored in Postgres inside the `pg-data` docker volume and persists across restarts.
 
-Double-click the installer or run it from the terminal. On first launch Mayon creates its data directory and opens the main window.
+## Development
 
-## Web demo
-
-A live browser build is hosted on GitHub Pages:
-
-<https://bendlikeabamboo.github.io/mayon>
-
-The web demo runs entirely in your browser. It stores data in the Origin Private File System (OPFS) and API keys in IndexedDB. Some providers (notably Anthropic) may block direct browser requests due to CORS — the desktop app handles all providers without CORS issues.
-
-## Docker (self-hosted)
-
-Pull and run the Mayon container:
+For active development, start the database and server in Docker, then run the SPA dev server with HMR:
 
 ```bash
-docker pull ghcr.io/bendlikeabamboo/mayon:latest
-docker run -d --name mayon -p 8080:80 ghcr.io/bendlikeabamboo/mayon:latest
+pnpm dev:deps   # starts Postgres + server in Docker
+pnpm dev        # SvelteKit SPA at http://localhost:5173
 ```
 
-Open `http://localhost:8080` in your browser. Data is stored inside the container; mount a volume to persist it across restarts:
-
-```bash
-docker run -d --name mayon -p 8080:80 \
-  -v mayon-data:/data \
-  ghcr.io/bendlikeabamboo/mayon:latest
-```
+The dev server proxies `/api` requests to the Dockerized server.
 
 ## First run
 
-When you open Mayon for the first time the database is created automatically and migrations run. Look for two signals in the header:
+When you open Mayon for the first time the server boots, connects to Postgres, and runs migrations automatically. Look for two signals in the header:
 
-1. **DB status badge** — shows "DB ready" with the runtime label ("browser" or "desktop"). In development builds a self-check runs on boot that writes, reads, and deletes a test row to confirm the database is functional.
+1. **DB status badge** — shows "DB ready (pg)". In development builds a self-check runs on boot that writes, reads, and deletes a test row to confirm the database is functional.
 
-2. **Theme toggle** — click the sun/moon icon in the header to switch between light and dark mode. Close and reopen the app (or reload the tab in the browser). The theme persists, proving that storage is working correctly.
+2. **Theme toggle** — click the sun/moon icon in the header to switch between light and dark mode. Reload the tab. The theme persists, proving that storage is working correctly.
 
-If the DB status badge shows "DB error" with a message about OPFS being unavailable, your browser does not support the Origin Private File System. Use the desktop app or a supported browser (Chromium-based browsers have full OPFS support).
+If the server is unreachable, a full-screen error is shown with a `docker compose up` hint and a Retry button.

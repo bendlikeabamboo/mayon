@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPgDumpHeader, parseContentDispositionFilename } from '$lib/db/backup';
+import { isPgDumpHeader, isSqliteHeader, parseContentDispositionFilename } from '$lib/db/backup';
 
 describe('isPgDumpHeader', () => {
 	it('returns true for PGDMP magic bytes', () => {
@@ -29,5 +29,22 @@ describe('parseContentDispositionFilename', () => {
 	it('returns fallback when header is missing', () => {
 		const res = new Response(null);
 		expect(parseContentDispositionFilename(res, 'fallback.dump')).toBe('fallback.dump');
+	});
+});
+
+describe('isSqliteHeader', () => {
+	it('returns true for SQLite magic bytes', () => {
+		const bytes = new Uint8Array(Buffer.from('SQLite format 3\x00', 'binary'));
+		expect(isSqliteHeader(bytes)).toBe(true);
+	});
+
+	it('returns false for short input', () => {
+		expect(isSqliteHeader(new Uint8Array([0x53]))).toBe(false);
+		expect(isSqliteHeader(new Uint8Array([]))).toBe(false);
+	});
+
+	it('returns false for PGDMP bytes', () => {
+		const bytes = new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50, 0x00, 0x00, 0x00]);
+		expect(isSqliteHeader(bytes)).toBe(false);
 	});
 });

@@ -4,20 +4,17 @@ title: "Overview"
 
 # Mayon
 
-Mayon is a personal, local-first learning app built around a **branchable chat graph**. Chat with an AI about any topic, highlight a dense response, and branch a new conversation from that exact excerpt. Every branch is a node in a navigable tree with breadcrumb navigation and cross-links between separate chats.
+Mayon is a personal learning app built around a **branchable chat graph**. Chat with an AI about any topic, highlight a dense response, and branch a new conversation from that exact excerpt. Every branch is a node in a navigable tree with breadcrumb navigation and cross-links between separate chats.
 
 From any chat you can generate AI-powered **labs** (hands-on step-by-step guides with interactive checklists) and **quizzes** (multiple-choice, flashcards, and short-answer with AI grading). Both are leaf artifacts tied to a single chat.
 
-Mayon ships as one codebase with two runtimes:
-
-- **Browser SPA** — runs entirely client-side with SQLite stored in the Origin Private File System (OPFS). No server needed.
-- **Desktop app** (Tauri v2) — installable native window with SQLite on disk, OS keychain for API keys, and a Rust-backed LLM transport that avoids CORS entirely.
+Mayon is a **SvelteKit SPA** that connects to a **Mayon server** container running alongside a **Postgres** database. Everything runs locally via Docker Compose — your data stays on your machine.
 
 ## Local-first promise
 
-All data stays on your machine. There is no account, no server, and no telemetry. Your chats, branches, labs, quizzes, and provider keys live in a local SQLite database. The app works fully offline after the first load.
+All data stays on your machine. There is no account and no telemetry. Your chats, branches, labs, quizzes, and provider keys live in a local Postgres database inside a Docker volume. The app requires the server to be running; it connects over the local network.
 
-The browser runtime uses SQLite compiled to WebAssembly running in a Web Worker over OPFS. The desktop runtime uses native SQLite with WAL mode via the Tauri SQL plugin. Both runtimes share the same schema, the same drizzle repository layer, and the same application logic — only the bottom storage driver swaps.
+Schema and migrations are managed by **drizzle-kit**. The application logic and repository layer are shared — only the storage driver at the bottom changes.
 
 ## Links
 

@@ -10,8 +10,7 @@ Contributions are welcome. This guide covers the setup, conventions, and workflo
 
 - **Node.js 22** — set via `.nvmrc`; use `nvm install` and `nvm use`.
 - **pnpm 10** — set in `packageManager`; install with `corepack enable && corepack prepare pnpm@10 --activate`.
-- **Rust 1.95** — set via `rust-toolchain.toml`; install with `rustup`.
-- **Linux only:** GTK and WebKit development libraries (see the [Building](dev/building.qmd) page).
+- **Docker** — required to run Postgres and the Mayon server.
 
 ## Setup
 
@@ -52,13 +51,13 @@ This runs `svelte-check` across the entire codebase.
 
 1. Create a feature branch from `main`.
 2. Implement the change and ensure `pnpm check`, `pnpm lint`, and `pnpm test` all pass.
-3. If you added or changed the database schema, run `pnpm db:generate` then **immediately** run `pnpm bundle:migrations`. Commits that include schema changes without bundled migrations will be rejected — the SPA cannot run offline without them.
+3. If you added or changed the database schema, run `pnpm db:generate` and commit the results.
 4. Open a pull request against `main`.
 5. Address review feedback and update the branch.
 
 ## Testing
 
-Tests run against an in-memory SQLite driver (sql.js) — no filesystem or browser runtime required.
+Tests run against a pglite (Postgres-compatible) test driver.
 
 ```bash
 pnpm test         # run once
@@ -66,22 +65,6 @@ pnpm test:watch   # watch mode
 ```
 
 Write tests for new repositories, provider adapters, and context assembly logic. UI component tests are added as the surface grows.
-
-## Mandatory: bundle migrations after generate
-
-Whenever you modify `src/lib/db/schema.ts` and run:
-
-```bash
-pnpm db:generate
-```
-
-You **must** follow it with:
-
-```bash
-pnpm bundle:migrations
-```
-
-This bundles the SQL migration files from `drizzle/` into `src/lib/db/driver/migrations.ts` so the SPA can apply them at boot without filesystem access. Forgetting this step causes runtime migration failures in the browser.
 
 ## Code of Conduct
 

@@ -23,6 +23,13 @@ export function isPgDumpHeader(bytes: Uint8Array): boolean {
 	);
 }
 
+export function isSqliteHeader(bytes: Uint8Array): boolean {
+	if (bytes.length < 16) return false;
+	const decoder = new TextDecoder('ascii', { fatal: false });
+	const header = decoder.decode(bytes.subarray(0, 16));
+	return header === 'SQLite format 3\x00';
+}
+
 export function parseContentDispositionFilename(res: Response, fallback: string): string {
 	const cd = res.headers.get('content-disposition');
 	if (!cd) return fallback;

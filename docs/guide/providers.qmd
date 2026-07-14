@@ -30,7 +30,7 @@ The following templates are built in:
 6. Paste your **API key**.
 7. Click **Save key**, then **Set active**.
 
-After saving, the provider becomes available for new chats. Reload the tab (or restart the desktop app) to confirm the configuration persists.
+After saving, the provider becomes available for new chats. Reload the tab to confirm the configuration persists.
 
 ## Switching providers
 
@@ -40,12 +40,10 @@ Add multiple providers and switch between them using the "Set active" action. Th
 
 API keys are never stored in the settings database. The `settings` table holds only non-secret provider configuration fields (base URL, default model, template type).
 
-**Desktop (Tauri):** Keys are stored in the OS keychain via the `keyring` Rust crate. The plaintext key never enters the webview JavaScript context. The Tauri bridge exposes only boolean operations (`key_has`, `key_set`, `key_delete`) — it never returns the key value to the frontend.
-
-**Browser:** Keys are stored in IndexedDB under the same origin as the app. The key is not sent to any server other than the provider's API endpoint during streaming.
+**Browser:** Keys are stored in IndexedDB under the same origin as the app. The key is not sent to any server other than the provider's API endpoint during streaming (or the Mayon server's CORS proxy, which is same-origin and transient).
 
 ## CORS limitation in the browser
 
-Some providers (notably Anthropic) block direct `fetch` requests from browser origins. When this happens, the chat view shows a clear "use the desktop app" notice instead of a raw error. The desktop app routes all provider requests through Rust's `reqwest`, which is not subject to CORS.
+Some providers (notably Anthropic) block direct `fetch` requests from browser origins. When this happens, the chat view shows a clear "Start the Mayon server (`docker compose up`) for CORS-free access" notice instead of a raw error. When the server is connected with the `llm-proxy` cap, requests to CORS-blocked providers route through the server's CORS proxy.
 
-OpenAI-compatible gateways (OpenRouter, Kilo Gateway, Z.AI) generally allow browser requests. If you are using the browser build exclusively, stick to these providers or use Ollama for local models.
+OpenAI-compatible gateways (OpenRouter, Kilo Gateway, Z.AI) generally allow browser requests. If you do not have the server running, stick to these providers or use Ollama for local models.
