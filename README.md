@@ -48,7 +48,8 @@ docker compose up -d
 
 ```bash
 pnpm install
-pnpm dev          # browser SPA at http://localhost:5173
+pnpm dev:deps      # start db + server in Docker
+pnpm dev           # browser SPA at http://localhost:5173
 ```
 
 ## Documentation

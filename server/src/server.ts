@@ -9,6 +9,8 @@ import { registerLlmProxy } from './llm-proxy';
 import { createSandboxDb, registerSandboxDb } from './db';
 import { registerBackup } from './backup';
 import { createPgPool, probePg, registerPgDb, runPgMigrations } from './pg';
+import { registerPgBackup } from './pg-backup';
+import { runFtsBootstrap } from './fts';
 import type { PgPoolLike } from './pg';
 
 const HOST = '0.0.0.0';
@@ -21,6 +23,7 @@ const BASE_CAPS: ServerCap[] = ['stdio-mcp', 'llm-proxy', 'sandbox-db', 'backup'
 export interface BuildAppOptions {
 	pgPool?: PgPoolLike;
 	pgReady?: boolean;
+	databaseUrl?: string;
 }
 
 export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
@@ -40,6 +43,14 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 			});
 		});
 
+		fastify.addContentTypeParser(
+			'application/octet-stream',
+			{ parseAs: 'buffer' },
+			(_req, body, done) => {
+				done(null, body);
+			}
+		);
+
 		registerMcpBridge(fastify);
 		registerLlmProxy(fastify);
 
@@ -48,6 +59,7 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 		registerBackup(fastify, sandboxDb, dbPath);
 
 		registerPgDb(fastify, opts.pgPool);
+		registerPgBackup(fastify, { pool: opts.pgPool, databaseUrl: opts.databaseUrl ?? '' });
 
 		fastify.addHook('onClose', async () => {
 			await opts.pgPool?.end();
@@ -74,6 +86,14 @@ export async function start() {
 			if (!pgReady) {
 				await pool.end();
 				pgPool = undefined;
+			} else {
+				try {
+					await runFtsBootstrap(pool);
+					console.log('pg: fts ready');
+				} catch (err) {
+					const detail = err instanceof Error ? err.message : String(err);
+					console.error('pg: fts bootstrap failed —', detail);
+				}
 			}
 		} else {
 			await pool.end();
@@ -82,7 +102,7 @@ export async function start() {
 		console.log('pg: DATABASE_URL not set (pg cap disabled)');
 	}
 
-	const app = buildApp(SANDBOX_DB_PATH, { pgPool, pgReady });
+	const app = buildApp(SANDBOX_DB_PATH, { pgPool, pgReady, databaseUrl: databaseUrl ?? '' });
 	await app.listen({ port: PORT, host: HOST });
 	console.log(`server listening on :${PORT}`);
 }

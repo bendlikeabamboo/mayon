@@ -6,6 +6,8 @@ export function runtimeLabel(r: DbRuntime): string {
 			return 'Web';
 		case 'memory':
 			return 'Web';
+		case 'pg':
+			return 'Postgres';
 		case 'unknown':
 			return '';
 		default:

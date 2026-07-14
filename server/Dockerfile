@@ -28,4 +28,6 @@ ENV PORT=4319
 
 EXPOSE 4319
 
+RUN apk add --no-cache postgresql17-client
+
 CMD ["node", "dist/server.js"]

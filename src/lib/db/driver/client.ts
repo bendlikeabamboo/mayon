@@ -37,18 +37,23 @@ export async function bootstrapDb(): Promise<Db> {
 	dbStatus.status = 'initializing';
 	driverPromise = (async () => {
 		try {
-			const { detectServer } = await import('$lib/server/detect');
-			const serverStatus = await detectServer();
-			if (!serverStatus || !serverStatus.caps.includes('pg')) {
-				const msg = 'Server/PG unavailable — run docker compose up';
-				dbStatus.markError(msg);
+			const { waitForServerPg } = await import('$lib/server/detect');
+			const { serverStatus } = await import('$lib/server/status.svelte');
+			const health = await waitForServerPg();
+			if (!health) {
+				const msg = 'Cannot reach the Mayon server. Start it with `docker compose up`, then retry.';
+				serverStatus.markDisconnected();
+				dbStatus.markError(msg, 'server-unreachable');
 				throw new Error(msg);
 			}
+			serverStatus.markConnected(health);
 			const driver = createRemotePgDriver();
 			return await bootstrapWithDriver(driver, runtime);
 		} catch (err) {
 			driverPromise = null;
-			dbStatus.markError(err instanceof Error ? err.message : String(err));
+			if (dbStatus.status !== 'error') {
+				dbStatus.markError(err instanceof Error ? err.message : String(err));
+			}
 			throw err;
 		}
 	})();

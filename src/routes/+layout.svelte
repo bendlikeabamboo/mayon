@@ -5,14 +5,19 @@
 	import '../app.css';
 	import { migrateLegacyKeys } from '$lib/ai/keystore/migrate';
 	import AppShell from '$lib/components/AppShell.svelte';
+	import BootGate from '$lib/components/BootGate.svelte';
 	import { bootstrapDb } from '$lib/db/driver/client';
 	import { repos } from '$lib/db';
 	import { runSelfCheck } from '$lib/db/self-check';
 	import { bindThemePersistence, themeState, type Theme } from '$lib/stores/theme.svelte';
-	import { detectServer } from '$lib/server/detect';
-	import { serverStatus } from '$lib/server/status.svelte';
+	import { dbStatus } from '$lib/stores/db.svelte.js';
 
 	let { children } = $props();
+
+	let connecting = $derived(dbStatus.status === 'initializing');
+	let unreachable = $derived(
+		dbStatus.status === 'error' && dbStatus.reason === 'server-unreachable'
+	);
 
 	void bootstrapDb()
 		.then(async () => {
@@ -26,15 +31,16 @@
 			if (import.meta.env.DEV) void runSelfCheck();
 		})
 		.catch(() => {
-			// Error already surfaced via the dbStatus store -> DbStatus badge.
+			// Error already surfaced via the dbStatus store -> BootGate or DbStatus badge.
 		});
-
-	void detectServer().then((h) => {
-		if (h) serverStatus.markConnected(h);
-		else serverStatus.markDisconnected();
-	});
 </script>
 
-<AppShell>
-	{@render children()}
-</AppShell>
+{#if connecting}
+	<BootGate variant="connecting" />
+{:else if unreachable}
+	<BootGate variant="unreachable" />
+{:else}
+	<AppShell>
+		{@render children()}
+	</AppShell>
+{/if}

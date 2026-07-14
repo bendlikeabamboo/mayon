@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import { FTS_BOOTSTRAP_SQL } from '@mayon/shared';
 import type { StorageDriver, QueryResult, BatchStatement } from './types';
 import { createDb } from './proxy';
 import path from 'node:path';
@@ -68,6 +69,9 @@ function createPgTestDriver(): StorageDriver {
 		async init() {
 			const db = drizzle(client);
 			await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
+			for (const sql of FTS_BOOTSTRAP_SQL) {
+				await client.exec(sql);
+			}
 		},
 		async dispose() {
 			await client.close();

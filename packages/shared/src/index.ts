@@ -1,3 +1,4 @@
+export { FTS_BOOTSTRAP_SQL } from './fts';
 export type {
 	ServerCap,
 	HealthResponse,

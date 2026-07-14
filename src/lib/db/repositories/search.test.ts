@@ -1,34 +1,151 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { repos } from '$lib/db';
+import { renderSnippet, stripIndexNoise, buildMatchQuery, deepLink } from '$lib/db';
+import { bootstrapWithDriver } from '$lib/db/driver/client';
+import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 
-describe('search repository (P-pg-2 stub)', () => {
-	it('fts5Available() returns false', async () => {
-		expect(await repos.search.fts5Available()).toBe(false);
+beforeEach(async () => {
+	const { driver } = await bootstrapTestDb();
+	await bootstrapWithDriver(driver, 'pg');
+});
+
+describe('search repository (P-pg-4 PG FTS)', () => {
+	it('searchAvailable() returns true', async () => {
+		expect(await repos.search.searchAvailable()).toBe(true);
 	});
 
-	it('search() returns empty array', async () => {
-		const hits = await repos.search.search('anything');
-		expect(hits).toEqual([]);
+	it('searches a token in a message and returns a hit with highlighted snippet', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'Test Chat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		const msg = await repos.messages.append(
+			chat.id,
+			'assistant',
+			'The quick brown fox jumps over the lazy dog.'
+		);
+
+		const hits = await repos.search.search('fox');
+		expect(hits.length).toBeGreaterThanOrEqual(1);
+
+		const msgHit = hits.find((h) => h.kind === 'message');
+		expect(msgHit).toBeDefined();
+		expect(msgHit!.chatId).toBe(chat.id);
+		expect(msgHit!.refId).toBe(msg.id);
+
+		const segs = renderSnippet(msgHit!.snippetBody);
+		const markedSeg = segs.find((s) => s.mark && s.text.includes('fox'));
+		expect(markedSeg).toBeDefined();
+	});
+
+	it('finds hits across labs and quiz_questions', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'LabChat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		await repos.labs.create({
+			chatId: chat.id,
+			title: 'uniqueLabToken experiment',
+			content: 'Description of the experiment'
+		});
+		const quiz = await repos.quizzes.create({ chatId: chat.id, model: 'gpt-4o' });
+		await repos.quizQuestions.add({
+			quizId: quiz.id,
+			type: 'short',
+			prompt: 'Explain uniqueQuizToken in detail',
+			payload: { rubric: 'test' }
+		});
+
+		const hits = await repos.search.search('uniqueLabToken OR uniqueQuizToken');
+		expect(hits.some((h) => h.kind === 'lab')).toBe(true);
+		expect(hits.some((h) => h.kind === 'quiz_question')).toBe(true);
+	});
+
+	it('filters by kinds', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'FilterChat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		await repos.messages.append(chat.id, 'assistant', 'labfiltertoken content');
+		await repos.labs.create({
+			chatId: chat.id,
+			title: 'labfiltertoken lab title',
+			content: 'lab body'
+		});
+
+		const allHits = await repos.search.search('labfiltertoken');
+		expect(allHits.length).toBeGreaterThanOrEqual(2);
+
+		const labHits = await repos.search.search('labfiltertoken', { kinds: ['lab'] });
+		expect(labHits.length).toBeGreaterThanOrEqual(1);
+		expect(labHits.every((h) => h.kind === 'lab')).toBe(true);
+	});
+
+	it('ranks results by relevance (higher rank first)', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'RankChat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		await repos.messages.append(
+			chat.id,
+			'assistant',
+			'ranktoken ranktoken ranktoken appears multiple times'
+		);
+		await repos.messages.append(chat.id, 'assistant', 'ranktoken appears once');
+
+		const hits = await repos.search.search('ranktoken');
+		const msgHits = hits.filter((h) => h.kind === 'message');
+		expect(msgHits.length).toBeGreaterThanOrEqual(2);
+		expect(msgHits[0].rank).toBeGreaterThanOrEqual(msgHits[msgHits.length - 1].rank);
+	});
+
+	it('strips mermaid code blocks from search index (noise stripping)', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'NoiseChat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		await repos.messages.append(
+			chat.id,
+			'assistant',
+			'```mermaid\ngraph LR\nA-->B\nuniquemermaidtoken\n``` some plain text here'
+		);
+		await repos.messages.append(chat.id, 'assistant', 'uniquemermaidtoken appears in plain text');
+
+		const hits = await repos.search.search('uniquemermaidtoken');
+		const msgHits = hits.filter((h) => h.kind === 'message');
+		expect(msgHits.length).toBe(1);
+		expect(msgHits[0].snippetBody).toContain('plain text');
+	});
+
+	it('strips $$...$$ display math from search index', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'MathChat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		await repos.messages.append(chat.id, 'assistant', '$$uniquemathtoken$$ only in math block');
+		await repos.messages.append(chat.id, 'assistant', 'uniquemathtoken in plain text');
+
+		const hits = await repos.search.search('uniquemathtoken');
+		const msgHits = hits.filter((h) => h.kind === 'message');
+		expect(msgHits.length).toBe(1);
 	});
 
 	it('rebuildIndex() is a no-op', async () => {
 		await expect(repos.search.rebuildIndex()).resolves.toBeUndefined();
 	});
 
+	it('search() returns empty for empty/whitespace query', async () => {
+		expect(await repos.search.search('')).toEqual([]);
+		expect(await repos.search.search('   ')).toEqual([]);
+	});
+
 	describe('pure helpers unchanged', () => {
-		let stripIndexNoise: typeof import('$lib/db').stripIndexNoise;
-		let buildMatchQuery: typeof import('$lib/db').buildMatchQuery;
-		let renderSnippet: typeof import('$lib/db').renderSnippet;
-		let deepLink: typeof import('$lib/db').deepLink;
-
-		it('loads helpers', async () => {
-			const mod = await import('$lib/db');
-			stripIndexNoise = mod.stripIndexNoise;
-			buildMatchQuery = mod.buildMatchQuery;
-			renderSnippet = mod.renderSnippet;
-			deepLink = mod.deepLink;
-		});
-
 		it('stripIndexNoise strips mermaid fenced blocks', () => {
 			const input = 'hello ```mermaid\ngraph LR\nA-->B\n``` world';
 			expect(stripIndexNoise(input)).toBe('hello  world');
@@ -86,7 +203,7 @@ describe('search repository (P-pg-2 stub)', () => {
 
 		it('deepLink message → /chat/{chatId}#m={refId}', () => {
 			const hit = {
-				kind: 'message',
+				kind: 'message' as const,
 				chatId: 'c1',
 				refId: 'r1',
 				quizId: null,
@@ -96,13 +213,13 @@ describe('search repository (P-pg-2 stub)', () => {
 				snippetTitle: '',
 				snippetBody: '',
 				rank: 0
-			} as const;
+			};
 			expect(deepLink(hit)).toBe('/chat/c1#m=r1');
 		});
 
 		it('deepLink chat → /chat/{refId}', () => {
 			const hit = {
-				kind: 'chat',
+				kind: 'chat' as const,
 				chatId: 'c1',
 				refId: 'r1',
 				quizId: null,
@@ -112,13 +229,13 @@ describe('search repository (P-pg-2 stub)', () => {
 				snippetTitle: '',
 				snippetBody: '',
 				rank: 0
-			} as const;
+			};
 			expect(deepLink(hit)).toBe('/chat/r1');
 		});
 
 		it('deepLink lab → /lab/{refId}', () => {
 			const hit = {
-				kind: 'lab',
+				kind: 'lab' as const,
 				chatId: 'c1',
 				refId: 'r1',
 				quizId: null,
@@ -128,13 +245,13 @@ describe('search repository (P-pg-2 stub)', () => {
 				snippetTitle: '',
 				snippetBody: '',
 				rank: 0
-			} as const;
+			};
 			expect(deepLink(hit)).toBe('/lab/r1');
 		});
 
 		it('deepLink quiz_question → /quiz/{quizId}', () => {
 			const hit = {
-				kind: 'quiz_question',
+				kind: 'quiz_question' as const,
 				chatId: 'c1',
 				refId: 'r1',
 				quizId: 'q1',
@@ -144,7 +261,7 @@ describe('search repository (P-pg-2 stub)', () => {
 				snippetTitle: '',
 				snippetBody: '',
 				rank: 0
-			} as const;
+			};
 			expect(deepLink(hit)).toBe('/quiz/q1');
 		});
 	});

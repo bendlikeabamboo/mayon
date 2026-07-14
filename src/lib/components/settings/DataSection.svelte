@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { repos } from '$lib/db';
-	import { createBackup, restoreBackupFromBytes } from '$lib/db/backup';
+	import { downloadDbBackup, restoreDbBackup } from '$lib/server/db-backup';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { serverStatus } from '$lib/server/status.svelte';
 	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/server/sandbox-backup';
@@ -22,7 +21,7 @@
 		error = null;
 		status = null;
 		try {
-			await createBackup();
+			await downloadDbBackup();
 			status = 'Backup downloaded.';
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
@@ -31,16 +30,8 @@
 		}
 	}
 
-	async function handleRestore() {
-		busy = true;
-		error = null;
-		status = null;
-		try {
-			fileInputEl?.click();
-		} catch (err) {
-			error = err instanceof Error ? err.message : String(err);
-			busy = false;
-		}
+	function handleRestore() {
+		fileInputEl?.click();
 	}
 
 	async function handleFileInput(e: Event) {
@@ -48,8 +39,7 @@
 		const file = input.files?.[0];
 		if (!file) return;
 		try {
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			await restoreBackupFromBytes(bytes);
+			await restoreDbBackup(file);
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 			busy = false;
@@ -58,21 +48,6 @@
 	}
 
 	const disabled = $derived(busy || chatStore.streaming);
-
-	async function handleRebuildIndex() {
-		if (!confirm('Rebuild the search index from scratch?')) return;
-		busy = true;
-		error = null;
-		status = null;
-		try {
-			await repos.search.rebuildIndex();
-			status = 'Search index rebuilt.';
-		} catch (err) {
-			error = err instanceof Error ? err.message : String(err);
-		} finally {
-			busy = false;
-		}
-	}
 
 	async function handleSandboxDownload() {
 		sandboxBusy = true;
@@ -117,20 +92,20 @@
 	</div>
 
 	<p class="text-xs text-muted-foreground">
-		Download a full backup of your data, or restore from a previous backup file. Backups are
-		data-only — they do not include API keys.
+		Backups are Postgres custom-format dumps (`.dump`) — data only, no API keys. Restoring first
+		downloads a safety backup, then replaces all data and reloads.
 	</p>
 
 	<input
 		bind:this={fileInputEl}
 		type="file"
-		accept=".sqlite"
+		accept=".dump,.backup"
 		class="hidden"
 		onchange={handleFileInput}
 	/>
 
 	<div class="flex gap-2">
-		{#if !serverStatus.has('pg')}
+		{#if serverStatus.has('pg')}
 			<Button variant="outline" size="sm" {disabled} onclick={handleBackup}>Download backup</Button>
 			<Button variant="outline" size="sm" {disabled} onclick={handleRestore}>
 				Restore from backup
@@ -145,12 +120,6 @@
 	{#if error}
 		<p class="text-xs text-destructive" role="alert">{error}</p>
 	{/if}
-
-	<hr class="border-border" />
-
-	<Button variant="outline" size="sm" {disabled} onclick={handleRebuildIndex}>
-		Rebuild search index
-	</Button>
 
 	{#if serverStatus.has('backup')}
 		<hr class="border-border" />

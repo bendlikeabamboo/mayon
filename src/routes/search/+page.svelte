@@ -14,7 +14,7 @@
 	let results = $state<SearchHit[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let fts5Available = $state<boolean | null>(null);
+	let searchAvailable = $state<boolean | null>(null);
 	let searched = $state(false);
 	let currentPage = $state(1);
 	const ITEMS_PER_PAGE = 10;
@@ -108,7 +108,7 @@
 	onMount(async () => {
 		inputEl?.focus();
 		if (dbStatus.status !== 'ready') return;
-		fts5Available = await repos.search.fts5Available();
+		searchAvailable = await repos.search.searchAvailable();
 		if (q.trim()) doSearch(q);
 	});
 </script>
@@ -125,7 +125,7 @@
 		/>
 	</form>
 
-	{#if fts5Available === false}
+	{#if searchAvailable === false}
 		<p
 			class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
 		>

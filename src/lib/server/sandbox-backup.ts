@@ -1,6 +1,16 @@
 import { serverClient } from './client';
 import { serverStatus } from './status.svelte';
-import { downloadBlob, isSqliteHeader } from '$lib/db/backup';
+import { downloadBlob } from '$lib/db/backup';
+
+function isSqliteHeader(bytes: Uint8Array): boolean {
+	return (
+		bytes.length >= 16 &&
+		bytes[0] === 0x53 &&
+		bytes[1] === 0x51 &&
+		bytes[2] === 0x4c &&
+		bytes[3] === 0x69
+	);
+}
 
 function formatDate(): string {
 	const d = new Date();

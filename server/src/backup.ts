@@ -16,14 +16,6 @@ function formatDate(): string {
 const OCTET_STREAM = 'application/octet-stream';
 
 export function registerBackup(app: FastifyInstance, db: Database.Database, dbPath: string): void {
-	app.addContentTypeParser(
-		'application/octet-stream',
-		{ parseAs: 'buffer' },
-		(_req, body, done) => {
-			done(null, body);
-		}
-	);
-
 	app.get('/api/backup/sandbox', async (_req, reply) => {
 		const tmp = join(tmpdir(), `mayon-sandbox-backup-${Date.now()}.sqlite`);
 		try {

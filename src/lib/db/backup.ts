@@ -1,16 +1,9 @@
-// Backup/restore suspended in P-pg-2 (RemotePgDriver has no snapshot/restore).
-// Returns in P-pg-5 (pg_dump/pg_restore).
-
-export function createBackup(): Promise<void> {
-	throw new Error('Backup/restore returns in P-pg-5 (pg_dump/pg_restore).');
-}
-
-export function restoreBackupFromBytes(_bytes: Uint8Array): Promise<void> {
-	throw new Error('Backup/restore returns in P-pg-5 (pg_dump/pg_restore).');
-}
-
-export function downloadBlob(bytes: Uint8Array, filename: string) {
-	const blob = new Blob([new Uint8Array(bytes)], { type: 'application/x-sqlite3' });
+export function downloadBlob(
+	bytes: Uint8Array,
+	filename: string,
+	type = 'application/octet-stream'
+) {
+	const blob = new Blob([bytes as BlobPart], { type });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement('a');
 	a.href = url;
@@ -19,12 +12,20 @@ export function downloadBlob(bytes: Uint8Array, filename: string) {
 	URL.revokeObjectURL(url);
 }
 
-export function isSqliteHeader(bytes: Uint8Array): boolean {
+export function isPgDumpHeader(bytes: Uint8Array): boolean {
 	return (
-		bytes.length >= 16 &&
-		bytes[0] === 0x53 &&
-		bytes[1] === 0x51 &&
-		bytes[2] === 0x4c &&
-		bytes[3] === 0x69
+		bytes.length >= 5 &&
+		bytes[0] === 0x50 &&
+		bytes[1] === 0x47 &&
+		bytes[2] === 0x44 &&
+		bytes[3] === 0x4d &&
+		bytes[4] === 0x50
 	);
+}
+
+export function parseContentDispositionFilename(res: Response, fallback: string): string {
+	const cd = res.headers.get('content-disposition');
+	if (!cd) return fallback;
+	const match = cd.match(/filename="?([^";]+)"?/);
+	return match ? match[1] : fallback;
 }

@@ -34,6 +34,7 @@ in `.kilo/plans/`.
 | `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                              |
 | `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                                    |
 | `pnpm bundle:migrations`           | Re-bundle `drizzle/` SQL + journal into `src/lib/db/driver/migrations.ts` (run after every `db:generate` before shipping). |
+| `pnpm dev:deps`                    | Start db + server in Docker (deps for `pnpm dev`).                                                                         |
 | `docker compose up`                | Run the web SPA + server together (web on :8080, server internal-only).                                                    |
 
 Always run `pnpm bundle:migrations` after `pnpm db:generate` so the SPA can run the
@@ -56,15 +57,65 @@ P-pg-2 flips the browser's primary driver to Postgres via the server and makes t
 proxy, and migrations Postgres-native. The app is server-required for function in this phase.
 
 - **Browser + server + PG:** `docker compose up` → server logs `pg: ready` and `pg: migrations applied`; header badge reaches **DB ready (pg)**; `GET /api/health` returns `caps` including `'pg'`. Dev self-check passes (writes/reads/deletes a chats row via repos). Create a chat, append a message, and read it back — data round-trips through the browser against the PG primary.
-- **Server-down:** `docker compose stop server` → reload → badge shows **DB error** (full-screen "Server unreachable" UX is P-pg-3). `POST /api/db/query` returns 503.
+- **Server-down:** `docker compose stop server` → reload → full-screen "Server unreachable" with the `docker compose up` hint + Retry button; background auto-poll recovers after `docker compose start server`. `POST /api/db/query` returns 503.
 - **PG-down:** `docker compose stop db` → restart server → `'pg'` cap absent from `/api/health`; `/api/db/query` returns 503.
 - **Sandbox regression:** Settings → Sandbox DB inspector still works (`/api/sandbox/query` untouched).
 - **Migrations:** a single `drizzle/0000_*.sql` migration exists (dialect `postgresql`). The server runs drizzle's native `migrate()` at boot; migrations gate on pool connect + migrations applied (`'pg'` cap).
-- **OPFS backup suspended:** the Settings → Data UI hides "Download backup" and "Restore from backup" buttons until P-pg-5. `backup.ts` throws "Backup/restore returns in P-pg-5 (pg_dump/pg_restore)."
-- **Search stubbed:** `repos.search.search()` returns `[]`; `fts5Available()` returns `false`; `rebuildIndex()` is a no-op. (FTS port to `tsvector`/GIN/`ts_headline` is P-pg-4.)
+- **OPFS backup superseded:** app-DB backup/restore is now PG-native (`pg_dump -Fc` / `pg_restore`). The Settings → Data "Download backup" / "Restore from backup" buttons are gated on `serverStatus.has('pg')` and download/restore custom-format `.dump` files via the server. OPFS backup code removal is deferred to P-pg-7.
+- **Search:** `repos.search.search()` uses native PG `tsvector`/`GIN`/`ts_headline` (P-pg-4); `searchAvailable()` returns `true` with `'pg'` cap; `rebuildIndex()` is a no-op (GENERATED columns self-maintain). `translatePlaceholders` retained (`chats.ts` still emits raw `?`).
 - **Tests:** `pnpm lint && pnpm check && pnpm test` green with testcontainers PG; `pnpm --filter @mayon/server test` green. All tests now use a per-test-schema PG driver (`bootstrapTestDb`).
 
 > The schema flip to `pg-core`, proxy flip to `pg-proxy`, server native `migrate()`, browser RemotePgDriver wiring, and testcontainer setup are covered by the automated test suites.
+
+## Manual acceptance gates (P-pg-4)
+
+P-pg-4 ports full-text search from FTS5 to native Postgres `tsvector`/`GIN`/`ts_headline`,
+with noise stripping via an `IMMUTABLE` SQL function and `GENERATED ALWAYS AS` columns.
+
+- **Browser + server + PG:** `docker compose up` → server logs `pg: fts ready`; `/search`
+  returns ranked hits with highlighted snippets across messages/chats/labs/quizzes; kind
+  filter works; `searchAvailable()` returns `true`.
+- **Noise stripping:** a token that appears **only** inside a ` ```mermaid ` block or a
+  `$$…$$` display-math block is **not** matched; the same token in plain text is matched.
+- **Graceful degradation:** server-down or FTS failure → `search()` degrades to `[]` (no crash).
+- **UI:** Settings "Rebuild search index" button is gone (GENERATED columns self-maintain).
+- **`translatePlaceholders` stays** (`chats.ts` still emits raw `?`); removal deferred to P-pg-7.
+- **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green. FTS bootstrap idempotency tested in `server/src/fts.test.ts`.
+
+## Manual acceptance gates (P-pg-5)
+
+P-pg-5 ships PG-native backup and restore using `pg_dump -Fc` and `pg_restore`, superseding
+the suspended OPFS backup. Download produces a custom-format `.dump`; restore always takes a
+pre-restore safety dump (auto-downloaded to the browser), drops `public`+`drizzle` schemas,
+restores, then restarts the server.
+
+- **Browser + server + PG:** `docker compose up` → Settings → Data shows "Download backup"
+  and "Restore from backup" (gated on `serverStatus.has('pg')`). Download yields a valid
+  `mayon-YYYYMMDD.dump`; restoring it into a throwaway PG confirms validity.
+- **Restore round-trip:** create a chat/message → download `.dump` → "Restore from backup" → a
+  safety `.dump` auto-downloads → app reloads → chat/message is present → second download matches.
+- **Non-PG file rejection:** uploading a non-`.dump`/non-PGDMP file shows a clear error; live data
+  untouched.
+- **Failed restore rollback:** a truncated/corrupt dump triggers a rollback to the safety dump and
+  server restart; the UI shows the error.
+- **Concurrent writes:** downloading an app-DB backup while MCP tools write to the **sandbox** DB
+  produces a valid `.dump` (separate DB, `pg_dump` MVCC snapshot).
+- **Server-down:** stop the server → app-DB backup buttons hidden; sandbox section also hidden;
+  reload → full-screen "Cannot reach the Mayon server."
+- **Docker image:** `docker compose build` installs `postgresql17-client`; `pg_dump --version` reports
+  17.x in the server container.
+- **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green (mocked spawns, `process.exit` mocked). Octet-stream parser registered exactly once.
+
+## Manual acceptance gates (P-pg-3)
+
+P-pg-3 adds boot gating and failure UX now that the app requires the server.
+
+- **Browser + server + PG:** `docker compose up` → brief `Connecting…` screen → shell; badge shows **Server: connected** / **DB ready (pg)**; theme toggle persists across reload; dev self-check passes.
+- **Server-down:** `docker compose stop server` → reload → full-screen **"Cannot reach the Mayon server."** with the `docker compose up` hint + working Retry; background auto-poll recovers after `docker compose start server` (reload fires automatically).
+- **PG-down:** `docker compose stop db` (keep server up) → reload → fullscreen **"Database not ready."** variant (server connected, `'pg'` absent); recovers when db is healthy again.
+- **Dev loop:** `pnpm dev:deps` then `pnpm dev` → SPA works against the Dockerized server+pg via the vite `/api` proxy.
 
 ## Manual acceptance gates (P0)
 

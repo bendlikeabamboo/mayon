@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { detectServer } from './detect';
+import { detectServer, waitForServerPg } from './detect';
 
 const originalFetch = globalThis.fetch;
 
@@ -59,5 +59,41 @@ describe('detectServer', () => {
 			errors.push(e);
 		}
 		expect(errors).toHaveLength(0);
+	});
+});
+
+describe('waitForServerPg', () => {
+	it('returns health when pg cap arrives on attempt N < attempts', async () => {
+		let callCount = 0;
+		globalThis.fetch = vi.fn().mockImplementation(() => {
+			callCount++;
+			if (callCount < 2) {
+				return Promise.resolve(
+					new Response(JSON.stringify({ ok: true, version: '0.0.1', caps: [] }), { status: 200 })
+				);
+			}
+			return Promise.resolve(
+				new Response(JSON.stringify({ ok: true, version: '0.0.1', caps: ['pg'] }), { status: 200 })
+			);
+		});
+		const result = await waitForServerPg({ attempts: 5, delayMs: 1 });
+		expect(result).toEqual({ ok: true, version: '0.0.1', caps: ['pg'] });
+		expect(callCount).toBe(2);
+	});
+
+	it('returns null when responses never include pg within attempts', async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ ok: true, version: '0.0.1', caps: [] }), { status: 200 })
+			);
+		const result = await waitForServerPg({ attempts: 2, delayMs: 1 });
+		expect(result).toBeNull();
+	});
+
+	it('returns null when fetch always rejects (server down)', async () => {
+		globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+		const result = await waitForServerPg({ attempts: 2, delayMs: 1 });
+		expect(result).toBeNull();
 	});
 });

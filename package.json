@@ -27,6 +27,7 @@
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
+		"dev:deps": "docker compose up -d db server",
 		"dev:server": "pnpm --filter @mayon/server dev",
 		"test:all": "pnpm -r --include-workspace-root test"
 	},
