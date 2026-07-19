@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { serverStatus } from '$lib/server/status.svelte';
-	import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/server/sandbox-db';
+	import { serverStatus } from '$lib/services/status.svelte';
+	import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/services/sandbox-db';
 	import { onMount } from 'svelte';
 
 	let sql = $state("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");

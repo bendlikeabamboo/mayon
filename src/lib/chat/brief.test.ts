@@ -8,6 +8,7 @@ import {
 	PERSONA_IDS,
 	buildBriefSystemNote,
 	buildCapabilitiesPreamble,
+	buildFirstTurnOrientationPreamble,
 	isPersonaId,
 	parseBrief,
 	personaForId,
@@ -434,5 +435,14 @@ describe('buildCapabilitiesPreamble', () => {
 	it('omits MCP resources line when no resources are mounted', () => {
 		const preamble = buildCapabilitiesPreamble();
 		expect(preamble).not.toContain('mcp_read_resource');
+	});
+});
+
+describe('buildFirstTurnOrientationPreamble', () => {
+	it('returns a non-empty string mentioning first turn and orientation', () => {
+		const s = buildFirstTurnOrientationPreamble();
+		expect(s.length).toBeGreaterThan(0);
+		expect(s).toContain('first turn');
+		expect(s.toLowerCase()).toContain('orient');
 	});
 });

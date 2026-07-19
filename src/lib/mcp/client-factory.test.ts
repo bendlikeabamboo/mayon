@@ -9,14 +9,14 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
-vi.mock('$lib/server/status.svelte', () => ({
+vi.mock('$lib/services/status.svelte', () => ({
 	serverStatus: { has: vi.fn().mockReturnValue(false) }
 }));
 
 import { createMcpTransport } from './client-factory';
 import { HttpMcpTransport } from './http';
 import { ServerStdioMcpTransport } from './server-stdio';
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 
 describe('createMcpTransport', () => {
 	afterEach(() => {

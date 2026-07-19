@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/status.svelte', () => ({
+vi.mock('$lib/services/status.svelte', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(false),
 		connected: false,
@@ -20,7 +20,7 @@ import {
 	ProviderHttpError,
 	RateLimitError
 } from './types';
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 
 /** Minimal `location` shape read by `classifyFetchError`'s cross-origin check. */
 type LocationLike = { href: string; origin: string };

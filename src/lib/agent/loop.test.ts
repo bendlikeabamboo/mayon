@@ -85,7 +85,8 @@ vi.mock('$lib/chat/context', () => ({
 }));
 
 vi.mock('$lib/chat/brief', () => ({
-	buildCapabilitiesPreamble: vi.fn(() => 'preamble')
+	buildCapabilitiesPreamble: vi.fn(() => 'preamble'),
+	buildFirstTurnOrientationPreamble: vi.fn(() => 'orientation')
 }));
 
 vi.mock('$lib/ai/sdk-factory', () => ({
@@ -118,6 +119,8 @@ const mockedToCoreMessages = vi.mocked(toCoreMessages);
 
 const { buildCapabilitiesPreamble } = await import('$lib/chat/brief');
 const mockedBuildCapabilitiesPreamble = vi.mocked(buildCapabilitiesPreamble);
+const { buildFirstTurnOrientationPreamble } = await import('$lib/chat/brief');
+const mockedBuildFirstTurnOrientationPreamble = vi.mocked(buildFirstTurnOrientationPreamble);
 
 const { providerOptionsForReasoning } = await import('$lib/ai/sdk-factory');
 const mockedProviderOptionsForReasoning = vi.mocked(providerOptionsForReasoning);
@@ -215,6 +218,7 @@ beforeEach(() => {
 	mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
 	mockedToCoreMessages.mockImplementation((msgs) => msgs as never);
 	mockedBuildCapabilitiesPreamble.mockReturnValue('preamble');
+	mockedBuildFirstTurnOrientationPreamble.mockReturnValue('orientation');
 	mockedProviderOptionsForReasoning.mockReturnValue({});
 });
 
@@ -393,6 +397,46 @@ describe('runAgentTurn', () => {
 		expect(callArgs.tools).toEqual({});
 
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+	});
+
+	it('(e2) firstTurn flag: streamText called with tools:{}; system contains orientation; no tool-enabled retry', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Welcome!' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({ firstTurn: true });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(mockedStreamText).toHaveBeenCalledOnce();
+		const callArgs = mockedStreamText.mock.calls[0][0];
+		expect(callArgs.tools).toEqual({});
+		expect(callArgs.system).toContain('orientation');
+		expect(mockedBuildFirstTurnOrientationPreamble).toHaveBeenCalledOnce();
+		expect(mockedBuildCapabilitiesPreamble).not.toHaveBeenCalled();
+	});
+
+	it('(e3) firstTurn absent with capable provider: tools enabled (regression guard)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hello' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({ config: makeConfig({ toolCapability: true }) });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(mockedStreamText).toHaveBeenCalledOnce();
+		const callArgs = mockedStreamText.mock.calls[0][0];
+		expect(Object.keys(callArgs.tools as object).length).toBeGreaterThan(0);
+		expect(callArgs.system).toContain('preamble');
+		expect(mockedBuildCapabilitiesPreamble).toHaveBeenCalledOnce();
+		expect(mockedBuildFirstTurnOrientationPreamble).not.toHaveBeenCalled();
 	});
 
 	describe('(f) critic', () => {

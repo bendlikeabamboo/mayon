@@ -30,7 +30,7 @@
 	import { repos } from '$lib/db';
 	import { uuid } from '$lib/db/ids';
 	import type { McpServerConfig } from '$lib/mcp/types';
-	import { serverStatus } from '$lib/server/status.svelte';
+	import { serverStatus } from '$lib/services/status.svelte';
 
 	let servers = $state<McpServerConfig[]>([]);
 	let trustFlags = $state<Record<string, boolean>>({});

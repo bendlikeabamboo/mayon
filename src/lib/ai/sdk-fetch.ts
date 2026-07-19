@@ -1,7 +1,7 @@
 import { classifyFetchError, httpStatusToError } from './errors';
 import { createBrowserKeyStore } from './keystore/browser';
 import { MissingKeyError } from './types';
-import { getLlmFetch } from '$lib/server/llm-proxy-fetch';
+import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
 
 export interface KeychainFetchAuth {
 	header: string;

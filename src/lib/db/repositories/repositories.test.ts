@@ -1,15 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import { DEFAULT_PROFILE } from '$lib/chat/brief';
 import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
 
-beforeEach(async () => {
-	// Fresh per-test PG schema via bootstrapTestDb; repositories resolve via getDb().
-	const { driver } = await bootstrapTestDb();
-	await bootstrapWithDriver(driver, 'pg');
-});
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
 
 describe('chats repository', () => {
 	it('creates a root chat with self root_id and depth 0', async () => {

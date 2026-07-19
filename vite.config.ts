@@ -16,6 +16,7 @@ export default defineConfig({
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'node',
-		testTimeout: 15_000
+		testTimeout: 15_000,
+		maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 4)
 	}
 });

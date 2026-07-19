@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CheckCircle2, Unplug } from '@lucide/svelte';
-	import { serverStatus } from '$lib/server/status.svelte.js';
+	import { serverStatus } from '$lib/services/status.svelte.js';
 	import { cn } from '$lib/utils.js';
 
 	let { collapsed = false }: { collapsed?: boolean } = $props();

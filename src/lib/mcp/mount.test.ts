@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import {
 	getToolDefinitions,
 	getToolDefinition,
@@ -21,6 +20,11 @@ import { RESOURCE_SERVERS } from './resources';
 import { PROMPT_SERVERS } from './prompts';
 import { listMountedResources } from './resources';
 import { listMountedPrompts as listPromptsFromModule } from './prompts';
+
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
 
 class FakeMcpTransport implements McpTransport {
 	private handlers: Array<(n: McpNotification) => void> = [];
@@ -95,8 +99,6 @@ function fakeCtx(): ToolContext {
 }
 
 beforeEach(async () => {
-	const { driver } = await bootstrapTestDb();
-	await bootstrapWithDriver(driver, 'pg');
 	RESOURCE_SERVERS.clear();
 	PROMPT_SERVERS.clear();
 	deregisterTool('mcp_read_resource');

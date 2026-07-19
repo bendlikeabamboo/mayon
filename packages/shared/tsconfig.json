@@ -6,6 +6,10 @@
 		"strict": true,
 		"skipLibCheck": true,
 		"verbatimModuleSyntax": true,
-		"composite": true
-	}
+		"declaration": true,
+		"declarationMap": true,
+		"rootDir": "src",
+		"ignoreDeprecations": "6.0"
+	},
+	"include": ["src"]
 }

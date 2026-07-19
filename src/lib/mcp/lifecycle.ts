@@ -1,5 +1,5 @@
 import { CorsBlockedError } from '$lib/ai/errors';
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 import type { McpServerConfig, McpServerInfo, McpTool, McpResource, McpPrompt } from './types';
 import { createMcpTransport } from './client-factory';
 import { McpClient } from './client';

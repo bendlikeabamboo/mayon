@@ -1,13 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { McpServerConfig, ChatMcpConfig, McpAttachedResource } from '$lib/mcp/types';
 
-beforeEach(async () => {
-	const { driver } = await bootstrapTestDb();
-	await bootstrapWithDriver(driver, 'pg');
-});
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
 
 function makeServer(overrides: Partial<McpServerConfig> = {}): McpServerConfig {
 	return {

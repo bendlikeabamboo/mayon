@@ -38,18 +38,12 @@ export function registerLlmProxy(app: FastifyInstance): void {
 			return;
 		}
 
-		const controller = new AbortController();
-		req.raw.on('close', () => {
-			controller.abort();
-		});
-
 		let upstream: Response;
 		try {
 			upstream = await fetch(body.url, {
 				method: body.method ?? 'GET',
 				headers: body.headers,
 				body: body.body,
-				signal: controller.signal,
 				cache: 'no-store'
 			});
 		} catch (err) {
@@ -73,6 +67,10 @@ export function registerLlmProxy(app: FastifyInstance): void {
 		reply.raw.writeHead(upstream.status, forwardedHeaders);
 
 		if (upstream.body) {
+			const controller = new AbortController();
+			reply.raw.on('close', () => {
+				controller.abort();
+			});
 			const nodeStream = Readable.fromWeb(upstream.body as import('stream/web').ReadableStream);
 			nodeStream.on('error', () => {
 				reply.raw.destroy();

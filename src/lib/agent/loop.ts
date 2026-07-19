@@ -4,7 +4,7 @@ import { getToolDefinitions, getToolDefinition, toolsRun } from '$lib/agent/regi
 import { isSessionDisabled, disableToolsForSession } from '$lib/agent/capability';
 import { validateTurn } from '$lib/agent/critic';
 import { toCoreMessages } from '$lib/chat/context';
-import { buildCapabilitiesPreamble } from '$lib/chat/brief';
+import { buildCapabilitiesPreamble, buildFirstTurnOrientationPreamble } from '$lib/chat/brief';
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
 import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
 import type { Message } from '$lib/db/schema';
@@ -48,6 +48,7 @@ export interface AgentTurnDeps {
 	notifyLowRisk: (toolLabel: string, summary: string) => void;
 	notifyGenerativeStatus?: (status: { toolName: string; label: string } | null) => void;
 	disabledToolIds?: string[];
+	firstTurn?: boolean;
 	onTrace?: (e: TraceEvent) => void;
 }
 
@@ -181,7 +182,8 @@ async function runCriticPhase(
 }
 
 export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: boolean }> {
-	const toolCapability = deps.config.toolCapability && !isSessionDisabled();
+	const baseCapability = deps.config.toolCapability && !isSessionDisabled();
+	const toolCapability = baseCapability && !deps.firstTurn;
 
 	async function inner(toolsEnabled: boolean): Promise<{ aborted: boolean }> {
 		const turnBudget = { subCalls: 0, maxSubCalls: 1 };
@@ -203,6 +205,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			const sysParts = ctx.filter((m) => m.role === 'system').map((m) => m.content);
 			if (toolsEnabled) {
 				sysParts.push(buildCapabilitiesPreamble());
+			}
+			if (deps.firstTurn) {
+				sysParts.push(buildFirstTurnOrientationPreamble());
 			}
 			const messages = toCoreMessages(ctx);
 

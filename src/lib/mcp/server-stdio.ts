@@ -1,7 +1,7 @@
 import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
 import { MissingKeyError } from '$lib/ai/types';
-import { serverClient } from '$lib/server/client';
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverClient } from '$lib/services/client';
+import { serverStatus } from '$lib/services/status.svelte';
 import type { McpNotification } from './types';
 import type { McpServerConfig, McpServerInfo } from './types';
 import type { McpServerRequest, McpTransport } from './transport';

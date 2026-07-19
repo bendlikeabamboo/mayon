@@ -1,13 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { GeneratedLabSchema, type GeneratedLab } from '$lib/ai/generate/lab';
 
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
+
 beforeEach(async () => {
-	await bootstrapWithDriver((await bootstrapTestDb()).driver, 'pg');
 	mockedGetActiveSdkProvider.mockReset();
 	mockedGenerateText.mockReset();
 	labsStore.list = [];

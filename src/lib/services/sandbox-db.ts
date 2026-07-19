@@ -1,5 +1,5 @@
 import type { DbQueryResult } from '@mayon/shared';
-import { serverClient } from '$lib/server/client';
+import { serverClient } from '$lib/services/client';
 
 async function post(body: unknown): Promise<unknown> {
 	const res = await serverClient.http('/api/sandbox/query', {

@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
@@ -61,6 +60,11 @@ const mockedGenerateText = vi.mocked(generateText);
 const mockedGenerateObject = vi.mocked(generateObject);
 const mockedStreamText = vi.mocked(streamText);
 
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
+
 const stubConfig: ProviderConfig = {
 	id: 'stub',
 	kind: 'openai-compatible',
@@ -92,7 +96,6 @@ function mockDefaultProvider(): void {
 }
 
 beforeEach(async () => {
-	await bootstrapWithDriver((await bootstrapTestDb()).driver, 'pg');
 	mockedGetActiveSdkProvider.mockReset();
 	mockedGenerateText.mockReset();
 	mockedGenerateObject.mockReset();

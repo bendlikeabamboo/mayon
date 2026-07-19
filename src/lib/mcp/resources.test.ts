@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
+
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
 import { getToolDefinition, deregisterTool, toolsRun } from '$lib/agent/registry';
 import type { ToolContext } from '$lib/agent/registry';
 import type { LanguageModel } from 'ai';
@@ -72,8 +76,6 @@ function fakeCtx(): ToolContext {
 }
 
 beforeEach(async () => {
-	const { driver } = await bootstrapTestDb();
-	await bootstrapWithDriver(driver, 'pg');
 	deregisterTool('mcp_read_resource');
 	RESOURCE_SERVERS.clear();
 });

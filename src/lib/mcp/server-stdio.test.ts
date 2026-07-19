@@ -9,7 +9,7 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
-vi.mock('$lib/server/status.svelte', () => ({
+vi.mock('$lib/services/status.svelte', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -22,7 +22,7 @@ vi.mock('$lib/server/status.svelte', () => ({
 
 import { ServerStdioMcpTransport } from './server-stdio';
 import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 import { MissingKeyError } from '$lib/ai/types';
 
 class FakeWS extends EventTarget {

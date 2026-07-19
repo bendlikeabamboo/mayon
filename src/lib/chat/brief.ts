@@ -282,6 +282,15 @@ export function buildCapabilitiesPreamble(): string {
 	return lines.join('\n');
 }
 
+export function buildFirstTurnOrientationPreamble(): string {
+	return [
+		'This is the first turn of a new chat, so you have no tools this turn.',
+		'Orient the learner first: acknowledge what they want to learn, set expectations for how you will work together, and briefly outline the path ahead.',
+		'Do not jump into producing artifacts, quizzes, labs, or web searches yet — those become available on the next turn.',
+		'Keep it short, warm, and conversational; invite them to begin.'
+	].join('\n');
+}
+
 // ─────────────────────────── summary ──────────────────────────
 
 /**

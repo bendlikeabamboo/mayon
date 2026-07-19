@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import { toolsRun } from '$lib/agent/registry';
 import type { ToolContext } from '$lib/agent/registry';
@@ -51,11 +51,18 @@ const cannedLab = {
 	checklist: [{ text: 'Docker installed' }, { text: 'hello-world runs' }]
 };
 
+const testDb = useFileTestDb();
+let localDriver: Awaited<ReturnType<typeof testDb.setup>>['driver'];
+beforeAll(async () => {
+	const handle = await testDb.setup();
+	localDriver = handle.driver;
+});
 beforeEach(async () => {
-	const { driver } = await bootstrapTestDb();
-	await bootstrapWithDriver(driver, 'pg');
+	await testDb.reset();
+	await bootstrapWithDriver(localDriver, 'pg');
 	vi.clearAllMocks();
 });
+afterAll(() => testDb.teardown());
 
 function ctx(chatId: string, rootChatId: string, signal?: AbortSignal): ToolContext {
 	return {
@@ -74,7 +81,6 @@ describe('create_quiz', () => {
 		const chat = await repos.chats.createRoot({ title: 'C' });
 
 		const result = await toolsRun('create_quiz', { topic: 'Math' }, ctx(chat.id, chat.id));
-
 		expect(result.ok).toBe(true);
 		expect(result.detail).toMatchObject({ artifact: { kind: 'quiz' } });
 		const artifact = (result.detail as { artifact: { id: string } }).artifact;

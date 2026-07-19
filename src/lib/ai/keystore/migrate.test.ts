@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { KeyStore } from './types';
 
@@ -41,12 +40,14 @@ vi.mock('./client', () => ({ createKeyStore: () => mocks.fakeStore }));
 
 import { migrateLegacyKeys } from './migrate';
 
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+afterAll(() => testDb.teardown());
+
 describe('migrateLegacyKeys', () => {
 	beforeEach(async () => {
+		await testDb.reset();
 		mocks.reset();
-		// Fresh per-test PG schema via bootstrapTestDb.
-		const { driver } = await bootstrapTestDb();
-		await bootstrapWithDriver(driver, 'pg');
 		// Seed legacy rows + an unrelated key. No `keysMigrated` flag yet.
 		await repos.settings.set('providerKey:p1', 'secret-1');
 		await repos.settings.set('providerKey:p2', 'secret-2');

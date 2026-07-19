@@ -10,6 +10,9 @@ COPY packages/shared/package.json packages/shared/
 COPY server/package.json server/
 RUN pnpm install --frozen-lockfile --filter mayon...
 
+COPY packages/shared/ packages/shared/
+RUN pnpm --filter @mayon/shared build
+
 COPY . .
 RUN pnpm build
 

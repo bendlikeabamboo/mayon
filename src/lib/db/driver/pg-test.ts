@@ -3,12 +3,55 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { FTS_BOOTSTRAP_SQL } from '@mayon/shared';
 import type { StorageDriver, QueryResult, BatchStatement } from './types';
+import type { Db } from './proxy';
 import { createDb } from './proxy';
+import { bootstrapWithDriver } from './client';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, '../../../../drizzle');
+
+export interface FileTestDb {
+	db: Db;
+	driver: StorageDriver;
+}
+
+export function useFileTestDb(): {
+	setup(): Promise<FileTestDb>;
+	reset(): Promise<void>;
+	teardown(): Promise<void>;
+} {
+	let handle: FileTestDb | null = null;
+
+	return {
+		async setup() {
+			if (handle) return handle;
+			const driver = createPgTestDriver();
+			await driver.init!();
+			handle = { db: createDb(driver), driver };
+			await bootstrapWithDriver(driver, 'pg');
+			return handle;
+		},
+		async reset() {
+			if (!handle) return;
+			const res = await handle.driver.query(`
+				SELECT string_agg(format('%I.%I', table_schema, table_name), ', ')
+				FROM information_schema.tables
+				WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`);
+			const list = (res.rows[0] as unknown[])[0] as string | null;
+			if (list) await handle.driver.exec(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+		},
+		async teardown() {
+			try {
+				await handle?.driver.dispose?.();
+			} catch {
+				/* best-effort */
+			}
+			handle = null;
+		}
+	};
+}
 
 function createPgTestDriver(): StorageDriver {
 	const client = new PGlite();

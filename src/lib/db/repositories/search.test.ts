@@ -1,13 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { repos } from '$lib/db';
 import { renderSnippet, stripIndexNoise, buildMatchQuery, deepLink } from '$lib/db';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 
-beforeEach(async () => {
-	const { driver } = await bootstrapTestDb();
-	await bootstrapWithDriver(driver, 'pg');
-});
+const testDb = useFileTestDb();
+beforeAll(() => testDb.setup());
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
 
 describe('search repository (P-pg-4 PG FTS)', () => {
 	it('searchAvailable() returns true', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/server/sandbox-db';
+import { sandboxQuery, sandboxExec, sandboxTables } from '$lib/services/sandbox-db';
 
 function mockFetch(response: Response): typeof globalThis.fetch {
 	return vi.fn(() => Promise.resolve(response));

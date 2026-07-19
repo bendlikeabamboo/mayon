@@ -324,6 +324,7 @@ class ChatState {
 					...(this.manualBranchPending ? ['branch_chat'] : []),
 					...mcpDisabled
 				],
+				firstTurn: isFirstRootTurn,
 				updateStreamBuffer: (n) => (this.streamBuffer = n),
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {

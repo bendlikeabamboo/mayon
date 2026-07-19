@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { downloadDbBackup, restoreDbBackup } from '$lib/server/db-backup';
+	import { downloadDbBackup, restoreDbBackup } from '$lib/services/db-backup';
 	import { chatStore } from '$lib/stores/chat.svelte';
-	import { serverStatus } from '$lib/server/status.svelte';
-	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/server/sandbox-backup';
-	import { dryRunImport, importFromSqlite } from '$lib/server/db-import';
-	import type { ImportPreview } from '$lib/server/db-import';
+	import { serverStatus } from '$lib/services/status.svelte';
+	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/services/sandbox-backup';
+	import { dryRunImport, importFromSqlite } from '$lib/services/db-import';
+	import type { ImportPreview } from '$lib/services/db-import';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);

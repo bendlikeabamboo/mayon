@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/status.svelte', () => ({
+vi.mock('$lib/services/status.svelte', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -23,9 +23,9 @@ vi.mock('$lib/db/backup', () => ({
 		bytes[3] === 0x69
 }));
 
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 import { downloadBlob } from '$lib/db/backup';
-import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/server/sandbox-backup';
+import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/services/sandbox-backup';
 
 describe('downloadSandboxBackup', () => {
 	const originalFetch = globalThis.fetch;

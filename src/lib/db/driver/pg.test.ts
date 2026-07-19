@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { chats } from '$lib/db/schema';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { createRemotePgDriver } from '$lib/db/driver/pg';
 import { createDb } from './proxy';
 import type { BatchStatement, StorageDriver } from '$lib/db/driver/types';
@@ -83,35 +83,38 @@ describe('RemotePgDriver wire mapping', () => {
 });
 
 describe('RemotePgDriver contract proof (drizzle round-trip with PG backend)', () => {
+	const testDb = useFileTestDb();
+	let driver: StorageDriver;
 	let remotePgDriver: StorageDriver;
-	let testDriver: StorageDriver;
 	let intercepted: { sql: string; params?: unknown[] }[] = [];
 
+	beforeAll(async () => {
+		driver = (await testDb.setup()).driver;
+	});
+	afterAll(() => testDb.teardown());
 	beforeEach(async () => {
 		intercepted = [];
-		const { driver } = await bootstrapTestDb();
-		testDriver = driver;
 
 		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const body = JSON.parse((init?.body as string) ?? '{}');
 
 			if (body.op === 'query') {
 				intercepted.push({ sql: body.sql as string, params: body.params as unknown[] });
-				const result = await testDriver.query(body.sql as string, body.params as unknown[]);
+				const result = await driver.query(body.sql as string, body.params as unknown[]);
 				return new Response(JSON.stringify({ rows: result.rows }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' }
 				});
 			}
 			if (body.op === 'batch') {
-				const results = await testDriver.batch(body.stmts as BatchStatement[]);
+				const results = await driver.batch(body.stmts as BatchStatement[]);
 				return new Response(JSON.stringify({ results: results.map((r) => ({ rows: r.rows })) }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' }
 				});
 			}
 			if (body.op === 'exec') {
-				await testDriver.exec(body.sql as string);
+				await driver.exec(body.sql as string);
 				return new Response(JSON.stringify({ changes: 0 }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' }

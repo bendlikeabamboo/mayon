@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/status.svelte', () => ({
+vi.mock('$lib/services/status.svelte', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -23,9 +23,9 @@ vi.mock('$lib/db/backup', () => ({
 	parseContentDispositionFilename: (_res: Response, fallback: string) => fallback
 }));
 
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 import { downloadBlob } from '$lib/db/backup';
-import { dryRunImport, importFromSqlite } from '$lib/server/db-import';
+import { dryRunImport, importFromSqlite } from '$lib/services/db-import';
 
 const SQLITE_HEADER = new Uint8Array(Buffer.from('SQLite format 3\x00', 'binary'));
 

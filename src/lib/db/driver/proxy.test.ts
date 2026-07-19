@@ -1,12 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { chats } from '$lib/db/schema';
-import { bootstrapTestDb } from '$lib/db/driver/pg-test';
+import { useFileTestDb } from '$lib/db/driver/pg-test';
+
+let handle: {
+	db: import('$lib/db/driver/proxy').Db;
+	driver: import('$lib/db/driver/types').StorageDriver;
+};
+const testDb = useFileTestDb();
+beforeAll(async () => {
+	handle = await testDb.setup();
+});
+beforeEach(() => testDb.reset());
+afterAll(() => testDb.teardown());
 
 describe('pg-proxy seam proof (P-pg-2)', () => {
 	it('creates all expected tables', async () => {
-		const { driver } = await bootstrapTestDb();
-		const result = await driver.query(`
+		const result = await handle.driver.query(`
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema = current_schema()
@@ -31,7 +41,7 @@ describe('pg-proxy seam proof (P-pg-2)', () => {
 	});
 
 	it('writes + reads a chats row through the drizzle proxy', async () => {
-		const { db } = await bootstrapTestDb();
+		const db = handle.db;
 		const now = Date.now();
 		await db.insert(chats).values({
 			id: 'chat-1',
@@ -55,7 +65,6 @@ describe('pg-proxy seam proof (P-pg-2)', () => {
 	});
 
 	it('migrations are idempotent (re-run safe)', async () => {
-		const { db } = await bootstrapTestDb();
-		expect(db).toBeDefined();
+		expect(handle.db).toBeDefined();
 	});
 });

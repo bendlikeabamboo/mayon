@@ -6,7 +6,7 @@
 	import LearnerProfileConfig from '$lib/components/chat/LearnerProfileConfig.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
 	import SandboxDbSection from '$lib/components/settings/SandboxDbSection.svelte';
-	import { serverStatus } from '$lib/server/status.svelte';
+	import { serverStatus } from '$lib/services/status.svelte';
 </script>
 
 <ProviderConfig>

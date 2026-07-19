@@ -34,8 +34,8 @@ export async function bootstrapDb(): Promise<Db> {
 	dbStatus.status = 'initializing';
 	driverPromise = (async () => {
 		try {
-			const { waitForServerPg } = await import('$lib/server/detect');
-			const { serverStatus } = await import('$lib/server/status.svelte');
+			const { waitForServerPg } = await import('$lib/services/detect');
+			const { serverStatus } = await import('$lib/services/status.svelte');
 			const health = await waitForServerPg();
 			if (!health) {
 				const msg = 'Cannot reach the Mayon server. Start it with `docker compose up`, then retry.';

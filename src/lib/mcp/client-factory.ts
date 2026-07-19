@@ -1,5 +1,5 @@
 import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
-import { serverStatus } from '$lib/server/status.svelte';
+import { serverStatus } from '$lib/services/status.svelte';
 import type { McpTransport } from './transport';
 import type { McpServerConfig } from './types';
 import { HttpMcpTransport } from './http';
