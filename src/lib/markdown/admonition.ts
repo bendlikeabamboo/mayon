@@ -8,6 +8,10 @@ interface HastElement {
 interface HastText {
 	type: 'text';
 	value: string;
+	position?: {
+		start: { offset: number; line: number; column: number };
+		end: { offset: number; line: number; column: number };
+	};
 }
 
 interface HastRoot {
@@ -83,7 +87,23 @@ function transformBlockquote(bq: HastElement): boolean {
 	if (bodyHead.length > 0 || firstElement.children.length > 1) {
 		const firstParagraphChildren: (HastText | HastElement)[] = [];
 		if (bodyHead.length > 0) {
-			firstParagraphChildren.push({ type: 'text', value: bodyHead });
+			const origPos = firstChild.position;
+			const bodyHeadNode: HastText = { type: 'text', value: bodyHead };
+			if (origPos) {
+				bodyHeadNode.position = {
+					start: {
+						offset: origPos.start.offset + prefix.length,
+						line: origPos.start.line,
+						column: origPos.start.column + prefix.length
+					},
+					end: {
+						offset: origPos.end.offset,
+						line: origPos.end.line,
+						column: origPos.end.column
+					}
+				};
+			}
+			firstParagraphChildren.push(bodyHeadNode);
 		}
 		for (let i = 1; i < firstElement.children.length; i++) {
 			firstParagraphChildren.push(firstElement.children[i] as HastText | HastElement);

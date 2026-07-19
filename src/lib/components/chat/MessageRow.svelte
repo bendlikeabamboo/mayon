@@ -7,7 +7,7 @@
 	import LazyMount from './LazyMount.svelte';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
-	import type { SelectionInput } from '$lib/chat/highlight';
+	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 
 	let {
@@ -23,7 +23,7 @@
 		onExpound: (
 			messageId: string,
 			raw: string,
-			sel: SelectionInput,
+			resolved: ResolvedOffsets,
 			opts: ExpoundOptions
 		) => void | Promise<void>;
 		onCopy: (text: string) => void;

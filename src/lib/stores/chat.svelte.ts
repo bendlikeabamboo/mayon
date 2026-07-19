@@ -17,7 +17,7 @@ import { browser } from '$app/environment';
 import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
-import { resolveSelectionOffsets, type SelectionInput } from '$lib/chat/highlight';
+import type { ResolvedOffsets } from '$lib/chat/selection';
 import {
 	selectionOverlapsExisting,
 	serializeAddFormats,
@@ -585,12 +585,7 @@ class ChatState {
 		}
 	}
 
-	/**
-	 * Branch a child off `messageId` grounded in a highlighted span. Resolves
-	 * raw offsets via `resolveSelectionOffsets`, falling back to the full
-	 * excerpt span when mapping can't be confident. Returns the child chat id.
-	 */
-	async confirmInferredBrief(b?: LearningBrief): Promise<void> {
+	branchFromSelection(
 		await this.saveBrief(b ?? this.inferredBrief!);
 		this.inferredBrief = null;
 		this.inferDismissed = false;
@@ -758,39 +753,24 @@ class ChatState {
 		}
 	}
 
-	branchFromSelection(
-		messageId: string,
-		rawContent: string,
-		selection: SelectionInput
-	): Promise<string> {
-		const excerpt = selection.excerpt;
-		const resolved =
-			resolveSelectionOffsets(rawContent, selection) ??
-			({ startChar: 0, endChar: excerpt.length, excerpt } as const);
-
-		return this.createBranchChild(messageId, resolved.startChar, resolved.endChar, excerpt);
-	}
-
 	/**
 	 * Branch a child off `messageId` grounded in a highlighted excerpt, then
 	 * stage `prompt` for auto-send on the new branch. Enforces one branch per
 	 * excerpt / no overlapping spans (defense-in-depth; the menu already
 	 * disables). Throws {@link ExcerptOverlapError} on conflict — creates no
 	 * chat/branch_source row in that case. Returns the child chat id.
+	 *
+	 * Offsets are as resolved by `resolveSelection` against the source map
+	 * (`src/lib/chat/selection.ts`); an unresolved selection disables the menu
+	 * before reaching the store.
 	 */
 	async createExpoundBranch(
 		messageId: string,
 		rawContent: string,
-		selection: SelectionInput,
+		resolved: ResolvedOffsets,
 		prompt: string,
 		expoundOpts?: ExpoundOptions
 	): Promise<string> {
-		const excerpt = selection.excerpt;
-		const resolved =
-			resolveSelectionOffsets(rawContent, selection) ??
-			({ startChar: 0, endChar: excerpt.length, excerpt } as const);
-
-		// Overlap guard: an exact-span re-select overlaps itself.
 		const existing = await repos.branchSources.listBySourceMessage(messageId);
 		if (selectionOverlapsExisting(resolved, existing)) {
 			throw new ExcerptOverlapError();
@@ -800,7 +780,7 @@ class ChatState {
 			messageId,
 			resolved.startChar,
 			resolved.endChar,
-			excerpt,
+			resolved.excerpt,
 			expoundOpts
 				? {
 						customInstructions: expoundOpts.customInstructions || undefined,

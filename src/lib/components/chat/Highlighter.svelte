@@ -2,24 +2,14 @@
 	import type { Snippet } from 'svelte';
 	import type { BranchSource } from '$lib/db/schema';
 	import { repos } from '$lib/db';
-	import type { SelectionInput } from '$lib/chat/highlight';
-	import { resolveSelectionOffsets } from '$lib/chat/highlight';
+	import { alignDomToCanonical, resolveSelection, canonicalize, type ResolvedOffsets } from '$lib/chat/selection';
+	import { wrapRange } from '$lib/markdown/wrap-range';
 	import { selectionOverlapsExisting, type ExpoundOptions } from '$lib/chat/expound';
+	import { buildSourceMap, type SourceMap } from '$lib/markdown/sourcemap';
 	import ContextMenu from './ContextMenu.svelte';
 	import ExpoundMarkPopover from './ExpoundMarkPopover.svelte';
 	import ExpoundPromptConstructor from './ExpoundPromptConstructor.svelte';
 
-	/**
-	 * Wraps an assistant message's rendered content. Right-clicking a text
-	 * selection opens a context menu (`Expound…` / `Copy`). `Expound…` opens a
-	 * floating prompt constructor; on Send it emits the selection + options.
-	 * Existing excerpts for this message are underlined via post-render DOM
-	 * wrapping (best-effort; raw vs rendered offsets differ).
-	 *
-	 * The offset→raw mapping is pure (`resolveSelectionOffsets`); this
-	 * component only gathers the DOM data the mapping needs and renders the
-	 * resulting underlines.
-	 */
 	let {
 		raw,
 		messageId,
@@ -32,7 +22,7 @@
 		children: Snippet;
 		onExpound: (
 			raw: string,
-			selection: SelectionInput,
+			resolved: ResolvedOffsets,
 			opts: ExpoundOptions
 		) => void | Promise<void>;
 		onCopy: (text: string) => void;
@@ -40,20 +30,20 @@
 
 	let container = $state<HTMLDivElement | null>(null);
 
-	// Selection captured at context-menu time (the live selection the actions
-	// operate on). Cleared when the menu/constructor closes.
-	let pendingSel = $state<SelectionInput | null>(null);
+	const sourceMap: SourceMap = $derived(buildSourceMap(raw));
+
+	let pendingRange = $state<Range | null>(null);
 	let menu = $state<{ x: number; y: number } | null>(null);
 	let constructorState = $state<{
-		sel: SelectionInput;
+		range: Range;
+		resolved: ResolvedOffsets;
 		x: number;
 		y: number;
 	} | null>(null);
-	let selectionToolbar = $state<{ x: number; y: number; sel: SelectionInput } | null>(null);
+	let selectionToolbar = $state<{ x: number; y: number; range: Range } | null>(null);
 
 	let touchTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// Existing excerpts for this source message (drives overlap + underlines).
 	let existingSpans = $state<BranchSource[]>([]);
 
 	let expoundPopover = $state<{
@@ -64,7 +54,6 @@
 		loading: boolean;
 	} | null>(null);
 
-	// Load spans whenever the message id changes.
 	$effect(() => {
 		void messageId;
 		void (async () => {
@@ -72,61 +61,56 @@
 		})();
 	});
 
-	// Resolve the pending selection's raw offsets (full-span fallback on miss)
-	// and disable Expound when it overlaps an existing excerpt. A full-span
-	// fallback (startChar=0) trivially overlaps everything — conservative.
 	const resolvedPending = $derived(
-		pendingSel
-			? (resolveSelectionOffsets(raw, pendingSel) ?? {
-					startChar: 0,
-					endChar: pendingSel.excerpt.length
-				})
+		pendingRange && container
+			? resolveSelection(alignDomToCanonical(container, sourceMap), sourceMap, pendingRange)
 			: null
 	);
 	const disabledExpound = $derived(
-		resolvedPending !== null && selectionOverlapsExisting(resolvedPending, existingSpans)
+		resolvedPending !== null &&
+			(!resolvedPending.ok ||
+				selectionOverlapsExisting(
+					resolvedPending.ok
+						? resolvedPending
+						: { startChar: -1, endChar: -1 },
+					existingSpans
+				))
+	);
+	const disableReason = $derived(
+		!resolvedPending || resolvedPending.ok
+			? (disabledExpound ? 'This excerpt already belongs to an expound branch.' : '')
+			: resolvedPending.reason === 'generated'
+				? "Can't branch from a rendered diagram or formula."
+				: resolvedPending.reason === 'unaligned'
+					? "Selection can't be mapped to the source text."
+					: ''
 	);
 
-	function captureSelection(): SelectionInput | null {
+	function captureRange(): Range | null {
 		if (!container) return null;
 		const sel = window.getSelection();
 		if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
-
 		const range = sel.getRangeAt(0);
-		// Only consider selections fully inside this message container.
 		if (!container.contains(range.commonAncestorContainer)) return null;
-
-		const excerpt = sel.toString();
-		if (!excerpt.trim()) return null;
-
-		const containerText = container.textContent ?? '';
-		const startInContainer = textOffsetFromRange(
-			container,
-			range.startContainer,
-			range.startOffset
-		);
-		const endInContainer = textOffsetFromRange(container, range.endContainer, range.endOffset);
-		if (startInContainer < 0 || endInContainer < 0 || endInContainer < startInContainer)
-			return null;
-
-		return { excerpt, containerText, startInContainer, endInContainer };
+		if (!range.toString().trim()) return null;
+		return range.cloneRange();
 	}
 
 	function showToolbarFromSelection() {
-		const sel = captureSelection();
-		if (!sel) {
-			selectionToolbar = null;
-			return;
-		}
-		const range = window.getSelection()?.getRangeAt(0);
+		const range = captureRange();
 		if (!range) {
 			selectionToolbar = null;
 			return;
 		}
-		const rect = range.getBoundingClientRect();
+		const sel = window.getSelection()?.getRangeAt(0);
+		if (!sel) {
+			selectionToolbar = null;
+			return;
+		}
+		const rect = sel.getBoundingClientRect();
 		const x = Math.max(8, Math.min(rect.left + rect.width / 2, window.innerWidth - 8));
 		const y = Math.max(8, rect.top - 8);
-		selectionToolbar = { x, y, sel };
+		selectionToolbar = { x, y, range };
 	}
 
 	function onMouseUp(_e: MouseEvent) {
@@ -160,10 +144,16 @@
 
 	function handleToolbarExpound() {
 		if (!selectionToolbar) return;
-		const { x, y, sel } = selectionToolbar;
+		const { x, y, range } = selectionToolbar;
 		selectionToolbar = null;
 		window.getSelection()?.removeAllRanges();
-		constructorState = { sel, x, y };
+		constructorState = { range, resolved: { startChar: 0, endChar: 0, excerpt: '' }, x, y };
+		const table = alignDomToCanonical(container!, sourceMap);
+		constructorState.resolved = resolveSelection(table, sourceMap, range);
+		if (!constructorState.resolved.ok) {
+			constructorState = null;
+			return;
+		}
 	}
 
 	$effect(() => {
@@ -177,10 +167,10 @@
 
 	function onContextMenu(e: MouseEvent) {
 		selectionToolbar = null;
-		const sel = captureSelection();
-		if (!sel) return; // No valid selection → let the native menu show.
+		const range = captureRange();
+		if (!range) return;
 		e.preventDefault();
-		pendingSel = sel;
+		pendingRange = range;
 		constructorState = null;
 		menu = { x: e.clientX, y: e.clientY };
 	}
@@ -200,19 +190,19 @@
 	}
 
 	function handleExpound() {
-		if (!menu || !pendingSel || disabledExpound) return;
+		if (!menu || !pendingRange || disabledExpound) return;
 		const { x, y } = menu;
-		const sel = pendingSel;
+		const range = pendingRange;
 		menu = null;
 		selectionToolbar = null;
 		window.getSelection()?.removeAllRanges();
-		constructorState = { sel, x, y };
+		constructorState = { range, resolved: resolvedPending!, x, y };
 	}
 
 	function handleCopy() {
-		const text = pendingSel?.excerpt ?? '';
+		const text = pendingRange?.toString() ?? '';
 		menu = null;
-		pendingSel = null;
+		pendingRange = null;
 		selectionToolbar = null;
 		onCopy(text);
 	}
@@ -224,90 +214,95 @@
 
 	function submitConstructor(opts: ExpoundOptions) {
 		if (!constructorState) return;
-		const { sel } = constructorState;
+		const { resolved } = constructorState;
 		constructorState = null;
-		pendingSel = null;
-		void onExpound(raw, sel, opts);
+		pendingRange = null;
+		if (!resolved.ok) return;
+		void onExpound(raw, resolved, opts);
 	}
 
 	function cancelConstructor() {
 		constructorState = null;
-		pendingSel = null;
+		pendingRange = null;
 		selectionToolbar = null;
 	}
 
-	// --- Underline rendering (post-render DOM wrap) --------------------------
-
-	/**
-	 * Compute the character offset of (node, offset) within the container's
-	 * concatenated text content, by walking text nodes in document order.
-	 */
-	function textOffsetFromRange(root: Node, node: Node, offset: number): number {
-		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-		let acc = 0;
-		let current: Node | null = walker.currentNode;
-		if (current.nodeType !== Node.TEXT_NODE) current = walker.nextNode();
-		while (current) {
-			if (current === node) {
-				return acc + offset;
+	function locateCanonical(
+		sm: SourceMap,
+		startChar: number,
+		endChar: number
+	): { start: number; end: number } | null {
+		let segStart = -1;
+		let segEnd = -1;
+		for (let i = 0; i < sm.segments.length; i++) {
+			const seg = sm.segments[i]!;
+			if (seg.kind === 'inter-block-ws') continue;
+			if (segStart === -1 && seg.startChar >= startChar) {
+				segStart = i;
 			}
-			if (current.nodeType === Node.TEXT_NODE) {
-				acc += current.textContent?.length ?? 0;
+			if (seg.endChar <= endChar) {
+				segEnd = i;
 			}
-			current = walker.nextNode();
 		}
-		return -1;
+		if (segStart === -1 || segEnd === -1 || segStart > segEnd) return null;
+
+		const canonStart = canonicalOffsetOfSegmentStart(sm, segStart);
+		const lastSeg = sm.segments[segEnd]!;
+		const canonEnd = canonicalOffsetOfSegmentStart(sm, segEnd) + lastSeg.rendered.length;
+		return { start: canonStart, end: canonEnd };
 	}
 
-	/** Whitespace-collapse with a map back to original indices (mirrors highlight.ts). */
-	function collapse(s: string): { collapsed: string; toOriginal: number[] } {
-		const collapsed: string[] = [];
+	function canonicalOffsetOfSegmentStart(sm: SourceMap, segIdx: number): number {
+		for (let i = 0; i < sm.canonicalToSegment.length; i++) {
+			if (sm.canonicalToSegment[i] === segIdx) return i;
+		}
+		return sm.canonicalToSegment.length;
+	}
+
+	function selfHeal(
+		sm: SourceMap,
+		excerpt: string,
+		preferredStart: number
+	): { start: number; end: number } | null {
+		const canonNorm = canonicalize(sm.canonical);
+		const excerptNorm = canonicalize(excerpt);
+		if (excerptNorm.length === 0) return null;
+
 		const toOriginal: number[] = [];
-		let lastWasWs = false;
-		for (let i = 0; i < s.length; i++) {
-			const ch = s[i]!;
+		let lastWasWs = true;
+		for (let i = 0; i < sm.canonical.length; i++) {
+			const ch = sm.canonical[i]!;
 			if (ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r') {
 				if (!lastWasWs) {
-					collapsed.push(' ');
 					toOriginal.push(i);
+					lastWasWs = true;
 				}
-				lastWasWs = true;
 			} else {
-				collapsed.push(ch);
 				toOriginal.push(i);
 				lastWasWs = false;
 			}
 		}
 		let start = 0;
-		let end = collapsed.length;
-		while (start < end && collapsed[start] === ' ') start++;
-		while (end > start && collapsed[end - 1] === ' ') end--;
-		return {
-			collapsed: collapsed.slice(start, end).join(''),
-			toOriginal: toOriginal.slice(start, end)
-		};
-	}
+		let end = toOriginal.length;
+		while (start < end && canonNorm[start] === ' ') start++;
+		while (end > start && canonNorm[end - 1] === ' ') end--;
 
-	/** Find the occurrence of `excerpt` (whitespace-normalized) nearest `preferredStart`. */
-	function findOccurrence(
-		fullText: string,
-		excerpt: string,
-		preferredStart: number
-	): { start: number; end: number } | null {
-		const cFull = collapse(fullText);
-		const cExcerpt = collapse(excerpt);
-		if (cExcerpt.collapsed.length === 0) return null;
+		const searchNorm = canonNorm.slice(start, end);
+		const searchToOriginal = toOriginal.slice(start, end);
+
 		let best: { start: number; end: number } | null = null;
 		let bestDist = Infinity;
 		let from = 0;
-		while (from <= cFull.collapsed.length) {
-			const hit = cFull.collapsed.indexOf(cExcerpt.collapsed, from);
+		while (from <= searchNorm.length) {
+			const hit = searchNorm.indexOf(excerptNorm, from);
 			if (hit < 0) break;
-			const collapsedEnd = hit + cExcerpt.collapsed.length;
-			if (collapsedEnd > cFull.toOriginal.length) break;
-			const origStart = cFull.toOriginal[hit] ?? 0;
-			const origEnd = (cFull.toOriginal[collapsedEnd - 1] ?? 0) + 1;
-			const dist = Math.abs(origStart - preferredStart);
+			const collapsedEnd = hit + excerptNorm.length;
+			if (collapsedEnd > searchToOriginal.length) break;
+			const origStart = searchToOriginal[hit] ?? 0;
+			const origEnd = (searchToOriginal[collapsedEnd - 1] ?? 0) + 1;
+			const segStart = sm.canonicalToSegment[origStart] ?? 0;
+			const rawStart = sm.segments[segStart]?.startChar ?? 0;
+			const dist = Math.abs(rawStart - preferredStart);
 			if (dist < bestDist) {
 				bestDist = dist;
 				best = { start: origStart, end: origEnd };
@@ -319,33 +314,15 @@
 
 	let lastSignature = '';
 
-	/** Wrap each excerpt span in a `.expound-mark`. Best-effort; idempotent. */
 	function renderUnderlines() {
 		const c = container;
 		if (!c) return;
 
-		// Gather text nodes + their offsets in the concatenated container text.
-		const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
-		const textNodes: { node: Text; start: number; end: number }[] = [];
-		let acc = 0;
-		let cur: Node | null = walker.currentNode;
-		if (cur.nodeType !== Node.TEXT_NODE) cur = walker.nextNode();
-		while (cur) {
-			const len = cur.textContent?.length ?? 0;
-			textNodes.push({ node: cur as Text, start: acc, end: acc + len });
-			acc += len;
-			cur = walker.nextNode();
-		}
-		const fullText = textNodes.map((t) => t.node.textContent ?? '').join('');
-
-		// Signature guards against feedback loops: wrapping in inline spans
-		// doesn't change the text content, so a re-run for the same content is
-		// a no-op (the MutationObserver won't spin).
+		const fullText = c.textContent ?? '';
 		const signature = fullText + '|' + existingSpans.map((s) => s.id).join(',');
 		if (signature === lastSignature) return;
 		lastSignature = signature;
 
-		// Un-wrap any prior marks before re-wrapping.
 		for (const m of Array.from(c.querySelectorAll('span.expound-mark'))) {
 			const parent = m.parentNode;
 			if (!parent) continue;
@@ -355,35 +332,45 @@
 
 		if (existingSpans.length === 0) return;
 
-		const locate = (idx: number) => {
-			for (const t of textNodes) {
-				if (idx >= t.start && idx < t.end) return { node: t.node, offset: idx - t.start };
+		const table = alignDomToCanonical(c, sourceMap);
+		if (!table.aligned) {
+			if (import.meta.env.DEV) {
+				console.warn('[expound] alignment failed; skipping underline pass', { messageId });
 			}
-			return null;
-		};
+			return;
+		}
 
 		for (const span of existingSpans) {
-			const hit = findOccurrence(fullText, span.excerpt, span.startChar);
-			if (!hit) continue;
-			const startInfo = locate(hit.start);
-			const endInfo = locate(hit.end - 1);
-			if (!startInfo || !endInfo) continue;
-			const range = document.createRange();
-			range.setStart(startInfo.node, startInfo.offset);
-			range.setEnd(endInfo.node, endInfo.offset + 1);
-			const mark = document.createElement('span');
-			mark.className = 'expound-mark';
-			mark.setAttribute('data-branch-chat', span.branchChatId);
-			try {
-				range.surroundContents(mark);
-			} catch {
-				// Range crosses an element boundary; skip this excerpt.
+			const { startChar, endChar, excerpt } = span;
+			const rawSlice = raw.slice(startChar, endChar);
+			let canonicalStart: number;
+			let canonicalEnd: number;
+
+			if (canonicalize(rawSlice) === canonicalize(excerpt)) {
+				const hit = locateCanonical(sourceMap, startChar, endChar);
+				if (!hit) continue;
+				({ start: canonicalStart, end: canonicalEnd } = hit);
+			} else {
+				const healed = selfHeal(sourceMap, excerpt, span.startChar);
+				if (!healed) {
+					if (import.meta.env.DEV) {
+						console.warn('[expound] self-heal failed', {
+							messageId,
+							spanId: span.id,
+							excerpt,
+							startChar,
+							endChar
+						});
+					}
+					continue;
+				}
+				({ start: canonicalStart, end: canonicalEnd } = healed);
 			}
+
+			wrapRange(table, canonicalStart, canonicalEnd, { 'data-branch-chat': span.branchChatId });
 		}
 	}
 
-	// Re-render underlines when spans load or the container mutates (mermaid
-	// post-processing swaps <pre> → <div>; signature guard prevents loops).
 	$effect(() => {
 		void existingSpans.length;
 		const c = container;
@@ -392,6 +379,24 @@
 		const observer = new MutationObserver(() => renderUnderlines());
 		observer.observe(c, { childList: true, subtree: true, characterData: true });
 		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		if (!import.meta.env.DEV) return;
+		const c = container;
+		if (!c) return;
+		const table = alignDomToCanonical(c, sourceMap);
+		const filtered = table.entries
+			.filter((e) => !e.excluded)
+			.map((e) => e.node.textContent ?? '')
+			.join('');
+		if (filtered !== sourceMap.canonical) {
+			console.warn('[expound] source map canonical diverges from filtered DOM textContent', {
+				messageId,
+				canonicalLen: sourceMap.canonical.length,
+				domLen: filtered.length
+			});
+		}
 	});
 </script>
 
@@ -418,7 +423,7 @@
 		x={menu.x}
 		y={menu.y}
 		{disabledExpound}
-		disableHint={disabledExpound ? 'This excerpt already belongs to an expound branch.' : ''}
+		disableHint={disableReason}
 		onExpound={handleExpound}
 		onCopy={handleCopy}
 		onClose={closeMenu}
@@ -427,7 +432,7 @@
 
 {#if constructorState}
 	<ExpoundPromptConstructor
-		excerpt={constructorState.sel.excerpt}
+		excerpt={constructorState.resolved.excerpt}
 		x={constructorState.x}
 		y={constructorState.y}
 		onSubmit={submitConstructor}
