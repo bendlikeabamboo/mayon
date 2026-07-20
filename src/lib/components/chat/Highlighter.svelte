@@ -2,7 +2,12 @@
 	import type { Snippet } from 'svelte';
 	import type { BranchSource } from '$lib/db/schema';
 	import { repos } from '$lib/db';
-	import { alignDomToCanonical, resolveSelection, canonicalize, type ResolvedOffsets } from '$lib/chat/selection';
+	import {
+		alignDomToCanonical,
+		resolveSelection,
+		canonicalize,
+		type ResolvedOffsets
+	} from '$lib/chat/selection';
 	import { wrapRange } from '$lib/markdown/wrap-range';
 	import { selectionOverlapsExisting, type ExpoundOptions } from '$lib/chat/expound';
 	import { buildSourceMap, type SourceMap } from '$lib/markdown/sourcemap';
@@ -70,15 +75,15 @@
 		resolvedPending !== null &&
 			(!resolvedPending.ok ||
 				selectionOverlapsExisting(
-					resolvedPending.ok
-						? resolvedPending
-						: { startChar: -1, endChar: -1 },
+					resolvedPending.ok ? resolvedPending : { startChar: -1, endChar: -1 },
 					existingSpans
 				))
 	);
 	const disableReason = $derived(
 		!resolvedPending || resolvedPending.ok
-			? (disabledExpound ? 'This excerpt already belongs to an expound branch.' : '')
+			? disabledExpound
+				? 'This excerpt already belongs to an expound branch.'
+				: ''
 			: resolvedPending.reason === 'generated'
 				? "Can't branch from a rendered diagram or formula."
 				: resolvedPending.reason === 'unaligned'
@@ -147,13 +152,13 @@
 		const { x, y, range } = selectionToolbar;
 		selectionToolbar = null;
 		window.getSelection()?.removeAllRanges();
-		constructorState = { range, resolved: { startChar: 0, endChar: 0, excerpt: '' }, x, y };
 		const table = alignDomToCanonical(container!, sourceMap);
-		constructorState.resolved = resolveSelection(table, sourceMap, range);
-		if (!constructorState.resolved.ok) {
+		const result = resolveSelection(table, sourceMap, range);
+		if (!result.ok) {
 			constructorState = null;
 			return;
 		}
+		constructorState = { range, resolved: result, x, y };
 	}
 
 	$effect(() => {
@@ -196,7 +201,8 @@
 		menu = null;
 		selectionToolbar = null;
 		window.getSelection()?.removeAllRanges();
-		constructorState = { range, resolved: resolvedPending!, x, y };
+		if (!resolvedPending?.ok) return;
+		constructorState = { range, resolved: resolvedPending, x, y };
 	}
 
 	function handleCopy() {
@@ -217,7 +223,6 @@
 		const { resolved } = constructorState;
 		constructorState = null;
 		pendingRange = null;
-		if (!resolved.ok) return;
 		void onExpound(raw, resolved, opts);
 	}
 

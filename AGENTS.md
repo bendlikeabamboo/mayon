@@ -45,6 +45,12 @@ in `.kilo/plans/`.
 - **Runtime requires the server.** Postgres via the server is the primary store (P-pg-2). The server is detected at boot via `detectServer()` and progressively enables features (stdio MCP, LLM CORS proxy, sandbox DB, backup, PG) based on advertised capabilities.
 - **No secrets in `settings`.** Provider config holds non-secret handle fields only; API
   the browser resolves them locally and includes them in same-origin proxied requests.
+- **Expound offsets are raw-markdown offsets** resolved via the source map
+  (`src/lib/markdown/sourcemap.ts`) + DOM alignment (`src/lib/chat/selection.ts`),
+  wrapped by `src/lib/markdown/wrap-range.ts`. Do not re-introduce substring
+  heuristics, `surroundContents`, or the `startChar=0` full-span fallback.
+  Selections touching generated content (math, mermaid, copy-button chrome)
+  disable the menu; stale rows self-heal in memory only (no DB write).
 
 ## Manual acceptance gates (P-pg-2)
 

@@ -6,7 +6,8 @@
  * excerpt falls out of the same half-open overlap check).
  *
  * Offsets are raw-markdown character offsets (as resolved by
- * `resolveSelectionOffsets` + the full-span fallback), and ranges are treated
+ * `resolveSelection` against the source map (`src/lib/chat/selection.ts`);
+ * an unresolved selection disables the menu before reaching the store), and ranges are treated
  * as half-open `[startChar, endChar)` intervals so adjacent excerpts never
  * register as overlapping.
  */

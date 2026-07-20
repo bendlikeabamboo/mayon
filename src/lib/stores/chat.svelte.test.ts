@@ -105,57 +105,6 @@ beforeEach(async () => {
 });
 
 describe('chatStore branching round-trip', () => {
-	it('branchFromSelection records offsets + excerpt, and the child context includes them', async () => {
-		const parent = await repos.chats.createRoot({ title: 'Root' });
-		const reply = 'The mitochondrion is the powerhouse of the cell. Remember this.';
-		const assistant = await repos.messages.append(parent.id, 'assistant', reply);
-
-		await chatStore.load(parent.id);
-
-		const start = reply.indexOf('powerhouse');
-		const end = start + 'powerhouse of the cell'.length;
-
-		const childId = await chatStore.branchFromSelection(assistant.id, reply, {
-			excerpt: 'powerhouse of the cell',
-			containerText: reply,
-			startInContainer: start,
-			endInContainer: end
-		});
-
-		const src = await repos.branchSources.getByBranchChat(childId);
-		expect(src).not.toBeNull();
-		expect(src!.excerpt).toBe('powerhouse of the cell');
-		expect(src!.sourceMessageId).toBe(assistant.id);
-
-		const child = await repos.chats.getById(childId);
-		expect(child!.parentId).toBe(parent.id);
-		expect(child!.branchPointMessageId).toBe(assistant.id);
-
-		const ctx = await assembleContext(childId);
-		expect(ctx[0].role).toBe('system');
-		expect(ctx[0].content).toContain('powerhouse of the cell');
-	});
-
-	it('branchFromSelection falls back to full-span offsets when the selection cannot be mapped', async () => {
-		const parent = await repos.chats.createRoot({ title: 'Root' });
-		const reply = '```mermaid\ngraph TD\nA-->B\n```\nAfter diagram.';
-		const assistant = await repos.messages.append(parent.id, 'assistant', reply);
-		await chatStore.load(parent.id);
-
-		const childId = await chatStore.branchFromSelection(assistant.id, reply, {
-			excerpt: 'Diagram renders as SVG',
-			containerText: 'Diagram renders as SVG. After diagram.',
-			startInContainer: 0,
-			endInContainer: 'Diagram renders as SVG'.length
-		});
-
-		const src = await repos.branchSources.getByBranchChat(childId);
-		expect(src).not.toBeNull();
-		expect(src!.startChar).toBe(0);
-		expect(src!.endChar).toBe('Diagram renders as SVG'.length);
-		expect(src!.excerpt).toBe('Diagram renders as SVG');
-	});
-
 	it('branchFromMessage creates a child without a branch_source row', async () => {
 		const parent = await repos.chats.createRoot({ title: 'Root' });
 		await repos.messages.append(parent.id, 'user', 'hello');
@@ -203,12 +152,7 @@ describe('chatStore.createExpoundBranch', () => {
 		const childId = await chatStore.createExpoundBranch(
 			assistant.id,
 			reply,
-			{
-				excerpt: 'powerhouse of the cell',
-				containerText: reply,
-				startInContainer: start,
-				endInContainer: end
-			},
+			{ startChar: start, endChar: end, excerpt: 'powerhouse of the cell' },
 			prompt
 		);
 
@@ -233,12 +177,7 @@ describe('chatStore.createExpoundBranch', () => {
 
 		const start = reply.indexOf('powerhouse');
 		const end = start + 'powerhouse of the cell'.length;
-		const sel = {
-			excerpt: 'powerhouse of the cell',
-			containerText: reply,
-			startInContainer: start,
-			endInContainer: end
-		};
+		const sel = { startChar: start, endChar: end, excerpt: 'powerhouse of the cell' };
 
 		await chatStore.createExpoundBranch(assistant.id, reply, sel, 'first prompt');
 		const beforeCount = (await repos.branchSources.listBySourceMessage(assistant.id)).length;
@@ -263,12 +202,7 @@ describe('chatStore.createExpoundBranch', () => {
 		await chatStore.createExpoundBranch(
 			assistant.id,
 			reply,
-			{
-				excerpt: 'powerhouse of the cell',
-				containerText: reply,
-				startInContainer: start,
-				endInContainer: end
-			},
+			{ startChar: start, endChar: end, excerpt: 'powerhouse of the cell' },
 			'p'
 		);
 
@@ -278,12 +212,7 @@ describe('chatStore.createExpoundBranch', () => {
 			chatStore.createExpoundBranch(
 				assistant.id,
 				reply,
-				{
-					excerpt: 'the cell. Remember',
-					containerText: reply,
-					startInContainer: s2,
-					endInContainer: e2
-				},
+				{ startChar: s2, endChar: e2, excerpt: 'the cell. Remember' },
 				'p2'
 			)
 		).rejects.toBeInstanceOf(ExcerptOverlapError);
@@ -300,12 +229,7 @@ describe('chatStore.createExpoundBranch', () => {
 		await chatStore.createExpoundBranch(
 			assistant.id,
 			reply,
-			{
-				excerpt: 'Alpha beta gamma',
-				containerText: reply,
-				startInContainer: s1,
-				endInContainer: e1
-			},
+			{ startChar: s1, endChar: e1, excerpt: 'Alpha beta gamma' },
 			'p1'
 		);
 
@@ -314,12 +238,7 @@ describe('chatStore.createExpoundBranch', () => {
 		const childId2 = await chatStore.createExpoundBranch(
 			assistant.id,
 			reply,
-			{
-				excerpt: 'delta epsilon zeta',
-				containerText: reply,
-				startInContainer: s2,
-				endInContainer: e2
-			},
+			{ startChar: s2, endChar: e2, excerpt: 'delta epsilon zeta' },
 			'p2'
 		);
 
@@ -345,12 +264,7 @@ describe('chatStore.createExpoundBranch', () => {
 		const childId = await chatStore.createExpoundBranch(
 			assistant.id,
 			reply,
-			{
-				excerpt: 'powerhouse of the cell',
-				containerText: reply,
-				startInContainer: start,
-				endInContainer: end
-			},
+			{ startChar: start, endChar: end, excerpt: 'powerhouse of the cell' },
 			prompt
 		);
 
@@ -1078,12 +992,7 @@ describe('branch_chat first-turn suppression (UX1a)', () => {
 		const childId = await chatStore.createExpoundBranch(
 			assistant.id,
 			reply,
-			{
-				excerpt: 'powerhouse of the cell',
-				containerText: reply,
-				startInContainer: 0,
-				endInContainer: reply.length
-			},
+			{ startChar: 0, endChar: reply.length, excerpt: 'powerhouse of the cell' },
 			'Explain this excerpt'
 		);
 

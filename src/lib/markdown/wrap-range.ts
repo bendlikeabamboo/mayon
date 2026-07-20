@@ -48,7 +48,7 @@ export function wrapRange(
 			}
 		}
 
-		const span = document.createElement('span');
+		const span = entry.node.ownerDocument!.createElement('span');
 		span.className = 'expound-mark';
 		for (const [k, v] of Object.entries(attrs)) {
 			span.setAttribute(k, v);

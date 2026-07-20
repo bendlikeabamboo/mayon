@@ -35,7 +35,7 @@
 	import { extractGateBlock } from '$lib/ai/generate/generate-gate';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
-	import type { SelectionInput } from '$lib/chat/highlight';
+	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 	import { getActiveSdkProvider } from '$lib/ai/client';
 	import { supportsReasoningEffort } from '$lib/ai/sdk-factory';
@@ -369,12 +369,12 @@
 	async function onExpound(
 		messageId: string,
 		raw: string,
-		sel: SelectionInput,
+		resolved: ResolvedOffsets,
 		opts: ExpoundOptions
 	) {
 		const prompt = buildExpoundPrompt(opts);
 		try {
-			const childId = await chatStore.createExpoundBranch(messageId, raw, sel, prompt, opts);
+			const childId = await chatStore.createExpoundBranch(messageId, raw, resolved, prompt, opts);
 			await goto(`/chat/${childId}`);
 		} catch (err) {
 			if (err instanceof ExcerptOverlapError) {

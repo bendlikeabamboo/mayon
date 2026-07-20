@@ -8,9 +8,7 @@ export interface ResolvedOffsets {
 
 export type ResolveReason = 'empty' | 'generated' | 'unaligned';
 
-export type ResolveResult =
-	| ({ ok: true } & ResolvedOffsets)
-	| { ok: false; reason: ResolveReason };
+export type ResolveResult = ({ ok: true } & ResolvedOffsets) | { ok: false; reason: ResolveReason };
 
 export interface AlignmentEntry {
 	node: Text;
@@ -83,7 +81,9 @@ export function alignDomToCanonical(container: HTMLElement, sm: SourceMap): Alig
 	let aligned = true;
 	let unalignedNode: Text | null = null;
 
-	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+	const doc = container.ownerDocument!;
+	const nodeFilter = doc.defaultView?.NodeFilter ?? NodeFilter;
+	const walker = doc.createTreeWalker(container, nodeFilter.SHOW_TEXT);
 	let current: Node | null = walker.nextNode();
 
 	while (current) {
@@ -157,6 +157,15 @@ export function resolveSelection(
 		return { ok: false, reason: 'unaligned' };
 	}
 
+	const nodeCanonicalStart = new Map<Text, number>();
+	for (const entry of table.entries) {
+		if (entry.excluded) continue;
+		const prev = nodeCanonicalStart.get(entry.node);
+		if (prev === undefined || entry.canonicalStart < prev) {
+			nodeCanonicalStart.set(entry.node, entry.canonicalStart);
+		}
+	}
+
 	let startCanonical = Infinity;
 	let endCanonical = -1;
 	let foundAny = false;
@@ -170,10 +179,18 @@ export function resolveSelection(
 		let entryEnd = entry.canonicalEnd;
 
 		if (entry.node === range.startContainer) {
-			entryStart = entry.canonicalStart + range.startOffset;
+			const ncs = nodeCanonicalStart.get(entry.node) ?? entry.canonicalStart;
+			entryStart = Math.min(
+				entry.canonicalEnd,
+				Math.max(entry.canonicalStart, ncs + range.startOffset)
+			);
 		}
 		if (entry.node === range.endContainer) {
-			entryEnd = entry.canonicalStart + range.endOffset;
+			const ncs = nodeCanonicalStart.get(entry.node) ?? entry.canonicalStart;
+			entryEnd = Math.min(
+				entry.canonicalEnd,
+				Math.max(entry.canonicalStart, ncs + range.endOffset)
+			);
 		}
 
 		if (entryStart < entryEnd) {

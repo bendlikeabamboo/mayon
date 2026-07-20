@@ -585,7 +585,7 @@ class ChatState {
 		}
 	}
 
-	branchFromSelection(
+	async confirmInferredBrief(b?: LearningBrief): Promise<void> {
 		await this.saveBrief(b ?? this.inferredBrief!);
 		this.inferredBrief = null;
 		this.inferDismissed = false;

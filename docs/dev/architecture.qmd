@@ -23,7 +23,7 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 | Framework | SvelteKit, Svelte 5 (runes), SPA via `adapter-static` |
 | UI | Tailwind v4 + shadcn-svelte (bits-ui), lucide icons |
 | Database | Postgres via server; drizzle-kit schema; pglite for tests |
-| AI | Provider-agnostic adapters (OpenAI/Anthropic/Gemini/Ollama), streaming |
+| AI | Provider-agnostic adapters (OpenAI/Anthropic/Gemini/Ollama + OpenAI-compatible gateways: Z.AI/GLM, OpenRouter, Kilo Gateway), streaming |
 | Branch context | Excerpt + full history up to the fork point |
 | Branch storage | **Reference-based** — child reads ancestor messages up to a fork-point cutoff (no duplication) |
 | Transport | Browser streaming `fetch` (IndexedDB keys); server CORS proxy when available |
@@ -42,12 +42,14 @@ One codebase. A SvelteKit SPA connects to a local server container that provides
 ```
 ┌───────────────────────────────────────────────────────────┐
 │  SvelteKit SPA (adapter-static) — Svelte 5 runes           │
-│  routes: /chat · /lab · /quiz · /tree · /settings         │
+│  routes: /chat · /lab · /quiz · /search · /tree · /settings     │
 ├───────────────────────────────────────────────────────────┤
-│  lib/ai      Provider interface · chat stream              │
-│              generateLab · generateQuiz · gradeAnswer      │
-│              assembleContext (reference-based walk)        │
-│  lib/chat    tree ops · branch-from-highlight · crosslinks │
+│  lib/ai      Provider interface · chat stream                      │
+│              generateLab · generateQuiz · gradeShortAnswer          │
+│              assembleContext (reference-based walk)                  │
+│  lib/agent   Tool loop, registry, capability gating, critic           │
+│  lib/chat    tree ops · branch-from-highlight · crosslinks          │
+│              expound/source-map · selection resolution                │
 │  lib/db      schema · migrations · repositories           │
 ├───────────────────────────────────────────────────────────┤
 │  Postgres (server, primary store)                          │
@@ -68,8 +70,8 @@ One seam makes storage swappable:
 - **SvelteKit** in SPA/static mode (no SSR) — instant loads.
 - **Svelte 5 runes** (`$state` / `$derived`) — minimal re-renders, ideal for streaming.
 - **Tailwind v4** + **shadcn-svelte** (on **bits-ui**) — accessible, modern components.
-- **lucide-svelte** icons; **marked** + **DOMPurify** for markdown; **KaTeX** (math) and **shiki** (code) optional.
-- **Highlighter component:** Selection/Range API captures `startChar`/`endChar` on a message and surfaces a "Branch from here" action.
+- **lucide-svelte** icons; unified/remark pipeline for markdown (`remark-parse → remark-gfm → remark-math → remark-rehype → rehype-katex → rehype-highlight → rehype-sanitize`); KaTeX for math, highlight.js for code.
+- **Expound / source map:** highlight offsets are raw-markdown ("code-space") offsets resolved deterministically against a source map (`src/lib/markdown/sourcemap.ts`, built from mdast positions on the same unified processor as the HTML pipeline) and aligned to the rendered DOM (`src/lib/chat/selection.ts`); underlines wrap via `src/lib/markdown/wrap-range.ts` (no `surroundContents`). Selections touching generated content (math, mermaid, copy-button chrome) disable the menu; stale rows self-heal in memory at render time (no DB write).
 - **Streaming render** of assistant tokens; optimistic UI for branching, checklist ticks, and quiz answers.
 
 ## Database
@@ -197,7 +199,7 @@ Leaf artifact on a chat.
 | attempt_id | TEXT → quiz_attempts.id | |
 | question_id | TEXT → quiz_questions.id | |
 | answer | TEXT | |
-| is_correct | INTEGER | nullable |
+| is_correct | BOOLEAN | nullable |
 | ai_feedback | TEXT | nullable; for short-answer AI grading |
 | graded_at | INTEGER | nullable |
 
@@ -258,15 +260,33 @@ Token streaming provides perceived-instant responses. Optimistic UI is used ever
 ```
 src/
   lib/
-    ai/        provider interface, adapters, transports, generation + grading
-    chat/      tree ops, branch-from-highlight, crosslinks, assembleContext
-    db/        schema, migrations, StorageDriver + adapters, repositories
-    components/ MessageList, Highlighter, Composer, TreeSidebar, Breadcrumb,
-               LabRunner, QuizRunner, ProviderSettings
-  routes/      /chat /lab /quiz /tree /settings
-server/       Node/TS: stdio MCP bridge, LLM CORS proxy, sandbox DB, backup
+    agent/       tool loop, registry, capability gating, critic, deterministic/generative tools
+    ai/          provider interface, adapters, transports, generation + grading
+    assets/      static assets
+    chat/        tree ops, branch-from-highlight, crosslinks, expound, selection
+    components/  subdirs: ai/ chat/ diagnostics/ labs/ mcp/ quizzes/ settings/ ui/
+                    + top-level shells (AppShell, BootGate, Sidebar, etc.)
+    db/          schema, migrations, StorageDriver + adapters, repositories
+    dev/         dev-only utilities
+    markdown/    render pipeline, source map, wrap-range
+    mcp/         MCP client, transport, mount
+    services/    platform services
+    stores/      Svelte stores
+    utils/       shared helpers
+  routes/        /chat /lab /quiz /search /tree /settings
+server/           Node/TS: stdio MCP bridge, LLM CORS proxy, sandbox DB, backup
 packages/shared/  Wire-protocol types shared by web + server
 ```
+
+## Infrastructure subsystems
+
+Brief pointers to subsystems documented in detail in `AGENTS.md` phase gates:
+
+- **MCP tooling** (AGENTS.md P2) — stdio MCP servers run on the server, bridged to the browser over WebSocket; HTTP MCP servers connect directly. Tools namespaced as `mcp.<serverId>.<toolName>`.
+- **Sandbox DB** (AGENTS.md P4) — isolated SQLite on the server for MCP tools, exposed via `POST /api/sandbox/query` with a Settings inspector.
+- **Backup/restore** (AGENTS.md P-pg-5) — PG-native `pg_dump -Fc` / `pg_restore` for the app DB; sandbox has its own snapshot/restore.
+- **Search/FTS** (AGENTS.md P-pg-4) — native Postgres `tsvector`/`GIN`/`ts_headline` with `GENERATED ALWAYS AS` columns; noise stripped from Mermaid and math blocks.
+- **Boot gating / server caps** (AGENTS.md P-pg-3) — the app detects the server at boot via `detectServer()` and progressively enables features based on advertised capabilities.
 
 ## Future seams (out of scope)
 
