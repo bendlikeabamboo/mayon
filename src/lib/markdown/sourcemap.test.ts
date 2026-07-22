@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkRehype from 'remark-rehype';
-import { buildSourceMap, _testPlugins } from './sourcemap';
+import { buildSourceMap, _testPlugins, _clearSourceMapCache } from './sourcemap';
 import type { Segment, SegmentKind } from './sourcemap';
 import { renderMarkdown } from './render';
 import { admonition } from './admonition';
@@ -19,6 +19,10 @@ function assertRawSlice(raw: string, s: Segment) {
 	if (s.kind === 'math-inline' || s.kind === 'math-display' || s.kind === 'mermaid') return;
 	expect(raw.slice(s.startChar, s.endChar)).toBe(s.rendered);
 }
+
+beforeEach(() => {
+	_clearSourceMapCache();
+});
 
 describe('buildSourceMap', () => {
 	it('plain prose round-trips 1:1', () => {
@@ -269,5 +273,23 @@ describe('processor parity', () => {
 		for (let i = 0; i < parsePlugins.length; i++) {
 			expect(_testPlugins[i]).toBe(parsePlugins[i]);
 		}
+	});
+});
+
+describe('buildSourceMap LRU cache', () => {
+	it('same input returns same SourceMap reference (cache hit)', () => {
+		const raw = 'Hello **world**.';
+		const first = buildSourceMap(raw);
+		const second = buildSourceMap(raw);
+		expect(first).toBe(second);
+	});
+
+	it('65 distinct inputs evict the oldest', () => {
+		const refs: unknown[] = [];
+		for (let i = 0; i < 65; i++) {
+			refs.push(buildSourceMap(`unique-input-${i}`));
+		}
+		const oldest = buildSourceMap(`unique-input-0`);
+		expect(oldest).not.toBe(refs[0]);
 	});
 });

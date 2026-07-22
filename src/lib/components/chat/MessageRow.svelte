@@ -1,14 +1,15 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { GitBranch } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from './Markdown.svelte';
 	import Reasoning from './Reasoning.svelte';
 	import Highlighter from './Highlighter.svelte';
-	import LazyMount from './LazyMount.svelte';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
+	import { incRender } from '$lib/perf/mark';
 
 	let {
 		message,
@@ -74,10 +75,14 @@
 	);
 	let interrupted = $derived(parsedMeta?.interrupted === true);
 	let reasoningOpen = $state(false);
+
+	onMount(() => incRender('MessageRow'));
 </script>
 
 {#if message.role === 'assistant' && message.toolCallId != null && message.content === ''}
 	<!-- empty tool-call bookkeeping row, hidden -->
+{:else if message.role === 'tool' && message.toolName === 'present_choices'}
+	<!-- presentation-only tool result; choices surface as composer chips -->
 {:else if message.role === 'tool'}
 	<div class="flex flex-col gap-1">
 		<span class="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -135,10 +140,10 @@
 					onExpound={(raw, sel, opts) => onExpound(message.id, raw, sel, opts)}
 					{onCopy}
 				>
-					<LazyMount><Markdown raw={visible} /></LazyMount>
+					<Markdown raw={visible} />
 				</Highlighter>
 			{:else}
-				<LazyMount><Markdown raw={message.content} /></LazyMount>
+				<Markdown raw={message.content} />
 			{/if}
 		</div>
 		{#if interrupted && message.role === 'assistant'}

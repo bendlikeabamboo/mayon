@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { renderMarkdown } from '$lib/markdown/render';
+	import { renderMarkdown, renderMarkdownLive } from '$lib/markdown/render';
+	import { incRender } from '$lib/perf/mark';
 	import { hasMermaid, renderMermaidBlock } from '$lib/markdown/mermaid';
 	import { isExternalLink } from '$lib/markdown/links';
 	import { enhanceFocusable } from '$lib/markdown/focusable';
@@ -19,7 +20,7 @@
 		live = false
 	}: { raw: string; class?: string; live?: boolean } = $props();
 
-	const html = $derived(renderMarkdown(raw));
+	const html = $derived(live ? renderMarkdownLive(raw) : renderMarkdown(raw));
 	const needsMermaid = $derived(hasMermaid(html));
 
 	let container = $state<HTMLDivElement | null>(null);
@@ -70,8 +71,9 @@
 	});
 
 	$effect(() => {
+		incRender('Markdown');
 		const rendered = html;
-		if (!container || !rendered) return;
+		if (!container || !rendered || live) return;
 		const links = container.querySelectorAll<HTMLAnchorElement>('a[href]');
 		for (const link of links) {
 			const href = link.getAttribute('href') ?? '';
@@ -282,6 +284,11 @@
 		cursor: pointer;
 		line-height: 1;
 	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(.md-copy-btn) {
+			transition: none;
+		}
+	}
 	:global(.md-copy-btn:hover) {
 		color: var(--foreground);
 		border-color: var(--foreground);
@@ -314,6 +321,11 @@
 		opacity: 0.6;
 		cursor: pointer;
 		transition: opacity 0.15s;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(.md-focusable-btn) {
+			transition: none;
+		}
 	}
 	:global(.md-focusable-btn:hover) {
 		opacity: 1;

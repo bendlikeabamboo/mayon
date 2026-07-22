@@ -52,6 +52,16 @@ in `.kilo/plans/`.
   Selections touching generated content (math, mermaid, copy-button chrome)
   disable the menu; stale rows self-heal in memory only (no DB write).
 
+## Perf debugging
+
+The perf probe (`src/lib/perf/{probe,mark}.ts`) is an opt-in dev tool that measures
+frame timing, longtasks, layout shifts, input latency, custom marks, and render counts.
+It emits a JSON summary to the console every 3 seconds via `[mayon-perf]`.
+
+**Enable:** set `window.__MAYON_PERF__ = 1` in the browser console before or after page load.
+**Scenario tag:** set `localStorage.mayon_perf_scenario = 'idle-scroll'` (or any label) to tag
+summary output. The probe imports at `+layout.svelte:6` but is inert without the flag.
+
 ## Manual acceptance gates (P-pg-2)
 
 P-pg-2 flips the browser's primary driver to Postgres via the server and makes the schema,

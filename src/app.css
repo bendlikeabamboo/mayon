@@ -420,13 +420,23 @@
 			display: none;
 		}
 	}
+	.mayon-spinner {
+		will-change: transform;
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.mayon-spinner {
 			animation: none !important;
+			will-change: auto;
 		}
 		.mayon-spinner::before,
 		.mayon-spinner::after {
 			animation: none !important;
+		}
+		.tip::after {
+			transition: none;
+		}
+		.expound-flash {
+			animation-duration: 0s !important;
 		}
 	}
 

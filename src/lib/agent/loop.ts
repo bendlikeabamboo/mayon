@@ -345,8 +345,15 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 			const hasGenerative = toolCalls.some((tc) => getToolDefinition(tc.toolName)?.generative);
 
+			const allTerminal =
+				toolCalls.length > 0 &&
+				toolCalls.every((tc) => getToolDefinition(tc.toolName)?.terminal === true);
+
 			if (buf && !hasGenerative) {
-				const msg = await deps.appendAssistantText(buf);
+				const msg = await deps.appendAssistantText(
+					buf,
+					allTerminal ? { reasoning: reasoningBuf || undefined } : undefined
+				);
 				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
 			}
 			if (hasGenerative) {
@@ -525,6 +532,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			if (aborted) {
 				deps.onTrace?.({ kind: 'aborted' });
 				return { aborted: true };
+			}
+
+			if (allTerminal) {
+				return { aborted: false };
 			}
 
 			buf = '';

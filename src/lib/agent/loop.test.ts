@@ -62,6 +62,21 @@ vi.mock('$lib/agent/registry', () => {
 			generative: false
 		},
 		{
+			id: 'toggle_checklist_item',
+			description: 'Toggle item',
+			parameters: { type: 'object', properties: {} },
+			risk: 'low' as const,
+			generative: false
+		},
+		{
+			id: 'present_choices',
+			description: 'Present pacing choices',
+			parameters: { type: 'object', properties: {} },
+			risk: 'readonly' as const,
+			generative: false,
+			terminal: true
+		},
+		{
 			id: 'create_quiz',
 			description: 'Generate a quiz',
 			parameters: { type: 'object', properties: {} },
@@ -427,7 +442,7 @@ describe('runAgentTurn', () => {
 			])
 		} as never);
 
-		const deps = makeDeps({ config: makeConfig({ toolCapability: true }) });
+		const deps = makeDeps({ config: makeConfig({ toolCapability: 'on' as const }) });
 		const result = await runAgentTurn(deps);
 
 		expect(result).toEqual({ aborted: false });
@@ -1043,6 +1058,63 @@ describe('runAgentTurn', () => {
 			expect(call[1]?.reasoning).toBeUndefined();
 		});
 	});
+
+	describe('(u) terminal tools', () => {
+		it('terminal tool ends the turn with no second streamText call', async () => {
+			mockedStreamText.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'thinking…' },
+					{ type: 'text-delta', text: 'prose' },
+					{
+						type: 'tool-call',
+						toolCallId: 'tc1',
+						toolName: 'present_choices',
+						args: { nextUnit: 'Unit 2', options: ['continue', 'go deeper'], progress: 'Unit 2 / 5' }
+					},
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never);
+
+			mockedToolsRun.mockResolvedValue({ ok: true, summary: 'Next: Unit 2 (continue, go deeper)' });
+
+			const deps = makeDeps();
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(mockedStreamText).toHaveBeenCalledOnce();
+			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('prose', {
+				reasoning: 'thinking…'
+			});
+			expect(deps.appendAssistantToolCall).toHaveBeenCalledOnce();
+			expect(mockedToolsRun).toHaveBeenCalledOnce();
+		});
+
+		it('mixed terminal + non-terminal does not short-circuit', async () => {
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'tool-call', toolCallId: 'tc1', toolName: 'read_checklist', args: {} },
+						{ type: 'tool-call', toolCallId: 'tc2', toolName: 'present_choices', args: {} },
+						{ type: 'finish', finishReason: 'tool-calls' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', text: 'Follow-up' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never);
+
+			mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
+
+			const deps = makeDeps();
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(mockedStreamText).toHaveBeenCalledTimes(2);
+		});
+	});
 });
 
 function mockedAppendAssistantTextContent(deps: AgentTurnDeps): string {
@@ -1093,7 +1165,7 @@ describe('disabledToolIds filtering', () => {
 
 		const enabledTools = mockedStreamText.mock.calls[0][0].tools as Record<string, unknown>;
 		expect(Object.keys(enabledTools!)).toContain('branch_chat');
-		expect(Object.keys(enabledTools!)).toHaveLength(4);
+		expect(Object.keys(enabledTools!)).toHaveLength(5);
 	});
 });
 

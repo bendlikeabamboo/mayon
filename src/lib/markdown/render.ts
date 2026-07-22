@@ -26,6 +26,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Schema } from 'hast-util-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import { admonition } from './admonition';
+import { mark } from '$lib/perf/mark';
 
 /**
  * Sanitize schema: GitHub-default, extended to keep the classes the pipeline
@@ -73,12 +74,26 @@ const processor = unified()
 	.use(rehypeSanitize, sanitizeSchema)
 	.use(rehypeStringify);
 
+const liveProcessor = unified()
+	.use(remarkParse)
+	.use(remarkGfm)
+	.use(remarkMath)
+	.use(remarkRehype)
+	.use(rehypeKatex)
+	.use(admonition)
+	.use(rehypeSanitize, sanitizeSchema)
+	.use(rehypeStringify);
+
 /**
  * Render raw markdown into sanitized HTML string. Mermaid fenced blocks are
  * left as `<pre><code class="language-mermaid">` for the component to render.
  */
 export function renderMarkdown(raw: string): string {
-	return String(processor.processSync(raw));
+	return mark('markdown:render', () => String(processor.processSync(raw)));
+}
+
+export function renderMarkdownLive(raw: string): string {
+	return mark('markdown:render', () => String(liveProcessor.processSync(raw)));
 }
 
 /** Exposed for tests / component reuse. */

@@ -27,6 +27,7 @@
 
 	let customInstructions = $state('');
 	let toggles = new SvelteSet<ExpoundToggle>();
+	let provideSummary = $state(false);
 
 	const PANEL_WIDTH = 320;
 	const PANEL_HEIGHT = 360;
@@ -47,7 +48,8 @@
 		onSubmit({
 			excerpt,
 			customInstructions,
-			toggles: toggleKeys.filter((k) => toggles.has(k))
+			toggles: toggleKeys.filter((k) => toggles.has(k)),
+			provideSummary
 		});
 	}
 
@@ -132,6 +134,11 @@
 			{/each}
 		</div>
 	</div>
+
+	<label class="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+		<input type="checkbox" bind:checked={provideSummary} class="size-3.5 accent-primary" />
+		Provide summary
+	</label>
 
 	<div class="mt-3 flex items-center justify-end">
 		<Button size="sm" onclick={submit} title="Send (⌘/Ctrl+Enter)" aria-label="Send">

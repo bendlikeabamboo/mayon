@@ -32,7 +32,7 @@
 		type LearningBrief
 	} from '$lib/chat/brief';
 	import { parseAddFormats, type ExpoundToggle } from '$lib/chat/expound';
-	import { extractGateBlock } from '$lib/ai/generate/generate-gate';
+	import { findGateFromMessages } from '$lib/ai/generate/generate-gate';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
@@ -49,6 +49,7 @@
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
 	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
+	import { mark } from '$lib/perf/mark';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 
 	let breadcrumb = $state<Chat[]>([]);
@@ -78,6 +79,8 @@
 	let topPane = $state<HTMLDivElement | null>(null);
 	let bottomPane = $state<HTMLDivElement | null>(null);
 	let middleWrapper = $state<HTMLDivElement | null>(null);
+	let topSentinel = $state<HTMLDivElement | null>(null);
+	let bottomSentinel = $state<HTMLDivElement | null>(null);
 	let topVisible = $state(false);
 	let bottomVisible = $state(false);
 	let stickToBottom = $state(true);
@@ -96,14 +99,6 @@
 		if (topPane) fadeTop = halfCapped(topPane.offsetHeight);
 		if (bottomPane) fadeBottom = halfCapped(bottomPane.offsetHeight);
 	}
-	function updateVisibility() {
-		const el = viewport;
-		if (!el) return;
-		topVisible = el.scrollTop > 1;
-		const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-		bottomVisible = !atBottom;
-		stickToBottom = atBottom;
-	}
 
 	$effect(() => {
 		void chatStore.messages.length;
@@ -120,41 +115,72 @@
 		if (!el || !top || !bottom) return;
 
 		let pending = false;
-		const onScroll = () => {
-			if (pending) return;
-			pending = true;
-			requestAnimationFrame(() => {
+		let pendingForceScroll = false;
+		let pendingFadeHeights = false;
+		const flush = () => {
+			mark('layout:flush', () => {
 				pending = false;
-				updateVisibility();
+				if (pendingForceScroll) {
+					pendingForceScroll = false;
+					if (stickToBottom && !scrolledToHash) {
+						el.scrollTop = el.scrollHeight;
+					}
+				}
+				if (pendingFadeHeights) {
+					pendingFadeHeights = false;
+					updateFadeHeights();
+				}
 			});
 		};
-
-		const resizeObserver = new ResizeObserver(() => {
-			updateFadeHeights();
-			updateVisibility();
-		});
-		const contentObserver = new ResizeObserver(() => {
-			if (stickToBottom && !scrolledToHash && viewport) {
-				viewport.scrollTop = viewport.scrollHeight;
+		const schedule = (opts: { forceScroll?: boolean; fadeHeights?: boolean } = {}) => {
+			if (opts.forceScroll) pendingForceScroll = true;
+			if (opts.fadeHeights) pendingFadeHeights = true;
+			if (!pending) {
+				pending = true;
+				requestAnimationFrame(flush);
 			}
-			updateVisibility();
-		});
+		};
+
+		const resizeObserver = new ResizeObserver(() => schedule({ fadeHeights: true }));
+		const contentObserver = new ResizeObserver(() => schedule({ forceScroll: true }));
 
 		resizeObserver.observe(top);
 		resizeObserver.observe(bottom);
 		if (el.firstElementChild instanceof Element) {
 			contentObserver.observe(el.firstElementChild);
 		}
-		el.addEventListener('scroll', onScroll, { passive: true });
 
-		updateFadeHeights();
-		updateVisibility();
+		schedule({ forceScroll: true, fadeHeights: true });
 
 		return () => {
 			resizeObserver.disconnect();
 			contentObserver.disconnect();
-			el.removeEventListener('scroll', onScroll);
 		};
+	});
+
+	$effect(() => {
+		const el = viewport;
+		const top = topSentinel;
+		const bottom = bottomSentinel;
+		if (!el || !top || !bottom) return;
+
+		const io = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (entry.target === top) {
+						topVisible = !entry.isIntersecting;
+					} else if (entry.target === bottom) {
+						const atBottom = entry.isIntersecting;
+						stickToBottom = atBottom;
+						bottomVisible = !atBottom;
+					}
+				}
+			},
+			{ root: el, threshold: 0 }
+		);
+		io.observe(top);
+		io.observe(bottom);
+		return () => io.disconnect();
 	});
 
 	$effect(() => {
@@ -200,14 +226,7 @@
 		rootBrief ? personaForId(rootBrief.persona ?? DEFAULT_PERSONA).name : 'Mayon'
 	);
 
-	const lastAssistantRaw = $derived(() => {
-		for (let i = chatStore.messages.length - 1; i >= 0; i--) {
-			if (chatStore.messages[i].role === 'assistant') return chatStore.messages[i].content;
-		}
-		return '';
-	});
-
-	const gate = $derived(activeStrategy?.gated ? extractGateBlock(lastAssistantRaw()) : null);
+	const gate = $derived(activeStrategy?.gated ? findGateFromMessages(chatStore.messages) : null);
 
 	const failedMessageId = $derived.by(() => {
 		if (!chatStore.error || !chatStore.lastFailedPrompt) return null;
@@ -656,6 +675,7 @@
 					style="--fade-top:{fadeTop}px; --fade-bottom:{fadeBottom}px;"
 				>
 					<div bind:this={viewport} class="h-full overflow-y-auto overflow-x-hidden p-4">
+						<div bind:this={topSentinel} class="h-0 -mt-4"></div>
 						<MessageList
 							messages={chatStore.messages}
 							streaming={chatStore.streaming}
@@ -683,6 +703,7 @@
 								{/if}
 							{/snippet}
 						</MessageList>
+						<div bind:this={bottomSentinel} class="h-0"></div>
 					</div>
 					<div
 						class="pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-200 motion-reduce:transition-none {topVisible
@@ -797,6 +818,7 @@
 						{onSend}
 						onStop={chatStore.stop.bind(chatStore)}
 						{suggestedReplies}
+						progress={gate?.progress ?? null}
 						{supportsDeep}
 						providerName={activeProviderName}
 						modelId={activeModelId}

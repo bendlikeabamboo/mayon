@@ -197,5 +197,38 @@ export const deterministicTools: Tool[] = [
 				detail: { checklist: next }
 			};
 		}
+	},
+	{
+		def: {
+			id: 'present_choices',
+			description:
+				'Present pacing choices to the learner as tappable chips (e.g. after a unit or step). ' +
+				'Call this instead of emitting the choices as a fenced block or raw JSON. ' +
+				'The options appear as reply chips under the composer.',
+			parameters: toolSchema({
+				nextUnit: { type: 'string', description: 'Title of the next unit or step.' },
+				options: {
+					type: 'array',
+					items: { type: 'string' },
+					description: '2–3 short option labels (e.g. ["continue","go deeper"]).'
+				},
+				progress: {
+					type: 'string',
+					description: 'A short progress label (e.g. "Unit 2 / 5" or "Step 3 / 8").'
+				}
+			}),
+			risk: 'readonly',
+			generative: false,
+			terminal: true
+		},
+		async run(args, _ctx): Promise<ToolResult> {
+			const a = args as { nextUnit?: string; options?: string[]; progress?: string };
+			const opts = (a.options ?? []).join(', ');
+			return {
+				ok: true,
+				summary: `Next: ${a.nextUnit ?? '—'} (${opts})`,
+				detail: { nextUnit: a.nextUnit, options: a.options, progress: a.progress }
+			};
+		}
 	}
 ];

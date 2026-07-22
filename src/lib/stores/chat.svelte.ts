@@ -112,9 +112,23 @@ class ChatState {
 	private titling = false;
 	private rafId: number | null = null;
 
+	/**
+	 * Minimum interval between streaming-render flushes. Streaming text only
+	 * needs to update fast enough to feel live (~12 Hz); humans can't read
+	 * faster. Capping this frees the main thread to paint scrolling at the full
+	 * display refresh rate (60/120/144 Hz) between flushes, instead of
+	 * re-running the markdown pipeline and forcing layout every single frame.
+	 */
+	private static readonly RENDER_INTERVAL_MS = 80;
+
 	private startRenderFlush() {
+		let last = -Infinity;
 		const tick = () => {
-			this.streamBufferRender = this.streamBuffer;
+			const now = performance.now();
+			if (now - last >= ChatState.RENDER_INTERVAL_MS) {
+				last = now;
+				this.streamBufferRender = this.streamBuffer;
+			}
 			if (this.streaming) this.rafId = requestAnimationFrame(tick);
 			else this.rafId = null;
 		};

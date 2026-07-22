@@ -1083,6 +1083,9 @@ describe('branch_chat first-turn suppression (UX1a)', () => {
 	});
 });
 
+// H2 regression guard (Phase 4): asserts streamBufferRender does not update
+// until the RENDER_INTERVAL_MS (80 ms) throttle has elapsed. Prevents removal
+// or weakening of the rAF throttle in startRenderFlush.
 describe('chatStore rAF stream throttle (UJ13)', () => {
 	it('streamBufferRender lags behind streamBuffer until the rAF setTimeout fires', async () => {
 		let resolveTurn!: () => void;
@@ -1116,7 +1119,7 @@ describe('chatStore rAF stream throttle (UJ13)', () => {
 		expect(chatStore.streamBufferRender).toBe('');
 		expect(chatStore.showLiveBubble).toBe(false);
 
-		await new Promise((r) => setTimeout(r, 20));
+		await new Promise((r) => setTimeout(r, 90));
 
 		expect(chatStore.streamBufferRender).toBe('abc');
 		expect(chatStore.showLiveBubble).toBe(true);

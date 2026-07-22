@@ -3,6 +3,7 @@
 	import '@fontsource/newsreader/400-italic.css';
 	import '@fontsource/newsreader/600.css';
 	import '../app.css';
+	import '$lib/perf/probe';
 	import { migrateLegacyKeys } from '$lib/ai/keystore/migrate';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import BootGate from '$lib/components/BootGate.svelte';
@@ -29,6 +30,7 @@
 			if (stored) themeState.hydrate(stored);
 			bindThemePersistence((t) => repos.settings.set('theme', t));
 			if (import.meta.env.DEV) void runSelfCheck();
+			if (import.meta.env.DEV) import('$lib/perf/longtask-warn');
 		})
 		.catch(() => {
 			// Error already surfaced via the dbStatus store -> BootGate or DbStatus badge.

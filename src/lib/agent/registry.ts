@@ -12,6 +12,7 @@ export interface ToolDefinition {
 	parameters: Record<string, unknown>;
 	risk: ToolRisk;
 	generative: boolean;
+	terminal?: boolean;
 }
 
 export interface ToolResult {

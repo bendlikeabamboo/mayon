@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractGateBlock, stripGateFence } from './generate-gate';
+import { extractGateBlock, stripGateFence, findGateFromMessages } from './generate-gate';
 
 describe('extractGateBlock', () => {
 	it('parses a trailing ```gate fenced block', () => {
@@ -78,6 +78,26 @@ describe('extractGateBlock', () => {
 		const raw = 'Look at this:\n\n```json\n{"data": 123}\n```';
 		expect(extractGateBlock(raw)).toBeNull();
 	});
+
+	it('parses a trailing ```\\ngate fenced block (newline between backticks and gate)', () => {
+		const raw =
+			'Here is the unit content.\n\n```\ngate\n{"nextUnit":"Loops","options":["continue","go deeper"],"progress":"Unit 2 / 5"}\n```';
+		expect(extractGateBlock(raw)).toEqual({
+			nextUnit: 'Loops',
+			options: ['continue', 'go deeper'],
+			progress: 'Unit 2 / 5'
+		});
+	});
+
+	it('parses a ``` gate (space-separated) fenced block', () => {
+		const raw =
+			'Here is the unit content.\n\n``` gate\n{"nextUnit":"Loops","options":["continue","go deeper"],"progress":"Unit 2 / 5"}\n```';
+		expect(extractGateBlock(raw)).toEqual({
+			nextUnit: 'Loops',
+			options: ['continue', 'go deeper'],
+			progress: 'Unit 2 / 5'
+		});
+	});
 });
 
 describe('stripGateFence', () => {
@@ -128,5 +148,68 @@ describe('stripGateFence', () => {
 	it('preserves a normal ```json block that lacks gate fields', () => {
 		const raw = 'Look at this:\n\n```json\n{"data": 123}\n```';
 		expect(stripGateFence(raw)).toBe(raw);
+	});
+
+	it('returns prose prefix for a ```\\ngate (newline-separated) block', () => {
+		const raw =
+			'Here is the unit content.\n\n```\ngate\n{"nextUnit":"Loops","options":["continue","go deeper"],"progress":"Unit 2 / 5"}\n```';
+		expect(stripGateFence(raw)).toBe('Here is the unit content.');
+	});
+
+	it('strips a ```\\ngate block that has trailing text after the close fence', () => {
+		const raw =
+			'Content before.\n\n```\ngate\n{"nextUnit":"A","options":[],"progress":"1/3"}\n```\nExtra after.';
+		expect(stripGateFence(raw)).toBe('Content before.');
+	});
+});
+
+describe('findGateFromMessages', () => {
+	it('finds the gate from a present_choices tool-call row', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null },
+			{
+				role: 'assistant',
+				toolName: 'present_choices',
+				metadata: JSON.stringify({
+					nextUnit: 'Loops',
+					options: ['continue', 'go deeper'],
+					progress: 'Unit 2 / 5'
+				})
+			}
+		];
+		expect(findGateFromMessages(messages)).toEqual({
+			nextUnit: 'Loops',
+			options: ['continue', 'go deeper'],
+			progress: 'Unit 2 / 5'
+		});
+	});
+
+	it('returns null when present_choices is before the last user message', () => {
+		const messages = [
+			{
+				role: 'assistant',
+				toolName: 'present_choices',
+				metadata: JSON.stringify({ nextUnit: 'Loops', options: ['continue'], progress: '1/2' })
+			},
+			{ role: 'user', toolName: null, metadata: null },
+			{ role: 'assistant', toolName: null, metadata: null }
+		];
+		expect(findGateFromMessages(messages)).toBeNull();
+	});
+
+	it('returns null on malformed metadata', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null },
+			{ role: 'assistant', toolName: 'present_choices', metadata: 'not json' }
+		];
+		expect(findGateFromMessages(messages)).toBeNull();
+	});
+
+	it('returns null when absent', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null },
+			{ role: 'assistant', toolName: 'read_checklist', metadata: '{}' }
+		];
+		expect(findGateFromMessages(messages)).toBeNull();
 	});
 });

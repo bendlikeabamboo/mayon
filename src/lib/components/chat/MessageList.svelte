@@ -4,6 +4,7 @@
 	import MessageRow from './MessageRow.svelte';
 	import Reasoning from './Reasoning.svelte';
 	import Spinner from './Spinner.svelte';
+	import LazyMount from './LazyMount.svelte';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
@@ -60,15 +61,17 @@
 	{/if}
 	{#each visibleMessages as message (message.id)}
 		<div id="msg-{message.id}">
-			<MessageRow
-				{message}
-				{onExpound}
-				{onCopy}
-				{onBranchWhole}
-				{onRegenerate}
-				{personaName}
-				failed={message.id === failedMessageId}
-			/>
+			<LazyMount unmountFar rootMargin="1200px">
+				<MessageRow
+					{message}
+					{onExpound}
+					{onCopy}
+					{onBranchWhole}
+					{onRegenerate}
+					{personaName}
+					failed={message.id === failedMessageId}
+				/>
+			</LazyMount>
 		</div>
 	{/each}
 
@@ -84,7 +87,7 @@
 					{personaName}
 				</span>
 				{#if reasoningBuffer}
-					<Reasoning reasoning={reasoningBuffer} live bind:open={liveReasoningOpen} />
+					<Reasoning reasoning={reasoningBuffer} live inline bind:open={liveReasoningOpen} />
 				{/if}
 			</div>
 			{#if reasoningBuffer && liveReasoningOpen}

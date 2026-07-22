@@ -167,14 +167,15 @@ describe('summarize_progress', () => {
 });
 
 describe('getToolDefinitions', () => {
-	it('returns 11 tools: 4 readonly + 3 deterministic low + 2 deterministic high + 2 generative high', () => {
+	it('returns 12 tools: 5 readonly + 3 deterministic low + 2 deterministic high + 2 generative high', () => {
 		const defs = getToolDefinitions();
-		expect(defs).toHaveLength(11);
+		expect(defs).toHaveLength(12);
 
 		const readonly = defs.filter((d) => d.risk === 'readonly');
-		expect(readonly).toHaveLength(4);
+		expect(readonly).toHaveLength(5);
 		expect(readonly.map((d) => d.id).sort()).toEqual([
 			'list_artifacts',
+			'present_choices',
 			'read_artifact',
 			'read_checklist',
 			'summarize_progress'
@@ -205,6 +206,6 @@ describe('getToolDefinitions', () => {
 		}
 
 		const nonGenerative = defs.filter((d) => d.generative === false);
-		expect(nonGenerative).toHaveLength(9);
+		expect(nonGenerative).toHaveLength(10);
 	});
 });

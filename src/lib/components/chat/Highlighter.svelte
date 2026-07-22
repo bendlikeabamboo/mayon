@@ -11,6 +11,8 @@
 	import { wrapRange } from '$lib/markdown/wrap-range';
 	import { selectionOverlapsExisting, type ExpoundOptions } from '$lib/chat/expound';
 	import { buildSourceMap, type SourceMap } from '$lib/markdown/sourcemap';
+	import { subscribeScroll } from '$lib/chat/scroll-bus';
+	import { mark, incRender } from '$lib/perf/mark';
 	import ContextMenu from './ContextMenu.svelte';
 	import ExpoundMarkPopover from './ExpoundMarkPopover.svelte';
 	import ExpoundPromptConstructor from './ExpoundPromptConstructor.svelte';
@@ -35,7 +37,7 @@
 
 	let container = $state<HTMLDivElement | null>(null);
 
-	const sourceMap: SourceMap = $derived(buildSourceMap(raw));
+	const sourceMap: SourceMap = $derived(mark('sourcemap:build', () => buildSourceMap(raw)));
 
 	let pendingRange = $state<Range | null>(null);
 	let menu = $state<{ x: number; y: number } | null>(null);
@@ -60,6 +62,7 @@
 	} | null>(null);
 
 	$effect(() => {
+		incRender('Highlighter');
 		void messageId;
 		void (async () => {
 			existingSpans = await repos.branchSources.listBySourceMessage(messageId);
@@ -403,9 +406,13 @@
 			});
 		}
 	});
+	$effect(() => {
+		const el = container;
+		if (!el) return () => {};
+		const scrollable = el.closest<HTMLElement>('.overflow-y-auto');
+		return subscribeScroll(onScrollClear, scrollable ?? undefined);
+	});
 </script>
-
-<svelte:window onscroll={onScrollClear} />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->

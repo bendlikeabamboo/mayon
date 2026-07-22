@@ -24,6 +24,7 @@ export interface ExpoundOptions {
 	excerpt: string;
 	customInstructions: string;
 	toggles: ExpoundToggle[];
+	provideSummary?: boolean;
 }
 
 /** A half-open `[startChar, endChar)` character span. */
@@ -47,8 +48,7 @@ export function buildExpoundPrompt(o: ExpoundOptions): string {
 			: 'Adding no extra formats whenever possible.';
 
 	return [
-		'Summarize the current discussion.',
-		'',
+		...(o.provideSummary === true ? ['Summarize the current discussion.', ''] : []),
 		'The user would like to expound on this excerpt:',
 		'"""',
 		o.excerpt,

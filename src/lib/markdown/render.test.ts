@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from './render';
+import { renderMarkdown, renderMarkdownLive } from './render';
 
 // Local mirror of the component's mermaid-block detector (avoids importing the
 // DOM-only mermaid.ts module into a node test).
@@ -74,5 +74,33 @@ describe('renderMarkdown', () => {
 		const html = renderMarkdown(md);
 		expect(html).toContain('<blockquote');
 		expect(html).not.toContain('callout');
+	});
+});
+
+describe('renderMarkdownLive', () => {
+	it('produces sanitized output (same prose safety as full pipeline)', () => {
+		const md = 'Hello `world`.\n\n<script>alert(1)</script>';
+		const html = renderMarkdownLive(md);
+		expect(html).toContain('<p>');
+		expect(html).toContain('<code>world</code>');
+		expect(html).not.toContain('<script>');
+	});
+
+	it('does NOT emit highlight.js token classes for fenced code', () => {
+		const md = '```js\nconst x = 1;\n```';
+		const html = renderMarkdownLive(md);
+		expect(html).not.toContain('class="hljs');
+	});
+
+	it('still renders KaTeX math', () => {
+		const md = 'Inline $a^2$ and block:\n\n$$\\int_0^1 x\\,dx$$';
+		const html = renderMarkdownLive(md);
+		expect(html).toContain('katex');
+	});
+
+	it('still renders callouts', () => {
+		const md = '> [!WARNING]\n> Never commit the state file.';
+		const html = renderMarkdownLive(md);
+		expect(html).toContain('class="callout callout-warning"');
 	});
 });

@@ -66,6 +66,27 @@ describe('buildExpoundPrompt', () => {
 		});
 		expect(p).toContain(`Adding [${TOGGLE_LABELS.tables}] whenever possible.`);
 	});
+
+	it('omits summary line by default (provideSummary not set)', () => {
+		const p = buildExpoundPrompt({
+			excerpt: 'hello world',
+			customInstructions: '',
+			toggles: []
+		});
+		expect(p).not.toContain('Summarize the current discussion.');
+		expect(p.startsWith('The user would like to expound on this excerpt:')).toBe(true);
+	});
+
+	it('includes summary line when provideSummary is true', () => {
+		const p = buildExpoundPrompt({
+			excerpt: 'hello world',
+			customInstructions: '',
+			toggles: [],
+			provideSummary: true
+		});
+		expect(p.startsWith('Summarize the current discussion.\n')).toBe(true);
+		expect(p).toContain('Summarize the current discussion.');
+	});
 });
 
 describe('spansOverlap (half-open [start,end))', () => {

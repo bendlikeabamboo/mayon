@@ -14,7 +14,7 @@ export interface GateBlock {
 	progress: string;
 }
 
-const GATE_FENCE_RE = /```(?:gate|json)\s*\n?/i;
+const GATE_FENCE_RE = /```\s*(?:gate|json)\s*\n?/i;
 
 export function extractGateBlock(raw: string): GateBlock | null {
 	const gateFence = extractFencedBlock(raw, 'gate');
@@ -58,9 +58,9 @@ function extractTrailingGateJson(raw: string): unknown {
 }
 
 export function stripGateFence(raw: string): string {
-	const idx = raw.indexOf('```gate');
-	if (idx !== -1) {
-		return raw.slice(0, idx).trimEnd();
+	const gateOpen = raw.match(/```\s*gate\b/i);
+	if (gateOpen && gateOpen.index !== undefined) {
+		return raw.slice(0, gateOpen.index).trimEnd();
 	}
 	const jsonFenceMatch = raw.match(GATE_FENCE_RE);
 	if (jsonFenceMatch && jsonFenceMatch.index !== undefined) {
@@ -107,7 +107,7 @@ export function extractFencedBlock(raw: string, tag?: string): string {
 
 	let openRegex: RegExp;
 	if (tag === 'gate') {
-		openRegex = /```gate\s*\n?/i;
+		openRegex = /```\s*gate\s*\n?/i;
 	} else {
 		openRegex = /```(?:json)?\s*\n?/i;
 	}
@@ -125,4 +125,22 @@ export function extractFencedBlock(raw: string, tag?: string): string {
 
 export function extractFencedJson(raw: string): string {
 	return extractFencedBlock(raw, 'json');
+}
+
+export function findGateFromMessages<
+	T extends { role: string; toolName?: string | null; metadata?: string | null }
+>(messages: readonly T[]): GateBlock | null {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (m.role === 'user') break;
+		if (m.role === 'assistant' && m.toolName === 'present_choices' && m.metadata) {
+			try {
+				const result = GateBlockSchema.safeParse(JSON.parse(m.metadata));
+				if (result.success) return result.data;
+			} catch {
+				/* ignore malformed */
+			}
+		}
+	}
+	return null;
 }

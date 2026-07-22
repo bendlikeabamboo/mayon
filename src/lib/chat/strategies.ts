@@ -40,11 +40,11 @@ export const SCOPE_STRATEGY_IDS: readonly ScopeStrategyId[] = [
 ] as const;
 
 const BT = String.fromCharCode(96);
-const FENCE3 = BT.repeat(3);
+const _FENCE3 = BT.repeat(3);
 
-const GATE_INSTRUCTION = `After the prose, append ONE trailing ${FENCE3}gate fenced block (JSON, no prose after it) with { "nextUnit": "<title>", "options": ["continue","go deeper"], "progress": "Unit 2 / 5" }. The app parses it; it is never shown to the learner.`;
+const GATE_INSTRUCTION = `To surface pacing choices to the learner, call the \`present_choices\` tool with { "nextUnit": "<title>", "options": ["continue","go deeper"], "progress": "Unit 2 / 5" }. The app renders the options as reply chips; they are never shown as text. If you do not have that tool, rely on the prose pacing gate above. Never emit the choices as a fenced code block or as raw JSON.`;
 
-const BUILD_GATE_INSTRUCTION = `After the prose, append ONE trailing ${FENCE3}gate fenced block (JSON, no prose after it) with { "nextUnit": "<title>", "options": ["next","paste the error"], "progress": "Step 2 / 8" }. The app parses it; it is never shown to the learner.`;
+const BUILD_GATE_INSTRUCTION = `To surface pacing choices to the learner, call the \`present_choices\` tool with { "nextUnit": "<title>", "options": ["next","paste the error"], "progress": "Step 2 / 8" }. The app renders the options as reply chips; they are never shown as text. If you do not have that tool, rely on the prose pacing gate above. Never emit the choices as a fenced code block or as raw JSON.`;
 
 export const SCOPE_STRATEGIES: ScopeStrategy[] = [
 	{

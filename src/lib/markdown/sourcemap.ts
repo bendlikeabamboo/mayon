@@ -57,6 +57,13 @@ type HastNode = HastRoot | HastElement | HastText;
 
 export const _testPlugins = [remarkParse, remarkGfm, remarkMath, remarkRehype, admonition];
 
+const SOURCE_MAP_CACHE_SIZE = 64;
+const sourceMapCache = new Map<string, SourceMap>();
+
+export function _clearSourceMapCache(): void {
+	sourceMapCache.clear();
+}
+
 const sourcemapProcessor = unified()
 	.use(remarkParse)
 	.use(remarkGfm)
@@ -242,6 +249,9 @@ function walk(
 }
 
 export function buildSourceMap(input: string): SourceMap {
+	const cached = sourceMapCache.get(input);
+	if (cached) return cached;
+
 	const tree = sourcemapProcessor.runSync(sourcemapProcessor.parse(input)) as HastRoot;
 	const segments: Segment[] = [];
 	walk(input, tree, null, segments, false);
@@ -284,5 +294,13 @@ export function buildSourceMap(input: string): SourceMap {
 		}
 	}
 
-	return { segments: filtered, canonical, canonicalToSegment };
+	const result: SourceMap = { segments: filtered, canonical, canonicalToSegment };
+
+	if (sourceMapCache.size >= SOURCE_MAP_CACHE_SIZE) {
+		const oldest = sourceMapCache.keys().next().value;
+		if (oldest !== undefined) sourceMapCache.delete(oldest);
+	}
+	sourceMapCache.set(input, result);
+
+	return result;
 }
