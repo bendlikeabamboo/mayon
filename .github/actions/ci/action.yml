@@ -8,6 +8,8 @@ runs:
     - shell: bash
       run: pnpm svelte-kit sync
     - shell: bash
+      run: pnpm --filter @mayon/shared build
+    - shell: bash
       run: pnpm lint
     - shell: bash
       run: pnpm check
