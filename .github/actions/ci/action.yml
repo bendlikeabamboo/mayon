@@ -1,5 +1,5 @@
 name: CI
-description: Install deps, lint, type-check, test, build SPA, and verify Docker build
+description: Install deps, lint, type-check, test, build SPA, and verify Docker builds
 runs:
   using: composite
   steps:
@@ -17,3 +17,5 @@ runs:
       run: pnpm build
     - shell: bash
       run: docker build .
+    - shell: bash
+      run: docker build -f server/Dockerfile .

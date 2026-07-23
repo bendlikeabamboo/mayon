@@ -2,7 +2,7 @@
 	"name": "@mayon/server",
 	"private": true,
 	"type": "module",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
 		"build": "tsup src/server.ts --format esm --target node22 --out-dir dist",

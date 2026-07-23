@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildApp } from './server';
+import { VERSION } from './version';
 import type { PgPoolLike, PgQueryResult } from './pg';
 
 const BASE_CAPS = ['stdio-mcp', 'llm-proxy', 'sandbox-db', 'backup'];
@@ -32,7 +33,7 @@ describe('server (pg-down default)', () => {
 			expect(res.statusCode).toBe(200);
 			const body = res.json();
 			expect(body.ok).toBe(true);
-			expect(body.version).toBe('0.0.1');
+			expect(body.version).toBe(VERSION);
 			expect(body.caps).toEqual(expect.arrayContaining(BASE_CAPS));
 			expect(body.caps).not.toContain('pg');
 			expect(typeof body.sandboxDbPath).toBe('string');

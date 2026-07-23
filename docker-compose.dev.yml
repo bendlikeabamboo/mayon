@@ -1,0 +1,67 @@
+# All-Docker development stack — full dev/prod parity.
+#
+# Runs the web SPA (Vite HMR), the server (tsx watch), and Postgres in a
+# dedicated compose project (mayon-dev) with disjoint volumes and ports so it
+# can run alongside the prod stack. The server always reaches the database as
+# `db:5432` on the internal network, exactly like prod, so no host-side
+# DATABASE_URL or tsx --env-file workaround is needed.
+#
+#   pnpm dev          # foreground: web + server + db (streaming logs + HMR)
+#   pnpm dev:up       # same, detached
+#   pnpm dev:down     # stop and remove dev containers
+#   pnpm dev:build    # rebuild dev images (after deps/config/shared changes)
+#
+name: mayon-dev
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - '5173:5173'
+    volumes:
+      # Bind only the source Vite watches for HMR; node_modules and the built
+      # @mayon/shared dist come from the dev image (rebuilt via dev:build).
+      - ./src:/app/src
+      - ./static:/app/static
+    depends_on: [server]
+    restart: unless-stopped
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.dev
+    expose:
+      - '4319'
+    volumes:
+      - ./server/src:/app/server/src
+      # @mayon/schema path alias target (server/tsconfig.json -> ../src/lib/db/schema.ts)
+      - ./src/lib/db/schema.ts:/app/src/lib/db/schema.ts:ro
+      # Drizzle migrations; MIGRATIONS_DIR below points here (dev cwd is /app/server)
+      - ./drizzle:/app/drizzle:ro
+      - server-data-dev:/data
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-mayon}:${POSTGRES_PASSWORD:-mayon}@db:5432/${POSTGRES_DB:-mayon}
+      MIGRATIONS_DIR: /app/drizzle
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mayon}
+      POSTGRES_USER: ${POSTGRES_USER:-mayon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mayon}
+    expose:
+      - '5432'
+    volumes:
+      - pg-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  server-data-dev:
+  pg-data-dev:

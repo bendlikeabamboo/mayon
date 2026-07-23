@@ -1,0 +1,25 @@
+# Dev image for the web SPA — runs Vite with HMR inside the container.
+# node_modules and the built @mayon/shared dist are baked in; only ./src and
+# ./static are bind-mounted at runtime for hot reload. Rebuild with dev:build
+# after dependency, config, or shared-package changes.
+FROM node:22-alpine
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/shared/package.json packages/shared/
+COPY server/package.json server/
+# Root closure only (excludes the server's native deps like better-sqlite3).
+RUN pnpm install --frozen-lockfile --filter mayon...
+
+COPY packages/shared/ packages/shared/
+RUN pnpm --filter @mayon/shared build
+
+# Root config files Vite/SvelteKit need at dev time (src/ and static/ are
+# bind-mounted for HMR; rebuild the image to pick up config changes).
+COPY vite.config.ts svelte.config.js tsconfig.json ./
+
+EXPOSE 5173
+CMD ["pnpm", "dev:vite"]

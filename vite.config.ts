@@ -7,9 +7,10 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	server: {
+		host: true,
 		proxy: {
-			'/api': 'http://localhost:4319',
-			'/ws': { target: 'http://localhost:4319', ws: true }
+			'/api': 'http://server:4319',
+			'/ws': { target: 'http://server:4319', ws: true }
 		}
 	},
 	worker: { format: 'es' },

@@ -18,22 +18,62 @@ in `.kilo/plans/`.
 
 ## Commands
 
-| Command                            | What it does                                                                  |
-| ---------------------------------- | ----------------------------------------------------------------------------- |
-| `pnpm install`                     | Install dependencies.                                                         |
-| `pnpm dev`                         | Run the SvelteKit SPA dev server (http://localhost:5173).                     |
-| `pnpm --filter @mayon/server dev`  | Run the server dev server (http://localhost:4319) in watch mode.              |
-| `pnpm build`                       | Build the SPA into `build/`.                                                  |
-| `pnpm check`                       | Type-check with `svelte-check`.                                               |
-| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                    |
-| `pnpm format`                      | Prettier `--write`.                                                           |
-| `pnpm test`                        | Vitest (pglite test driver) — run once.                                       |
-| `pnpm test:watch`                  | Vitest in watch mode.                                                         |
-| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                |
-| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`. |
-| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                       |
-| `pnpm dev:deps`                    | Start db + server in Docker (deps for `pnpm dev`).                            |
-| `docker compose up`                | Run the web SPA + server together (web on :8080, server internal-only).       |
+| Command                            | What it does                                                                                                    |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`                     | Install dependencies.                                                                                           |
+| `pnpm dev`                         | Bring up the all-Docker dev stack (web HMR on http://localhost:5173, server on :4319, db), project `mayon-dev`. |
+| `pnpm dev:up`                      | Same as `pnpm dev` but detached (`-d`).                                                                         |
+| `pnpm dev:down`                    | Stop and remove the dev stack (keeps `pg-data-dev`/`server-data-dev` volumes).                                  |
+| `pnpm dev:build`                   | Rebuild the dev images (after deps, config, or `@mayon/shared` changes).                                        |
+| `pnpm dev:vite`                    | Run Vite directly — used **inside** the dev `web` container.                                                    |
+| `pnpm --filter @mayon/server dev`  | Run the server (`tsx watch`) — used **inside** the dev `server` container.                                      |
+| `pnpm build`                       | Build the SPA into `build/`.                                                                                    |
+| `pnpm check`                       | Type-check with `svelte-check`.                                                                                 |
+| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                                                      |
+| `pnpm format`                      | Prettier `--write`.                                                                                             |
+| `pnpm test`                        | Vitest (pglite test driver) — run once.                                                                         |
+| `pnpm test:watch`                  | Vitest in watch mode.                                                                                           |
+| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                                                  |
+| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                   |
+| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                         |
+| `docker compose up`                | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first. |
+
+## Releasing & versioning
+
+- **SemVer.** Versions are `MAJOR.MINOR.PATCH` (`0.x` is pre-1.0 instability).
+- **The `vX.Y.Z` git tag is the release trigger.** Pushing it runs
+  `.github/workflows/docker-publish.yml`, which publishes **both** GHCR images:
+  - web SPA → `ghcr.io/bendlikeabamboo/mayon`
+  - server → `ghcr.io/bendlikeabamboo/mayon-server`
+  - each tagged `:X.Y.Z` and `:latest`.
+- **Release contract (CI-enforced):** the tag must equal the `version` field in
+  all three `package.json` files (`package.json`, `server/package.json`,
+  `packages/shared/package.json`) **and** `CHANGELOG.md` must contain a
+  `## [X.Y.Z]` section. The `verify-version` job fails the release otherwise.
+- **Release steps:**
+  1. Set `"version": "X.Y.Z"` in all three `package.json` files.
+  2. Add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (keep a fresh
+     empty `## [Unreleased]` above it).
+  3. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` → CI publishes.
+- **Upgrade flow** for end users: bump `MAYON_VERSION` (or rely on `latest`) →
+  `docker compose pull && docker compose up -d`.
+
+## Dev vs Prod topology
+
+|                         | Prod (daily-driver)                                          | Dev                                                   |
+| ----------------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| Web                     | `ghcr.io/.../mayon:${MAYON_VERSION}`, host `:8080`           | Vite HMR (in container), host `:5173`                 |
+| Server                  | `ghcr.io/.../mayon-server:${MAYON_VERSION}`, internal `4319` | `tsx watch` (in container), internal `4319`           |
+| DB                      | `postgres:17`, volume `pg-data`, **no host port**            | `postgres:17`, volume `pg-data-dev`, **no host port** |
+| Compose project         | `mayon` (default)                                            | `mayon-dev`                                           |
+| Compose file            | `docker-compose.yml`                                         | `docker-compose.dev.yml`                              |
+| Bring-up                | `docker compose pull && docker compose up -d`                | `pnpm dev`                                            |
+| `DATABASE_URL` (server) | `…@db:5432/mayon` (compose `environment:`)                   | `…@db:5432/mayon` (compose `environment:`)            |
+
+Both stacks use the internal docker network hostname `db`, so the server code
+is identical across dev and prod — no host `.env` / `DATABASE_URL` workaround.
+Host ports never collide (prod `8080` vs dev `5173`), so both run at once. Volumes
+are disjoint (`pg-data` vs `pg-data-dev`, `server-data` vs `server-data-dev`).
 
 ## Architecture boundaries (do not violate)
 

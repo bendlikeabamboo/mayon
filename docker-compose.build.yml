@@ -1,0 +1,15 @@
+# Override that builds the prod images locally from source instead of pulling.
+# The base image: tags are inherited, so the locally built images are tagged and
+# used without a pull.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile

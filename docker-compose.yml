@@ -1,23 +1,31 @@
+# Production stack — pulls prebuilt images from GHCR.
+#
+#   docker compose pull && docker compose up -d
+#
+# To pin a release, set MAYON_VERSION (e.g. 0.1.0) in a local .env or shell:
+#   MAYON_VERSION=0.1.0 docker compose up -d
+#
+# To build the images locally from source instead of pulling, use the override:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
 services:
   web:
-    build: .
+    image: ghcr.io/bendlikeabamboo/mayon:${MAYON_VERSION:-latest}
     ports:
       - '8080:80'
     depends_on: [server]
     restart: unless-stopped
   server:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
+    image: ghcr.io/bendlikeabamboo/mayon-server:${MAYON_VERSION:-latest}
     expose:
       - '4319'
     volumes:
       - server-data:/data
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-mayon}:${POSTGRES_PASSWORD:-mayon}@db:5432/${POSTGRES_DB:-mayon}
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-mayon}:${POSTGRES_PASSWORD:-mayon}@db:5432/${POSTGRES_DB:-mayon}
     restart: unless-stopped
   db:
     image: postgres:17-alpine

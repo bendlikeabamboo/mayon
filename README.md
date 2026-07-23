@@ -16,9 +16,9 @@ telemetry.
   from any chat.
 - **Quizzes** — MCQ, flashcard, and short-answer questions with AI grading and
   score tracking.
-- **Local-first / offline** — browser SPA (OPFS + IndexedDB). No account, no
-  server required. An optional local server (`docker compose up`) unlocks
-  stdio MCP tools, CORS-free LLM access, and a sandbox DB.
+- **Local-first / self-hosted** — browser SPA backed by a Postgres primary
+  store via a small local server. Self-host with `docker compose up`; no
+  account, no telemetry.
 - **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, Ollama, OpenRouter, and
   more; switch providers freely.
 
@@ -31,25 +31,24 @@ Try the live demo at
 
 ### Docker (self-host)
 
-```bash
-docker pull ghcr.io/bendlikeabamboo/mayon
-docker run -p 8080:80 ghcr.io/bendlikeabamboo/mayon
-```
-
-Or with Docker Compose:
+Mayon needs both the web SPA and the server (plus Postgres). The included
+compose file pulls the published images and wires them together:
 
 ```bash
+docker compose pull
 docker compose up -d
 ```
 
+Then open http://localhost:8080. To pin a specific release, set
+`MAYON_VERSION` (e.g. `0.1.0`) in a `.env` file or export it before `up`.
+
 ## Build from source
 
-**Prerequisites:** Node 22, pnpm 10 (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+**Prerequisites:** Node 22, pnpm 10, and Docker (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ```bash
 pnpm install
-pnpm dev:deps      # start db + server in Docker
-pnpm dev           # browser SPA at http://localhost:5173
+pnpm dev          # all-Docker dev stack: web HMR (:5173) + server + db
 ```
 
 ## Documentation
