@@ -89,3 +89,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release-assets:
+    needs: [ci, verify-version, build-and-push]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bake release version into install.sh
+        env:
+          VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          mkdir -p out
+          sed "s/@MAYON_INSTALLER_VERSION@/${VERSION}/" install.sh > out/install.sh
+          chmod +x out/install.sh
+          grep -q "MAYON_INSTALLER_VERSION=\"${VERSION}\"" out/install.sh
+          cp docker-compose.yml out/docker-compose.yml
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Mayon ${{ needs.verify-version.outputs.version }}
+          files: |
+            out/install.sh
+            out/docker-compose.yml
+          generate_release_notes: true
+          fail_on_unmatched_files: true

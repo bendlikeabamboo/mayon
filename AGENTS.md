@@ -55,6 +55,12 @@ in `.kilo/plans/`.
   2. Add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (keep a fresh
      empty `## [Unreleased]` above it).
   3. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` → CI publishes.
+- **Release assets (CI attaches to the GitHub Release):** a version-baked
+  `install.sh` (the `@MAYON_INSTALLER_VERSION@` placeholder is sed-replaced
+  with the tag) and a copy of `docker-compose.yml`. These power the one-line
+  install `curl -fsSL …/releases/latest/download/install.sh | bash`. Do **not**
+  rename/remove the `@MAYON_INSTALLER_VERSION@` marker in `install.sh` — the
+  `release-assets` job asserts the substitution succeeded.
 - **Upgrade flow** for end users: bump `MAYON_VERSION` (or rely on `latest`) →
   `docker compose pull && docker compose up -d`.
 

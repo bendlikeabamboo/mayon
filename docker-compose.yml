@@ -12,7 +12,7 @@ services:
   web:
     image: ghcr.io/bendlikeabamboo/mayon:${MAYON_VERSION:-latest}
     ports:
-      - '8080:80'
+      - '${MAYON_PORT:-8080}:80'
     depends_on: [server]
     restart: unless-stopped
   server:
