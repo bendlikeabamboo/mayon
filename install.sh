@@ -91,10 +91,72 @@ gen_password() {
 	fi
 }
 
+# Compose project name that `docker compose` will use for this install.
+# Mirrors `name:` from `docker compose config`, falling back to the lowercased
+# basename of the install dir with a leading dot stripped (~/.mayon -> "mayon").
+compose_project_name() {
+	local name=""
+	if [ -f "$COMPOSE_FILE" ]; then
+		name="$(cd "$INSTALL_DIR" && docker compose config 2>/dev/null | sed -n 's/^name: //p' | head -n1)"
+	fi
+	if [ -z "$name" ]; then
+		name="$(basename "$INSTALL_DIR" | sed 's/^\.//' | tr '[:upper:]' '[:lower:]')"
+	fi
+	echo "${name:-mayon}"
+}
+
+# True when a Postgres data volume already exists for this project.
+pg_volume_exists() {
+	docker volume inspect "$(compose_project_name)_pg-data" >/dev/null 2>&1
+}
+
+# A pg-data volume outlives its config: if ~/.mayon/.env is gone but the volume
+# remains, the password baked into it on first init is unrecoverable. Minting a
+# new password now would desync and trigger "password authentication failed" on
+# every boot. Resolve (wipe or abort) before generating a new password.
+guard_stale_volume() {
+	local vol; vol="$(compose_project_name)_pg-data"
+	warn "An existing database volume was found: $vol"
+	warn "It was initialized with a password that is no longer available."
+	if [ -t 0 ] && [ -t 1 ]; then
+		cat >&2 <<'EOF'
+  Generating a fresh password now would desync from the volume and cause
+  "password authentication failed for user mayon" on every boot.
+EOF
+		read -r -p "Wipe the volume and start fresh? THIS DELETES ALL DATABASE DATA. [y/N] " ans </dev/tty
+		case "$ans" in
+			y | Y | yes | YES)
+				(cd "$INSTALL_DIR" && docker compose down >/dev/null 2>&1 || true)
+				docker volume rm "$vol" >/dev/null 2>&1 \
+					|| die "Could not remove volume $vol. Remove it manually and re-run: docker volume rm $vol"
+				ok "Removed stale volume $vol."
+				;;
+			*)
+				die "Aborted to protect existing data. Restore $ENV_FILE, or remove the volume: docker volume rm $vol"
+				;;
+		esac
+	else
+		cat >&2 <<EOF
+! A Postgres data volume already exists ($vol) but no config was found.
+  A fresh password would not match the one baked into the volume, so the
+  server could not authenticate. Resolve one of these and re-run:
+
+    - Reuse the original password: restore $ENV_FILE (or export POSTGRES_PASSWORD).
+    - Start fresh (DELETES DATABASE DATA):  docker volume rm $vol
+EOF
+		exit 1
+	fi
+}
+
 ensure_env() { # writes .env on first run, preserves it on upgrades
 	if [ -f "$ENV_FILE" ]; then
 		ok "Reusing existing config: $ENV_FILE"
 		return
+	fi
+	# No config yet. Guard against a pre-existing volume whose password is
+	# unrecoverable before minting a new (mismatched) one.
+	if pg_volume_exists; then
+		guard_stale_volume
 	fi
 	local pass; pass="$(gen_password)" || die "Could not generate a password."
 	{
@@ -144,10 +206,10 @@ cmd_install() {
 	mkdir -p "$INSTALL_DIR"
 	local v; v="$(resolve_version)"
 	log "Installing Mayon ${C_BOLD}${v}${C_RESET} into ${C_BOLD}${INSTALL_DIR}${C_RESET}"
-	ensure_env
-	ensure_version_pin
 	log "Downloading docker-compose.yml…"
 	download "$(compose_url_for "$v")" "$COMPOSE_FILE"
+	ensure_env
+	ensure_version_pin
 	save_self
 	log "Pulling images…"
 	compose_cmd pull
