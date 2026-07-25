@@ -38,10 +38,15 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -h localhost || exit 1; PGPASSWORD="$$POSTGRES_PASSWORD" psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -h localhost -c "SELECT 1" >/dev/null 2>&1 || exit 1'
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     restart: unless-stopped
 volumes:
   server-data:

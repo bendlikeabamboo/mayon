@@ -84,7 +84,7 @@ export async function start() {
 	const migrationsDir = process.env.MIGRATIONS_DIR ?? path.join(process.cwd(), 'drizzle');
 	if (databaseUrl) {
 		const pool = createPgPool(databaseUrl);
-		pgReady = await probePg(pool);
+		pgReady = await probePg(pool, { retries: 20, delayMs: 1000 });
 		if (pgReady) {
 			pgPool = pool;
 			console.log('pg: ready');

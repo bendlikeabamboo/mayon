@@ -49,11 +49,25 @@ Then open http://localhost:8080. Files land in `~/.mayon`; use
 curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/download/v0.1.0/install.sh | bash
 ```
 
-**Prefer no install script?** Run the compose file directly with plain Docker:
+**Prefer no install script?** Run the compose file directly — but you
+**must** provide `POSTGRES_PASSWORD` in a local `.env` or on the command
+line (the install script generates a secure random password for you):
 
 ```bash
-docker compose -f https://raw.githubusercontent.com/bendlikeabamboo/mayon/main/docker-compose.yml up -d
+docker compose -f https://raw.githubusercontent.com/bendlikeabamboo/mayon/main/docker-compose.yml \
+  -e POSTGRES_PASSWORD="$(openssl rand -hex 24)" up -d
 ```
+
+Or save an `.env` next to your `docker-compose.yml`:
+
+```
+POSTGRES_PASSWORD=<your-password>
+```
+
+> **Important:** the password must be set the **first time** you start the
+> stack. Postgres stores credentials in its data volume; changing the
+> password after init requires deleting the volume (`docker compose down
+-v`) and starting fresh (all data is lost).
 
 All three paths accept `MAYON_PORT` (web port, default `8080`) and
 `MAYON_VERSION` (image tag) via env. To move off port 8080, set
@@ -67,6 +81,27 @@ All three paths accept `MAYON_PORT` (web port, default `8080`) and
 pnpm install
 pnpm dev          # all-Docker dev stack: web HMR (:5173) + server + db
 ```
+
+## Troubleshooting
+
+### `password authentication failed for user "mayon"`
+
+This means the server container cannot authenticate with Postgres. Common causes:
+
+- **Stale volume from a previous install.** If you deleted `~/.mayon/` and
+  re-ran the installer, a new random password was generated but the old
+  Postgres data volume still has the old password. Fix:
+  ```bash
+  cd ~/.mayon && docker compose down -v   # removes volumes (data is lost)
+  ~/.mayon/install.sh start               # reinitializes with the new password
+  ```
+- **First-run timing (fixed in recent versions).** On a fresh install
+  Postgres can report "ready" before finishing user/password setup. The
+  current images include a healthcheck that verifies authentication — if
+  you see this on an older install, pull the latest images:
+  ```bash
+  ~/.mayon/install.sh upgrade
+  ```
 
 ## Documentation
 
