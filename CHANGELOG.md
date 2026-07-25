@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-25
+
+### Fixed
+
+- **`password authentication failed for user "mayon"` on reinstall** — the
+  one-line installer now detects a pre-existing Postgres data volume when no
+  config is present and, rather than silently minting a fresh password that
+  could never match the volume, prompts to wipe the volume (interactive) or
+  aborts with explicit recovery instructions (piped). Postgres bakes
+  `POSTGRES_PASSWORD` into the `pg-data` volume on first init and ignores it
+  thereafter; previously a lost `~/.mayon/.env` (or running the no-script path
+  with the default password) desynced the credential and made the server fail
+  to authenticate on every boot.
+- **First-run Postgres readiness** (defense in depth) — the `db` healthcheck
+  now runs an authenticated `SELECT 1` (via `PGPASSWORD`) instead of
+  `pg_isready` alone, with 20 retries at 3s and a 10s `start_period`, and the
+  server's `probePg` budget is raised from 2.5s (5×500ms) to 20s (20×1000ms)
+  to survive slow first-time PG initialization.
+
 ## [0.1.0] - 2026-07-23
 
 The first stable release. Mayon is now server-required for function and ships
