@@ -14,7 +14,7 @@ set -euo pipefail
 
 # --- Release version (CI sed-replaces the placeholder when attaching to a release) ---
 MAYON_INSTALLER_VERSION="@MAYON_INSTALLER_VERSION@"
-if [ "$MAYON_INSTALLER_VERSION" = "@MAYON_INSTALLER_VERSION@" ]; then
+if [[ "$MAYON_INSTALLER_VERSION" == @* ]]; then
 	MAYON_INSTALLER_VERSION="latest" # unbaked / dev checkout → track latest
 fi
 
