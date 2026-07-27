@@ -42,7 +42,7 @@ resolve_version() {
 }
 
 is_semver() {
-	[[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+	[[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]
 }
 
 # URL of docker-compose.yml for a given version (tagged source on raw; main for latest).

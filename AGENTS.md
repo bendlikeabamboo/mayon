@@ -44,26 +44,43 @@ topology, and the invariants you must respect when editing.
 ## Releasing & versioning
 
 - **SemVer.** Versions are `MAJOR.MINOR.PATCH` (`0.x` is pre-1.0 instability).
-- **The `vX.Y.Z` git tag is the release trigger.** Pushing it runs
+- **A `vX.Y.Z` or `vX.Y.Z-rcN` git tag triggers the pipeline.** Pushing it runs
   `.github/workflows/docker-publish.yml`, which publishes **both** GHCR images:
   - web SPA → `ghcr.io/bendlikeabamboo/mayon`
   - server → `ghcr.io/bendlikeabamboo/mayon-server`
-  - each tagged `:X.Y.Z` and `:latest`.
-- **Release contract (CI-enforced):** the tag must equal the `version` field in
-  all three `package.json` files (`package.json`, `server/package.json`,
-  `packages/shared/package.json`) **and** `CHANGELOG.md` must contain a
-  `## [X.Y.Z]` section. The `verify-version` job fails the release otherwise.
+  - stable `vX.Y.Z` tags: `:X.Y.Z` + `:latest`.
+  - RC `vX.Y.Z-rcN` tags: `:X.Y.Z-rcN` + `:rc` (never `:latest`).
+- **Release contract (CI-enforced):** the tag must be `X.Y.Z` or `X.Y.Z-rcN`.
+  `package.json` versions in all three files (`package.json`,
+  `server/package.json`, `packages/shared/package.json`) must equal the
+  tag's **base** version (e.g. `0.2.0` for `v0.2.0-rc1`) **and**
+  `CHANGELOG.md` must contain a `## [X.Y.Z]` section. The `verify-version`
+  job fails the release otherwise.
 - **Release steps:**
   1. Set `"version": "X.Y.Z"` in all three `package.json` files.
   2. Add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (keep a fresh
      empty `## [Unreleased]` above it).
   3. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` → CI publishes.
+- **Release Candidate (RC) cycle:**
+  1. After completing **Release steps 1–2** above (set `package.json` to base
+     `X.Y.Z` and add the CHANGELOG section), tag `vX.Y.Z-rcN`.
+  2. CI publishes images tagged `:X.Y.Z-rcN` + `:rc` (never `:latest`) and
+     creates a **prerelease** GitHub Release (`make_latest: false`) with a
+     baked `install.sh` + `docker-compose.yml`.
+  3. Iterate: fix on `main`, then tag `vX.Y.Z-rc2`, `vX.Y.Z-rc3`, etc.
+     (no file edits — `package.json` stays at the base version).
+  4. Promote: once the RC is accepted, `git tag vX.Y.Z && git push origin vX.Y.Z`
+     — **no file edits.** CI tags `:X.Y.Z` + `:latest` and makes it the latest
+     release.
 - **Release assets (CI attaches to the GitHub Release):** a version-baked
   `install.sh` (the `@MAYON_INSTALLER_VERSION@` placeholder is sed-replaced
   with the tag) and a copy of `docker-compose.yml`. These power the one-line
   install `curl -fsSL …/releases/latest/download/install.sh | bash`. Do **not**
   rename/remove the `@MAYON_INSTALLER_VERSION@` marker in `install.sh` — the
   `release-assets` job asserts the substitution succeeded.
+  For RC releases, the GitHub Release is marked `prerelease` with
+  `make_latest: false`, so `releases/latest/download/install.sh` keeps pointing
+  at the last stable release.
 - **Upgrade flow** for end users: bump `MAYON_VERSION` (or rely on `latest`) →
   `docker compose pull && docker compose up -d`.
 

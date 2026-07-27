@@ -20,40 +20,61 @@ jobs:
           cache: 'pnpm'
       - uses: ./.github/actions/ci
 
-  verify-version:
+  classify:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.parse.outputs.version }}
+      version: ${{ steps.c.outputs.version }}
+      base_version: ${{ steps.c.outputs.base_version }}
+      is_rc: ${{ steps.c.outputs.is_rc }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Parse and verify release version
-        id: parse
+      - id: c
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          if ! [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '$GITHUB_REF_NAME' is not 'vX.Y.Z'"
+          ref="${GITHUB_REF_NAME#v}"
+          base="${ref%%-rc*}"
+          if [[ "$ref" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+            echo "is_rc=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_rc=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$ref"       >> "$GITHUB_OUTPUT"
+          echo "base_version=$base" >> "$GITHUB_OUTPUT"
+
+  verify-version:
+    needs: [classify]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.classify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release contract
+        shell: bash
+        env:
+          VERSION: ${{ needs.classify.outputs.version }}
+          BASE: ${{ needs.classify.outputs.base_version }}
+          IS_RC: ${{ needs.classify.outputs.is_rc }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "::error::Tag '$VERSION' is not 'X.Y.Z' or 'X.Y.Z-rcN'"
             exit 1
           fi
-          echo "version=$tag" >> "$GITHUB_OUTPUT"
-          # All three package.json versions must equal the tag.
           for f in package.json server/package.json packages/shared/package.json; do
             v=$(jq -r .version "$f")
-            if [ "$v" != "$tag" ]; then
-              echo "::error::$f version '$v' != tag '$tag'"
+            if [ "$v" != "$BASE" ]; then
+              echo "::error::$f version '$v' != base '$BASE'"
               exit 1
             fi
           done
-          # CHANGELOG must have a matching section.
-          if ! grep -Eq "^## \[${tag//./\\.}\]" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## [${tag}]' section"
+          if ! grep -Eq "^## \[${BASE//./\\.}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${BASE}]' section"
             exit 1
           fi
-          echo "Release contract satisfied for v${tag}."
+          echo "Release contract satisfied for v${VERSION} (base ${BASE}, rc=${IS_RC})."
 
   build-and-push:
-    needs: [ci, verify-version]
+    needs: [ci, classify, verify-version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,7 +100,8 @@ jobs:
           images: ${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ needs.classify.outputs.is_rc == 'false' }}
+            type=raw,value=rc,enable=${{ needs.classify.outputs.is_rc == 'true' }}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -91,7 +113,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   release-assets:
-    needs: [ci, verify-version, build-and-push]
+    needs: [ci, classify, verify-version, build-and-push]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -108,7 +130,9 @@ jobs:
           cp docker-compose.yml out/docker-compose.yml
       - uses: softprops/action-gh-release@v2
         with:
-          name: Mayon ${{ needs.verify-version.outputs.version }}
+          name: ${{ needs.classify.outputs.is_rc == 'true' && format('Mayon {0} (Release Candidate)', needs.verify-version.outputs.version) || format('Mayon {0}', needs.verify-version.outputs.version) }}
+          prerelease: ${{ needs.classify.outputs.is_rc == 'true' }}
+          make_latest: ${{ needs.classify.outputs.is_rc == 'false' }}
           files: |
             out/install.sh
             out/docker-compose.yml

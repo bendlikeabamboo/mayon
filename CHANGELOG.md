@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Release Candidate (RC) workflow** — CI now accepts `vX.Y.Z-rcN` tags
+  alongside stable `vX.Y.Z`. RC tags publish images tagged `:X.Y.Z-rcN` +
+  `:rc` (never `:latest`) and create a prerelease GitHub Release with a
+  functional baked `install.sh` + `docker-compose.yml`. Promoting to the
+  stable release is a tag-only operation (`git tag vX.Y.Z`) with zero
+  file edits.
+
 ## [0.1.1] - 2026-07-25
 
 ### Fixed

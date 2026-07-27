@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Plus } from '@lucide/svelte';
+	import { Plus, MessageSquare } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { listProviders } from '$lib/ai/client';
 	import { repos } from '$lib/db';
@@ -103,7 +103,7 @@
 				</p>
 			</div>
 			<Button href="/chat" class="shrink-0">
-				<Plus class="size-4" /> New chat
+				<MessageSquare class="size-4" /> All Chats
 			</Button>
 		</div>
 

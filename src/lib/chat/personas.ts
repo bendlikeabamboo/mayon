@@ -119,7 +119,7 @@ you feels like a focused, almost meditative practice.`
 
 export const PERSONA_IDS: readonly PersonaId[] = PERSONAS.map((p) => p.id);
 
-export const DEFAULT_PERSONA: PersonaId = 'dr-kim';
+export const DEFAULT_PERSONA: PersonaId = 'kit';
 
 const PERSONA_BY_ID = new Map(PERSONAS.map((p) => [p.id, p]));
 

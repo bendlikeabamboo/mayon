@@ -82,8 +82,8 @@ export const MODE_LABELS: Record<BriefMode, string> = {
 	build: 'Build together — work side-by-side'
 };
 
-export const DEFAULT_LEVEL: BriefLevel = 'some';
-export const DEFAULT_MODE: BriefMode = 'socratic';
+export const DEFAULT_LEVEL: BriefLevel = 'practitioner';
+export const DEFAULT_MODE: BriefMode = 'explainer';
 
 /** Topic-agnostic defaults reused across chats; snapshotted into a brief at intake. */
 export interface LearnerProfile {
@@ -95,8 +95,8 @@ export interface LearnerProfile {
 }
 
 export const DEFAULT_PROFILE: LearnerProfile = {
-	level: 'some',
-	mode: 'socratic',
+	level: 'practitioner',
+	mode: 'explainer',
 	persona: DEFAULT_PERSONA
 };
 
