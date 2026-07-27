@@ -5,6 +5,7 @@ node_modules/
 build/
 .svelte-kit/
 dist/
+*.tsbuildinfo
 
 # Vite
 .vite/

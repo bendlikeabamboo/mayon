@@ -6,6 +6,6 @@ export default defineConfig({
 	target: 'node22',
 	dts: true,
 	outDir: 'dist',
-	tsconfig: './tsconfig.json',
+	tsconfig: './tsconfig.build.json',
 	clean: true
 });

@@ -8,7 +8,7 @@ import { dumpDatabase } from './pg-backup';
 
 const SQLITE_HEADER = Buffer.from('SQLite format 3\x00', 'binary');
 
-const TABLES = [
+export const TABLES = [
 	'chats',
 	'messages',
 	'branch_sources',

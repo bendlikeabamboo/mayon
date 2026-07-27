@@ -141,27 +141,45 @@ with noise stripping via an `IMMUTABLE` SQL function and `GENERATED ALWAYS AS` c
 
 ## Manual acceptance gates (P-pg-5)
 
-P-pg-5 ships PG-native backup and restore using `pg_dump -Fc` and `pg_restore`. Download produces a custom-format `.dump`; restore always takes a
-pre-restore safety dump (auto-downloaded to the browser), drops `public`+`drizzle` schemas,
-restores, then restarts the server.
+P-pg-5 ships PG-native backup and restore using `pg_dump -Fc` and `pg_restore`. Download produces a
+versioned custom-format `.dump` (`mayon-YYYYMMDD-vN.dump`); restore stamps the schema version,
+plans migrations via `planRestore`, takes a pre-restore safety dump retained on the server,
+`TRUNCATE`s all Mayon tables under `session_replication_role='replica'`, runs
+`pg_restore --data-only --single-transaction`, applies per-version `migrate(client)` fns, re-stamps,
+and returns a `RestoreResult` — **no schema drop and no server restart**. While restoring,
+`/api/db/query` returns 503 (module-level `restoring` flag).
 
 - **Browser + server + PG:** `docker compose up` → Settings → Data shows "Download backup"
   and "Restore from backup" (gated on `serverStatus.has('pg')`). Download yields a valid
-  `mayon-YYYYMMDD.dump`; restoring it into a throwaway PG confirms validity.
-- **Restore round-trip:** create a chat/message → download `.dump` → "Restore from backup" → a
-  safety `.dump` auto-downloads → app reloads → chat/message is present → second download matches.
+  `mayon-YYYYMMDD-vN.dump` (PGDMP magic in the first 5 bytes); restoring it into a throwaway
+  PG confirms validity.
+- **Restore round-trip:** create a chat/message → download `.dump` → "Restore from backup" → the
+  server retains a `mayon-pre-restore-<ts>.dump` under `/data`; app reloads → restore-result panel
+  (notice + applied migrations) renders from `sessionStorage` → "Download pre-restore backup"
+  fetches it via `GET /api/backup/safety?filename=…` → chat/message is present → second download
+  matches.
+- **Version refusal:** a backup stamped with a newer `schemaVersion` than the server is rejected
+  with `decision: 'refuse-newer'` (400); a backup requiring a breaking migration with no
+  `migrate()` fn is rejected with `decision: 'refuse-breaking'` (400); in both cases live data is
+  untouched (no `TRUNCATE`).
+- **Legacy backups:** an unstamped dump (no `schemaVersion` row) is treated as `LEGACY_VERSION`
+  and restored into the current schema with an additive-gap notice.
 - **Non-PG file rejection:** uploading a non-`.dump`/non-PGDMP file shows a clear error; live data
   untouched.
-- **Failed restore rollback:** a truncated/corrupt dump triggers a rollback to the safety dump and
-  server restart; the UI shows the error.
+- **Failed restore rollback:** a truncated/corrupt dump (passing TOC validation but failing load)
+  triggers a rollback that re-applies the safety dump via `pg_restore --data-only`; the UI shows
+  the error with `rolledBack: true`. No server restart.
+- **Maintenance flag:** while a restore is in flight, `POST /api/db/query` returns 503
+  (`{ error: 'restore in progress' }`); `GET /api/health` reports `restoring: true`.
 - **Concurrent writes:** downloading an app-DB backup while MCP tools write to the **sandbox** DB
   produces a valid `.dump` (separate DB, `pg_dump` MVCC snapshot).
 - **Server-down:** stop the server → app-DB backup buttons hidden; sandbox section also hidden;
   reload → full-screen "Cannot reach the Mayon server."
-- **Docker image:** `docker compose build` installs `postgresql17-client`; `pg_dump --version` reports
-  17.x in the server container.
+- **Docker image:** `docker compose build` (and `server/Dockerfile.dev`) install
+  `postgresql17-client`; `pg_dump --version` reports 17.x in the server container.
 - **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
-  green (mocked spawns, `process.exit` mocked). Octet-stream parser registered exactly once.
+  green (mocked spawns; no `process.exit`). The `planRestore` planner is covered by
+  `server/src/schema-migrations.test.ts`.
 
 ## Manual acceptance gates (P-pg-6)
 

@@ -9,6 +9,16 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+let restoring = false;
+
+export function setRestoring(v: boolean): void {
+	restoring = v;
+}
+
+export function isRestoring(): boolean {
+	return restoring;
+}
+
 export interface PgQueryResult {
 	rows: Record<string, unknown>[];
 	fields: { name: string }[];
@@ -130,6 +140,10 @@ export function registerPgDb(app: FastifyInstance, pool: PgPoolLike | undefined)
 			}
 		},
 		async (req, reply) => {
+			if (isRestoring()) {
+				reply.code(503).send({ error: 'restore in progress' });
+				return;
+			}
 			if (!pool) {
 				reply.code(503).send({ error: 'pg not configured' });
 				return;

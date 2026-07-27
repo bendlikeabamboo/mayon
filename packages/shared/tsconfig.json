@@ -9,7 +9,8 @@
 		"declaration": true,
 		"declarationMap": true,
 		"rootDir": "src",
-		"ignoreDeprecations": "6.0"
+		"ignoreDeprecations": "6.0",
+		"composite": true
 	},
 	"include": ["src"]
 }

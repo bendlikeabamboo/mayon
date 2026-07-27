@@ -27,7 +27,12 @@ vi.mock('$lib/db/backup', () => ({
 
 import { serverStatus } from '$lib/services/status.svelte';
 import { downloadBlob } from '$lib/db/backup';
-import { downloadDbBackup, restoreDbBackup } from '$lib/services/db-backup';
+import {
+	downloadDbBackup,
+	restoreDbBackup,
+	downloadSafetyBackup,
+	type RestoreResult
+} from '$lib/services/db-backup';
 
 const PGDMP_BYTES = new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50, 0x00, 0x00, 0x00]);
 
@@ -49,7 +54,7 @@ describe('downloadDbBackup', () => {
 		await expect(downloadDbBackup()).rejects.toThrow('Server DB not ready');
 	});
 
-	it('downloads and calls downloadBlob', async () => {
+	it('downloads valid PGDMP body and calls downloadBlob', async () => {
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
 			new Response(PGDMP_BYTES, { status: 200 })
 		);
@@ -67,24 +72,28 @@ describe('downloadDbBackup', () => {
 		);
 		await expect(downloadDbBackup()).rejects.toThrow('Backup download failed: 500');
 	});
+
+	it('throws and does NOT call downloadBlob when body fails PGDMP check', async () => {
+		const badBody = new Uint8Array([0x7b, 0x22, 0x65, 0x72, 0x72]);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			new Response(badBody, { status: 200, headers: { 'content-type': 'application/json' } })
+		);
+		await expect(downloadDbBackup()).rejects.toThrow('invalid dump');
+		expect(downloadBlob).not.toHaveBeenCalled();
+	});
 });
 
 describe('restoreDbBackup', () => {
 	const originalFetch = globalThis.fetch;
-	const origLocation = globalThis.location;
 
 	beforeEach(() => {
 		globalThis.fetch = vi.fn();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(globalThis as any).location = { reload: vi.fn() };
 		vi.clearAllMocks();
 		vi.mocked(serverStatus.has).mockReturnValue(true);
 	});
 
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(globalThis as any).location = origLocation;
 	});
 
 	it('throws when pg cap is absent', async () => {
@@ -99,41 +108,97 @@ describe('restoreDbBackup', () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
-	it('PUTs valid bytes and reloads on 200', async () => {
-		const safetyBytes = new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50]);
+	it('returns RestoreResult on 200 and does NOT auto-download', async () => {
+		const resultPayload: RestoreResult = {
+			notice: 'restoring from schema v1; no migrations needed',
+			safetyFilename: 'mayon-pre-restore-123.dump',
+			dumpVersion: 1,
+			currentVersion: 1,
+			migrated: []
+		};
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-			new Response(safetyBytes, {
+			new Response(JSON.stringify(resultPayload), {
 				status: 200,
-				headers: { 'content-disposition': 'attachment; filename="safety.dump"' }
-			})
-		);
-
-		const file = new File([PGDMP_BYTES], 'restore.dump');
-		await restoreDbBackup(file);
-
-		expect(globalThis.fetch).toHaveBeenCalledOnce();
-		const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-		expect((init as RequestInit).method).toBe('PUT');
-		expect(((init as RequestInit).headers as Record<string, string>)['content-type']).toBe(
-			'application/octet-stream'
-		);
-		expect(downloadBlob).toHaveBeenCalledWith(
-			expect.any(Uint8Array),
-			expect.stringContaining('mayon-pre-restore')
-		);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		expect((globalThis as any).location.reload).toHaveBeenCalled();
-	});
-
-	it('throws on 500 with detail', async () => {
-		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-			new Response(JSON.stringify({ error: 'restore failed', detail: 'some error' }), {
-				status: 500,
 				headers: { 'content-type': 'application/json' }
 			})
 		);
 
 		const file = new File([PGDMP_BYTES], 'restore.dump');
-		await expect(restoreDbBackup(file)).rejects.toThrow('Restore failed: some error');
+		const result = await restoreDbBackup(file);
+
+		expect(globalThis.fetch).toHaveBeenCalledOnce();
+		expect(result).toEqual(resultPayload);
+		expect(downloadBlob).not.toHaveBeenCalled();
+	});
+
+	it('throws user-facing message on 400 refusal', async () => {
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					error: 'backup is from a newer schema (v9); upgrade Mayon first',
+					decision: 'refuse-newer',
+					dumpVersion: 9,
+					currentVersion: 1
+				}),
+				{ status: 400, headers: { 'content-type': 'application/json' } }
+			)
+		);
+
+		const file = new File([PGDMP_BYTES], 'restore.dump');
+		await expect(restoreDbBackup(file)).rejects.toThrow('newer schema');
+	});
+
+	it('throws with rolledBack info on 500', async () => {
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					error: 'restore failed',
+					detail: 'pg_restore exited 1',
+					rolledBack: true,
+					safetyFilename: 'mayon-pre-restore-123.dump'
+				}),
+				{ status: 500, headers: { 'content-type': 'application/json' } }
+			)
+		);
+
+		const file = new File([PGDMP_BYTES], 'restore.dump');
+		await expect(restoreDbBackup(file)).rejects.toThrow('rolled back');
+	});
+});
+
+describe('downloadSafetyBackup', () => {
+	const originalFetch = globalThis.fetch;
+
+	beforeEach(() => {
+		globalThis.fetch = vi.fn();
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	it('downloads and calls downloadBlob on 200', async () => {
+		const safetyBytes = new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50]);
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			new Response(safetyBytes, { status: 200 })
+		);
+
+		await downloadSafetyBackup('mayon-pre-restore-123.dump');
+
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			'/api/backup/safety?filename=mayon-pre-restore-123.dump',
+			undefined
+		);
+		expect(downloadBlob).toHaveBeenCalledWith(expect.any(Uint8Array), 'mayon-pre-restore-123.dump');
+	});
+
+	it('throws on non-ok response', async () => {
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+			new Response(null, { status: 404 })
+		);
+		await expect(downloadSafetyBackup('mayon-pre-restore-123.dump')).rejects.toThrow(
+			'Safety backup download failed: 404'
+		);
 	});
 });

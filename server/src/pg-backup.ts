@@ -1,12 +1,17 @@
 import { spawn } from 'node:child_process';
-import { writeFile, readFile, mkdir, unlinkSync, createWriteStream } from 'node:fs';
+import { createWriteStream, unlinkSync } from 'node:fs';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import pg from 'pg';
 import type { FastifyInstance } from 'fastify';
 import type { PgPoolLike } from './pg';
+import { setRestoring } from './pg';
+import { TABLES } from './pg-import';
+import { SCHEMA_VERSION, LEGACY_VERSION, planRestore } from '@mayon/shared';
+import { registryDescriptors, SCHEMA_MIGRATIONS } from './schema-migrations';
 
 const PGDMP = Buffer.from('PGDMP', 'ascii');
+const SAFETY_FILENAME_RE = /^mayon-pre-restore-\d+\.dump$/;
 
 export function isPgDumpHeader(b: Buffer): boolean {
 	return b.length >= 5 && b.subarray(0, 5).equals(PGDMP);
@@ -30,9 +35,12 @@ function runDump(databaseUrl: string, destPath: string): Promise<void> {
 	});
 }
 
-function runRestore(databaseUrl: string, srcPath: string): Promise<void> {
+function runRestoreDataOnly(databaseUrl: string, srcPath: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const child = spawn('pg_restore', [
+			'--data-only',
+			'--single-transaction',
+			'--disable-triggers',
 			'--no-owner',
 			'--no-privileges',
 			'--dbname',
@@ -66,11 +74,47 @@ function runValidateToc(srcPath: string): Promise<void> {
 	});
 }
 
-export { runDump as dumpDatabase, runRestore as runRestore, runValidateToc as validateDumpToc };
-
-export function spawnPgDump(databaseUrl: string) {
-	return spawn('pg_dump', ['-Fc', '--no-owner', '--no-privileges', '-d', databaseUrl]);
+function extractDumpVersion(srcPath: string): Promise<number> {
+	return new Promise((resolve, reject) => {
+		const child = spawn('pg_restore', [
+			'--data-only',
+			'-t',
+			'settings',
+			'--column-inserts',
+			'--no-owner',
+			'--no-privileges',
+			srcPath
+		]);
+		let stdout = '';
+		let stderr = '';
+		child.stdout.on('data', (d: Buffer) => {
+			stdout += d.toString();
+		});
+		child.stderr.on('data', (d: Buffer) => {
+			stderr += d.toString();
+		});
+		child.on('error', reject);
+		child.on('close', (code) => {
+			if (code !== 0) {
+				// Treat a non-zero exit as legacy (unstamped) rather than failing: a corrupt-but-
+				// TOC-valid dump would surface again in runRestoreDataOnly below, triggering the
+				// safety rollback. Treating unknown dumps as legacy lets real pre-versioned backups
+				// restore into the current schema with an additive-gap notice.
+				console.error(`[mayon-backup] extractDumpVersion: pg_restore exited ${code}: ${stderr}`);
+				resolve(LEGACY_VERSION);
+				return;
+			}
+			const match = stdout.match(/'schemaVersion'\s*,\s*'(\d+)'/);
+			if (match) {
+				resolve(parseInt(match[1], 10));
+			} else {
+				resolve(LEGACY_VERSION);
+			}
+		});
+	});
 }
+
+export { runDump as dumpDatabase, runRestoreDataOnly, runValidateToc as validateDumpToc };
 
 function formatDate(): string {
 	const d = new Date();
@@ -83,6 +127,7 @@ function formatDate(): string {
 export interface RegisterPgBackupOptions {
 	pool?: PgPoolLike;
 	databaseUrl: string;
+	safetyDir?: string;
 }
 
 export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOptions): void {
@@ -90,29 +135,50 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 		if (!opts.pool) {
 			return reply.code(503).send({ error: 'pg not configured' });
 		}
-		const child = spawnPgDump(opts.databaseUrl);
-		let stderr = '';
-		child.stderr.on('data', (d: Buffer) => {
-			stderr += d.toString();
-		});
-		const cleanup = () => {
-			if (!child.killed) child.kill();
-		};
-		_req.raw.on('close', cleanup);
-		reply.raw.on('close', cleanup);
-		reply.header('content-type', 'application/octet-stream');
-		reply.header('content-disposition', `attachment; filename="mayon-${formatDate()}.dump"`);
-		reply.send(child.stdout);
-		child.on('error', (err) => {
+
+		try {
+			await opts.pool.query(
+				`INSERT INTO settings(key,value) VALUES('schemaVersion',$1)
+				 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+				[String(SCHEMA_VERSION)]
+			);
+		} catch {
+			/* non-fatal; dump proceeds */
+		}
+
+		const ts = Date.now();
+		const tmp = join(tmpdir(), `mayon-backup-${ts}.dump`);
+		try {
+			await runDump(opts.databaseUrl, tmp);
+			const info = await stat(tmp);
+			if (info.size === 0) {
+				return reply
+					.code(500)
+					.send({ error: 'backup failed', detail: 'pg_dump produced an empty file' });
+			}
+
+			const data = (await readFile(tmp)) as Buffer;
+			const filename = `mayon-${formatDate()}-v${SCHEMA_VERSION}.dump`;
+			reply
+				.type('application/octet-stream')
+				.header('content-disposition', `attachment; filename="${filename}"`)
+				.send(data);
+			try {
+				unlinkSync(tmp);
+			} catch {
+				/* ignore */
+			}
+		} catch (err) {
+			try {
+				unlinkSync(tmp);
+			} catch {
+				/* ignore */
+			}
+			const detail = err instanceof Error ? err.message : String(err);
 			if (!reply.sent) {
-				reply.code(500).send({ error: 'backup failed', detail: err.message });
+				reply.code(500).send({ error: 'backup failed', detail });
 			}
-		});
-		child.on('close', (code) => {
-			if (code !== 0 && !reply.sent) {
-				reply.code(500).send({ error: 'backup failed', detail: stderr || `exit ${code}` });
-			}
-		});
+		}
 	});
 
 	app.put('/api/backup/db', { bodyLimit: 512 * 1024 * 1024 }, async (req, reply) => {
@@ -121,54 +187,117 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 			return reply.code(400).send({ error: 'not a valid pg_dump (custom format) file' });
 		}
 
+		if (!opts.pool) {
+			return reply.code(503).send({ error: 'pg not configured' });
+		}
+
 		const ts = Date.now();
 		const tmp = join(tmpdir(), `mayon-restore-${ts}.dump`);
+		const safetyDir = opts.safetyDir ?? '/data';
+		const safetyFilename = `mayon-pre-restore-${ts}.dump`;
+		const safetyPath = join(safetyDir, safetyFilename);
+
 		try {
 			await writeFile(tmp, bytes);
 			await runValidateToc(tmp);
 
-			await mkdir('/data', { recursive: true });
-			const safety = `/data/mayon-pre-restore-${ts}.dump`;
-			await runDump(opts.databaseUrl, safety);
+			const dumpVersion = await extractDumpVersion(tmp);
 
-			await opts.pool?.end();
-
-			const client = new pg.Client(opts.databaseUrl);
-			await client.connect();
-			try {
-				await client.query(
-					`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()`
-				);
-				await client.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
-				await client.query('DROP SCHEMA public CASCADE');
-				await client.query('CREATE SCHEMA public');
-			} finally {
-				await client.end();
+			const plan = planRestore(dumpVersion, SCHEMA_VERSION, registryDescriptors());
+			if (plan.decision !== 'proceed') {
+				return reply.code(400).send({
+					error: plan.notice,
+					decision: plan.decision,
+					dumpVersion: plan.dumpVersion,
+					currentVersion: plan.currentVersion
+				});
 			}
 
+			setRestoring(true);
+
+			await mkdir(safetyDir, { recursive: true });
+			await runDump(opts.databaseUrl, safetyPath);
+
 			try {
-				await runRestore(opts.databaseUrl, tmp);
-				const safetyBytes = await readFile(safety);
-				reply
-					.header('content-type', 'application/octet-stream')
-					.header('content-disposition', `attachment; filename="mayon-pre-restore-${ts}.dump"`)
-					.send(safetyBytes);
-				setImmediate(() => process.exit(0));
-			} catch (restoreErr) {
-				const detail = restoreErr instanceof Error ? restoreErr.message : String(restoreErr);
+				const client = await opts.pool.connect();
 				try {
-					await runRestore(opts.databaseUrl, safety);
+					await client.query('BEGIN');
+					await client.query("SET LOCAL session_replication_role = 'replica'");
+					await client.query(`TRUNCATE ${TABLES.join(', ')} CASCADE`);
+					await client.query('COMMIT');
+				} finally {
+					client.release();
+				}
+
+				await runRestoreDataOnly(opts.databaseUrl, tmp);
+
+				const migrated: string[] = [];
+				if (plan.migrations.length > 0) {
+					const migClient = await opts.pool.connect();
+					try {
+						for (const desc of plan.migrations) {
+							const serverMig = SCHEMA_MIGRATIONS.find(
+								(m) => m.from === desc.from && m.to === desc.to
+							);
+							if (serverMig?.migrate) {
+								await migClient.query('BEGIN');
+								try {
+									await serverMig.migrate(migClient);
+									await migClient.query('COMMIT');
+									migrated.push(`${desc.from}\u2192${desc.to}: ${desc.description}`);
+								} catch (migErr) {
+									await migClient.query('ROLLBACK').catch(() => {});
+									throw migErr;
+								}
+							}
+						}
+					} finally {
+						migClient.release();
+					}
+				}
+
+				const stampClient = await opts.pool.connect();
+				try {
+					await stampClient.query(
+						`INSERT INTO settings(key,value) VALUES('schemaVersion',$1)
+						 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+						[String(SCHEMA_VERSION)]
+					);
+				} finally {
+					stampClient.release();
+				}
+
+				setRestoring(false);
+
+				return reply.code(200).send({
+					ok: true,
+					notice: plan.notice,
+					safetyFilename,
+					dumpVersion: plan.dumpVersion,
+					currentVersion: plan.currentVersion,
+					migrated
+				});
+			} catch (restoreErr) {
+				try {
+					await runRestoreDataOnly(opts.databaseUrl, safetyPath);
 				} catch {
 					/* rollback failed; leave for manual recovery */
 				}
-				const body = { error: 'restore failed', detail, safetyPath: safety, rolledBack: true };
-				if (!reply.sent) reply.code(500).send(body);
-				setImmediate(() => process.exit(0));
+				setRestoring(false);
+				const detail = restoreErr instanceof Error ? restoreErr.message : String(restoreErr);
+				if (!reply.sent) {
+					return reply.code(500).send({
+						error: 'restore failed',
+						detail,
+						rolledBack: true,
+						safetyFilename
+					});
+				}
 			}
 		} catch (err) {
 			if (!reply.sent) {
 				const detail = err instanceof Error ? err.message : String(err);
-				reply.code(400).send({ error: 'invalid or corrupt dump', detail });
+				return reply.code(400).send({ error: 'invalid or corrupt dump', detail });
 			}
 		} finally {
 			try {
@@ -176,6 +305,25 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 			} catch {
 				/* temp may not exist */
 			}
+		}
+	});
+
+	app.get('/api/backup/safety', async (req, reply) => {
+		const query = req.query as { filename?: string };
+		const filename = query.filename;
+		if (!filename || !SAFETY_FILENAME_RE.test(filename)) {
+			return reply.code(400).send({ error: 'invalid filename' });
+		}
+		const safetyDir = opts.safetyDir ?? '/data';
+		const filePath = join(safetyDir, filename);
+		try {
+			const data = await readFile(filePath);
+			reply
+				.type('application/octet-stream')
+				.header('content-disposition', `attachment; filename="${filename}"`)
+				.send(data);
+		} catch {
+			return reply.code(404).send({ error: 'safety backup not found' });
 		}
 	});
 }

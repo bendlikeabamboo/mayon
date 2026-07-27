@@ -4,6 +4,8 @@
 # Rebuild with dev:build after dependency or shared-package changes.
 FROM node:22-alpine
 
+RUN apk add --no-cache postgresql17-client
+
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate

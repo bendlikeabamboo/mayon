@@ -2,13 +2,13 @@ import Fastify from 'fastify';
 import fp from '@fastify/websocket';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import type { HealthResponse, ServerCap } from '@mayon/shared';
+import { SCHEMA_VERSION, type HealthResponse, type ServerCap } from '@mayon/shared';
 import { VERSION } from './version';
 import { registerMcpBridge } from './mcp';
 import { registerLlmProxy } from './llm-proxy';
 import { createSandboxDb, registerSandboxDb } from './db';
 import { registerBackup } from './backup';
-import { createPgPool, probePg, registerPgDb, runPgMigrations } from './pg';
+import { createPgPool, probePg, registerPgDb, runPgMigrations, isRestoring } from './pg';
 import { registerPgBackup } from './pg-backup';
 import { registerPgImport } from './pg-import';
 import { runFtsBootstrap } from './fts';
@@ -41,7 +41,8 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 				ok: true,
 				version: VERSION,
 				caps,
-				sandboxDbPath: dbPath
+				sandboxDbPath: dbPath,
+				restoring: isRestoring()
 			});
 		});
 
@@ -61,7 +62,11 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 		registerBackup(fastify, sandboxDb, dbPath);
 
 		registerPgDb(fastify, opts.pgPool);
-		registerPgBackup(fastify, { pool: opts.pgPool, databaseUrl: opts.databaseUrl ?? '' });
+		registerPgBackup(fastify, {
+			pool: opts.pgPool,
+			databaseUrl: opts.databaseUrl ?? '',
+			safetyDir: opts.safetyDir
+		});
 		registerPgImport(fastify, {
 			pool: opts.pgPool,
 			databaseUrl: opts.databaseUrl ?? '',
@@ -100,6 +105,17 @@ export async function start() {
 				} catch (err) {
 					const detail = err instanceof Error ? err.message : String(err);
 					console.error('pg: fts bootstrap failed —', detail);
+				}
+				try {
+					await pool.query(
+						`INSERT INTO settings(key,value) VALUES('schemaVersion',$1)
+						 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+						[String(SCHEMA_VERSION)]
+					);
+					console.log(`pg: schemaVersion ${SCHEMA_VERSION} stamped`);
+				} catch (err) {
+					const detail = err instanceof Error ? err.message : String(err);
+					console.error('pg: schemaVersion stamp failed —', detail);
 				}
 			}
 		} else {

@@ -1,15 +1,34 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { downloadDbBackup, restoreDbBackup } from '$lib/services/db-backup';
+	import { downloadDbBackup, restoreDbBackup, downloadSafetyBackup } from '$lib/services/db-backup';
+	import type { RestoreResult } from '$lib/services/db-backup';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { serverStatus } from '$lib/services/status.svelte';
 	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/services/sandbox-backup';
 	import { dryRunImport, importFromSqlite } from '$lib/services/db-import';
 	import type { ImportPreview } from '$lib/services/db-import';
 
+	const RESTORE_RESULT_KEY = 'mayon:restoreResult';
+
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let status = $state<string | null>(null);
+	let restoreResult: RestoreResult | null = $state(null);
+	let safetyBusy = $state(false);
+
+	onMount(() => {
+		const stashed = sessionStorage.getItem(RESTORE_RESULT_KEY);
+		if (stashed) {
+			sessionStorage.removeItem(RESTORE_RESULT_KEY);
+			try {
+				restoreResult = JSON.parse(stashed) as RestoreResult;
+				status = 'Restore complete.';
+			} catch {
+				/* malformed stash; ignore */
+			}
+		}
+	});
 
 	let fileInputEl: HTMLInputElement | undefined = $state();
 	let sandboxFileInputEl: HTMLInputElement | undefined = $state();
@@ -47,13 +66,32 @@
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
+		busy = true;
+		error = null;
+		status = null;
+		restoreResult = null;
 		try {
-			await restoreDbBackup(file);
+			const result = await restoreDbBackup(file);
+			sessionStorage.setItem(RESTORE_RESULT_KEY, JSON.stringify(result));
+			location.reload();
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
+		} finally {
 			busy = false;
 		}
 		if (input) input.value = '';
+	}
+
+	async function handleDownloadSafety() {
+		if (!restoreResult) return;
+		safetyBusy = true;
+		try {
+			await downloadSafetyBackup(restoreResult.safetyFilename);
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			safetyBusy = false;
+		}
 	}
 
 	const disabled = $derived(busy || chatStore.streaming);
@@ -149,8 +187,8 @@
 	</div>
 
 	<p class="text-xs text-muted-foreground">
-		Backups are Postgres custom-format dumps (`.dump`) — data only, no API keys. Restoring first
-		downloads a safety backup, then replaces all data and reloads.
+		Backups are Postgres custom-format dumps (`.dump`) — data only, no API keys. Restoring replaces
+		all data in-place (no server restart). A pre-restore safety backup is retained on the server.
 	</p>
 
 	<input
@@ -176,6 +214,23 @@
 
 	{#if error}
 		<p class="text-xs text-destructive" role="alert">{error}</p>
+	{/if}
+
+	{#if restoreResult}
+		<div class="rounded border border-border p-3 space-y-2 text-xs">
+			<p class="text-muted-foreground" role="status">{restoreResult.notice}</p>
+			{#if restoreResult.migrated.length > 0}
+				<p class="font-medium text-muted-foreground">Migrations applied:</p>
+				<ul class="list-disc list-inside text-muted-foreground">
+					{#each restoreResult.migrated as m (m)}
+						<li>{m}</li>
+					{/each}
+				</ul>
+			{/if}
+			<Button variant="outline" size="sm" disabled={safetyBusy} onclick={handleDownloadSafety}>
+				Download pre-restore backup
+			</Button>
+		</div>
 	{/if}
 
 	{#if serverStatus.has('pg')}

@@ -4,6 +4,7 @@ export interface HealthResponse {
 	version: string;
 	caps: ServerCap[];
 	sandboxDbPath?: string;
+	restoring?: boolean;
 }
 
 export interface DbBatchStatement {

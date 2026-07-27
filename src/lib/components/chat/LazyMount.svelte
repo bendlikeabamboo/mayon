@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
 	export function resizeobserve(node: HTMLElement, cb: (entry: ResizeObserverEntry) => void) {
 		const ro = new ResizeObserver((entries) => {
 			for (const entry of entries) cb(entry);
