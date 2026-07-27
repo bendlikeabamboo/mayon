@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-27
+
 ### Added
 
 - **Release Candidate (RC) workflow** — CI now accepts `vX.Y.Z-rcN` tags
@@ -15,6 +17,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   functional baked `install.sh` + `docker-compose.yml`. Promoting to the
   stable release is a tag-only operation (`git tag vX.Y.Z`) with zero
   file edits.
+- **Schema versioning for backup/restore** — schema version is stamped into
+  the settings table at server boot and backup time; restore refuses backups
+  stamped newer than the running server and auto-migrates older additive
+  backups via a gate registry.
+- **Schema migration system** — extensible migration registry with optional
+  per-version `migrate(client)` functions for forward schema evolution.
+
+### Changed
+
+- **Backup/restore is now in-place with no downtime** — restore uses
+  `pg_restore --data-only --single-transaction` (truncate + reload) instead
+  of the previous nuke-and-pave approach. A maintenance flag returns 503 on
+  `/api/db/query` during restore with no server restart required.
+- **Improved AGENTS.md** — consolidated operating guide with clearer stack,
+  commands, release flow, topology, and invariant documentation.
+- **Archived completed plans and refinement docs** — moved finished
+  implementation plans and refinement notes to `archive/` subdirectories.
+
+### Removed
+
+- Legacy system prompts (`prompts/start.md`).
 
 ## [0.1.1] - 2026-07-25
 
