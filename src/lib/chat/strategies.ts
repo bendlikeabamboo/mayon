@@ -1,4 +1,4 @@
-import type { BriefMode } from './brief';
+import { DEFAULT_MODE, type BriefMode } from './brief';
 
 // ─────────────────────────── types ────────────────────────────
 
@@ -356,7 +356,7 @@ export function resolveStrategy(
 	brief: { scopeStrategy?: ScopeStrategyId; mode?: BriefMode },
 	profile: { scopeStrategy?: ScopeStrategyId }
 ): ScopeStrategy {
-	const mode: BriefMode = brief.mode ?? 'socratic';
+	const mode: BriefMode = brief.mode ?? DEFAULT_MODE;
 	const modeDefault = defaultStrategyFor(mode);
 
 	const candidates: (ScopeStrategyId | undefined)[] = [brief.scopeStrategy, profile.scopeStrategy];

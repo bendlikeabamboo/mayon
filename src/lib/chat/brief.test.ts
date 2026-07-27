@@ -16,8 +16,11 @@ import {
 	type LearningBrief,
 	type LearnerProfile,
 	type PersonaId,
+	type ResolvedBriefFields,
 	type ScopeStrategyId
 } from './brief';
+import { defaultStrategyFor } from './strategies';
+import { SCOPE_STRATEGIES } from './strategies';
 
 describe('parseBrief', () => {
 	it('round-trips a fully-populated brief', () => {
@@ -264,15 +267,16 @@ describe('applyProfile', () => {
 
 	it('empty brief + empty profile yields defaults', () => {
 		const result = applyProfile({}, {});
-		expect(result).toEqual({
+		const expected: ResolvedBriefFields = {
 			goal: undefined,
 			context: undefined,
 			level: DEFAULT_LEVEL,
 			mode: DEFAULT_MODE,
 			scope: undefined,
-			scopeStrategy: 'guided-inquiry',
+			scopeStrategy: defaultStrategyFor(DEFAULT_MODE),
 			persona: DEFAULT_PERSONA
-		});
+		};
+		expect(result).toEqual(expected);
 	});
 
 	it('level, mode, and scopeStrategy are always present', () => {
@@ -289,9 +293,6 @@ describe('applyProfile', () => {
 	});
 });
 
-const GOLDEN_NO_PERSONA =
-	"You are a personal learning tutor. Calibrate to this learner's brief:\n- Goal: g\n- Level: some  · Context: (not given)  · Mode: socratic  · Scope: (open)\n- Structure: Guided inquiry  (unless scope overrides the budget)\n\nYou teach in NUANCED INQUIRY mode. You are Socratic, but never terse or shallow.\n\nEVERY TURN has exactly three parts, in order:\n  1. ANCHOR (1–3 sentences): name the specific place the learner is in right now\n     (their last attempt, the tension they hit). No generic restating.\n  2. FRAMING (the thinkpiece): introduce ONE concept, tension, paradox, analogy,\n     or contrast that re-frames the question. This beat must teach something\n     substantive — a real idea, not filler. Use a short named concept where apt.\n  3. PROBE: end with exactly ONE sharp question that forces reasoning toward the\n     goal.\n\nHard rules:\n  • Never answer your own probe. Never hand the learner the conclusion.\n  • Density floor: ~120–250 words/turn. No one-line questions.\n  • Adapt to ZPD: if the learner stalls twice on a probe, narrow it or offer a\n    HINT (a branch to consider), not the answer.\n  • Allow productive failure: invite an attempt before confirming correctness.\n  • Use an occasional > [!CONCEPT] admonition ONLY for the single most pivotal\n    idea of the whole exchange — never one per turn. Default to prose framing.\n\nTeach to the goal at the stated level; stay within scope.\nWhen the learner can do the goal, say so.";
-
 describe('personas', () => {
 	describe('registry', () => {
 		it('has exactly 5 entries', () => {
@@ -307,8 +308,8 @@ describe('personas', () => {
 			expect(PERSONA_IDS).toEqual(PERSONAS.map((p) => p.id));
 		});
 
-		it('DEFAULT_PERSONA is dr-kim', () => {
-			expect(DEFAULT_PERSONA).toBe('dr-kim');
+		it('DEFAULT_PERSONA is kit', () => {
+			expect(DEFAULT_PERSONA).toBe('kit');
 		});
 
 		it('personaForId resolves every id and returns its verbatim block', () => {
@@ -375,9 +376,18 @@ describe('personas', () => {
 	});
 
 	describe('buildBriefSystemNote persona', () => {
-		it('persona-less brief produces the golden string (escape hatch)', () => {
+		it('persona-less brief produces the expected header and default strategy block', () => {
 			const note = buildBriefSystemNote({ goal: 'g' });
-			expect(note.content).toBe(GOLDEN_NO_PERSONA);
+			const strat = SCOPE_STRATEGIES.find((s) => s.id === defaultStrategyFor(DEFAULT_MODE))!;
+			expect(note.content).toContain(
+				"You are a personal learning tutor. Calibrate to this learner's brief:"
+			);
+			expect(note.content).toContain(`- Goal: g`);
+			expect(note.content).toContain(`Level: ${DEFAULT_LEVEL}  · Context: (not given)  · Mode: ${DEFAULT_MODE}  · Scope: (open)`);
+			expect(note.content).toContain(`Structure: ${strat.label}  (unless scope overrides the budget)`);
+			expect(note.content).toContain(strat.block);
+			expect(note.content).toContain('Teach to the goal at the stated level; stay within scope.');
+			expect(note.content).toContain('When the learner can do the goal, say so.');
 		});
 
 		it('persona-less note contains no persona names or taglines', () => {
@@ -405,9 +415,10 @@ describe('personas', () => {
 		it('persona block appears BEFORE strategy block', () => {
 			const drKim = personaForId('dr-kim');
 			const note = buildBriefSystemNote({ goal: 'g', persona: 'dr-kim' });
-			const strat = note.content.indexOf('NUANCED INQUIRY');
+			const strat = SCOPE_STRATEGIES.find((s) => s.id === defaultStrategyFor(DEFAULT_MODE))!;
 			const personaStart = note.content.indexOf(drKim.block);
-			expect(personaStart).toBeLessThan(strat);
+			const stratStart = note.content.indexOf(strat.block);
+			expect(personaStart).toBeLessThan(stratStart);
 			expect(personaStart).toBeGreaterThanOrEqual(0);
 		});
 

@@ -202,7 +202,7 @@ export function buildBriefSystemNote(brief: LearningBrief): ChatMessage {
 		brief.context && brief.context.trim().length > 0 ? brief.context.trim() : '(not given)';
 	const scope = brief.scope && brief.scope.trim().length > 0 ? brief.scope.trim() : '(open)';
 
-	const strat = strategyForBrief(brief);
+	const strat = strategyForBrief({ ...brief, mode });
 	const persona = brief.persona ? personaForId(brief.persona) : null;
 
 	const lines: string[] = [
