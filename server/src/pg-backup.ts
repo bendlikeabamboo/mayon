@@ -19,7 +19,17 @@ export function isPgDumpHeader(b: Buffer): boolean {
 
 function runDump(databaseUrl: string, destPath: string): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('pg_dump', ['-Fc', '--no-owner', '--no-privileges', '-d', databaseUrl]);
+		const child = spawn('pg_dump', [
+			'-Fc',
+			'--no-owner',
+			'--no-privileges',
+			// drizzle's migration bookkeeping is part of live schema state, not app data.
+			// Excluding it keeps dumps from colliding with the rows drizzle inserts at boot
+			// when later restored with pg_restore --data-only (duplicate-key on the pkey).
+			'--exclude-table-data=drizzle.__drizzle_migrations',
+			'-d',
+			databaseUrl
+		]);
 		const ws = createWriteStream(destPath);
 		child.stdout.pipe(ws);
 		let stderr = '';
@@ -35,18 +45,24 @@ function runDump(databaseUrl: string, destPath: string): Promise<void> {
 	});
 }
 
-function runRestoreDataOnly(databaseUrl: string, srcPath: string): Promise<void> {
+function runRestoreDataOnly(
+	databaseUrl: string,
+	srcPath: string,
+	listPath?: string
+): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('pg_restore', [
+		const args = [
 			'--data-only',
 			'--single-transaction',
 			'--disable-triggers',
 			'--no-owner',
-			'--no-privileges',
-			'--dbname',
-			databaseUrl,
-			srcPath
-		]);
+			'--no-privileges'
+		];
+		if (listPath) {
+			args.push('-L', listPath);
+		}
+		args.push('--dbname', databaseUrl, srcPath);
+		const child = spawn('pg_restore', args);
 		let stderr = '';
 		child.stderr.on('data', (d: Buffer) => {
 			stderr += d.toString();
@@ -59,19 +75,42 @@ function runRestoreDataOnly(databaseUrl: string, srcPath: string): Promise<void>
 	});
 }
 
-function runValidateToc(srcPath: string): Promise<void> {
+function runListToc(srcPath: string): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const child = spawn('pg_restore', ['-l', srcPath]);
+		let stdout = '';
 		let stderr = '';
+		child.stdout.on('data', (d: Buffer) => {
+			stdout += d.toString();
+		});
 		child.stderr.on('data', (d: Buffer) => {
 			stderr += d.toString();
 		});
 		child.on('error', reject);
 		child.on('close', (code) => {
-			if (code === 0) resolve();
+			if (code === 0) resolve(stdout);
 			else reject(new Error(`pg_restore -l exited ${code}: ${stderr}`));
 		});
 	});
+}
+
+// Disable (comment out) TOC entries that target drizzle's migration bookkeeping
+// table. The live drizzle migration state is authoritative; restoring a dump's
+// copy of __drizzle_migrations would collide with the rows drizzle inserted at
+// boot (duplicate-key on __drizzle_migrations_pkey) and could desync drizzle's
+// view of which migrations are applied. We restore data for every Mayon table
+// but never touch the drizzle schema. Active list entries begin with a number;
+// prefixing with ";" turns an entry into a comment pg_restore skips.
+const DRIZZLE_MIGRATIONS_RE = /\b__drizzle_migrations\b/;
+
+export function filterToc(toc: string): string {
+	return toc
+		.split('\n')
+		.map((line) => {
+			if (line.startsWith(';')) return line;
+			return DRIZZLE_MIGRATIONS_RE.test(line) ? `; ${line}` : line;
+		})
+		.join('\n');
 }
 
 function extractDumpVersion(srcPath: string): Promise<number> {
@@ -114,7 +153,7 @@ function extractDumpVersion(srcPath: string): Promise<number> {
 	});
 }
 
-export { runDump as dumpDatabase, runRestoreDataOnly, runValidateToc as validateDumpToc };
+export { runDump as dumpDatabase, runRestoreDataOnly, runListToc as listDumpToc };
 
 function formatDate(): string {
 	const d = new Date();
@@ -193,13 +232,18 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 
 		const ts = Date.now();
 		const tmp = join(tmpdir(), `mayon-restore-${ts}.dump`);
+		const listPath = `${tmp}.list`;
 		const safetyDir = opts.safetyDir ?? '/data';
 		const safetyFilename = `mayon-pre-restore-${ts}.dump`;
 		const safetyPath = join(safetyDir, safetyFilename);
 
 		try {
 			await writeFile(tmp, bytes);
-			await runValidateToc(tmp);
+			// Validate the TOC and capture it; we filter out the drizzle migrations
+			// bookkeeping table so pg_restore never reloads its rows over the live,
+			// authoritative drizzle state (would hit __drizzle_migrations_pkey dup).
+			const toc = await runListToc(tmp);
+			await writeFile(listPath, filterToc(toc));
 
 			const dumpVersion = await extractDumpVersion(tmp);
 
@@ -229,7 +273,7 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 					client.release();
 				}
 
-				await runRestoreDataOnly(opts.databaseUrl, tmp);
+				await runRestoreDataOnly(opts.databaseUrl, tmp, listPath);
 
 				const migrated: string[] = [];
 				if (plan.migrations.length > 0) {
@@ -278,8 +322,19 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 					migrated
 				});
 			} catch (restoreErr) {
+				// The safety dump may itself contain __drizzle_migrations rows (e.g. a
+				// legacy dump, or one made before the dump-time exclude shipped). Filter
+				// its TOC the same way so the rollback actually lands the app data back.
+				let safetyListPath: string | undefined;
 				try {
-					await runRestoreDataOnly(opts.databaseUrl, safetyPath);
+					const safetyToc = await runListToc(safetyPath);
+					safetyListPath = `${safetyPath}.list`;
+					await writeFile(safetyListPath, filterToc(safetyToc));
+				} catch {
+					/* if the safety TOC can't be built, fall back to an unfiltered restore */
+				}
+				try {
+					await runRestoreDataOnly(opts.databaseUrl, safetyPath, safetyListPath);
 				} catch {
 					/* rollback failed; leave for manual recovery */
 				}
@@ -304,6 +359,11 @@ export function registerPgBackup(app: FastifyInstance, opts: RegisterPgBackupOpt
 				unlinkSync(tmp);
 			} catch {
 				/* temp may not exist */
+			}
+			try {
+				unlinkSync(listPath);
+			} catch {
+				/* list may not exist */
 			}
 		}
 	});

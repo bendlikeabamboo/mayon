@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PassThrough, Writable } from 'node:stream';
 import { buildApp } from './server';
 import { setRestoring } from './pg';
+import { filterToc } from './pg-backup';
 import { SCHEMA_MIGRATIONS } from './schema-migrations';
 import type Fastify from 'fastify';
 import type { PgPoolLike } from './pg';
@@ -424,6 +425,104 @@ describe('PUT /api/backup/db', () => {
 			expect(json.error).toBe('restore failed');
 			expect(json.rolledBack).toBe(true);
 			expect(json.safetyFilename).toMatch(/^mayon-pre-restore-\d+\.dump$/);
+		} finally {
+			await app.close();
+		}
+	});
+});
+
+describe('filterToc (exclude drizzle migrations from restore)', () => {
+	it('comments out __drizzle_migrations DATA entries', () => {
+		const toc = [
+			';',
+			'; Selected TOC Entries:',
+			';',
+			'5; 1259 16500 TABLE DATA public chats mayon',
+			'6; 1259 16510 TABLE DATA drizzle __drizzle_migrations mayon',
+			'7; 1259 16520 TABLE DATA public settings mayon'
+		].join('\n');
+		const filtered = filterToc(toc).split('\n');
+		expect(filtered[3]).toBe('5; 1259 16500 TABLE DATA public chats mayon');
+		expect(filtered[4]).toBe('; 6; 1259 16510 TABLE DATA drizzle __drizzle_migrations mayon');
+		expect(filtered[5]).toBe('7; 1259 16520 TABLE DATA public settings mayon');
+	});
+
+	it('leaves already-commented drizzle lines untouched', () => {
+		const line = '; 6; 1259 16510 TABLE DATA drizzle __drizzle_migrations mayon';
+		expect(filterToc(line)).toBe(line);
+	});
+
+	it('does not match unrelated tables', () => {
+		const toc = '9; 1259 16530 TABLE DATA public agent_traces mayon';
+		expect(filterToc(toc)).toBe(toc);
+	});
+
+	it('handles an empty / legacy TOC', () => {
+		expect(filterToc('')).toBe('');
+	});
+});
+
+describe('PUT /api/backup/db drizzle filtering', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		setRestoring(false);
+	});
+
+	it('excludes drizzle migrations from the dump and restores with a filtered TOC list', async () => {
+		spawnMock
+			.mockReturnValueOnce(
+				mockChild({
+					exitCode: 0,
+					stdoutData: Buffer.from(
+						'5; 1259 16500 TABLE DATA public chats mayon\n' +
+							'6; 1259 16510 TABLE DATA drizzle __drizzle_migrations mayon\n'
+					)
+				})
+			)
+			.mockReturnValueOnce(mockChild({ exitCode: 0, stdoutData: versionStdout(1) }))
+			.mockReturnValueOnce(mockChild({ exitCode: 0, stdoutData: PGDMP_BYTES }))
+			.mockReturnValueOnce(mockChild({ exitCode: 0 }));
+
+		const pool = makeMockPool();
+		const app = buildApp(':memory:', {
+			pgPool: pool as unknown as PgPoolLike,
+			databaseUrl: DB_URL,
+			pgReady: true
+		});
+		await app.listen({ port: 0, host: '0.0.0.0' });
+		try {
+			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
+			const res = await app.inject({
+				method: 'PUT',
+				url: '/api/backup/db',
+				payload,
+				headers: { 'content-type': 'application/octet-stream' }
+			});
+			expect(res.statusCode).toBe(200);
+
+			// The safety pg_dump excludes the drizzle migrations bookkeeping data.
+			const dumpCall = spawnMock.mock.calls.find(
+				(c) => c[0] === 'pg_dump' && (c[1] as string[]).includes('-Fc')
+			);
+			expect(dumpCall).toBeDefined();
+			expect(dumpCall![1]).toContain('--exclude-table-data=drizzle.__drizzle_migrations');
+
+			// The main restore runs pg_restore --data-only with a -L filtered list.
+			const restoreCalls = spawnMock.mock.calls.filter(
+				(c) => c[0] === 'pg_restore' && (c[1] as string[]).includes('--data-only')
+			);
+			const mainRestore = restoreCalls.find((c) =>
+				(c[1] as string[]).some((a) => typeof a === 'string' && a.endsWith('.list'))
+			);
+			expect(mainRestore).toBeDefined();
+			const listArgs = mainRestore![1] as string[];
+			const listIdx = listArgs.indexOf('-L');
+			expect(listIdx).toBeGreaterThanOrEqual(0);
+			const listPath = listArgs[listIdx + 1];
+			// The list file content has the drizzle DATA entry commented out.
+			const listContent = fsStore.get(listPath)?.toString('utf8') ?? '';
+			expect(listContent).toContain('public chats mayon');
+			expect(listContent).toMatch(/^; .*TABLE DATA drizzle __drizzle_migrations mayon$/m);
 		} finally {
 			await app.close();
 		}
