@@ -21,8 +21,8 @@ No bun.
 | Command | What it does |
 |---|---|
 | `pnpm install` | Install Node.js dependencies. |
-| `pnpm dev` | Run the SvelteKit SPA dev server at http://localhost:5173 (requires `pnpm dev:deps`). |
-| `pnpm dev:deps` | Start Postgres + server in Docker (deps for `pnpm dev`). |
+| `pnpm dev` | Bring up the all-Docker dev stack (web HMR at http://localhost:5173 + server + Postgres), project `mayon-dev`. |
+| `pnpm dev:build` | Rebuild the dev images (after deps, config, or `@mayon/shared` changes). |
 | `docker compose up` | Run the full stack: web SPA + server + Postgres (web on :8080). |
 | `pnpm build` | Build the SPA into `build/`. |
 | `pnpm check` | Type-check with `svelte-check`. |
@@ -36,16 +36,17 @@ No bun.
 
 ## Development workflow
 
-The typical inner-loop for frontend work:
+The typical inner-loop runs the entire stack (web + server + Postgres) in Docker:
 
 ```bash
-pnpm dev:deps   # start Postgres + server in Docker
-pnpm dev        # SvelteKit SPA at http://localhost:5173
+pnpm dev   # web HMR on http://localhost:5173, server on :4319, Postgres
 ```
 
-This starts the SvelteKit dev server with HMR. Open http://localhost:5173. Changes to `.svelte`, `.ts`, and CSS files are reflected instantly. The dev server proxies `/api` requests to the Dockerized server.
+Web (`.svelte`, `.ts`, CSS) changes are reflected instantly via HMR; the Vite
+container proxies `/api` requests to the Dockerized server. Rebuild the images
+after dependency, config, or `@mayon/shared` changes with `pnpm dev:build`.
 
-For the full stack:
+For the full stack from prebuilt images:
 
 ```bash
 docker compose up   # web on :8080, server + Postgres in containers

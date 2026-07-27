@@ -25,6 +25,11 @@ book:
         - dev/architecture.qmd
         - dev/building.qmd
         - dev/seams.qmd
+    - part: 'Development Notes'
+      chapters:
+        - developer_notes/index.qmd
+        - developer_notes/foundation-phases.qmd
+        - developer_notes/postgres-migration.qmd
     - contributing.qmd
 
 website:

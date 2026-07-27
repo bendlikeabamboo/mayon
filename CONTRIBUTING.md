@@ -20,18 +20,18 @@ pnpm install
 
 ### Development Commands
 
-| Command             | Description                                             |
-| ------------------- | ------------------------------------------------------- |
-| `pnpm dev`          | SvelteKit SPA dev server at http://localhost:5173       |
-| `pnpm dev:deps`     | Start Postgres + server in Docker (deps for `pnpm dev`) |
-| `docker compose up` | Full stack: web SPA + server + Postgres (web on :8080)  |
-| `pnpm test`         | Vitest suite (pglite Postgres test driver)              |
-| `pnpm test:watch`   | Vitest in watch mode                                    |
-| `pnpm check`        | `svelte-check` type-checking                            |
-| `pnpm lint`         | ESLint + Prettier check                                 |
-| `pnpm format`       | Prettier write                                          |
-| `pnpm build`        | Production SPA build into `build/`                      |
-| `pnpm db:generate`  | Generate drizzle migration from schema                  |
+| Command             | Description                                                               |
+| ------------------- | ------------------------------------------------------------------------- |
+| `pnpm dev`          | All-Docker dev stack: web HMR (:5173) + server + db (project `mayon-dev`) |
+| `pnpm dev:build`    | Rebuild dev images (after deps, config, or `@mayon/shared` changes)       |
+| `docker compose up` | Full stack: web SPA + server + Postgres (web on :8080)                    |
+| `pnpm test`         | Vitest suite (pglite Postgres test driver)                                |
+| `pnpm test:watch`   | Vitest in watch mode                                                      |
+| `pnpm check`        | `svelte-check` type-checking                                              |
+| `pnpm lint`         | ESLint + Prettier check                                                   |
+| `pnpm format`       | Prettier write                                                            |
+| `pnpm build`        | Production SPA build into `build/`                                        |
+| `pnpm db:generate`  | Generate drizzle migration from schema                                    |
 
 ## Code Style
 

@@ -1,0 +1,49 @@
+---
+title: "Development Notes"
+---
+
+# Development Notes
+
+This section is **not** a spec. It is a personal archive of how Mayon was built —
+the phased acceptance gates that were used to ship each subsystem, in the order
+they landed. Read this when you want to recall *why* something is the way it is,
+reconstruct the reasoning behind a decision, or avoid repeating a past mistake.
+
+The authoritative description of the system **as it is today** lives in
+[Architecture](../dev/architecture.qmd) and [Architecture Boundaries](../dev/seams.qmd).
+`AGENTS.md` holds the operating conventions (commands, releases, invariants) an
+agent needs to work in the repo. What remains here is the historical trail:
+
+- what each phase shipped,
+- the manual steps used to verify it shipped correctly, and
+- the constraints and gotchas discovered along the way.
+
+## How to use these notes
+
+- Building a feature that touches one of these subsystems? Skim its phase to see
+  the invariants it must preserve and the failure modes it guards against.
+- Got a weird failure? The "Server-down", "PG-down", and rejection/rollback
+  bullets in each phase describe the exact behaviour to expect.
+- Found something here that contradicts the current code? The code wins — these
+  notes reflect a point in time. Update the note when you confirm the drift.
+
+## Chronology
+
+| Phase | Shipped | Notes |
+|---|---|---|
+| P0 | Persistence foundation | theme toggle + dev self-check prove PG round-trip; server-required boot gate. |
+| P1 | Provider / AI layer | provider config + key persistence; streaming demo. |
+| P2 | stdio MCP runner | server WebSocket bridge for stdio MCP; HTTP MCP direct. |
+| P3 | LLM CORS proxy | CORS-blocked providers route through the server. |
+| P4 | Sandbox DB | isolated SQLite on the server for MCP tools. |
+| P5 | Sandbox DB backup | snapshot/restore of the sandbox SQLite. |
+| P-pg-2 | PG primary store | browser driver → Postgres via the server; migrations Postgres-native. |
+| P-pg-3 | Boot gating UX | connecting / server-unreachable / db-not-ready full-screen states. |
+| P-pg-4 | Postgres FTS | `tsvector` / `GIN` / `ts_headline`; noise stripping for mermaid + math. |
+| P-pg-5 | PG-native backup/restore | `pg_dump -Fc` / `pg_restore --data-only`; in-place, no restart, versioned. |
+| P-pg-6 | SQLite importer | one-time import of legacy OPFS-era `.sqlite` backups into Postgres. |
+| P-pg-7 | PG-migration closeout | OPFS/SQLite-WASM dead code removed; `sidecar-data` → `server-data`. |
+
+The foundation and feature phases (P0–P5) are in
+[Foundation & Feature Phases](foundation-phases.qmd). The Postgres migration
+epic (P-pg-2 … P-pg-7) is in [Postgres Migration Epic](postgres-migration.qmd).

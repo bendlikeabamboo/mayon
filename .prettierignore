@@ -8,6 +8,7 @@ pnpm-lock.yaml
 tests/fixtures/
 
 # Prose / planning docs (not code — do not reformat)
+docs/
 refinement/
 prompts/
 .kilo/

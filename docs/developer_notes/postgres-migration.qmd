@@ -1,0 +1,140 @@
+---
+title: "Postgres Migration Epic (P-pg-2 … P-pg-7)"
+---
+
+# Postgres Migration Epic (P-pg-2 … P-pg-7)
+
+This epic flipped the primary store to Postgres via the server, made the schema
+and migrations Postgres-native, ported full-text search and backup/restore to
+native PG, and finally removed the OPFS/SQLite-WASM dead code. The gates below
+are the manual verification steps used as each phase landed. See the
+[index](index.qmd) for context on how to use these notes.
+
+## P-pg-2 — Postgres primary store
+
+P-pg-2 flips the browser's primary driver to Postgres via the server and makes the schema,
+proxy, and migrations Postgres-native. The app is server-required for function in this phase.
+
+- **Browser + server + PG:** `docker compose up` → server logs `pg: ready` and `pg: migrations applied`; header badge reaches **DB ready (pg)**; `GET /api/health` returns `caps` including `'pg'`. Dev self-check passes (writes/reads/deletes a chats row via repos). Create a chat, append a message, and read it back — data round-trips through the browser against the PG primary.
+- **Server-down:** `docker compose stop server` → reload → full-screen "Server unreachable" with the `docker compose up` hint + Retry button; background auto-poll recovers after `docker compose start server`. `POST /api/db/query` returns 503.
+- **PG-down:** `docker compose stop db` → restart server → `'pg'` cap absent from `/api/health`; `/api/db/query` returns 503.
+- **Sandbox regression:** Settings → Sandbox DB inspector still works (`/api/sandbox/query` untouched).
+- **Migrations:** a single `drizzle/0000_*.sql` migration exists (dialect `postgresql`). The server runs drizzle's native `migrate()` at boot; migrations gate on pool connect + migrations applied (`'pg'` cap).
+- **OPFS backup superseded:** app-DB backup/restore is now PG-native (`pg_dump -Fc` / `pg_restore`). The Settings → Data "Download backup" / "Restore from backup" buttons are gated on `serverStatus.has('pg')` and download/restore custom-format `.dump` files via the server.
+- **Search:** `repos.search.search()` uses native PG `tsvector`/`GIN`/`ts_headline` (P-pg-4); `searchAvailable()` returns `true` with `'pg'` cap; `rebuildIndex()` is a no-op (GENERATED columns self-maintain).
+- **Tests:** `pnpm lint && pnpm check && pnpm test` green with testcontainers PG; `pnpm --filter @mayon/server test` green. All tests now use a per-test-schema PG driver (`bootstrapTestDb`).
+
+> The schema flip to `pg-core`, proxy flip to `pg-proxy`, server native `migrate()`, browser RemotePgDriver wiring, and testcontainer setup are covered by the automated test suites.
+
+## P-pg-3 — Boot gating & failure UX
+
+P-pg-3 adds boot gating and failure UX now that the app requires the server.
+
+- **Browser + server + PG:** `docker compose up` → brief `Connecting…` screen → shell; badge shows **Server: connected** / **DB ready (pg)**; theme toggle persists across reload; dev self-check passes.
+- **Server-down:** `docker compose stop server` → reload → full-screen **"Cannot reach the Mayon server."** with the `docker compose up` hint + working Retry; background auto-poll recovers after `docker compose start server` (reload fires automatically).
+- **PG-down:** `docker compose stop db` (keep server up) → reload → fullscreen **"Database not ready."** variant (server connected, `'pg'` absent); recovers when db is healthy again.
+- **Dev loop:** `pnpm dev` → SPA works against the Dockerized server+pg via the vite `/api` proxy.
+
+## P-pg-4 — Postgres full-text search
+
+P-pg-4 ports full-text search from FTS5 to native Postgres `tsvector`/`GIN`/`ts_headline`,
+with noise stripping via an `IMMUTABLE` SQL function and `GENERATED ALWAYS AS` columns.
+
+- **Browser + server + PG:** `docker compose up` → server logs `pg: fts ready`; `/search`
+  returns ranked hits with highlighted snippets across messages/chats/labs/quizzes; kind
+  filter works; `searchAvailable()` returns `true`.
+- **Noise stripping:** a token that appears **only** inside a ` ```mermaid ` block or a
+  `$$…$$` display-math block is **not** matched; the same token in plain text is matched.
+- **Graceful degradation:** server-down or FTS failure → `search()` degrades to `[]` (no crash).
+- **UI:** Settings "Rebuild search index" button is gone (GENERATED columns self-maintain).
+- **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green. FTS bootstrap idempotency tested in `server/src/fts.test.ts`.
+
+## P-pg-5 — PG-native backup & restore
+
+P-pg-5 ships PG-native backup and restore using `pg_dump -Fc` and `pg_restore`. Download produces a
+versioned custom-format `.dump` (`mayon-YYYYMMDD-vN.dump`); restore stamps the schema version,
+plans migrations via `planRestore`, takes a pre-restore safety dump retained on the server,
+`TRUNCATE`s all Mayon tables under `session_replication_role='replica'`, runs
+`pg_restore --data-only --single-transaction`, applies per-version `migrate(client)` fns, re-stamps,
+and returns a `RestoreResult` — **no schema drop and no server restart**. While restoring,
+`/api/db/query` returns 503 (module-level `restoring` flag).
+
+- **Browser + server + PG:** `docker compose up` → Settings → Data shows "Download backup"
+  and "Restore from backup" (gated on `serverStatus.has('pg')`). Download yields a valid
+  `mayon-YYYYMMDD-vN.dump` (PGDMP magic in the first 5 bytes); restoring it into a throwaway
+  PG confirms validity.
+- **Restore round-trip:** create a chat/message → download `.dump` → "Restore from backup" → the
+  server retains a `mayon-pre-restore-<ts>.dump` under `/data`; app reloads → restore-result panel
+  (notice + applied migrations) renders from `sessionStorage` → "Download pre-restore backup"
+  fetches it via `GET /api/backup/safety?filename=…` → chat/message is present → second download
+  matches.
+- **Version refusal:** a backup stamped with a newer `schemaVersion` than the server is rejected
+  with `decision: 'refuse-newer'` (400); a backup requiring a breaking migration with no
+  `migrate()` fn is rejected with `decision: 'refuse-breaking'` (400); in both cases live data is
+  untouched (no `TRUNCATE`).
+- **Legacy backups:** an unstamped dump (no `schemaVersion` row) is treated as `LEGACY_VERSION`
+  and restored into the current schema with an additive-gap notice.
+- **Non-PG file rejection:** uploading a non-`.dump`/non-PGDMP file shows a clear error; live data
+  untouched.
+- **Failed restore rollback:** a truncated/corrupt dump (passing TOC validation but failing load)
+  triggers a rollback that re-applies the safety dump via `pg_restore --data-only`; the UI shows
+  the error with `rolledBack: true`. No server restart.
+- **Maintenance flag:** while a restore is in flight, `POST /api/db/query` returns 503
+  (`{ error: 'restore in progress' }`); `GET /api/health` reports `restoring: true`.
+- **Concurrent writes:** downloading an app-DB backup while MCP tools write to the **sandbox** DB
+  produces a valid `.dump` (separate DB, `pg_dump` MVCC snapshot).
+- **Server-down:** stop the server → app-DB backup buttons hidden; sandbox section also hidden;
+  reload → full-screen "Cannot reach the Mayon server."
+- **Docker image:** `docker compose build` (and `server/Dockerfile.dev`) install
+  `postgresql17-client`; `pg_dump --version` reports 17.x in the server container.
+- **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green (mocked spawns; no `process.exit`). The `planRestore` planner is covered by
+  `server/src/schema-migrations.test.ts`.
+
+## P-pg-6 — Legacy SQLite importer
+
+P-pg-6 ships a one-time importer that reads a legacy OPFS-era `.sqlite` backup and
+loads its rows into Postgres, **replacing** all current data. Uses `TRUNCATE … CASCADE`
+- `INSERT` in a single transaction (no server restart). `session_replication_role='replica'`
+  disables FK triggers for the import (requires superuser — the dockerized `mayon` user
+  is a superuser by default). FTS `GENERATED` columns self-maintain on insert; no rebuild.
+  API keys are **not** imported (re-enter provider keys after import on a new origin).
+
+* **Browser + server + PG:** `docker compose up` → Settings → Data → "Import from SQLite
+  backup" → select a real legacy `.sqlite` → **dry-run** shows per-table counts (chats, messages,
+  etc.) + skipped-table warnings → **Confirm** → a safety `mayon-pre-import-<ts>.dump`
+  auto-downloads → app reloads → chats/labs/quizzes/messages present; row counts match the
+  source; `quiz_answers.is_correct` round-trips as boolean; `search_vec` populated for
+  imported content (FTS self-maintained); re-import is idempotent.
+* **Rejection:** a non-SQLite file → "Not a valid SQLite file" error; a SQLite DB with no
+  recognized Mayon tables → "no Mayon tables found" error; in both cases the live DB is
+  untouched (no `TRUNCATE`).
+* **Drift tolerance:** a legacy backup missing newer PG columns (`brief`, `mcp_config`,
+  `tool_call_id`, `tool_name`, `metadata`, `model`, `tokens`) imports cleanly; omitted
+  columns receive their default/NULL.
+* **Server-down:** stop the server → import section hidden; the rest of the app is unaffected.
+* **Replace semantics:** the import `TRUNCATE`s all 11 Mayon tables then inserts; no partial
+  merge mode. A pre-import safety `pg_dump` always runs before any truncate; on failure the
+  transaction rolls back (live DB unchanged).
+* **Tests:** `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green (real pglite + better-sqlite3 round-trip; `pg_dump` spawn mocked).
+
+## P-pg-7 — Migration closeout
+
+P-pg-7 closes the Postgres-migration epic: all OPFS/SQLite-WASM dead code removed,
+docs describe the server-required + PG-primary reality, and the `sidecar-data`
+volume is renamed to `server-data`.
+
+- **Clean build:** `pnpm install` (lockfile has no `sqlite-wasm`/`sql.js`);
+  `pnpm lint && pnpm check && pnpm test` green; `pnpm --filter @mayon/server test`
+  green.
+- **Grep sweep:** zero hits for `sidecar|Sidecar|opfs|OPFS|sqlite-wasm|sql\.js|
+bundle:migrations|bundle-migrations|translatePlaceholders|crossOriginIsolation`
+  in `src/` and `server/` (historical refs in `refinement/` are allowed).
+- **Docker:** `docker compose up` — volume is now `server-data` (not `sidecar-data`);
+  sandbox DB is reset on upgrade (documented upgrade note).
+- **Docs:** no file in `docs/`, `AGENTS.md`, or `CONTRIBUTING.md` references
+  Tauri, OPFS, sqlite-wasm, `bundle:migrations`, or "browser-only".
+- **COEP removal:** `vite.config.ts` has no `crossOriginIsolation` plugin;
+  KaTeX math renders correctly in the browser (fonts in `static/fonts`).

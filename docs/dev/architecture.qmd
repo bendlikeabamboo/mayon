@@ -280,13 +280,18 @@ packages/shared/  Wire-protocol types shared by web + server
 
 ## Infrastructure subsystems
 
-Brief pointers to subsystems documented in detail in `AGENTS.md` phase gates:
+The server exposes these capabilities over its `/api/health` advertised `caps`,
+which the browser progressively enables via `detectServer()` at boot:
 
-- **MCP tooling** (AGENTS.md P2) — stdio MCP servers run on the server, bridged to the browser over WebSocket; HTTP MCP servers connect directly. Tools namespaced as `mcp.<serverId>.<toolName>`.
-- **Sandbox DB** (AGENTS.md P4) — isolated SQLite on the server for MCP tools, exposed via `POST /api/sandbox/query` with a Settings inspector.
-- **Backup/restore** (AGENTS.md P-pg-5) — PG-native `pg_dump -Fc` / `pg_restore` for the app DB; sandbox has its own snapshot/restore.
-- **Search/FTS** (AGENTS.md P-pg-4) — native Postgres `tsvector`/`GIN`/`ts_headline` with `GENERATED ALWAYS AS` columns; noise stripped from Mermaid and math blocks.
-- **Boot gating / server caps** (AGENTS.md P-pg-3) — the app detects the server at boot via `detectServer()` and progressively enables features based on advertised capabilities.
+- **MCP tooling** — stdio MCP servers run on the server, bridged to the browser over WebSocket; HTTP MCP servers connect directly. Tools namespaced as `mcp.<serverId>.<toolName>`.
+- **Sandbox DB** — isolated SQLite on the server for MCP tools, exposed via `POST /api/sandbox/query` with a Settings inspector. Holds no app data or secrets.
+- **Backup/restore** — PG-native `pg_dump -Fc` / `pg_restore` for the app DB (in-place, no server restart); the sandbox has its own snapshot/restore.
+- **Search/FTS** — native Postgres `tsvector`/`GIN`/`ts_headline` with `GENERATED ALWAYS AS` columns; noise stripped from Mermaid and math blocks.
+- **LLM CORS proxy** — `POST /api/llm/proxy` routes CORS-blocked providers (e.g. Anthropic) through the server when the `llm-proxy` cap is present.
+
+> The phased build history behind these subsystems (acceptance gates P2–P5 and the
+> P-pg-2 … P-pg-7 Postgres migration epic) is archived under
+> [Development Notes](../developer_notes/index.qmd).
 
 ## Future seams (out of scope)
 
