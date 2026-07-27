@@ -383,8 +383,12 @@ describe('personas', () => {
 				"You are a personal learning tutor. Calibrate to this learner's brief:"
 			);
 			expect(note.content).toContain(`- Goal: g`);
-			expect(note.content).toContain(`Level: ${DEFAULT_LEVEL}  · Context: (not given)  · Mode: ${DEFAULT_MODE}  · Scope: (open)`);
-			expect(note.content).toContain(`Structure: ${strat.label}  (unless scope overrides the budget)`);
+			expect(note.content).toContain(
+				`Level: ${DEFAULT_LEVEL}  · Context: (not given)  · Mode: ${DEFAULT_MODE}  · Scope: (open)`
+			);
+			expect(note.content).toContain(
+				`Structure: ${strat.label}  (unless scope overrides the budget)`
+			);
 			expect(note.content).toContain(strat.block);
 			expect(note.content).toContain('Teach to the goal at the stated level; stay within scope.');
 			expect(note.content).toContain('When the learner can do the goal, say so.');
