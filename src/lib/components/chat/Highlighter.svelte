@@ -11,6 +11,7 @@
 	import { wrapRange } from '$lib/markdown/wrap-range';
 	import { selectionOverlapsExisting, type ExpoundOptions } from '$lib/chat/expound';
 	import { buildSourceMap, type SourceMap } from '$lib/markdown/sourcemap';
+	import { locateCanonical } from '$lib/markdown/locate';
 	import { subscribeScroll } from '$lib/chat/scroll-bus';
 	import { mark, incRender } from '$lib/perf/mark';
 	import ContextMenu from './ContextMenu.svelte';
@@ -235,38 +236,6 @@
 		selectionToolbar = null;
 	}
 
-	function locateCanonical(
-		sm: SourceMap,
-		startChar: number,
-		endChar: number
-	): { start: number; end: number } | null {
-		let segStart = -1;
-		let segEnd = -1;
-		for (let i = 0; i < sm.segments.length; i++) {
-			const seg = sm.segments[i]!;
-			if (seg.kind === 'inter-block-ws') continue;
-			if (segStart === -1 && seg.startChar >= startChar) {
-				segStart = i;
-			}
-			if (seg.endChar <= endChar) {
-				segEnd = i;
-			}
-		}
-		if (segStart === -1 || segEnd === -1 || segStart > segEnd) return null;
-
-		const canonStart = canonicalOffsetOfSegmentStart(sm, segStart);
-		const lastSeg = sm.segments[segEnd]!;
-		const canonEnd = canonicalOffsetOfSegmentStart(sm, segEnd) + lastSeg.rendered.length;
-		return { start: canonStart, end: canonEnd };
-	}
-
-	function canonicalOffsetOfSegmentStart(sm: SourceMap, segIdx: number): number {
-		for (let i = 0; i < sm.canonicalToSegment.length; i++) {
-			if (sm.canonicalToSegment[i] === segIdx) return i;
-		}
-		return sm.canonicalToSegment.length;
-	}
-
 	function selfHeal(
 		sm: SourceMap,
 		excerpt: string,
@@ -321,6 +290,8 @@
 	}
 
 	let lastSignature = '';
+	let lastAppliedSignature = '';
+	let underlineRetryId = 0;
 
 	function renderUnderlines() {
 		const c = container;
@@ -328,7 +299,7 @@
 
 		const fullText = c.textContent ?? '';
 		const signature = fullText + '|' + existingSpans.map((s) => s.id).join(',');
-		if (signature === lastSignature) return;
+		if (signature === lastAppliedSignature) return;
 		lastSignature = signature;
 
 		for (const m of Array.from(c.querySelectorAll('span.expound-mark'))) {
@@ -338,16 +309,21 @@
 			parent.normalize();
 		}
 
-		if (existingSpans.length === 0) return;
+		if (existingSpans.length === 0) {
+			lastAppliedSignature = signature;
+			return;
+		}
 
 		const table = alignDomToCanonical(c, sourceMap);
 		if (!table.aligned) {
 			if (import.meta.env.DEV) {
 				console.warn('[expound] alignment failed; skipping underline pass', { messageId });
 			}
+			scheduleUnderlineRetry();
 			return;
 		}
 
+		let allOk = true;
 		for (const span of existingSpans) {
 			const { startChar, endChar, excerpt } = span;
 			const rawSlice = raw.slice(startChar, endChar);
@@ -356,7 +332,10 @@
 
 			if (canonicalize(rawSlice) === canonicalize(excerpt)) {
 				const hit = locateCanonical(sourceMap, startChar, endChar);
-				if (!hit) continue;
+				if (!hit) {
+					allOk = false;
+					continue;
+				}
 				({ start: canonicalStart, end: canonicalEnd } = hit);
 			} else {
 				const healed = selfHeal(sourceMap, excerpt, span.startChar);
@@ -370,13 +349,42 @@
 							endChar
 						});
 					}
+					allOk = false;
 					continue;
 				}
 				({ start: canonicalStart, end: canonicalEnd } = healed);
 			}
 
-			wrapRange(table, canonicalStart, canonicalEnd, { 'data-branch-chat': span.branchChatId });
+			const wrapResult = wrapRange(table, canonicalStart, canonicalEnd, {
+				'data-branch-chat': span.branchChatId
+			});
+			if (!wrapResult.ok) {
+				allOk = false;
+			}
 		}
+
+		if (allOk) {
+			lastAppliedSignature = signature;
+		} else {
+			scheduleUnderlineRetry();
+		}
+	}
+
+	function scheduleUnderlineRetry() {
+		const id = ++underlineRetryId;
+		let tries = 0;
+		const maxTries = 10;
+		function retry() {
+			if (id !== underlineRetryId) return;
+			tries++;
+			if (tries >= maxTries) return;
+			if (lastSignature === lastAppliedSignature) return;
+			renderUnderlines();
+			if (lastSignature !== lastAppliedSignature) {
+				requestAnimationFrame(retry);
+			}
+		}
+		requestAnimationFrame(retry);
 	}
 
 	$effect(() => {
@@ -472,6 +480,9 @@
 	>
 		<button
 			class="shadow-lg rounded-full text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 transition-colors cursor-pointer"
+			class:opacity-50={!!disableReason}
+			class:cursor-not-allowed={!!disableReason}
+			title={disableReason || 'Branch from this'}
 			onclick={handleToolbarExpound}
 		>
 			Branch from this

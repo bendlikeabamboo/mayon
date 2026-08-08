@@ -337,7 +337,7 @@
 		let tries = 0;
 		function retry() {
 			tries++;
-			if (tries >= 6 || tryFlash()) return;
+			if (tries >= 20 || tryFlash()) return;
 			requestAnimationFrame(retry);
 		}
 		requestAnimationFrame(retry);
