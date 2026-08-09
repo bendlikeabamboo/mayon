@@ -63,22 +63,38 @@ topology, and the invariants you must respect when editing.
   tag's **base** version (e.g. `0.2.0` for `v0.2.0-rc1`) **and**
   `CHANGELOG.md` must contain a `## [X.Y.Z]` section. The `verify-version`
   job fails the release otherwise.
+- **Every GitHub Release body MUST contain curated release notes.** CI creates
+  the release with `generate_release_notes: true` (auto-generated commit/PR
+  titles only), which is far too sparse to publish. As a **required post-CI
+  step**, edit the release body with `gh release edit vX.Y.Z... --notes ...`
+  (or `--notes-file`) to paste the matching `## [X.Y.Z]` section from
+  `CHANGELOG.md` (strip the `## [X.Y.Z] - date` header). This applies to **both**
+  RC (`vX.Y.Z-rcN`) and stable (`vX.Y.Z`) releases. Do not leave a release with
+  only auto-generated notes. Never mark a release "done" until its body is
+  populated.
 - **Release steps:**
   1. Set `"version": "X.Y.Z"` in all three `package.json` files.
   2. Add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (keep a fresh
      empty `## [Unreleased]` above it).
   3. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z` → CI publishes.
+  4. **Populate the release body** — wait for the `release-assets` job to
+     finish, then `gh release edit vX.Y.Z --notes "<CHANGELOG section body>"`.
+     This is mandatory; see the rule above.
 - **Release Candidate (RC) cycle:**
   1. After completing **Release steps 1–2** above (set `package.json` to base
      `X.Y.Z` and add the CHANGELOG section), tag `vX.Y.Z-rcN`.
   2. CI publishes images tagged `:X.Y.Z-rcN` + `:rc` (never `:latest`) and
      creates a **prerelease** GitHub Release (`make_latest: false`) with a
      baked `install.sh` + `docker-compose.yml`.
-  3. Iterate: fix on `main`, then tag `vX.Y.Z-rc2`, `vX.Y.Z-rc3`, etc.
-     (no file edits — `package.json` stays at the base version).
-  4. Promote: once the RC is accepted, `git tag vX.Y.Z && git push origin vX.Y.Z`
+  3. **Populate the RC release body** with the same `## [X.Y.Z]` CHANGELOG
+     section (the section is written in step 1; `package.json` stays at base,
+     but the notes describe the upcoming release).
+  4. Iterate: fix on `main`, then tag `vX.Y.Z-rc2`, `vX.Y.Z-rc3`, etc.
+     (no file edits — `package.json` stays at the base version). Re-populate
+     each RC's body (append "since rcN" deltas when useful).
+  5. Promote: once the RC is accepted, `git tag vX.Y.Z && git push origin vX.Y.Z`
      — **no file edits.** CI tags `:X.Y.Z` + `:latest` and makes it the latest
-     release.
+     release. **Populate the stable release body** as Release step 4.
 - **Release assets (CI attaches to the GitHub Release):** a version-baked
   `install.sh` (the `@MAYON_INSTALLER_VERSION@` placeholder is sed-replaced
   with the tag) and a copy of `docker-compose.yml`. These power the one-line
