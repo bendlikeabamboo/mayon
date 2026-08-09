@@ -29,7 +29,10 @@ export const EXCLUDED_CHROME_SELECTORS = [
 	'.callout-title',
 	'code.language-mermaid',
 	'.md-copy-btn',
-	'.mermaid-svg'
+	'.md-focusable-btn',
+	'.external-link-icon',
+	'.mermaid-svg',
+	'.mermaid-pending'
 ] as const;
 
 export function canonicalize(s: string): string {
@@ -127,6 +130,8 @@ export function alignDomToCanonical(container: HTMLElement, sm: SourceMap): Alig
 				cursor += chunkLen;
 				pos += chunkLen;
 			}
+		} else if (text.trim().length === 0) {
+			continue;
 		} else {
 			aligned = false;
 			if (!unalignedNode) unalignedNode = n;

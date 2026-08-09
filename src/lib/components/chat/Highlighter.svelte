@@ -291,16 +291,24 @@
 
 	let lastSignature = '';
 	let lastAppliedSignature = '';
-	let underlineRetryId = 0;
+	let retryHandle: ReturnType<typeof requestAnimationFrame> | null = null;
+	let retryTries = 0;
+	let lastWarnSignature = '';
+	const MAX_RETRIES = 10;
 
-	function renderUnderlines() {
+	function renderUnderlines(force = false) {
 		const c = container;
 		if (!c) return;
 
 		const fullText = c.textContent ?? '';
 		const signature = fullText + '|' + existingSpans.map((s) => s.id).join(',');
 		if (signature === lastAppliedSignature) return;
-		lastSignature = signature;
+		if (!force && signature === lastSignature) return;
+		if (signature !== lastSignature) {
+			lastSignature = signature;
+			retryTries = 0;
+			lastWarnSignature = '';
+		}
 
 		for (const m of Array.from(c.querySelectorAll('span.expound-mark'))) {
 			const parent = m.parentNode;
@@ -316,10 +324,11 @@
 
 		const table = alignDomToCanonical(c, sourceMap);
 		if (!table.aligned) {
-			if (import.meta.env.DEV) {
+			if (import.meta.env.DEV && lastWarnSignature !== signature) {
+				lastWarnSignature = signature;
 				console.warn('[expound] alignment failed; skipping underline pass', { messageId });
 			}
-			scheduleUnderlineRetry();
+			scheduleRetry();
 			return;
 		}
 
@@ -366,25 +375,21 @@
 		if (allOk) {
 			lastAppliedSignature = signature;
 		} else {
-			scheduleUnderlineRetry();
+			scheduleRetry();
 		}
 	}
 
-	function scheduleUnderlineRetry() {
-		const id = ++underlineRetryId;
-		let tries = 0;
-		const maxTries = 10;
-		function retry() {
-			if (id !== underlineRetryId) return;
-			tries++;
-			if (tries >= maxTries) return;
-			if (lastSignature === lastAppliedSignature) return;
-			renderUnderlines();
-			if (lastSignature !== lastAppliedSignature) {
-				requestAnimationFrame(retry);
+	function scheduleRetry() {
+		if (retryHandle !== null) return;
+		retryHandle = requestAnimationFrame(() => {
+			retryHandle = null;
+			retryTries++;
+			if (retryTries > MAX_RETRIES) {
+				lastAppliedSignature = lastSignature;
+				return;
 			}
-		}
-		requestAnimationFrame(retry);
+			renderUnderlines(true);
+		});
 	}
 
 	$effect(() => {
@@ -394,7 +399,13 @@
 		renderUnderlines();
 		const observer = new MutationObserver(() => renderUnderlines());
 		observer.observe(c, { childList: true, subtree: true, characterData: true });
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			if (retryHandle !== null) {
+				cancelAnimationFrame(retryHandle);
+				retryHandle = null;
+			}
+		};
 	});
 
 	$effect(() => {

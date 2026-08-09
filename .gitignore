@@ -37,3 +37,6 @@ coverage/
 
 # Quarto build output
 docs/_book/
+
+.playwright/
+.playwright-cli/
