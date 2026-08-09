@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-09
+
+### Fixed
+
+- **Expound underline rendering robustness** — the highlight underline pass now
+  distinguishes the observed DOM signature from the successfully-applied
+  signature and retries via a capped `requestAnimationFrame` loop (10 attempts)
+  when source-map alignment fails or range wrapping is incomplete, so underlines
+  converge on late/async content instead of silently dropping. The "Branch from
+  this" toolbar button now reflects its disabled state with a reason tooltip.
+- **Expound alignment correctness** — `locateCanonical` was extracted into
+  `src/lib/markdown/locate.ts` (now unit-tested); whitespace-only DOM text nodes
+  are skipped during alignment rather than failing it; and the injected
+  `.md-focusable-btn`, `.external-link-icon`, and `.mermaid-pending` chrome
+  selectors were added to the excluded list so they no longer corrupt offset
+  mapping.
+
 ## [0.2.0] - 2026-07-27
 
 ### Added
