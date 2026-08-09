@@ -44,6 +44,13 @@ topology, and the invariants you must respect when editing.
 ## Releasing & versioning
 
 - **SemVer.** Versions are `MAJOR.MINOR.PATCH` (`0.x` is pre-1.0 instability).
+- **RC-first is the default release path.** Every release — minor or patch —
+  ships through the **Release Candidate (RC) cycle** below first: prepare the
+  bump + changelog, tag `vX.Y.Z-rcN`, let CI publish `:rc` images, and only
+  promote to a stable `vX.Y.Z` once the RC is accepted. Do **not** ask whether
+  to use the RC cycle vs. a direct stable tag — assume RC-first. Use a direct
+  stable tag **only** when the user explicitly asks for it (e.g. "release
+  directly" / "skip the RC").
 - **A `vX.Y.Z` or `vX.Y.Z-rcN` git tag triggers the pipeline.** Pushing it runs
   `.github/workflows/docker-publish.yml`, which publishes **both** GHCR images:
   - web SPA → `ghcr.io/bendlikeabamboo/mayon`
