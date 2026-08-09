@@ -87,6 +87,25 @@ pnpm test          # run once
 pnpm test:watch    # watch mode during development
 ```
 
+## Release Candidate Testing
+
+> ⚠️ Backup data before executing.
+
+Replace your production instance with the RC release:
+
+```sh
+# Example for 0.2.1-rc1, could be for any rc release
+cd ~/.mayon
+MAYON_VERSION=0.2.1-rc1 docker compose pull
+MAYON_VERSION=0.2.1-rc1 docker compose up -d
+```
+
+To roll-back:
+
+```sh
+MAYON_VERSION=0.2.0 docker compose pull && MAYON_VERSION=0.2.0 docker compose up -d
+```
+
 Tests live alongside source files (`*.test.ts` / `*.test.js` / `*.spec.ts`).
 
 ## AI-Assisted Contributors

@@ -73,6 +73,34 @@ All three paths accept `MAYON_PORT` (web port, default `8080`) and
 `MAYON_VERSION` (image tag) via env. To move off port 8080, set
 `MAYON_PORT=3000` in `~/.mayon/.env` and restart.
 
+### Upgrading
+
+Upgrades are in-place: containers are recreated but the `pg-data` and
+`server-data` volumes are kept, so your data survives (back up first with the
+in-app backup/restore if you want a safety copy).
+
+**Easiest** — pull and deploy the latest stable release:
+
+```bash
+~/.mayon/install.sh upgrade
+```
+
+**Pin a specific version** (e.g. to stay on or roll back to a known release):
+
+```bash
+MAYON_VERSION=0.2.0 ~/.mayon/install.sh install
+```
+
+**No install script?** If you manage `docker-compose.yml` directly, pin
+`MAYON_VERSION` in your `.env` (or pass it on the command line) and pull:
+
+```bash
+MAYON_VERSION=0.2.0 docker compose pull && MAYON_VERSION=0.2.0 docker compose up -d
+```
+
+To roll back, repeat with the previous version tag. If something goes wrong,
+restore from a backup taken before the upgrade.
+
 ## Build from source
 
 **Prerequisites:** Node 22, pnpm 10, and Docker (see [CONTRIBUTING.md](CONTRIBUTING.md)).
