@@ -57,7 +57,19 @@ export async function mountMcpServer(
 								ctx.signal
 							);
 							if (result.isError) {
-								return { ok: false, summary: 'tool returned error', detail: result };
+								// Surface the server's own error text (e.g. Brave's
+								// "No web results found" or a 4xx body) so the tool row
+								// and the model both see the real reason, not a generic label.
+								const errText = result.content
+									.map((c) => c.text ?? '')
+									.join('')
+									.trim()
+									.slice(0, 200);
+								return {
+									ok: false,
+									summary: errText ? `tool returned error: ${errText}` : 'tool returned error',
+									detail: result
+								};
 							}
 							const text = result.content.map((c) => c.text ?? '').join('');
 							const truncated = truncateResult(text, capBytes);

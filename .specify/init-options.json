@@ -1,0 +1,8 @@
+{
+	"ai": "kilocode",
+	"feature_numbering": "sequential",
+	"here": false,
+	"integration": "kilocode",
+	"script": "sh",
+	"speckit_version": "0.16.4"
+}

@@ -5,6 +5,8 @@
 	import Markdown from './Markdown.svelte';
 	import Reasoning from './Reasoning.svelte';
 	import Highlighter from './Highlighter.svelte';
+	import ToolSources from './ToolSources.svelte';
+	import { extractSources } from '$lib/mcp/sources';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import type { Message } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
@@ -70,6 +72,7 @@
 
 	let parsedMeta = $derived(parseMetadata(message.metadata));
 	let artifact = $derived(parsedMeta?.artifact);
+	let sources = $derived(message.role === 'tool' ? extractSources(parsedMeta) : []);
 	let reasoning = $derived(
 		message.role === 'assistant' && !message.toolCallId ? parsedMeta?.reasoning : undefined
 	);
@@ -92,6 +95,7 @@
 				{message.content}
 			{/if}
 		</span>
+		<ToolSources {sources} />
 	</div>
 {:else}
 	<div class="flex flex-col gap-1 {message.role === 'user' ? 'items-end' : 'items-start'}">

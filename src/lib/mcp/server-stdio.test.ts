@@ -26,8 +26,21 @@ import { serverStatus } from '$lib/services/status.svelte';
 import { MissingKeyError } from '$lib/ai/types';
 
 class FakeWS extends EventTarget {
-	send = vi.fn();
+	readyState = 0; // 0 = CONNECTING, 1 = OPEN — mirrors the browser contract
+	send = vi.fn(() => {
+		if (this.readyState !== 1) {
+			throw new DOMException(
+				"Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.",
+				'InvalidStateError'
+			);
+		}
+	});
 	close = vi.fn();
+
+	open() {
+		this.readyState = 1;
+		this.dispatchEvent(new Event('open'));
+	}
 }
 
 function makeConfig(
@@ -76,6 +89,7 @@ describe('ServerStdioMcpTransport', () => {
 
 		const startPromise = transport.start();
 		await new Promise<void>((r) => setTimeout(r, 0));
+		ws.open();
 
 		const store = getStore();
 		expect(store.get).toHaveBeenCalledWith('mcp:test-server:KEY');
@@ -89,6 +103,29 @@ describe('ServerStdioMcpTransport', () => {
 
 		const info = await startPromise;
 		expect(info).toEqual({ name: 'stdio-server', version: '0.0.0' });
+	});
+
+	it('does not send the spawn frame before the socket is OPEN', async () => {
+		const transport = new ServerStdioMcpTransport({
+			config: makeConfig(),
+			wsFactory: () => ws as unknown as WebSocket
+		});
+
+		const startPromise = transport.start();
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		// Still CONNECTING: nothing sent — with the old code this send() threw.
+		expect(ws.send).not.toHaveBeenCalled();
+
+		ws.open();
+
+		expect(ws.send).toHaveBeenCalledTimes(1);
+		const sent = JSON.parse(ws.send.mock.calls[0][0] as string);
+		expect(sent.kind).toBe('spawn');
+		expect(sent.spawn.env.KEY).toBe('secret-value');
+
+		dispatch(ws, { kind: 'spawned', serverId: 'test-server' });
+		await startPromise;
 	});
 
 	it('start() throws MissingKeyError when secret is missing', async () => {
@@ -111,6 +148,7 @@ describe('ServerStdioMcpTransport', () => {
 
 		const startPromise = transport.start();
 		await new Promise<void>((r) => setTimeout(r, 0));
+		ws.open();
 
 		dispatch(ws, {
 			kind: 'exit',
@@ -309,6 +347,7 @@ describe('ServerStdioMcpTransport', () => {
 	async function completeStart(transport: ServerStdioMcpTransport): Promise<void> {
 		const p = transport.start();
 		await new Promise<void>((r) => setTimeout(r, 0));
+		ws.open();
 		dispatch(ws, { kind: 'spawned', serverId: 'test-server' });
 		await p;
 	}
