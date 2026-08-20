@@ -180,7 +180,8 @@ describe('findGateFromMessages', () => {
 		expect(findGateFromMessages(messages)).toEqual({
 			nextUnit: 'Loops',
 			options: ['continue', 'go deeper'],
-			progress: 'Unit 2 / 5'
+			progress: 'Unit 2 / 5',
+			entryId: null
 		});
 	});
 
@@ -211,5 +212,79 @@ describe('findGateFromMessages', () => {
 			{ role: 'assistant', toolName: 'read_checklist', metadata: '{}' }
 		];
 		expect(findGateFromMessages(messages)).toBeNull();
+	});
+
+	it('kind-first: matches choices kind before legacy toolName probe', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null, kind: null, id: null },
+			{
+				role: 'assistant',
+				toolName: null,
+				metadata: JSON.stringify({
+					nextUnit: 'Kinds',
+					options: ['a', 'b'],
+					progress: '1/3'
+				}),
+				kind: 'choices',
+				id: 'choices-row-1'
+			}
+		];
+		const result = findGateFromMessages(messages);
+		expect(result).not.toBeNull();
+		expect(result!.nextUnit).toBe('Kinds');
+		expect(result!.entryId).toBe('choices-row-1');
+	});
+
+	it('legacy fallback: matches toolName=present_choices when kind is not choices', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null, kind: null, id: null },
+			{
+				role: 'assistant',
+				toolName: 'present_choices',
+				metadata: JSON.stringify({
+					nextUnit: 'Legacy',
+					options: ['x'],
+					progress: '2/5'
+				}),
+				kind: null,
+				id: 'legacy-row-1'
+			}
+		];
+		const result = findGateFromMessages(messages);
+		expect(result).not.toBeNull();
+		expect(result!.nextUnit).toBe('Legacy');
+		expect(result!.entryId).toBe('legacy-row-1');
+	});
+
+	it('kind-first takes priority over legacy in same scan', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null, kind: null, id: null },
+			{
+				role: 'assistant',
+				toolName: 'present_choices',
+				metadata: JSON.stringify({
+					nextUnit: 'LegacyShouldNotWin',
+					options: ['nope'],
+					progress: '0/1'
+				}),
+				kind: 'tool_call',
+				id: 'tc-1'
+			},
+			{
+				role: 'assistant',
+				toolName: null,
+				metadata: JSON.stringify({
+					nextUnit: 'KindWins',
+					options: ['yes'],
+					progress: '1/2'
+				}),
+				kind: 'choices',
+				id: 'choices-1'
+			}
+		];
+		const result = findGateFromMessages(messages);
+		expect(result).not.toBeNull();
+		expect(result!.nextUnit).toBe('KindWins');
+		expect(result!.entryId).toBe('choices-1');
 	});
 });

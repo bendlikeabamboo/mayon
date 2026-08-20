@@ -55,6 +55,27 @@ export const messages = pgTable('messages', {
 	chatId: text('chat_id')
 		.notNull()
 		.references(() => chats.id),
+	/**
+	 * Durable entry kind — NULLABLE at DDL add time.
+	 * The SET NOT NULL is enforced ONLY by the v1→v2 data migration (schema-migrations.ts)
+	 * after the backfill proves completeness. This deliberate drift from drizzle's snapshot is
+	 * intentional: drizzle generates the ADD COLUMN here; the registry migration owns the
+	 * backfill + constraint. Never hand-edit the generated SQL to add NOT NULL here.
+	 */
+	kind: text('kind', {
+		enum: [
+			'user_message',
+			'assistant_message',
+			'reasoning',
+			'tool_call',
+			'tool_result',
+			'approval',
+			'sampling',
+			'elicitation',
+			'choices',
+			'self_corrected'
+		]
+	}),
 	role: text('role', { enum: ['system', 'user', 'assistant', 'tool'] }).notNull(),
 	content: text('content').notNull(),
 	ord: integer('ord').notNull(),

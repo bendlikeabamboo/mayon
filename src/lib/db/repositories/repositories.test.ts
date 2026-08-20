@@ -54,6 +54,66 @@ describe('messages repository', () => {
 		expect(list.map((m) => m.content)).toEqual(['hi', 'hello', 'again']);
 	});
 
+	it('derives kind by default from legacy columns', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const userMsg = await repos.messages.append(chat.id, 'user', 'hi');
+		expect(userMsg.kind).toBe('user_message');
+
+		const asstMsg = await repos.messages.append(chat.id, 'assistant', 'hey');
+		expect(asstMsg.kind).toBe('assistant_message');
+
+		const toolMsg = await repos.messages.append(chat.id, 'assistant', '', {
+			toolCallId: 'tc1',
+			toolName: 'read_file'
+		});
+		expect(toolMsg.kind).toBe('tool_call');
+
+		const resultMsg = await repos.messages.appendToolResult(chat.id, {
+			toolCallId: 'tc1',
+			toolName: 'read_file',
+			summary: 'file contents'
+		});
+		expect(resultMsg.kind).toBe('tool_result');
+	});
+
+	it('updateOutcome merges outcome into metadata and returns updated row', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const msg = await repos.messages.append(chat.id, 'assistant', 'ask', {
+			metadata: JSON.stringify({ toolName: 'create_lab' })
+		});
+
+		const updated = await repos.messages.updateOutcome(msg.id, {
+			decision: 'approved'
+		});
+		expect(updated).not.toBeNull();
+		expect(updated!.id).toBe(msg.id);
+		const meta = JSON.parse(updated!.metadata!);
+		expect(meta.toolName).toBe('create_lab');
+		expect(meta.outcome).toEqual({ decision: 'approved' });
+	});
+
+	it('updateOutcome handles null/corrupt metadata', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const msg = await repos.messages.append(chat.id, 'assistant', 'ask');
+		const updated = await repos.messages.updateOutcome(msg.id, { decision: 'declined' });
+		expect(updated).not.toBeNull();
+		const meta = JSON.parse(updated!.metadata!);
+		expect(meta.outcome).toEqual({ decision: 'declined' });
+
+		const msg2 = await repos.messages.append(chat.id, 'assistant', 'bad', {
+			metadata: 'not-json'
+		});
+		const updated2 = await repos.messages.updateOutcome(msg2.id, { decision: 'undecided' });
+		expect(updated2).not.toBeNull();
+		const meta2 = JSON.parse(updated2!.metadata!);
+		expect(meta2.outcome).toEqual({ decision: 'undecided' });
+	});
+
+	it('updateOutcome returns null for missing id', async () => {
+		const result = await repos.messages.updateOutcome('nonexistent', { decision: 'approved' });
+		expect(result).toBeNull();
+	});
+
 	it('respects the ord cutoff in listUpToOrd (assembleContext primitive)', async () => {
 		const chat = await repos.chats.createRoot({ title: 'C' });
 		await repos.messages.append(chat.id, 'user', 'a');

@@ -118,3 +118,62 @@ describe('server without a pg pool (pgReady: false)', () => {
 		expect(res.json().error).toBe('pg not configured');
 	});
 });
+
+describe('runSchemaDataMigrations', () => {
+	let runSchemaDataMigrations: typeof import('./schema-migrations').runSchemaDataMigrations;
+	beforeAll(async () => {
+		({ runSchemaDataMigrations } = await import('./schema-migrations'));
+	});
+
+	function makeMockConnect(): {
+		client: { query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> };
+		pool: PgPoolLike;
+	} {
+		const clientQuery = vi.fn(async () => ({ rows: [], fields: [], rowCount: 0 }));
+		const clientRelease = vi.fn();
+		const client = { query: clientQuery, release: clientRelease };
+		const pool = {
+			query: vi.fn(),
+			connect: vi.fn(async () => client),
+			end: vi.fn(async () => {})
+		} as unknown as PgPoolLike;
+		return { client, pool };
+	}
+
+	it('returns empty when stamp equals current version (no migration needed)', async () => {
+		const { SCHEMA_VERSION: SV } = await import('@mayon/shared');
+		const { pool } = makeMockConnect();
+		const result = await runSchemaDataMigrations(pool, SV);
+		expect(result).toHaveLength(0);
+		expect(pool.connect).not.toHaveBeenCalled();
+	});
+
+	it('rolls back and re-throws on migrate failure', async () => {
+		const { SCHEMA_MIGRATIONS: migs } = await import('./schema-migrations');
+		const originalMigrate = migs[0]!.migrate;
+		migs[0]!.migrate = async () => {
+			throw new Error('boom');
+		};
+		const { client, pool } = makeMockConnect();
+		await expect(runSchemaDataMigrations(pool, 1)).rejects.toThrow('boom');
+		migs[0]!.migrate = originalMigrate!;
+		expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+	});
+
+	it('runs pending migrations and commits when stamp lags', async () => {
+		const { SCHEMA_MIGRATIONS: migs } = await import('./schema-migrations');
+		const originalMigrate = migs[0]!.migrate;
+		let ran = false;
+		migs[0]!.migrate = async () => {
+			ran = true;
+		};
+		const { client, pool } = makeMockConnect();
+		const result = await runSchemaDataMigrations(pool, 1);
+		migs[0]!.migrate = originalMigrate!;
+		expect(ran).toBe(true);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toContain('1→2');
+		expect(client.query).toHaveBeenCalledWith('BEGIN');
+		expect(client.query).toHaveBeenCalledWith('COMMIT');
+	});
+});

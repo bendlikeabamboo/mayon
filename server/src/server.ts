@@ -2,7 +2,13 @@ import Fastify from 'fastify';
 import fp from '@fastify/websocket';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { SCHEMA_VERSION, type HealthResponse, type ServerCap } from '@mayon/shared';
+import {
+	SCHEMA_VERSION,
+	LEGACY_VERSION,
+	SCHEMA_VERSION_SETTINGS_KEY,
+	type HealthResponse,
+	type ServerCap
+} from '@mayon/shared';
 import { VERSION } from './version';
 import { registerMcpBridge } from './mcp';
 import { registerLlmProxy } from './llm-proxy';
@@ -12,6 +18,7 @@ import { createPgPool, probePg, registerPgDb, runPgMigrations, isRestoring } fro
 import { registerPgBackup } from './pg-backup';
 import { registerPgImport } from './pg-import';
 import { runFtsBootstrap } from './fts';
+import { runSchemaDataMigrations } from './schema-migrations';
 import type { PgPoolLike } from './pg';
 
 const HOST = '0.0.0.0';
@@ -106,7 +113,21 @@ export async function start() {
 					const detail = err instanceof Error ? err.message : String(err);
 					console.error('pg: fts bootstrap failed —', detail);
 				}
+
 				try {
+					const verRes = await pool.query(
+						`SELECT value FROM settings WHERE key = '${SCHEMA_VERSION_SETTINGS_KEY}'`
+					);
+					const stampRaw = verRes.rows[0]?.value;
+					const stamp = stampRaw != null ? Number(stampRaw) : LEGACY_VERSION;
+
+					if (stamp < SCHEMA_VERSION) {
+						const applied = await runSchemaDataMigrations(pool, stamp);
+						for (const note of applied) {
+							console.log(`pg: schema migration ${note}`);
+						}
+					}
+
 					await pool.query(
 						`INSERT INTO settings(key,value) VALUES('schemaVersion',$1)
 						 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
@@ -115,7 +136,10 @@ export async function start() {
 					console.log(`pg: schemaVersion ${SCHEMA_VERSION} stamped`);
 				} catch (err) {
 					const detail = err instanceof Error ? err.message : String(err);
-					console.error('pg: schemaVersion stamp failed —', detail);
+					console.error('pg: schema data-migration or stamp failed —', detail);
+					await pool.end();
+					pgPool = undefined;
+					pgReady = false;
 				}
 			}
 		} else {

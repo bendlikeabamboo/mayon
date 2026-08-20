@@ -53,3 +53,48 @@ API keys are **never** stored in `settings`. They are stored in:
 The server never persists secrets. When the browser asks the server to spawn a stdio MCP server or proxy an LLM request, it resolves the secret locally and includes it in the same-origin request. Transit is same-origin over the internal docker network / localhost (no key regression vs. the browser-fetch path, which already holds the key in JS).
 
 The `ProviderConfig` type in the codebase intentionally omits any key field. The settings UI stores a key, then immediately masks the input with a "Replace key" affordance. The key is never echoed back after save.
+
+## Context projection is a pure function
+
+`projectEntries(entries): ModelMessage[]` (`src/lib/chat/projection.ts`) is the **single** seam through which stored entries reach any provider. It is pure — no I/O, no repos, no clock.
+
+The ancestor-gathering walk in `assembleContext` (`src/lib/chat/context.ts`) is unchanged; it collects rows and delegates per-row conversion to `projectEntries`. The critic's in-memory correction context (`src/lib/agent/loop.ts`) calls the same function.
+
+Rules: `user_message` → `user` text; `assistant_message` → `assistant` text; `tool_call` → `assistant` `tool-call` part; `tool_result` → `tool` `tool-result` part; `choices` → synthesized `tool-call` + `tool-result` pair; `reasoning`/`approval`/`sampling`/`elicitation`/`self_corrected` → excluded. Adjacent same-role messages merge their parts.
+
+**Do not** read `role` or `toolCallId`/`toolName` for intent anywhere outside this module. Do not add a second projection path.
+
+**Quirk captured in golden fixtures**: `tool_call` projects with `input: {}` (empty), not `metadata.args`. The current gather step never populates `toolArgs`, so providers receive empty input on replay. This is intentional — golden equivalence requires reproducing it exactly (`src/lib/chat/golden/`). Flag, don't fix.
+
+## Presentation decided by kind only
+
+The presentation registry (`src/lib/chat/presentation.ts`) maps each kind to lane, collapsible, collapsed-by-default, and a renderer name string. Timeline assembly (`src/lib/chat/entries.ts`) builds a `TimelineItem[]` from messages; `MessageList.svelte` dispatches each item through the registry.
+
+**No role-based or column-combination branching** may exist in any timeline presentation path. Every renderer lives in `src/lib/components/chat/rows/`. A live item and its durable counterpart resolve to the same renderer; the `live` prop carries the only difference.
+
+Expanded/collapsed is component `$state` seeded from registry defaults. Presentation must never be stored in the database.
+
+## Stamped schema version and data migrations
+
+Schema version is stamped into the `settings` table (`key = 'schemaVersion'`). The version constant lives in `packages/shared/src/schema-version.ts` (`SCHEMA_VERSION`). A registry of migration descriptors in `server/src/schema-migrations.ts` defines data migrations (not DDL — drizzle handles that).
+
+### Boot order (`server/src/server.ts`)
+
+1. `runPgMigrations` — drizzle DDL (generated SQL in `drizzle/`).
+2. `runFtsBootstrap` — full-text search trigger/column setup.
+3. Read `settings.schemaVersion`; if `< SCHEMA_VERSION`, run pending `SCHEMA_MIGRATIONS` entries via `runSchemaDataMigrations` (each `migrate(client)` in its own transaction).
+4. Stamp `SCHEMA_VERSION` into settings.
+
+Data migrations run **after** DDL + FTS and **before** the stamp. If a data migration fails, the transaction rolls back, pg is marked not ready, and the server continues without the `pg` cap.
+
+### Migration registry (`server/src/schema-migrations.ts`)
+
+Each entry: `{ from, to, description, kind, hasMigrate, migrate?(client) }`. The runner (`runSchemaDataMigrations`) filters to pending entries (where `from >= currentStamp`), sorts by `to`, and executes each in its own transaction. The `migrate(client)` function is the single implementation consumed by **both** the boot path and the post-restore path.
+
+The first registry entry is the v1→v2 kind backfill (`backfillKinds`): ordered UPDATEs guarded by `WHERE kind IS NULL`, a completeness assertion (zero unclassified rows; non-zero fails the migration loudly), then `ALTER TABLE messages ALTER COLUMN kind SET NOT NULL`. Idempotent — safe to re-run on partially-classified data.
+
+### Restore path (unchanged machinery)
+
+Restore uses PG-native `pg_restore --data-only --single-transaction`. Post-load, the same `migrate(client)` runs inside the restore transaction, then the stamp. A v1/legacy dump on a v2 server proceeds with auto-migration; a v2 dump on a v1 server is refused (existing `planRestore` gate). The `__drizzle_migrations` bookkeeping table is never reloaded (existing TOC filter).
+
+While restoring, `/api/db/query` returns 503 and `/api/health` reports `restoring: true` — no server restart, no downtime.

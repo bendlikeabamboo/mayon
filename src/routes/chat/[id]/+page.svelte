@@ -42,9 +42,6 @@
 	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
-	import ApprovalCard from '$lib/components/chat/ApprovalCard.svelte';
-	import SamplingApprovalCard from '$lib/components/mcp/SamplingApprovalCard.svelte';
-	import ElicitationDialog from '$lib/components/mcp/ElicitationDialog.svelte';
 	import ExpoundCard from '$lib/components/chat/ExpoundCard.svelte';
 	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
@@ -382,7 +379,7 @@
 
 	async function onSend(text: string, effort: ReasoningEffort) {
 		stickToBottom = true;
-		await chatStore.send(text, { effort });
+		await chatStore.send(text, { effort, choicesEntryId: gate?.entryId ?? undefined });
 	}
 
 	async function onExpound(
@@ -678,15 +675,14 @@
 						<div bind:this={topSentinel} class="h-0 -mt-4"></div>
 						<MessageList
 							messages={chatStore.messages}
-							streaming={chatStore.streaming}
-							streamBuffer={chatStore.streamBufferRender}
-							reasoningBuffer={chatStore.reasoningBuffer}
+							liveItems={chatStore.liveItems}
 							{onExpound}
 							{onCopy}
 							{onBranchWhole}
 							{onRegenerate}
 							{personaName}
 							{failedMessageId}
+							streaming={chatStore.streaming}
 						>
 							{#snippet header()}
 								{#if chatStore.chat?.parentId !== null && chatStore.chat && branchSource}
@@ -728,28 +724,6 @@
 							{chatStore.generativeStatus.label}
 						</div>
 					{/if}
-					{#each chatStore.pendingApprovals as a (a.toolCallId)}
-						<ApprovalCard
-							entry={a}
-							onApprove={() => chatStore.approve(a.toolCallId)}
-							onDecline={() => chatStore.decline(a.toolCallId)}
-						/>
-					{/each}
-					{#each chatStore.pendingMcpSampling as e (e.id)}
-						<SamplingApprovalCard
-							entry={e}
-							onApprove={() => chatStore.approveSampling(e.id)}
-							onDecline={() => chatStore.declineSampling(e.id)}
-						/>
-					{/each}
-					{#each chatStore.pendingElicitations as e (e.id)}
-						<ElicitationDialog
-							entry={e}
-							onSubmit={(data: Record<string, unknown>) => chatStore.submitElicitation(e.id, data)}
-							onCancel={() => chatStore.cancelElicitation(e.id)}
-						/>
-					{/each}
-
 					{#if chatStore.error}
 						<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
 							<p class="font-medium text-red-700 dark:text-red-400">{chatStore.error.title}</p>

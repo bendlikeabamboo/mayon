@@ -94,7 +94,7 @@ function buildSearchSql(kinds?: SearchKind[]): { sql: string; params: unknown[] 
 		`SELECT kind, chat_id, ref_id, quiz_id, title, chat_title, root_id, snippet_body, snippet_title, rank FROM (`
 	);
 	parts.push(
-		`SELECT 'message'::text AS kind, m.chat_id, m.id AS ref_id, NULL::text AS quiz_id, ''::text AS title, c.title AS chat_title, c.root_id, ts_headline('simple', m.content, tsq.q, E'${HEADLINE_BODY}') AS snippet_body, ''::text AS snippet_title, ts_rank_cd(m.search_vec, tsq.q) AS rank FROM messages m CROSS JOIN tsq JOIN chats c ON c.id = m.chat_id WHERE m.search_vec @@ tsq.q`
+		`SELECT 'message'::text AS kind, m.chat_id, m.id AS ref_id, NULL::text AS quiz_id, ''::text AS title, c.title AS chat_title, c.root_id, ts_headline('simple', m.content, tsq.q, E'${HEADLINE_BODY}') AS snippet_body, ''::text AS snippet_title, ts_rank_cd(m.search_vec, tsq.q) AS rank FROM messages m CROSS JOIN tsq JOIN chats c ON c.id = m.chat_id WHERE m.search_vec @@ tsq.q AND m.kind IN ('user_message','assistant_message')`
 	);
 	parts.push(
 		`UNION ALL SELECT 'chat'::text, c.id, c.id, NULL::text, c.title, c.title, c.root_id, ''::text, ts_headline('simple', c.title, tsq.q, E'${HEADLINE_TITLE}'), ts_rank_cd(c.search_vec, tsq.q) FROM chats c CROSS JOIN tsq WHERE c.search_vec @@ tsq.q`

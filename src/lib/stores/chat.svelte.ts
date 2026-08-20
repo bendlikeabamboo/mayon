@@ -37,6 +37,7 @@ import { generateBrief } from '$lib/ai/generate/generate-brief';
 import { toastState } from '$lib/stores/toasts.svelte';
 import { TraceBuilder, buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
 import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
+import type { LiveEntry, LiveAskPayload } from '$lib/chat/entries';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -47,10 +48,11 @@ export interface ApprovalEntry {
 	toolName: string;
 	description: string;
 	args: unknown;
+	rowId: string;
 	resolve: (decision: { approved: boolean; aborted?: boolean }) => void;
 }
 
-export type PublicApprovalEntry = Omit<ApprovalEntry, 'resolve'>;
+export type PublicApprovalEntry = Omit<ApprovalEntry, 'resolve' | 'rowId'>;
 
 export interface McpSamplingEntry {
 	id: string;
@@ -58,20 +60,22 @@ export interface McpSamplingEntry {
 	prompt: string;
 	maxTokens: number;
 	remainingBudget: number;
+	rowId: string;
 	resolve: (approved: boolean) => void;
 }
 
-export type PublicMcpSamplingEntry = Omit<McpSamplingEntry, 'resolve'>;
+export type PublicMcpSamplingEntry = Omit<McpSamplingEntry, 'resolve' | 'rowId'>;
 
 export interface ElicitationEntry {
 	id: string;
 	serverName: string;
 	schema: Record<string, unknown>;
 	message: string;
+	rowId: string;
 	resolve: (outcome: { accepted: boolean; data?: Record<string, unknown> }) => void;
 }
 
-export type PublicElicitationEntry = Omit<ElicitationEntry, 'resolve'>;
+export type PublicElicitationEntry = Omit<ElicitationEntry, 'resolve' | 'rowId'>;
 
 /**
  * Raised when an expound excerpt overlaps an existing span for the same source
@@ -149,9 +153,72 @@ class ChatState {
 	/** First-turn-only: suppress `branch_chat` after a manual branch (UX1a). */
 	manualBranchPending = $state<boolean>(false);
 
-	/** True when the live assistant bubble should render (buffer non-empty while streaming). */
 	get showLiveBubble(): boolean {
 		return this.streaming && this.streamBufferRender.length > 0;
+	}
+
+	get liveItems(): LiveEntry[] {
+		if (
+			!this.streaming &&
+			this.pendingApprovals.length === 0 &&
+			this.pendingMcpSampling.length === 0 &&
+			this.pendingElicitations.length === 0
+		) {
+			return [];
+		}
+		const items: LiveEntry[] = [];
+		if (this.streaming) {
+			if (this.reasoningBuffer) {
+				items.push({ source: 'live', live: 'live_reasoning', buffer: this.reasoningBuffer });
+			}
+			items.push({
+				source: 'live',
+				live: 'live_text',
+				buffer: this.streamBufferRender,
+				pending: this.streamBufferRender.length === 0
+			});
+		}
+		for (const a of this.pendingApprovals) {
+			const payload: LiveAskPayload = {
+				askKind: 'approval',
+				rowId: a.rowId,
+				approval: {
+					toolCallId: a.toolCallId,
+					toolName: a.toolName,
+					description: a.description,
+					args: a.args
+				}
+			};
+			items.push({ source: 'live', live: 'live_ask', payload });
+		}
+		for (const e of this.pendingMcpSampling) {
+			const payload: LiveAskPayload = {
+				askKind: 'sampling',
+				rowId: e.rowId,
+				sampling: {
+					id: e.id,
+					serverName: e.serverName,
+					prompt: e.prompt,
+					maxTokens: e.maxTokens,
+					remainingBudget: e.remainingBudget
+				}
+			};
+			items.push({ source: 'live', live: 'live_ask', payload });
+		}
+		for (const e of this.pendingElicitations) {
+			const payload: LiveAskPayload = {
+				askKind: 'elicitation',
+				rowId: e.rowId,
+				elicitation: {
+					id: e.id,
+					serverName: e.serverName,
+					schema: e.schema,
+					message: e.message
+				}
+			};
+			items.push({ source: 'live', live: 'live_ask', payload });
+		}
+		return items;
 	}
 
 	/**
@@ -220,7 +287,10 @@ class ChatState {
 	}
 
 	/** Send a user prompt and stream the assistant reply, persisting on finish. */
-	async send(text: string, opts?: { effort?: ReasoningEffort; hidden?: boolean }): Promise<void> {
+	async send(
+		text: string,
+		opts?: { effort?: ReasoningEffort; hidden?: boolean; choicesEntryId?: string }
+	): Promise<void> {
 		const prompt = text.trim();
 		if (!prompt || this.streaming || !this.chatId) return;
 
@@ -228,6 +298,7 @@ class ChatState {
 		const chatId = this.chatId;
 		const effort: ReasoningEffort = opts?.effort ?? 'on';
 		const hidden = opts?.hidden ?? false;
+		const choicesEntryId = opts?.choicesEntryId;
 		const chat = this.chat;
 		// A root that still holds the placeholder title and has no prior turns:
 		// this is the first real message → fire the parallel title request.
@@ -245,8 +316,11 @@ class ChatState {
 					: null;
 
 		// 1) Persist the user row immediately and reflect it in the UI.
+		const userMeta: Record<string, unknown> = {};
+		if (hidden) userMeta.hidden = true;
+		if (choicesEntryId) userMeta.choicesEntryId = choicesEntryId;
 		const userRow = await repos.messages.append(chatId, 'user', prompt, {
-			metadata: hidden ? JSON.stringify({ hidden: true }) : undefined
+			metadata: Object.keys(userMeta).length > 0 ? JSON.stringify(userMeta) : undefined
 		});
 		this.messages = [...this.messages, userRow];
 		await repos.chats.touch(chatId);
@@ -343,8 +417,7 @@ class ChatState {
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {
 					const row = await repos.messages.append(chatId, 'assistant', content, {
-						model: opts?.model,
-						metadata: opts?.reasoning ? JSON.stringify({ reasoning: opts.reasoning }) : undefined
+						model: opts?.model
 					});
 					this.messages = [...this.messages, row];
 					await repos.chats.touch(chatId);
@@ -353,6 +426,22 @@ class ChatState {
 					return row;
 				},
 				appendAssistantToolCall: async (p) => {
+					if (p.toolName === 'present_choices') {
+						const args = p.args as {
+							nextUnit?: string;
+							options?: string[];
+							progress?: string;
+						} | null;
+						const row = await repos.messages.append(chatId, 'assistant', args?.nextUnit ?? '', {
+							toolCallId: p.toolCallId,
+							toolName: p.toolName,
+							kind: 'choices',
+							metadata: p.args != null ? JSON.stringify(p.args) : undefined
+						});
+						this.messages = [...this.messages, row];
+						await repos.chats.touch(chatId);
+						return row;
+					}
 					const row = await repos.messages.append(chatId, 'assistant', '', {
 						toolCallId: p.toolCallId,
 						toolName: p.toolName,
@@ -364,6 +453,22 @@ class ChatState {
 					return row;
 				},
 				appendToolResult: async (r) => {
+					if (r.toolName === 'present_choices') {
+						return {
+							id: 'stub-choices-' + r.toolCallId,
+							chatId,
+							role: 'tool' as const,
+							content: r.summary,
+							ord: 0,
+							model: null,
+							createdAt: Date.now(),
+							tokens: null,
+							toolCallId: r.toolCallId,
+							toolName: r.toolName,
+							metadata: null,
+							kind: 'tool_result'
+						} as unknown as Message;
+					}
 					const row = await repos.messages.appendToolResult(chatId, r);
 					this.messages = [...this.messages, row];
 					await repos.chats.touch(chatId);
@@ -374,6 +479,28 @@ class ChatState {
 					return row;
 				},
 				reassembleContext: () => assembleContext(chatId),
+				appendReasoning: async (text, iteration) => {
+					const row = await repos.messages.append(chatId, 'assistant', text, {
+						kind: 'reasoning',
+						metadata: JSON.stringify({ iteration })
+					});
+					this.messages = [...this.messages, row];
+					await repos.chats.touch(chatId);
+				},
+				appendSelfCorrected: async (report, _finalTextLength) => {
+					const s = report.succeeded ? 'fixed' : 'partially';
+					const label = `Self-corrected (${report.attempts} attempt${report.attempts !== 1 ? 's' : ''}, ${s})`;
+					const row = await repos.messages.append(chatId, 'assistant', label, {
+						kind: 'self_corrected',
+						metadata: JSON.stringify({
+							issues: report.issues,
+							attempts: report.attempts,
+							succeeded: report.succeeded
+						})
+					});
+					this.messages = [...this.messages, row];
+					await repos.chats.touch(chatId);
+				},
 				requestApproval: (req) => this.requestApprovalImpl(req),
 				notifyLowRisk: (toolLabel, summary) => this.notifyLowRiskImpl(toolLabel, summary),
 				notifyGenerativeStatus: (status) => (this.generativeStatus = status),
@@ -484,6 +611,18 @@ class ChatState {
 	/** Stop the in-flight stream (AbortError is swallowed in `send`). */
 	stop(): void {
 		this.controller?.abort();
+		const pendingRowIds = [
+			...this.pendingApprovals.map((a) => a.rowId),
+			...this.pendingMcpSampling.map((e) => e.rowId),
+			...this.pendingElicitations.map((e) => e.rowId)
+		];
+		if (pendingRowIds.length > 0) {
+			void Promise.all(
+				pendingRowIds.map((rowId) =>
+					this.updateAskRow(rowId, { decision: 'undecided' }).catch(() => {})
+				)
+			);
+		}
 	}
 
 	/** Clear the staged expound prompt (called by the route after draining it). */
@@ -610,22 +749,39 @@ class ChatState {
 		this.inferredBrief = null;
 	}
 
-	private requestApprovalImpl(req: {
+	private async requestApprovalImpl(req: {
 		toolCallId: string;
 		toolName: string;
 		description: string;
 		args: unknown;
 	}): Promise<{ approved: boolean; aborted?: boolean }> {
+		const label = `${req.toolName} — ${req.description}`;
+		const row = await repos.messages.append(this.chatId!, 'assistant', label, {
+			kind: 'approval',
+			toolCallId: req.toolCallId,
+			toolName: req.toolName,
+			metadata: JSON.stringify({
+				toolName: req.toolName,
+				description: req.description,
+				args: req.args,
+				outcome: null
+			})
+		});
+		this.messages = [...this.messages, row];
+		await repos.chats.touch(this.chatId!);
+
 		return new Promise((resolve) => {
 			const entry: ApprovalEntry = {
 				toolCallId: req.toolCallId,
 				toolName: req.toolName,
 				description: req.description,
 				args: req.args,
+				rowId: row.id,
 				resolve
 			};
 			this.pendingApprovals = [...this.pendingApprovals, entry];
 			const onAbort = () => {
+				void this.updateAskRow(entry.rowId, { decision: 'declined', aborted: true });
 				resolve({ approved: false, aborted: true });
 				this.pendingApprovals = this.pendingApprovals.filter((a) => a !== entry);
 			};
@@ -636,54 +792,84 @@ class ChatState {
 	approve(toolCallId: string): void {
 		const idx = this.pendingApprovals.findIndex((a) => a.toolCallId === toolCallId);
 		if (idx === -1) return;
-		this.pendingApprovals[idx].resolve({ approved: true });
+		const entry = this.pendingApprovals[idx];
+		entry.resolve({ approved: true });
 		this.pendingApprovals = this.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
+		void this.updateAskRow(entry.rowId, { decision: 'approved' });
 	}
 
 	decline(toolCallId: string): void {
 		const idx = this.pendingApprovals.findIndex((a) => a.toolCallId === toolCallId);
 		if (idx === -1) return;
-		this.pendingApprovals[idx].resolve({ approved: false });
+		const entry = this.pendingApprovals[idx];
+		entry.resolve({ approved: false });
 		this.pendingApprovals = this.pendingApprovals.filter((a) => a.toolCallId !== toolCallId);
+		void this.updateAskRow(entry.rowId, { decision: 'declined' });
 	}
 
 	approveSampling(id: string): void {
 		const idx = this.pendingMcpSampling.findIndex((e) => e.id === id);
 		if (idx === -1) return;
-		this.pendingMcpSampling[idx].resolve(true);
+		const entry = this.pendingMcpSampling[idx];
+		entry.resolve(true);
 		this.pendingMcpSampling = this.pendingMcpSampling.filter((e) => e.id !== id);
+		void this.updateAskRow(entry.rowId, { decision: 'allowed' });
 	}
 
 	declineSampling(id: string): void {
 		const idx = this.pendingMcpSampling.findIndex((e) => e.id === id);
 		if (idx === -1) return;
-		this.pendingMcpSampling[idx].resolve(false);
+		const entry = this.pendingMcpSampling[idx];
+		entry.resolve(false);
 		this.pendingMcpSampling = this.pendingMcpSampling.filter((e) => e.id !== id);
+		void this.updateAskRow(entry.rowId, { decision: 'denied' });
 	}
 
 	submitElicitation(id: string, data: Record<string, unknown>): void {
 		const idx = this.pendingElicitations.findIndex((e) => e.id === id);
 		if (idx === -1) return;
-		this.pendingElicitations[idx].resolve({ accepted: true, data });
+		const entry = this.pendingElicitations[idx];
+		entry.resolve({ accepted: true, data });
 		this.pendingElicitations = this.pendingElicitations.filter((e) => e.id !== id);
+		void this.updateAskRow(entry.rowId, { decision: 'accepted', data });
 	}
 
 	cancelElicitation(id: string): void {
 		const idx = this.pendingElicitations.findIndex((e) => e.id === id);
 		if (idx === -1) return;
-		this.pendingElicitations[idx].resolve({ accepted: false });
+		const entry = this.pendingElicitations[idx];
+		entry.resolve({ accepted: false });
 		this.pendingElicitations = this.pendingElicitations.filter((e) => e.id !== id);
+		void this.updateAskRow(entry.rowId, { decision: 'declined' });
 	}
 
-	requestSamplingImpl(req: {
+	async requestSamplingImpl(req: {
 		id: string;
 		serverName: string;
 		prompt: string;
 		maxTokens: number;
 		remainingBudget: number;
 	}): Promise<boolean> {
+		const row = await repos.messages.append(
+			this.chatId!,
+			'assistant',
+			`${req.serverName} — ${req.prompt.slice(0, 80)}`,
+			{
+				kind: 'sampling',
+				metadata: JSON.stringify({
+					serverName: req.serverName,
+					prompt: req.prompt,
+					maxTokens: req.maxTokens,
+					remainingBudget: req.remainingBudget,
+					outcome: null
+				})
+			}
+		);
+		this.messages = [...this.messages, row];
+		await repos.chats.touch(this.chatId!);
+
 		return new Promise((resolve) => {
-			const entry: McpSamplingEntry = { ...req, resolve };
+			const entry: McpSamplingEntry = { ...req, rowId: row.id, resolve };
 			this.pendingMcpSampling = [...this.pendingMcpSampling, entry];
 			const onAbort = () => {
 				resolve(false);
@@ -693,15 +879,33 @@ class ChatState {
 		});
 	}
 
-	requestElicitationImpl(req: {
+	async requestElicitationImpl(req: {
 		id: string;
 		serverName: string;
 		schema: Record<string, unknown>;
 		message: string;
 	}): Promise<{ accepted: boolean; data?: Record<string, unknown> }> {
+		const row = await repos.messages.append(
+			this.chatId!,
+			'assistant',
+			`${req.serverName} — ${req.message.slice(0, 80)}`,
+			{
+				kind: 'elicitation',
+				metadata: JSON.stringify({
+					serverName: req.serverName,
+					message: req.message,
+					schema: req.schema,
+					outcome: null
+				})
+			}
+		);
+		this.messages = [...this.messages, row];
+		await repos.chats.touch(this.chatId!);
+
 		return new Promise((resolve) => {
 			const entry: ElicitationEntry = {
 				...req,
+				rowId: row.id,
 				resolve: (outcome) => resolve(outcome)
 			};
 			this.pendingElicitations = [...this.pendingElicitations, entry];
@@ -711,6 +915,17 @@ class ChatState {
 			};
 			this.controller?.signal.addEventListener('abort', onAbort, { once: true });
 		});
+	}
+
+	private async updateAskRow(rowId: string, outcome: Record<string, unknown>): Promise<void> {
+		try {
+			const updated = await repos.messages.updateOutcome(rowId, outcome);
+			if (updated) {
+				this.messages = this.messages.map((m) => (m.id === rowId ? updated : m));
+			}
+		} catch {
+			/* best-effort outcome update */
+		}
 	}
 
 	private notifyLowRiskImpl(toolLabel: string, summary: string): void {

@@ -715,7 +715,7 @@ describe('chatStore inferred brief', () => {
 });
 
 describe('chatStore approval flow', () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		chatStore.pendingApprovals = [];
 		chatStore.streaming = false;
 	});
@@ -734,13 +734,16 @@ describe('chatStore approval flow', () => {
 	}
 
 	it('requestApprovalImpl populates pendingApprovals; approve resolves and clears', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
 		const promise = getRequestApprovalImpl()({
 			toolCallId: 'tc1',
 			toolName: 'branch_chat',
 			description: 'Branch a chat',
 			args: { topic: 'X' }
 		});
-		expect(chatStore.pendingApprovals).toHaveLength(1);
+		await vi.waitFor(() => expect(chatStore.pendingApprovals).toHaveLength(1));
 		expect(chatStore.pendingApprovals[0].toolCallId).toBe('tc1');
 
 		chatStore.approve('tc1');
@@ -750,13 +753,16 @@ describe('chatStore approval flow', () => {
 	});
 
 	it('decline resolves and clears entry', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
 		const promise = getRequestApprovalImpl()({
 			toolCallId: 'tc1',
 			toolName: 'branch_chat',
 			description: 'Branch a chat',
 			args: {}
 		});
-		expect(chatStore.pendingApprovals).toHaveLength(1);
+		await vi.waitFor(() => expect(chatStore.pendingApprovals).toHaveLength(1));
 
 		chatStore.decline('tc1');
 		const result = await promise;
@@ -765,6 +771,8 @@ describe('chatStore approval flow', () => {
 	});
 
 	it('abort resolves pending as aborted', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
 		chatStore.streaming = true;
 		const ac = new AbortController();
 		(chatStore as unknown as { controller: AbortController | null }).controller = ac;
@@ -775,7 +783,7 @@ describe('chatStore approval flow', () => {
 			description: 'Branch a chat',
 			args: {}
 		});
-		expect(chatStore.pendingApprovals).toHaveLength(1);
+		await vi.waitFor(() => expect(chatStore.pendingApprovals).toHaveLength(1));
 
 		ac.abort();
 		const result = await promise;
@@ -820,7 +828,7 @@ describe('chatStore reasoning buffer', () => {
 		expect(chatStore.reasoningBuffer).toBe('');
 	});
 
-	it('turn with reasoning writes metadata JSON containing reasoning on assistant row', async () => {
+	it('turn with reasoning persists a separate reasoning entry and no reasoning metadata on assistant row', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		mockDefaultProvider();
 		mockedStreamText.mockReturnValue({
@@ -840,11 +848,15 @@ describe('chatStore reasoning buffer', () => {
 		await chatStore.send('hello');
 
 		const msgs = await repos.messages.listByChat(root.id);
-		const assistant = msgs.find((m) => m.role === 'assistant');
+		const reasoning = msgs.find((m) => m.kind === 'reasoning');
+		expect(reasoning).toBeDefined();
+		expect(reasoning!.content).toBe('thinking…');
+		const parsed = JSON.parse(reasoning!.metadata!);
+		expect(parsed.iteration).toBe(0);
+
+		const assistant = msgs.find((m) => m.role === 'assistant' && m.kind === 'assistant_message');
 		expect(assistant).toBeDefined();
-		expect(assistant!.metadata).not.toBeNull();
-		const parsed = JSON.parse(assistant!.metadata!);
-		expect(parsed.reasoning).toBe('thinking…');
+		expect(assistant!.metadata).toBeNull();
 	});
 
 	it('turn without reasoning writes no metadata on assistant row', async () => {
@@ -968,6 +980,95 @@ describe('branch_sources extra columns', () => {
 		expect(fetched).not.toBeNull();
 		expect(fetched!.customInstructions).toBeNull();
 		expect(fetched!.addFormats).toBeNull();
+	});
+});
+
+describe('chatStore durable asks (reload-honesty)', () => {
+	beforeEach(() => {
+		chatStore.pendingApprovals = [];
+		chatStore.pendingMcpSampling = [];
+		chatStore.pendingElicitations = [];
+		chatStore.streaming = false;
+	});
+
+	it('approval: row persisted with outcome null, then updated to approved on approve()', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const requestApprovalImpl = (
+			chatStore as unknown as {
+				requestApprovalImpl: (req: {
+					toolCallId: string;
+					toolName: string;
+					description: string;
+					args: unknown;
+				}) => Promise<{ approved: boolean; aborted?: boolean }>;
+			}
+		).requestApprovalImpl.bind(chatStore);
+
+		const promise = requestApprovalImpl({
+			toolCallId: 'tc1',
+			toolName: 'branch_chat',
+			description: 'Branch a chat',
+			args: { topic: 'X' }
+		});
+
+		await vi.waitFor(async () => {
+			const rows = await repos.messages.listByChat(root.id);
+			expect(rows.find((m) => m.kind === 'approval')).toBeDefined();
+		});
+		const approvalRows = await repos.messages.listByChat(root.id);
+		const pendingRow = approvalRows.find((m) => m.kind === 'approval');
+		expect(pendingRow!.content).toContain('branch_chat');
+		const pendingMeta = JSON.parse(pendingRow!.metadata!);
+		expect(pendingMeta.outcome).toBeNull();
+
+		chatStore.approve('tc1');
+		await promise;
+
+		await vi.waitFor(async () => {
+			const rows = await repos.messages.listByChat(root.id);
+			const r = rows.find((m) => m.kind === 'approval' && m.id === pendingRow!.id);
+			expect(JSON.parse(r!.metadata!).outcome).toEqual({ decision: 'approved' });
+		});
+
+		expect(chatStore.pendingApprovals).toHaveLength(0);
+	});
+
+	it('approval: abort sweeps pending to declined+aborted', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		(chatStore as unknown as { controller: AbortController | null }).controller =
+			new AbortController();
+
+		const requestApprovalImpl = (
+			chatStore as unknown as {
+				requestApprovalImpl: (req: {
+					toolCallId: string;
+					toolName: string;
+					description: string;
+					args: unknown;
+				}) => Promise<{ approved: boolean; aborted?: boolean }>;
+			}
+		).requestApprovalImpl.bind(chatStore);
+
+		const promise = requestApprovalImpl({
+			toolCallId: 'tc2',
+			toolName: 'create_lab',
+			description: 'Create a lab',
+			args: {}
+		});
+
+		await vi.waitFor(() => expect(chatStore.pendingApprovals).toHaveLength(1));
+		chatStore.stop();
+		await promise;
+
+		await vi.waitFor(async () => {
+			const msgs = await repos.messages.listByChat(root.id);
+			const r = msgs.find((m) => m.kind === 'approval');
+			expect(r).toBeDefined();
+			expect(JSON.parse(r!.metadata!).outcome).toEqual({ decision: 'declined', aborted: true });
+		});
 	});
 });
 

@@ -135,6 +135,29 @@ describe('search repository (P-pg-4 PG FTS)', () => {
 		expect(msgHits.length).toBe(1);
 	});
 
+	it('excludes tool_result rows from message search (kind filter)', async () => {
+		const chat = await repos.chats.createRoot({
+			title: 'KindFilterChat',
+			provider: 'openai',
+			model: 'gpt-4o'
+		});
+		const userMsg = await repos.messages.append(
+			chat.id,
+			'user',
+			'uniquekindtok please read this file'
+		);
+		await repos.messages.appendToolResult(chat.id, {
+			toolCallId: 'tc1',
+			toolName: 'read_file',
+			summary: 'uniquekindtok file contents here'
+		});
+
+		const hits = await repos.search.search('uniquekindtok');
+		const msgHits = hits.filter((h) => h.kind === 'message');
+		expect(msgHits.length).toBe(1);
+		expect(msgHits[0].refId).toBe(userMsg.id);
+	});
+
 	it('rebuildIndex() is a no-op', async () => {
 		await expect(repos.search.rebuildIndex()).resolves.toBeUndefined();
 	});

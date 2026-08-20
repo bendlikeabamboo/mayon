@@ -2,6 +2,7 @@ import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import { messages, type Message, type MessageRole } from '$lib/db/schema';
 import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
+import { deriveKindFromColumns, type EntryKind } from '$lib/chat/kinds';
 
 async function insertMessage(input: typeof messages.$inferInsert): Promise<Message> {
 	const [row] = await (await awaitDb()).insert(messages).values(input).returning();
@@ -21,6 +22,7 @@ export const messagesRepo = {
 			toolCallId?: string;
 			toolName?: string;
 			metadata?: string;
+			kind?: EntryKind;
 		}
 	): Promise<Message> {
 		const db = await awaitDb();
@@ -31,12 +33,20 @@ export const messagesRepo = {
 			.orderBy(desc(messages.ord))
 			.limit(1);
 		const nextOrd = last.length ? last[0].ord + 1 : 0;
+		const kind =
+			opts?.kind ??
+			deriveKindFromColumns({
+				role,
+				toolCallId: opts?.toolCallId ?? null,
+				toolName: opts?.toolName ?? null
+			});
 		return insertMessage({
 			id: uuid(),
 			chatId,
 			role,
 			content,
 			ord: nextOrd,
+			kind,
 			model: opts?.model ?? null,
 			tokens: opts?.tokens ?? null,
 			toolCallId: opts?.toolCallId ?? null,
@@ -53,7 +63,8 @@ export const messagesRepo = {
 		return this.append(chatId, 'tool', opts.summary, {
 			toolCallId: opts.toolCallId,
 			toolName: opts.toolName,
-			metadata: opts.detail != null ? JSON.stringify(opts.detail) : undefined
+			metadata: opts.detail != null ? JSON.stringify(opts.detail) : undefined,
+			kind: 'tool_result'
 		});
 	},
 
@@ -82,6 +93,27 @@ export const messagesRepo = {
 	async getById(id: string): Promise<Message | null> {
 		const rows = await (await awaitDb()).select().from(messages).where(eq(messages.id, id));
 		return rows[0] ?? null;
+	},
+
+	async updateOutcome(id: string, outcome: Record<string, unknown>): Promise<Message | null> {
+		const db = await awaitDb();
+		const [existing] = await db.select().from(messages).where(eq(messages.id, id));
+		if (!existing) return null;
+		let meta: Record<string, unknown> = {};
+		if (existing.metadata) {
+			try {
+				meta = JSON.parse(existing.metadata);
+			} catch {
+				/* corrupt → default empty */
+			}
+		}
+		meta.outcome = outcome;
+		const [updated] = await db
+			.update(messages)
+			.set({ metadata: JSON.stringify(meta) })
+			.where(eq(messages.id, id))
+			.returning();
+		return updated ?? null;
 	},
 
 	async delete(id: string): Promise<void> {

@@ -95,8 +95,8 @@ vi.mock('$lib/agent/critic', () => ({
 	validateTurn: vi.fn()
 }));
 
-vi.mock('$lib/chat/context', () => ({
-	toCoreMessages: vi.fn((msgs) => msgs)
+vi.mock('$lib/chat/projection', () => ({
+	projectEntries: vi.fn((msgs) => msgs)
 }));
 
 vi.mock('$lib/chat/brief', () => ({
@@ -129,8 +129,8 @@ void getToolDefinition;
 const { validateTurn } = await import('$lib/agent/critic');
 const mockedValidateTurn = vi.mocked(validateTurn);
 
-const { toCoreMessages } = await import('$lib/chat/context');
-const mockedToCoreMessages = vi.mocked(toCoreMessages);
+const { projectEntries } = await import('$lib/chat/projection');
+const mockedProjectEntries = vi.mocked(projectEntries);
 
 const { buildCapabilitiesPreamble } = await import('$lib/chat/brief');
 const mockedBuildCapabilitiesPreamble = vi.mocked(buildCapabilitiesPreamble);
@@ -221,6 +221,11 @@ function makeDeps(overrides: Partial<AgentTurnDeps> = {}): AgentTurnDeps {
 		reassembleContext: vi.fn(async () => []),
 		requestApproval: vi.fn(async () => ({ approved: true })),
 		notifyLowRisk: vi.fn(),
+		appendReasoning: vi.fn(async (_text: string, _iteration: number) => {
+			const msg = fakeMessage({ kind: 'reasoning', content: _text, ord: messages.length });
+			messages.push(msg);
+			return;
+		}),
 		...overrides
 	};
 }
@@ -231,7 +236,7 @@ beforeEach(() => {
 	mockedValidateTurn.mockResolvedValue([]);
 	mockedToolsRun.mockReset();
 	mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
-	mockedToCoreMessages.mockImplementation((msgs) => msgs as never);
+	mockedProjectEntries.mockImplementation((msgs) => msgs as never);
 	mockedBuildCapabilitiesPreamble.mockReturnValue('preamble');
 	mockedBuildFirstTurnOrientationPreamble.mockReturnValue('orientation');
 	mockedProviderOptionsForReasoning.mockReturnValue({});
@@ -252,7 +257,7 @@ describe('runAgentTurn', () => {
 
 		expect(result).toEqual({ aborted: false });
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world', { reasoning: undefined });
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world');
 		expect(deps.updateStreamBuffer).toHaveBeenCalledWith('Hello');
 		expect(deps.updateStreamBuffer).toHaveBeenCalledWith('Hello world');
 		expect(deps.appendAssistantToolCall).not.toHaveBeenCalled();
@@ -300,9 +305,7 @@ describe('runAgentTurn', () => {
 			expect.objectContaining({ summary: '1/3 steps done' })
 		);
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('You have 1 of 3 done.', {
-			reasoning: undefined
-		});
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('You have 1 of 3 done.');
 	});
 
 	it('(c) maxIterations: loop stops at 6; finalizes with exhaustion note; no runaway', async () => {
@@ -455,7 +458,7 @@ describe('runAgentTurn', () => {
 	});
 
 	describe('(f) critic', () => {
-		it('broken mermaid: exactly one correction re-stream fires; corrected text persisted', async () => {
+		it('broken mermaid: exactly one correction re-stream fires; corrected text persisted; appendSelfCorrected called with report', async () => {
 			let validateCount = 0;
 			mockedValidateTurn.mockImplementation(async () => {
 				validateCount++;
@@ -477,19 +480,27 @@ describe('runAgentTurn', () => {
 					])
 				} as never);
 
-			const deps = makeDeps();
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ appendSelfCorrected: appendSC });
 			const result = await runAgentTurn(deps);
 
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledTimes(2);
 			expect(deps.updateStreamBuffer).toHaveBeenCalledWith('');
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```', {
-				reasoning: undefined
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```');
+			expect(appendSC).toHaveBeenCalledOnce();
+			expect(appendSC).toHaveBeenCalledWith(
+				{
+					issues: [{ type: 'mermaid', message: 'parse error' }],
+					attempts: 1,
+					succeeded: true
+				},
+				expect.any(Number)
+			);
 		});
 
-		it('still broken after 2 tries: best-effort persisted; console.warn called', async () => {
+		it('still broken after 2 tries: best-effort persisted; console.warn called; appendSelfCorrected with succeeded=false', async () => {
 			mockedValidateTurn.mockResolvedValue([{ type: 'mermaid', message: 'still broken' }]);
 			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -507,16 +518,26 @@ describe('runAgentTurn', () => {
 					])
 				} as never);
 
-			const deps = makeDeps();
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ appendSelfCorrected: appendSC });
 			const result = await runAgentTurn(deps);
 
 			expect(result).toEqual({ aborted: false });
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
 			expect(warnSpy).toHaveBeenCalledWith('[agent] critic: still broken after max corrections');
+			expect(appendSC).toHaveBeenCalledOnce();
+			expect(appendSC).toHaveBeenCalledWith(
+				{
+					issues: [{ type: 'mermaid', message: 'still broken' }],
+					attempts: 2,
+					succeeded: false
+				},
+				expect.any(Number)
+			);
 			warnSpy.mockRestore();
 		});
 
-		it('valid turn: zero correction streams', async () => {
+		it('valid turn: zero correction streams; appendSelfCorrected NOT called', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
 					{ type: 'text-delta', text: 'valid reply' },
@@ -524,11 +545,47 @@ describe('runAgentTurn', () => {
 				])
 			} as never);
 
-			const deps = makeDeps();
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ appendSelfCorrected: appendSC });
 			const result = await runAgentTurn(deps);
 
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledOnce();
+			expect(appendSC).not.toHaveBeenCalled();
+		});
+
+		it('aborted mid-correction: appendSelfCorrected NOT called; text still persisted', async () => {
+			let validateCount = 0;
+			mockedValidateTurn.mockImplementation(async () => {
+				validateCount++;
+				if (validateCount === 1) return [{ type: 'mermaid', message: 'bad' }];
+				return [{ type: 'mermaid', message: 'still bad' }];
+			});
+
+			const ac = new AbortController();
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', text: 'broken' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: (async function* () {
+						yield { type: 'text-delta', text: 'correc' };
+						ac.abort();
+						yield { type: 'text-delta', text: 'ted' };
+						yield { type: 'finish', finishReason: 'stop' };
+					})()
+				} as never);
+
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ signal: ac.signal, appendSelfCorrected: appendSC });
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(appendSC).not.toHaveBeenCalled();
+			expect(deps.appendAssistantText).toHaveBeenCalled();
 		});
 	});
 
@@ -584,9 +641,7 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(mockedDisableToolsForSession).toHaveBeenCalledOnce();
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('fallback text', {
-				reasoning: undefined
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('fallback text');
 
 			const retryCall = mockedStreamText.mock.calls[1][0];
 			expect(retryCall.tools).toEqual({});
@@ -948,9 +1003,7 @@ describe('runAgentTurn', () => {
 				expect.objectContaining({ summary: 'user declined' })
 			);
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.', {
-				reasoning: undefined
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.');
 		});
 
 		it('(s) non-generative high tool unaffected: branch_chat + create_quiz → both approved; branch not budget-gated', async () => {
@@ -986,7 +1039,7 @@ describe('runAgentTurn', () => {
 	});
 
 	describe('(t) reasoning', () => {
-		it('reasoning-delta parts are accumulated and passed on final persist; interim tool-text omit reasoning', async () => {
+		it('per-iteration: two iterations of reasoning-deltas produce two appendReasoning calls with correct iteration numbers', async () => {
 			mockedStreamText
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
@@ -1013,18 +1066,21 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(deps.updateReasoningBuffer).toHaveBeenCalled();
 
+			expect(deps.appendReasoning).toHaveBeenCalledTimes(2);
+			expect(deps.appendReasoning).toHaveBeenNthCalledWith(1, 'thinking…', 0);
+			expect(deps.appendReasoning).toHaveBeenNthCalledWith(2, 'more', 1);
+
 			const allCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
 			const interimCall = allCalls.find((c) => c[0] === 'pre-tool text');
 			expect(interimCall).toBeDefined();
-			expect(interimCall![1]?.reasoning).toBeUndefined();
+			expect(interimCall![1]).toBeUndefined();
 
 			const finalCall = allCalls.find((c) => c[0] === 'Final reply');
 			expect(finalCall).toBeDefined();
-			expect(finalCall![1]?.reasoning).toContain('thinking…');
-			expect(finalCall![1]?.reasoning).toContain('more');
+			expect(finalCall![1]).toBeUndefined();
 		});
 
-		it('text-only turn with reasoning: reasoning passed on final persist', async () => {
+		it('text-only turn with reasoning: single appendReasoning call at iteration 0', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
 					{ type: 'reasoning-delta', text: 'hmm' },
@@ -1036,13 +1092,13 @@ describe('runAgentTurn', () => {
 			const deps = makeDeps();
 			await runAgentTurn(deps);
 
+			expect(deps.appendReasoning).toHaveBeenCalledOnce();
+			expect(deps.appendReasoning).toHaveBeenCalledWith('hmm', 0);
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			const call = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls[0];
-			expect(call[0]).toBe('Reply');
-			expect(call[1]?.reasoning).toBe('hmm');
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply');
 		});
 
-		it('turn without reasoning: opts.reasoning is undefined', async () => {
+		it('turn without reasoning: appendReasoning is never called', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
 					{ type: 'text-delta', text: 'No reasoning' },
@@ -1053,9 +1109,24 @@ describe('runAgentTurn', () => {
 			const deps = makeDeps();
 			await runAgentTurn(deps);
 
-			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			const call = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls[0];
-			expect(call[1]?.reasoning).toBeUndefined();
+			expect(deps.appendReasoning).not.toHaveBeenCalled();
+		});
+
+		it('assistant rows carry no reasoning metadata', async () => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'think' },
+					{ type: 'text-delta', text: 'Reply' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps();
+			await runAgentTurn(deps);
+
+			const calls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+			expect(calls).toHaveLength(1);
+			expect(calls[0][1]).toBeUndefined();
 		});
 	});
 
@@ -1083,9 +1154,8 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledOnce();
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('prose', {
-				reasoning: 'thinking…'
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('prose');
+			expect(deps.appendReasoning).toHaveBeenCalledWith('thinking…', 0);
 			expect(deps.appendAssistantToolCall).toHaveBeenCalledOnce();
 			expect(mockedToolsRun).toHaveBeenCalledOnce();
 		});
@@ -1207,9 +1277,7 @@ describe('generative buf suppression + chip', () => {
 		const lastClearIdx = bufferCalls.findLastIndex((c: unknown[]) => c[0] === '');
 		expect(lastClearIdx).toBeGreaterThanOrEqual(0);
 		expect(deps.appendAssistantText).toHaveBeenCalledTimes(1);
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.', {
-			reasoning: undefined
-		});
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.');
 
 		expect(notifyGenerativeStatus).toHaveBeenCalledWith({
 			toolName: 'create_quiz',

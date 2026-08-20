@@ -127,16 +127,34 @@ export function extractFencedJson(raw: string): string {
 	return extractFencedBlock(raw, 'json');
 }
 
+export interface GateResult extends GateBlock {
+	entryId: string | null;
+}
+
 export function findGateFromMessages<
-	T extends { role: string; toolName?: string | null; metadata?: string | null }
->(messages: readonly T[]): GateBlock | null {
+	T extends {
+		role: string;
+		toolName?: string | null;
+		metadata?: string | null;
+		kind?: string | null;
+		id?: string | null;
+	}
+>(messages: readonly T[]): GateResult | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const m = messages[i];
 		if (m.role === 'user') break;
+		if (m.kind === 'choices' && m.metadata) {
+			try {
+				const result = GateBlockSchema.safeParse(JSON.parse(m.metadata));
+				if (result.success) return { ...result.data, entryId: m.id ?? null };
+			} catch {
+				/* ignore malformed */
+			}
+		}
 		if (m.role === 'assistant' && m.toolName === 'present_choices' && m.metadata) {
 			try {
 				const result = GateBlockSchema.safeParse(JSON.parse(m.metadata));
-				if (result.success) return result.data;
+				if (result.success) return { ...result.data, entryId: m.id ?? null };
 			} catch {
 				/* ignore malformed */
 			}
