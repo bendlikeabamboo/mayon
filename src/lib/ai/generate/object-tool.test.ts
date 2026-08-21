@@ -207,6 +207,83 @@ describe('generateObjectViaTool', () => {
 		).rejects.toThrow(ObjectToolError);
 	});
 
+	it('classifies a tool-input schema mismatch as schema_mismatch', async () => {
+		mockedGenerateText.mockResolvedValue(toolCallResult({ a: 123 }, 'bad') as never);
+		try {
+			await generateObjectViaTool(mockModel, {
+				schema: Schema,
+				system: 's',
+				messages: [{ role: 'user', content: 'go' }]
+			});
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as ObjectToolError).code).toBe('schema_mismatch');
+		}
+	});
+
+	it('classifies a text-fallback schema mismatch as schema_mismatch', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [],
+			text: JSON.stringify({ a: 'hi', extra: 1 })
+		} as never);
+		try {
+			await generateObjectViaTool(mockModel, {
+				schema: Schema,
+				system: 's',
+				messages: [{ role: 'user', content: 'go' }]
+			});
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as ObjectToolError).code).toBe('schema_mismatch');
+		}
+	});
+
+	it('classifies tool-less prose as schema_mismatch (whole-string fallback fails the schema)', async () => {
+		// extractFencedJson falls back to the trimmed whole string, which then
+		// fails describeValidation at the root — so prose is reported as a
+		// schema mismatch, not a JSON parse failure. Callers that retry on
+		// schema_mismatch should therefore expect prose to retry too.
+		mockedGenerateText.mockResolvedValue({ toolCalls: [], text: 'prose only' } as never);
+		try {
+			await generateObjectViaTool(mockModel, {
+				schema: Schema,
+				system: 's',
+				messages: [{ role: 'user', content: 'go' }]
+			});
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as ObjectToolError).code).toBe('schema_mismatch');
+		}
+	});
+
+	it('classifies an empty response as no_result', async () => {
+		mockedGenerateText.mockResolvedValue({ toolCalls: [], text: '' } as never);
+		try {
+			await generateObjectViaTool(mockModel, {
+				schema: Schema,
+				system: 's',
+				messages: [{ role: 'user', content: 'go' }]
+			});
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as ObjectToolError).code).toBe('no_result');
+		}
+	});
+
+	it('classifies a generateText rejection as request_failed', async () => {
+		mockedGenerateText.mockRejectedValue(new Error('network down'));
+		try {
+			await generateObjectViaTool(mockModel, {
+				schema: Schema,
+				system: 's',
+				messages: [{ role: 'user', content: 'go' }]
+			});
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as ObjectToolError).code).toBe('request_failed');
+		}
+	});
+
 	it('rejects unknown keys (strict) on the tool input', async () => {
 		mockedGenerateText.mockResolvedValue(toolCallResult({ a: 'hi', extra: 1 }, '') as never);
 		await expect(
@@ -250,7 +327,9 @@ describe('extractObjectErrorRaw', () => {
 	});
 
 	it('returns the ObjectToolError raw payload', () => {
-		expect(extractObjectErrorRaw(new ObjectToolError('msg', 'raw text'))).toBe('raw text');
+		expect(extractObjectErrorRaw(new ObjectToolError('msg', 'raw text', 'schema_mismatch'))).toBe(
+			'raw text'
+		);
 	});
 
 	it('returns the message for a plain Error', () => {

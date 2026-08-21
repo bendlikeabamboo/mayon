@@ -174,6 +174,78 @@ describe('generateQuiz', () => {
 			})
 		);
 	});
+
+	it('calls the model only once on success (no corrective retry)', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validQuiz }],
+			text: ''
+		} as never);
+		await generateQuiz(mockModel, messages, quizOpts('p'));
+		expect(mockedGenerateText).toHaveBeenCalledTimes(1);
+	});
+
+	it('retries once with corrective feedback when the tool input fails the schema', async () => {
+		const badInput = {
+			questions: [{ type: 'dropdown', prompt: 'x', payload: {} }]
+		};
+		mockedGenerateText
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: badInput }],
+				text: 'here is your quiz'
+			} as never)
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: validQuiz }],
+				text: ''
+			} as never);
+
+		const quiz = await generateQuiz(mockModel, messages, quizOpts('p'));
+
+		expect(quiz).toEqual(validQuiz);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(2);
+		const retryArgs = mockedGenerateText.mock.calls[1][0] as {
+			messages: Array<{ role: string; content: string }>;
+		};
+		const last = retryArgs.messages.at(-1);
+		expect(last?.role).toBe('user');
+		expect(last?.content).toContain('rejected by validation');
+		expect(last?.content).toContain('"mcq"');
+		// The corrective turn is appended after the original context, not replacing it.
+		expect(retryArgs.messages[0]).toEqual({ role: 'user', content: 'go' });
+	});
+
+	it('gives up after one corrective retry if the model still fails the schema', async () => {
+		const badInput = { questions: [] };
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: badInput }],
+			text: 'nope'
+		} as never);
+		await expect(generateQuiz(mockModel, messages, quizOpts('p'))).rejects.toThrow(
+			QuizGenerationError
+		);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not retry on transport failures', async () => {
+		mockedGenerateText.mockRejectedValue(new Error('boom'));
+		await expect(generateQuiz(mockModel, messages, quizOpts('p'))).rejects.toThrow(
+			QuizGenerationError
+		);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(1);
+	});
+
+	it('skips the corrective retry when the signal is already aborted', async () => {
+		const badInput = { questions: [] };
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: badInput }],
+			text: ''
+		} as never);
+		const ac = new AbortController();
+		ac.abort();
+		await expect(
+			generateQuiz(mockModel, messages, { prompt: 'p', signal: ac.signal })
+		).rejects.toThrow(QuizGenerationError);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('gradeShortAnswer', () => {

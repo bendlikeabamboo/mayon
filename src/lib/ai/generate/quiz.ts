@@ -84,41 +84,91 @@ const ShortPayloadSchema = z
 	})
 	.strict();
 
-const QuizQuestionSchema = z.discriminatedUnion('type', [
-	z
-		.object({
-			type: z.literal('mcq'),
-			prompt: z.string().min(1),
-			payload: McqPayloadSchema
-		})
-		.strict()
-		.superRefine((q, ctx) => {
-			// Validate 0 <= answerIndex < options.length. The number is already
-			// constrained to a non-negative int above; only the upper bound is
-			// relational and so can't be expressed declaratively.
-			if (q.payload.answerIndex >= q.payload.options.length) {
-				ctx.addIssue({
-					code: 'custom',
-					message: 'answerIndex out of range',
-					path: ['payload', 'answerIndex']
-				});
-			}
-		}),
-	z
-		.object({
-			type: z.literal('flashcard'),
-			prompt: z.string().min(1),
-			payload: FlashcardPayloadSchema
-		})
-		.strict(),
-	z
-		.object({
-			type: z.literal('short'),
-			prompt: z.string().min(1),
-			payload: ShortPayloadSchema
-		})
-		.strict()
-]);
+/**
+ * Models routinely emit alias discriminators despite the prompt ("multiple_choice",
+ * "MCQ", "short-answer", "flash_card"), which fails the strict discriminated union
+ * and kills the whole generation. Canonicalize known aliases instead; unmappable
+ * values still fail validation. Keys are lowercase with [-\s]+ collapsed to "_".
+ */
+const QUESTION_TYPE_ALIASES: Record<string, GeneratedQuizQuestion['type']> = {
+	mcq: 'mcq',
+	multiple_choice: 'mcq',
+	multiplechoice: 'mcq',
+	multi_choice: 'mcq',
+	mcqs: 'mcq',
+	single_choice: 'mcq',
+	choice: 'mcq',
+	mcq_question: 'mcq',
+	flashcard: 'flashcard',
+	flashcards: 'flashcard',
+	flash_card: 'flashcard',
+	card: 'flashcard',
+	flip_card: 'flashcard',
+	short: 'short',
+	short_answer: 'short',
+	shortanswer: 'short',
+	short_response: 'short',
+	short_answer_question: 'short',
+	freeform: 'short',
+	free_form: 'short',
+	open_ended: 'short'
+};
+
+/**
+ * Normalize one emitted question object: map a string `type` through the alias
+ * table (trimmed, lowercased, separators collapsed). Everything else — including
+ * non-string types, unknown keys, and non-object inputs — passes through
+ * unchanged so strict validation still reports the real problem.
+ */
+function normalizeQuestion(value: unknown): unknown {
+	if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
+	const { type, ...rest } = value as Record<string, unknown>;
+	if (typeof type !== 'string') return value;
+	const key = type
+		.trim()
+		.toLowerCase()
+		.replace(/[-\s]+/g, '_');
+	return { ...rest, type: QUESTION_TYPE_ALIASES[key] ?? type };
+}
+
+const QuizQuestionSchema = z.preprocess(
+	normalizeQuestion,
+	z.discriminatedUnion('type', [
+		z
+			.object({
+				type: z.literal('mcq'),
+				prompt: z.string().min(1),
+				payload: McqPayloadSchema
+			})
+			.strict()
+			.superRefine((q, ctx) => {
+				// Validate 0 <= answerIndex < options.length. The number is already
+				// constrained to a non-negative int above; only the upper bound is
+				// relational and so can't be expressed declaratively.
+				if (q.payload.answerIndex >= q.payload.options.length) {
+					ctx.addIssue({
+						code: 'custom',
+						message: 'answerIndex out of range',
+						path: ['payload', 'answerIndex']
+					});
+				}
+			}),
+		z
+			.object({
+				type: z.literal('flashcard'),
+				prompt: z.string().min(1),
+				payload: FlashcardPayloadSchema
+			})
+			.strict(),
+		z
+			.object({
+				type: z.literal('short'),
+				prompt: z.string().min(1),
+				payload: ShortPayloadSchema
+			})
+			.strict()
+	])
+);
 
 /** Strict Zod schema: rejects unknown keys so a chatty model can't smuggle
  *  fields past us. Requires a non-empty questions array. */
