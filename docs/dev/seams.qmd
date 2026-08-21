@@ -109,6 +109,10 @@ No assistant-initiated interaction (chips, suggestions, approvals) may be added 
 
 Derived in `assembleTimeline` (`src/lib/chat/entries.ts`) — never stored. States: awaiting / running / declined / aborted / failed / succeeded, plus 003's genuine-gap / terminal. Sources: approval-row outcomes, live pending approvals, the `streaming` flag, registry `terminal` classification (`$lib/agent/registry` only), and the additive `ok` flag on NEW `tool_result` metadata. Detail: `specs/004-internal-area-unification/contracts/tool-activity-status.md`.
 
+### Shape-driven result bodies
+
+The expanded body of a tool-result row is rendered per its classified shape: `classifyResult(summary, detail)` in `src/lib/chat/result-shape.ts` is the single shape authority (records-with-urls → link cards with the sources row folded in; markdown → timeline markdown renderer; other JSON → pretty-printed; else bounded raw view) — never tool-name or server identity, never a UI-side tool list. Stored payloads are read-only inputs. Detail: `specs/005-shape-driven-results/contracts/tool-result-shapes.md`.
+
 ### Live-ask merge rule
 
 A pending live ask replaces its durable ask row at the row's chronological position — exactly one ask surface per pending ask. All other live items append at the timeline tail. Detail: `specs/004-internal-area-unification/contracts/interactive-surfaces.md`.

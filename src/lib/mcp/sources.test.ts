@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractSources } from './sources';
+import { collectCards, extractSources, scanJsonValues } from './sources';
 
 function detail(text: string): { serverId: string; toolName: string; content: unknown[] } {
 	return { serverId: 'srv', toolName: 'brave_web_search', content: [{ type: 'text', text }] };
@@ -119,5 +119,139 @@ describe('extractSources', () => {
 
 	it('returns [] for foreign tool payloads without url fields', () => {
 		expect(extractSources(detail(JSON.stringify({ stdout: 'hello', code: 0 })))).toEqual([]);
+	});
+});
+
+describe('scanJsonValues', () => {
+	it('parses a whole-string JSON object into a single value', () => {
+		expect(scanJsonValues('{"a":1}')).toEqual([{ a: 1 }]);
+	});
+
+	it('parses a whole-string JSON array into a single value', () => {
+		expect(scanJsonValues('[{"url":"https://a"},{"url":"https://b"}]')).toEqual([
+			[{ url: 'https://a' }, { url: 'https://b' }]
+		]);
+	});
+
+	it('splits concatenated top-level JSON values with no separator', () => {
+		const text = '{"url":"https://a"}{"url":"https://b"}';
+		expect(scanJsonValues(text)).toEqual([{ url: 'https://a' }, { url: 'https://b' }]);
+	});
+
+	it('splits a mix of objects, arrays, and scalars', () => {
+		const text = '{"q":"ai"}[1,2]null42"done"';
+		expect(scanJsonValues(text)).toEqual([{ q: 'ai' }, [1, 2], null, 42, 'done']);
+	});
+
+	it('does not split on braces inside string literals', () => {
+		const text = '{"label":"a } b { c"}{"url":"https://x"}';
+		expect(scanJsonValues(text)).toEqual([{ label: 'a } b { c' }, { url: 'https://x' }]);
+	});
+
+	it('handles escaped quotes inside strings', () => {
+		const text = '{"label":"she said \\"}\\" nicely"}{"url":"https://y"}';
+		expect(scanJsonValues(text)).toEqual([{ label: 'she said "}" nicely' }, { url: 'https://y' }]);
+	});
+
+	it('drops a truncated trailing value', () => {
+		const text = '{"url":"https://a"}{"url":"https://b';
+		expect(scanJsonValues(text)).toEqual([{ url: 'https://a' }]);
+	});
+
+	it('ignores whitespace between values', () => {
+		const text = '{"a":1}\n  {"b":2}';
+		expect(scanJsonValues(text)).toEqual([{ a: 1 }, { b: 2 }]);
+	});
+
+	it('yields [] for empty, whitespace, or garbage input', () => {
+		expect(scanJsonValues('')).toEqual([]);
+		expect(scanJsonValues('   \n ')).toEqual([]);
+		expect(scanJsonValues('not json at all')).toEqual([]);
+	});
+
+	it('never throws on adversarial input', () => {
+		expect(() => scanJsonValues('{"a":')).not.toThrow();
+		expect(() => scanJsonValues('}}}{{{')).not.toThrow();
+		expect(() => scanJsonValues('{"s":"\\\\u"}{')).not.toThrow();
+	});
+});
+
+describe('collectCards', () => {
+	it('projects brave-shaped values into cards with stripped one-line descriptions', () => {
+		const values = [
+			{
+				web: {
+					results: [
+						{
+							title: 'Story One',
+							url: 'https://example.com/1',
+							description: '<strong>Bold</strong> intro\nsecond line'
+						}
+					]
+				}
+			}
+		];
+		expect(collectCards(values)).toEqual([
+			{
+				url: 'https://example.com/1',
+				title: 'Story One',
+				host: 'example.com',
+				description: 'Bold intro second line',
+				snippet: undefined
+			}
+		]);
+	});
+
+	it('captures snippet fields and falls back to host for missing titles', () => {
+		const values = [{ url: 'https://bare.example/a', snippet: 'extra context' }];
+		expect(collectCards(values)).toEqual([
+			{
+				url: 'https://bare.example/a',
+				title: 'bare.example',
+				host: 'bare.example',
+				description: undefined,
+				snippet: 'extra context'
+			}
+		]);
+	});
+
+	it('dedupes by URL preserving first occurrence', () => {
+		const values = [
+			{ title: 'First', url: 'https://dup.example/a' },
+			{ title: 'Second', url: 'https://dup.example/a' }
+		];
+		const cards = collectCards(values);
+		expect(cards).toHaveLength(1);
+		expect(cards[0]?.title).toBe('First');
+	});
+
+	it('makes a bare url string value into a host-titled card', () => {
+		expect(collectCards(['https://plain.example/x'])).toEqual([
+			{ url: 'https://plain.example/x', title: 'plain.example', host: 'plain.example' }
+		]);
+	});
+
+	it('adds page-url cards for source/origin alongside media urls', () => {
+		const values = [
+			{ title: 'Aurora', url: 'https://img.example/a.jpg', source: 'https://page.example' }
+		];
+		const cards = collectCards(values);
+		expect(cards).toHaveLength(2);
+		expect(cards[1]).toEqual({
+			url: 'https://page.example',
+			title: 'page.example',
+			host: 'page.example'
+		});
+	});
+
+	it('bounds the scan (50 cards max from pathological payloads)', () => {
+		const values = [
+			Array.from({ length: 80 }, (_, i) => ({ title: `R${i}`, url: `https://cap.example/${i}` }))
+		];
+		expect(collectCards(values)).toHaveLength(50);
+	});
+
+	it('returns [] for values without urls', () => {
+		expect(collectCards([{ id: 1 }, 'plain text', 42, null])).toEqual([]);
 	});
 });
