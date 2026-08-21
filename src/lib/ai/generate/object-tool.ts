@@ -56,15 +56,27 @@ export interface GenerateObjectToolResult<T> {
 }
 
 /**
+ * Why a structured generation failed. Lets callers (e.g. quiz generation) retry
+ * correctively on `schema_mismatch` while treating everything else as fatal.
+ */
+export type ObjectToolErrorCode =
+	| 'request_failed' // generateText threw (transport / provider error)
+	| 'schema_mismatch' // a tool call or parsed text failed schema validation
+	| 'invalid_text' // no tool call and the text was not parseable JSON
+	| 'no_result'; // no tool call and no text at all
+
+/**
  * Raised when tool-calling structured generation fails (request error, no tool
  * call, or a schema mismatch). Carries the model's raw text in `raw` so the
- * diagnostics panel can show what actually came back. Not a transport error —
+ * diagnostics panel can show what actually came back, and a machine-readable
+ * `code` for callers that want corrective retry. Not a transport error —
  * callers re-wrap into their own typed `*Error` (e.g. `LabGenerationError`).
  */
 export class ObjectToolError extends Error {
 	constructor(
 		message: string,
-		public readonly raw: string
+		public readonly raw: string,
+		public readonly code: ObjectToolErrorCode
 	) {
 		super(message);
 		this.name = 'ObjectToolError';
@@ -145,7 +157,11 @@ export async function generateObjectViaTool<T>(
 			maxRetries: opts.maxRetries ?? 2
 		});
 	} catch (err) {
-		throw new ObjectToolError('Structured generation request failed.', extractObjectErrorRaw(err));
+		throw new ObjectToolError(
+			'Structured generation request failed.',
+			extractObjectErrorRaw(err),
+			'request_failed'
+		);
 	}
 
 	const text = result.text ?? '';
@@ -160,7 +176,11 @@ export async function generateObjectViaTool<T>(
 		if (!detail) {
 			return { object: opts.schema.parse(input), text };
 		}
-		throw new ObjectToolError(`Structured result did not match the schema: ${detail}`, text);
+		throw new ObjectToolError(
+			`Structured result did not match the schema: ${detail}`,
+			text,
+			'schema_mismatch'
+		);
 	}
 
 	// Fallback: the model ignored the tool and emitted the object as prose /
@@ -172,18 +192,24 @@ export async function generateObjectViaTool<T>(
 			if (!detail) {
 				return { object: opts.schema.parse(fromText), text };
 			}
-			throw new ObjectToolError(`Structured result did not match the schema: ${detail}`, text);
+			throw new ObjectToolError(
+				`Structured result did not match the schema: ${detail}`,
+				text,
+				'schema_mismatch'
+			);
 		} catch (err) {
 			if (err instanceof ObjectToolError) throw err;
 			throw new ObjectToolError(
 				`Model returned no tool call and the text was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-				text
+				text,
+				'invalid_text'
 			);
 		}
 	}
 
 	throw new ObjectToolError(
 		'Model did not emit a structured result (no tool call and no text).',
-		text
+		text,
+		'no_result'
 	);
 }

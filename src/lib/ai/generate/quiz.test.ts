@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
 	GeneratedQuizSchema,
 	GradedAnswerSchema,
@@ -45,6 +46,12 @@ describe('GeneratedQuizSchema (strict)', () => {
 	it('accepts a quiz with only one question', () => {
 		const out = GeneratedQuizSchema.parse({ questions: [validMcq] });
 		expect(out.questions).toHaveLength(1);
+	});
+
+	it('still produces a JSON Schema for the tool wire format (preprocess pipe)', () => {
+		// The ai SDK derives the tool's wire schema from this zod schema; a
+		// preprocess that can't convert would break every generation call.
+		expect(() => z.toJSONSchema(GeneratedQuizSchema)).not.toThrow();
 	});
 
 	it('rejects an extra (unknown) field at top level', () => {
@@ -96,6 +103,60 @@ describe('GeneratedQuizSchema (strict)', () => {
 		expect(() =>
 			GeneratedQuizSchema.parse({
 				questions: [{ type: 'mcq', prompt: 'x', payload: extra }]
+			})
+		).toThrow();
+	});
+});
+
+describe('GeneratedQuizSchema (question-type alias normalization)', () => {
+	// Models (notably Z.AI/GLM) emit alias discriminators despite the prompt;
+	// they are canonicalized instead of failing the whole generation.
+	const cases: Array<[string, GeneratedQuiz['questions'][number]['type']]> = [
+		['multiple_choice', 'mcq'],
+		['multiple-choice', 'mcq'],
+		['MCQ', 'mcq'],
+		['mcqs', 'mcq'],
+		['flash_card', 'flashcard'],
+		['Flashcards', 'flashcard'],
+		['short_answer', 'short'],
+		['short-answer', 'short'],
+		['Short Answer', 'short'],
+		['freeform', 'short']
+	];
+
+	it.each(cases)('normalizes type "%s" to "%s"', (alias, expected) => {
+		const base = {
+			mcq: { ...validMcq },
+			flashcard: { ...validFlashcard },
+			short: { ...validShort }
+		} as const;
+		const out = GeneratedQuizSchema.parse({
+			questions: [{ ...base[expected], type: alias }]
+		});
+		expect(out.questions[0].type).toBe(expected);
+	});
+
+	it('normalizes only the failing question, keeping valid siblings untouched', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [{ ...validMcq, type: 'multiple_choice' }, validFlashcard]
+		});
+		expect(out.questions).toHaveLength(2);
+		expect(out.questions[0].type).toBe('mcq');
+		expect(out.questions[1]).toEqual(validFlashcard);
+	});
+
+	it('still rejects unmappable type values', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [{ ...validMcq, type: 'dropdown' }]
+			})
+		).toThrow();
+	});
+
+	it('leaves non-string type values to fail strict validation', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [{ ...validMcq, type: 42 }]
 			})
 		).toThrow();
 	});

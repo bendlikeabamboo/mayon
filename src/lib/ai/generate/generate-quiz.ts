@@ -14,7 +14,7 @@ import {
 	type GeneratedQuiz,
 	type GradedAnswer
 } from './quiz';
-import { generateObjectViaTool, extractObjectErrorRaw } from './object-tool';
+import { generateObjectViaTool, extractObjectErrorRaw, ObjectToolError } from './object-tool';
 import { splitContextForGeneration } from './context-split';
 
 export const DEFAULT_QUIZ_PROMPT = [
@@ -67,7 +67,8 @@ export const DEFAULT_QUIZ_PROMPT = [
 	'- Field names are lowercase and exactly as shown; payloads must match their type.',
 	'- Do NOT include ids or ordering — emit only type/prompt/payload (ordering is assigned at save time).',
 	'- "answerIndex" must be a valid 0-based index into "options"; mcq needs >=2 options.',
-	'- "questions" is a non-empty array.'
+	'- "questions" is a non-empty array.',
+	'- The value of "type" must be EXACTLY the string "mcq", "flashcard", or "short" — lowercase, no variants.'
 ].join('\n');
 
 export const DEFAULT_GRADE_PROMPT = [
@@ -148,6 +149,26 @@ export interface GradeShortAnswerOptions {
 	}) => void;
 }
 
+/**
+ * Corrective feedback appended as a final user turn when the model's structured
+ * output failed schema validation. Feeding the concrete validation error back
+ * (plus the allowed shape) lets the model fix payload drift that alias
+ * normalization can't repair.
+ */
+function correctionMessage(detail: string): string {
+	return [
+		'Your previous structured output was rejected by validation:',
+		detail,
+		'',
+		'Try again: call the `json` tool with a corrected object.',
+		'- Each question "type" must be exactly "mcq", "flashcard", or "short" (lowercase).',
+		'- mcq payload: {"options": array of >=2 strings, "answerIndex": 0-based index into options}.',
+		'- flashcard payload: {"front": string, "back": string}.',
+		'- short payload: {"rubric": string}.',
+		'- Emit only {"questions": [...]} with no extra fields; no prose, no ids.'
+	].join('\n');
+}
+
 export async function generateQuiz(
 	model: LanguageModel,
 	messages: ChatMessage[],
@@ -157,24 +178,47 @@ export async function generateQuiz(
 	const { system, messages: core } = splitContextForGeneration(messages, prompt, {
 		includeSystemNotes: false
 	});
-	const request = {
+	// One corrective retry: models occasionally emit alias discriminators or drift
+	// on payload shape (observed with Z.AI/GLM). On a schema mismatch we re-ask
+	// once with the validation error appended; anything else (transport errors,
+	// no result) is fatal immediately.
+	const toTraceRequest = (msgs: typeof core) => ({
 		system,
-		messages: core.map((m) => ({ role: m.role, content: String(m.content) })),
-		schema: 'GeneratedQuizSchema'
-	};
+		messages: msgs.map((m) => ({ role: m.role, content: String(m.content) })),
+		schema: 'GeneratedQuizSchema' as const
+	});
+	let attemptMessages = core;
 	try {
-		const { object } = await generateObjectViaTool(model, {
-			schema: GeneratedQuizSchema,
-			system,
-			messages: core,
-			signal: opts.signal,
-			maxRetries: 2
-		});
-		opts.onTrace?.({ request, result: { object } });
-		return object;
+		for (let attempt = 0; ; attempt++) {
+			try {
+				const { object } = await generateObjectViaTool(model, {
+					schema: GeneratedQuizSchema,
+					system,
+					messages: attemptMessages,
+					signal: opts.signal,
+					maxRetries: 2
+				});
+				opts.onTrace?.({ request: toTraceRequest(attemptMessages), result: { object } });
+				return object;
+			} catch (err) {
+				if (
+					attempt === 0 &&
+					err instanceof ObjectToolError &&
+					err.code === 'schema_mismatch' &&
+					!opts.signal?.aborted
+				) {
+					attemptMessages = [
+						...core,
+						{ role: 'user' as const, content: correctionMessage(err.message) }
+					];
+					continue;
+				}
+				throw err;
+			}
+		}
 	} catch (err) {
 		opts.onTrace?.({
-			request,
+			request: toTraceRequest(attemptMessages),
 			error: err instanceof Error ? err.message : String(err),
 			raw: extractObjectErrorRaw(err)
 		});
