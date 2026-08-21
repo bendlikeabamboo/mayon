@@ -66,6 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Exactly one ask surface per pending request** — a pending live ask
   replaces its durable row at the row's chronological position instead of
   rendering twice.
+- **Quiz generation survives aliased question types** — models emitting
+  variant discriminators ("multiple_choice", "short-answer", "flash_card", …)
+  no longer fail quiz generation with "Structured result did not match the
+  schema": the quiz schema canonicalizes known type aliases,
+  structured-generation failures carry a machine-readable code, and quiz
+  generation retries once with the validation error fed back to the model.
 
 ## [0.2.1] - 2026-08-09
 
