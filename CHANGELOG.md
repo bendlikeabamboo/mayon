@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-21
+
+### Added
+
+- **Chat timeline entry-kind model** — every timeline event now carries an
+  explicit `kind` (user/assistant message, reasoning, tool call/result,
+  approval, sampling, elicitation, choices, self-correction) with lanes
+  (user / internal / external) derived from kind via a single
+  kind→presentation registry. Permission asks, sampling requests,
+  elicitations, and choice offers are durable: their options and resolved
+  outcomes survive reload (undecided asks render as undecided, never as
+  live cards). Reasoning persists per agent-loop iteration with correct
+  attribution. A stamped schema-version migration backfills kinds for 100%
+  of existing rows in place — no parallel table, all entry IDs preserved.
+- **Honest tool-activity statuses** — tool rows derive
+  awaiting/running/declined/aborted/failed/succeeded presentation (plus
+  kept genuine-gap/terminal states) from approval outcomes, live pending
+  approvals, and an additive `ok` flag on new tool-result metadata.
+  Awaiting calls no longer render as failures; declined is visually
+  distinct from failed.
+- **Shape-driven tool-result rendering** — expanded tool results render per
+  their detected shape: URL-bearing JSON records (e.g. Brave web-search
+  payloads) as a capped list of link cards with the sources row folded in,
+  markdown through the timeline markdown renderer, other JSON
+  pretty-printed, everything else in the existing bounded raw view. A pure
+  classifier (`src/lib/chat/result-shape.ts`) is the single shape
+  authority — detection never consults tool names or server identity.
+  Stored payloads are read-only inputs; legacy chats render with zero data
+  change.
+- **Tappable pacing offers in the timeline** — choice chips moved out of
+  the compose area (now user-input-only) onto their timeline offer; the
+  taken choice links back to its offer and survives reload.
+- **Spec-driven development tooling** — Spec Kit (`/speckit.*`) command
+  suite with project constitution, spec/plan/tasks templates, and feature
+  checklists under `.kilo/` and `.specify/`.
+
+### Changed
+
+- **Context assembly is an explicit projection** — the provider-visible
+  message sequence is derived by one pure entries→messages projection with
+  golden-test equivalence for pre-existing chats, replacing
+  column-combination guessing; the request trace now mirrors the projected
+  wire payload (single system prompt, tool identity preserved).
+- **Live and persisted output share one presentation** — streaming text,
+  reasoning, and pending asks flow through the same renderers as their
+  durable counterparts, eliminating visual discontinuity on turn
+  completion and the duplicated streaming markup.
+- **Tool-result expander is the header row** — the icon + tool name +
+  chevron header toggles the expanded body (`aria-expanded`, keyboard
+  support); the floating Show/Hide control is gone.
+
+### Fixed
+
+- **No duplicated assistant text during approval waits** — a persisted text
+  segment retires its live buffer in the same update, so the pre-tool
+  sentence renders exactly once throughout the wait and after completion.
+- **Exactly one ask surface per pending request** — a pending live ask
+  replaces its durable row at the row's chronological position instead of
+  rendering twice.
+
 ## [0.2.1] - 2026-08-09
 
 ### Fixed

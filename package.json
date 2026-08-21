@@ -1,6 +1,6 @@
 {
 	"name": "mayon",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"private": true,
 	"type": "module",
 	"description": "Mayon — a local-first learning app built around a branchable chat graph.",
@@ -15,7 +15,7 @@
 		]
 	},
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "docker compose -p mayon-dev -f docker-compose.dev.yml up",
 		"build": "vite build",
 		"preview": "vite preview",
 		"check": "svelte-check --tsconfig ./tsconfig.json",
@@ -26,7 +26,6 @@
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
-		"dev": "docker compose -p mayon-dev -f docker-compose.dev.yml up",
 		"dev:vite": "vite dev",
 		"dev:up": "docker compose -p mayon-dev -f docker-compose.dev.yml up -d",
 		"dev:down": "docker compose -p mayon-dev -f docker-compose.dev.yml down",
