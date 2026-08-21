@@ -1,8 +1,16 @@
+export interface TracedRequestMessage {
+	role: string;
+	content: string;
+	toolCallId?: string;
+	toolName?: string;
+	kind?: string;
+}
+
 export type TraceEvent =
 	| {
 			kind: 'request';
 			system: string;
-			messages: Array<{ role: string; content: string }>;
+			messages: TracedRequestMessage[];
 			tools: string[];
 			providerOptions: Record<string, unknown>;
 	  }
@@ -40,7 +48,7 @@ interface TurnTrace {
 		index: number;
 		request: {
 			system: string;
-			messages: Array<{ role: string; content: string }>;
+			messages: TracedRequestMessage[];
 			tools: string[];
 			providerOptions: Record<string, unknown>;
 		};
@@ -60,7 +68,7 @@ interface IterationState {
 	index: number;
 	request: {
 		system: string;
-		messages: Array<{ role: string; content: string }>;
+		messages: TracedRequestMessage[];
 		tools: string[];
 		providerOptions: Record<string, unknown>;
 	};
@@ -74,7 +82,7 @@ interface IterationState {
 
 export interface ObjectTraceRequest {
 	system: string;
-	messages: Array<{ role: string; content: string }>;
+	messages: TracedRequestMessage[];
 	schema?: string;
 }
 

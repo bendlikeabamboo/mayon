@@ -48,7 +48,8 @@ One codebase. A SvelteKit SPA connects to a local server container that provides
 │              generateLab · generateQuiz · gradeShortAnswer          │
 │              assembleContext (reference-based walk)                  │
 │  lib/agent   Tool loop, registry, capability gating, critic           │
-│  lib/chat    tree ops · branch-from-highlight · crosslinks          │
+│  lib/chat    kinds · entries · projection · presentation        │
+│              tree ops · branch-from-highlight · crosslinks          │
 │              expound/source-map · selection resolution                │
 │  lib/db      schema · migrations · repositories           │
 ├───────────────────────────────────────────────────────────┤
@@ -99,20 +100,21 @@ A node in the conversation tree.
 
 #### messages
 
-Content of a single chat.
+Content of a single chat. Each row carries exactly one durable `kind` from a closed 10-value enumeration (`src/lib/chat/kinds.ts`). The `role` column is retained as the authoring-side field (D3) and is **not** used for presentation or projection after migration — `kind` is the authoritative classification everywhere.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | TEXT PK | |
 | chat_id | TEXT → chats.id | |
-| role | TEXT | system, user, assistant, or tool |
+| kind | TEXT | Entry kind: `user_message`, `assistant_message`, `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`. Added nullable by drizzle DDL; `SET NOT NULL` enforced by the v1→v2 data migration after backfill proves completeness. |
+| role | TEXT | system, user, assistant, or tool — authoring side only; not used for presentation or projection |
 | content | TEXT | markdown |
 | ord | INTEGER | ordering within the chat |
 | model | TEXT | nullable |
 | tokens | INTEGER | nullable |
 | tool_call_id | TEXT | nullable |
 | tool_name | TEXT | nullable |
-| metadata | TEXT | nullable |
+| metadata | TEXT | nullable; per-kind payload schemas (see `src/lib/chat/kinds.ts`) |
 | created_at | INTEGER | |
 
 #### branch_sources
@@ -235,6 +237,68 @@ assembleContext(target):
 
 The fork's **excerpt** is injected as a branching seed (a system note) so the child's first turn is anchored to the highlighted text. Messages created in a parent after a fork (ord > cutoff) never leak into the child. Sidebar tree + breadcrumb derive from `parent_id` / `root_id`; cross-links render as distinct reference edges.
 
+The ancestor-gathering walk is implemented in `src/lib/chat/context.ts` (`assembleContext`). Per-row conversion to provider-visible `ModelMessage[]` is delegated to the pure projection module `src/lib/chat/projection.ts` — see [Context projection](#context-projection).
+
+## Entry kind model
+
+Every timeline event is classified by a single durable `kind` column (`EntryKind` union, `src/lib/chat/kinds.ts`). Lane and all presentation attributes are pure functions of kind — never stored per row.
+
+### Kinds, lanes, and classification
+
+The 10 kinds fall into three lanes derived by `laneOf()`:
+
+- **user** lane: `user_message` — the user's text.
+- **external** lane: `assistant_message` — assistant text rendered for the user.
+- **internal** lane: `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected` — not authored by the user; collapsed by default.
+
+Internal kinds subdivide into:
+- **decoration** (audit-only, never provider-visible): `reasoning`, `approval`, `sampling`, `elicitation`, `self_corrected`.
+- **transient** (provider-visible during the turn, persisted as internal): `tool_call`, `tool_result`.
+- **synthetic** (provider-visible pair synthesized at projection time): `choices`.
+
+The `role` column records the authoring side only (`user_message → 'user'`; `assistant_message`, `reasoning`, `tool_call`, `choices`, `self_corrected`, `approval`, `sampling`, `elicitation → 'assistant'`; `tool_result → 'tool'`) and is not used for presentation or projection.
+
+### Per-kind semantics
+
+- **`user_message`** — the user's text. Hidden prompts carry `metadata.hidden = true` (still provider-visible; filtered at timeline assembly). Chip selections from `choices` offers link back via `metadata.choicesEntryId`.
+- **`assistant_message`** — assistant text. Legacy rows may carry embedded `metadata.reasoning` rendered as a decoration toggle.
+- **`reasoning`** — one entry per agent-loop iteration (`metadata.iteration`, `metadata.model`). Never provider-visible.
+- **`tool_call`** + **`tool_result`** — persisted as separate rows, paired at timeline assembly by `toolCallId` into a grouped unit (header + one-line summary + collapsible structured detail, collapsed by default). A `tool_result` whose paired call is a `choices` offer is folded into that offer and never rendered standalone.
+- **`approval` / `sampling` / `elicitation`** — permission and elicitation asks. Persisted when shown (`outcome: null`), resolved in place on the same row via `updateOutcome`. Outcomes: approved/declined/undecided (swept on abort), allowed/denied/undecided, accepted/declined/undecided. Never provider-visible.
+- **`choices`** — single-entry pacing-gate offers (`metadata.nextUnit`, `metadata.options`, `metadata.progress`). No separate tool-call/tool-result rows are written for new turns. The tapped chip is a linked `user_message`. Provider-visible: projection synthesizes a `tool-call` + `tool-result` pair matching the legacy shape.
+- **`self_corrected`** — critic phase record (`metadata.issues`, `metadata.attempts`, `metadata.succeeded`). Written only when a correction ran. Never provider-visible.
+
+### Presentation registry
+
+A single `kind → presentation` mapping in `src/lib/chat/presentation.ts` drives **all** timeline rendering — durable and live. No role-based or column-combination branching exists in any presentation path.
+
+The registry maps each kind (plus grouped tool variants and live variants) to: lane, collapsible, collapsed-by-default, and a renderer name. Renderers live in `src/lib/components/chat/rows/`: `UserMessage`, `AssistantMessage`, `ReasoningEntry`, `ToolActivity`, `AskEntry`, `ChoicesOffer`, `SelfCorrected`. Live streaming items (`live_text`, `live_reasoning`, `live_ask`) resolve to the same renderer as their durable counterpart via a `live` prop — this guarantees visual continuity when a live item is replaced by its durable entry.
+
+Timeline assembly (`src/lib/chat/entries.ts`) converts ordered messages into a `TimelineItem[]` union (`DurableEntry | ToolGroup | LiveEntry`), applying hide rules and tool-call↔tool-result pairing. `MessageList.svelte` dispatches each item to its renderer keyed by kind through the registry.
+
+### Context projection
+
+The pure function `projectEntries(entries): ModelMessage[]` in `src/lib/chat/projection.ts` is the single seam through which stored entries reach any provider. It replaces the former `toCoreMessages`.
+
+Per-kind visibility rules:
+
+| kind | projection |
+|---|---|
+| `user_message` | `user` text part |
+| `assistant_message` | `assistant` text part |
+| `tool_call` | `assistant` `tool-call` part (`input: {}` — see quirks below) |
+| `tool_result` | `tool` `tool-result` part (`output` from `metadata.detail`) |
+| `choices` | synthesized `tool-call` + `tool-result` pair (byte-identical to legacy `present_choices` replay) |
+| `reasoning`, `approval`, `sampling`, `elicitation`, `self_corrected` | **excluded** |
+
+Adjacent same-role messages merge their parts (carried over from `toCoreMessages`). Golden test fixtures in `src/lib/chat/golden/` lock this behavior byte-for-byte against pre-rewrite output.
+
+**Captured quirk**: `tool_call` projects with `input: {}` (empty), not `metadata.args`. This reproduces the existing provider replay behavior where `toolArgs` was never populated in the gather step. The equivalence is golden-locked — fixing it would change provider context.
+
+### Search behavior
+
+Message search (`src/lib/db/repositories/search.ts`) filters to `kind IN ('user_message','assistant_message')` at query level. Internal kinds (reasoning, tool summaries, asks, etc.) are no longer searchable. The `search_vec` generated columns are untouched — the kind filter is applied at query time, not at index time. Hidden user prompts (`metadata.hidden = true`) remain searchable.
+
 ## Provider / AI layer
 
 - **`Provider` interface:** `chatStream(messages, opts): AsyncIterable<Token>`, plus `generateLab`, `generateQuiz`, `gradeAnswer` (structured output / tool calls).
@@ -263,7 +327,8 @@ src/
     agent/       tool loop, registry, capability gating, critic, deterministic/generative tools
     ai/          provider interface, adapters, transports, generation + grading
     assets/      static assets
-    chat/        tree ops, branch-from-highlight, crosslinks, expound, selection
+    chat/        kinds, entries, projection, presentation, golden,
+                  tree ops, branch-from-highlight, crosslinks, expound, selection
     components/  subdirs: ai/ chat/ diagnostics/ labs/ mcp/ quizzes/ settings/ ui/
                     + top-level shells (AppShell, BootGate, Sidebar, etc.)
     db/          schema, migrations, StorageDriver + adapters, repositories

@@ -8,6 +8,13 @@
       "when": 1783950424127,
       "tag": "0000_curved_frog_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787151003548,
+      "tag": "0001_puzzling_nextwave",
+      "breakpoints": true
     }
   ]
 }

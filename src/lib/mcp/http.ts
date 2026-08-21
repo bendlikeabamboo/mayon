@@ -34,7 +34,10 @@ export class HttpMcpTransport implements McpTransport {
 	}
 
 	async start(): Promise<McpServerInfo> {
-		if (!this.url || !/^https?:\/\//i.test(this.url)) {
+		// Absolute http(s) URLs, or root-relative same-origin paths (no
+		// protocol-relative "//" or bare relative paths). Relative URLs are
+		// resolved against the page origin by fetch.
+		if (!this.url || !/^(https?:\/\/|\/[^/])/i.test(this.url)) {
 			throw new Error('MCP server URL is required');
 		}
 		return { name: 'http-server', version: '0.0.0' };
@@ -68,12 +71,14 @@ export class HttpMcpTransport implements McpTransport {
 			if (sid) this.#sessionId = sid;
 		}
 
-		if (
-			!this.#sessionId &&
-			res.ok &&
+		// Relative URLs resolve same-origin by construction; only absolute URLs
+		// can be cross-origin (and new URL() needs a base for relative input).
+		const crossOrigin =
+			/^https?:\/\//i.test(this.url) &&
 			typeof globalThis.location !== 'undefined' &&
-			new URL(this.url).origin !== globalThis.location.origin
-		) {
+			new URL(this.url).origin !== globalThis.location.origin;
+
+		if (!this.#sessionId && res.ok && crossOrigin) {
 			console.warn(
 				'[mcp] No mcp-session-id in response. If the server uses sessions, ensure Access-Control-Expose-Headers includes "mcp-session-id".'
 			);

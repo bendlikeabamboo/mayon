@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const LEGACY_VERSION = 0;
 export const SCHEMA_VERSION_SETTINGS_KEY = 'schemaVersion';
 

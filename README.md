@@ -73,6 +73,20 @@ All three paths accept `MAYON_PORT` (web port, default `8080`) and
 `MAYON_VERSION` (image tag) via env. To move off port 8080, set
 `MAYON_PORT=3000` in `~/.mayon/.env` and restart.
 
+#### Optional: Brave Search (self-hosted web search for chats)
+
+Mayon can add live web search to chats so answers can be validated and
+refreshed with current sources. Get an API key at
+[brave.com/search/api](https://brave.com/search/api/), then in the app:
+**Settings → MCP servers → Add Server → Brave Search**, paste the key, and
+complete the trust prompt.
+
+The key is stored with the app's other credentials (browser secret store) —
+never in the connection config, URLs, or logs — and rotating it is just
+editing it in settings; no `.env` changes or stack restarts. The official
+Brave Search MCP server runs on demand inside the Mayon server container, so
+there is nothing to deploy: the feature is available whenever the server is.
+
 ### Upgrading
 
 Upgrades are in-place: containers are recreated but the `pg-data` and

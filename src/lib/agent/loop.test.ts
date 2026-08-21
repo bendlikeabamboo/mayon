@@ -95,8 +95,8 @@ vi.mock('$lib/agent/critic', () => ({
 	validateTurn: vi.fn()
 }));
 
-vi.mock('$lib/chat/context', () => ({
-	toCoreMessages: vi.fn((msgs) => msgs)
+vi.mock('$lib/chat/projection', () => ({
+	projectEntries: vi.fn((msgs) => msgs)
 }));
 
 vi.mock('$lib/chat/brief', () => ({
@@ -129,8 +129,8 @@ void getToolDefinition;
 const { validateTurn } = await import('$lib/agent/critic');
 const mockedValidateTurn = vi.mocked(validateTurn);
 
-const { toCoreMessages } = await import('$lib/chat/context');
-const mockedToCoreMessages = vi.mocked(toCoreMessages);
+const { projectEntries } = await import('$lib/chat/projection');
+const mockedProjectEntries = vi.mocked(projectEntries);
 
 const { buildCapabilitiesPreamble } = await import('$lib/chat/brief');
 const mockedBuildCapabilitiesPreamble = vi.mocked(buildCapabilitiesPreamble);
@@ -221,6 +221,11 @@ function makeDeps(overrides: Partial<AgentTurnDeps> = {}): AgentTurnDeps {
 		reassembleContext: vi.fn(async () => []),
 		requestApproval: vi.fn(async () => ({ approved: true })),
 		notifyLowRisk: vi.fn(),
+		appendReasoning: vi.fn(async (_text: string, _iteration: number) => {
+			const msg = fakeMessage({ kind: 'reasoning', content: _text, ord: messages.length });
+			messages.push(msg);
+			return;
+		}),
 		...overrides
 	};
 }
@@ -231,7 +236,7 @@ beforeEach(() => {
 	mockedValidateTurn.mockResolvedValue([]);
 	mockedToolsRun.mockReset();
 	mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
-	mockedToCoreMessages.mockImplementation((msgs) => msgs as never);
+	mockedProjectEntries.mockImplementation((msgs) => msgs as never);
 	mockedBuildCapabilitiesPreamble.mockReturnValue('preamble');
 	mockedBuildFirstTurnOrientationPreamble.mockReturnValue('orientation');
 	mockedProviderOptionsForReasoning.mockReturnValue({});
@@ -252,7 +257,7 @@ describe('runAgentTurn', () => {
 
 		expect(result).toEqual({ aborted: false });
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world', { reasoning: undefined });
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world');
 		expect(deps.updateStreamBuffer).toHaveBeenCalledWith('Hello');
 		expect(deps.updateStreamBuffer).toHaveBeenCalledWith('Hello world');
 		expect(deps.appendAssistantToolCall).not.toHaveBeenCalled();
@@ -300,9 +305,7 @@ describe('runAgentTurn', () => {
 			expect.objectContaining({ summary: '1/3 steps done' })
 		);
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('You have 1 of 3 done.', {
-			reasoning: undefined
-		});
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('You have 1 of 3 done.');
 	});
 
 	it('(c) maxIterations: loop stops at 6; finalizes with exhaustion note; no runaway', async () => {
@@ -455,7 +458,7 @@ describe('runAgentTurn', () => {
 	});
 
 	describe('(f) critic', () => {
-		it('broken mermaid: exactly one correction re-stream fires; corrected text persisted', async () => {
+		it('broken mermaid: exactly one correction re-stream fires; corrected text persisted; appendSelfCorrected called with report', async () => {
 			let validateCount = 0;
 			mockedValidateTurn.mockImplementation(async () => {
 				validateCount++;
@@ -477,19 +480,27 @@ describe('runAgentTurn', () => {
 					])
 				} as never);
 
-			const deps = makeDeps();
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ appendSelfCorrected: appendSC });
 			const result = await runAgentTurn(deps);
 
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledTimes(2);
 			expect(deps.updateStreamBuffer).toHaveBeenCalledWith('');
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```', {
-				reasoning: undefined
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```');
+			expect(appendSC).toHaveBeenCalledOnce();
+			expect(appendSC).toHaveBeenCalledWith(
+				{
+					issues: [{ type: 'mermaid', message: 'parse error' }],
+					attempts: 1,
+					succeeded: true
+				},
+				expect.any(Number)
+			);
 		});
 
-		it('still broken after 2 tries: best-effort persisted; console.warn called', async () => {
+		it('still broken after 2 tries: best-effort persisted; console.warn called; appendSelfCorrected with succeeded=false', async () => {
 			mockedValidateTurn.mockResolvedValue([{ type: 'mermaid', message: 'still broken' }]);
 			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -507,16 +518,26 @@ describe('runAgentTurn', () => {
 					])
 				} as never);
 
-			const deps = makeDeps();
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ appendSelfCorrected: appendSC });
 			const result = await runAgentTurn(deps);
 
 			expect(result).toEqual({ aborted: false });
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
 			expect(warnSpy).toHaveBeenCalledWith('[agent] critic: still broken after max corrections');
+			expect(appendSC).toHaveBeenCalledOnce();
+			expect(appendSC).toHaveBeenCalledWith(
+				{
+					issues: [{ type: 'mermaid', message: 'still broken' }],
+					attempts: 2,
+					succeeded: false
+				},
+				expect.any(Number)
+			);
 			warnSpy.mockRestore();
 		});
 
-		it('valid turn: zero correction streams', async () => {
+		it('valid turn: zero correction streams; appendSelfCorrected NOT called', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
 					{ type: 'text-delta', text: 'valid reply' },
@@ -524,11 +545,47 @@ describe('runAgentTurn', () => {
 				])
 			} as never);
 
-			const deps = makeDeps();
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ appendSelfCorrected: appendSC });
 			const result = await runAgentTurn(deps);
 
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledOnce();
+			expect(appendSC).not.toHaveBeenCalled();
+		});
+
+		it('aborted mid-correction: appendSelfCorrected NOT called; text still persisted', async () => {
+			let validateCount = 0;
+			mockedValidateTurn.mockImplementation(async () => {
+				validateCount++;
+				if (validateCount === 1) return [{ type: 'mermaid', message: 'bad' }];
+				return [{ type: 'mermaid', message: 'still bad' }];
+			});
+
+			const ac = new AbortController();
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', text: 'broken' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: (async function* () {
+						yield { type: 'text-delta', text: 'correc' };
+						ac.abort();
+						yield { type: 'text-delta', text: 'ted' };
+						yield { type: 'finish', finishReason: 'stop' };
+					})()
+				} as never);
+
+			const appendSC = vi.fn(async () => {});
+			const deps = makeDeps({ signal: ac.signal, appendSelfCorrected: appendSC });
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: false });
+			expect(appendSC).not.toHaveBeenCalled();
+			expect(deps.appendAssistantText).toHaveBeenCalled();
 		});
 	});
 
@@ -584,9 +641,7 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(mockedDisableToolsForSession).toHaveBeenCalledOnce();
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('fallback text', {
-				reasoning: undefined
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('fallback text');
 
 			const retryCall = mockedStreamText.mock.calls[1][0];
 			expect(retryCall.tools).toEqual({});
@@ -794,6 +849,40 @@ describe('runAgentTurn', () => {
 		);
 	});
 
+	it('(l2) ok:false from tool is forwarded to appendToolResult', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{
+						type: 'tool-call',
+						toolCallId: 'tc1',
+						toolName: 'toggle_checklist_item',
+						args: {}
+					},
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Oops' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({
+			ok: false,
+			summary: 'missing labId',
+			detail: { serverId: 'srv1' }
+		});
+
+		const deps = makeDeps();
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendToolResult).toHaveBeenCalledOnce();
+		expect(deps.appendToolResult).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+	});
+
 	it('(m) abort during approval: signal aborted while card pending → resolved as aborted', async () => {
 		const ac = new AbortController();
 		let resolveApproval!: (v: { approved: boolean; aborted?: boolean }) => void;
@@ -948,9 +1037,7 @@ describe('runAgentTurn', () => {
 				expect.objectContaining({ summary: 'user declined' })
 			);
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.', {
-				reasoning: undefined
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.');
 		});
 
 		it('(s) non-generative high tool unaffected: branch_chat + create_quiz → both approved; branch not budget-gated', async () => {
@@ -986,7 +1073,7 @@ describe('runAgentTurn', () => {
 	});
 
 	describe('(t) reasoning', () => {
-		it('reasoning-delta parts are accumulated and passed on final persist; interim tool-text omit reasoning', async () => {
+		it('per-iteration: two iterations of reasoning-deltas produce two appendReasoning calls with correct iteration numbers', async () => {
 			mockedStreamText
 				.mockReturnValueOnce({
 					fullStream: scriptedFullStream([
@@ -1013,18 +1100,21 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(deps.updateReasoningBuffer).toHaveBeenCalled();
 
+			expect(deps.appendReasoning).toHaveBeenCalledTimes(2);
+			expect(deps.appendReasoning).toHaveBeenNthCalledWith(1, 'thinking…', 0);
+			expect(deps.appendReasoning).toHaveBeenNthCalledWith(2, 'more', 1);
+
 			const allCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
 			const interimCall = allCalls.find((c) => c[0] === 'pre-tool text');
 			expect(interimCall).toBeDefined();
-			expect(interimCall![1]?.reasoning).toBeUndefined();
+			expect(interimCall![1]).toBeUndefined();
 
 			const finalCall = allCalls.find((c) => c[0] === 'Final reply');
 			expect(finalCall).toBeDefined();
-			expect(finalCall![1]?.reasoning).toContain('thinking…');
-			expect(finalCall![1]?.reasoning).toContain('more');
+			expect(finalCall![1]).toBeUndefined();
 		});
 
-		it('text-only turn with reasoning: reasoning passed on final persist', async () => {
+		it('text-only turn with reasoning: single appendReasoning call at iteration 0', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
 					{ type: 'reasoning-delta', text: 'hmm' },
@@ -1036,13 +1126,13 @@ describe('runAgentTurn', () => {
 			const deps = makeDeps();
 			await runAgentTurn(deps);
 
+			expect(deps.appendReasoning).toHaveBeenCalledOnce();
+			expect(deps.appendReasoning).toHaveBeenCalledWith('hmm', 0);
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			const call = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls[0];
-			expect(call[0]).toBe('Reply');
-			expect(call[1]?.reasoning).toBe('hmm');
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply');
 		});
 
-		it('turn without reasoning: opts.reasoning is undefined', async () => {
+		it('turn without reasoning: appendReasoning is never called', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([
 					{ type: 'text-delta', text: 'No reasoning' },
@@ -1053,9 +1143,24 @@ describe('runAgentTurn', () => {
 			const deps = makeDeps();
 			await runAgentTurn(deps);
 
-			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			const call = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls[0];
-			expect(call[1]?.reasoning).toBeUndefined();
+			expect(deps.appendReasoning).not.toHaveBeenCalled();
+		});
+
+		it('assistant rows carry no reasoning metadata', async () => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'think' },
+					{ type: 'text-delta', text: 'Reply' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps();
+			await runAgentTurn(deps);
+
+			const calls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+			expect(calls).toHaveLength(1);
+			expect(calls[0][1]).toBeUndefined();
 		});
 	});
 
@@ -1083,9 +1188,8 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledOnce();
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('prose', {
-				reasoning: 'thinking…'
-			});
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('prose');
+			expect(deps.appendReasoning).toHaveBeenCalledWith('thinking…', 0);
 			expect(deps.appendAssistantToolCall).toHaveBeenCalledOnce();
 			expect(mockedToolsRun).toHaveBeenCalledOnce();
 		});
@@ -1114,6 +1218,114 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(mockedStreamText).toHaveBeenCalledTimes(2);
 		});
+	});
+});
+
+describe('(v) request trace mirrors wire payload (FR-008)', () => {
+	it('no system-role messages; choices row carries tool identity; roles match projection', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'prose' },
+				{
+					type: 'tool-call',
+					toolCallId: 'tc1',
+					toolName: 'present_choices',
+					args: { options: ['A', 'B'] }
+				},
+				{ type: 'finish', finishReason: 'tool-calls' }
+			])
+		} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'options presented' });
+
+		const systemRow = fakeMessage({
+			role: 'system',
+			content: 'You are a helpful assistant.',
+			ord: 0
+		});
+		const userRow = fakeMessage({ role: 'user', content: 'Hello', ord: 1 });
+		const choicesRow = fakeMessage({
+			role: 'assistant',
+			content: 'The Three Trees',
+			toolCallId: 'tc-choices-1',
+			toolName: 'present_choices',
+			metadata: JSON.stringify({ options: ['Oak', 'Elm', 'Pine'] }),
+			ord: 2
+		});
+		const choicesResultRow = fakeMessage({
+			role: 'tool',
+			content: 'options presented',
+			toolCallId: 'tc-choices-1',
+			toolName: 'present_choices',
+			ord: 3
+		});
+
+		const projectedMessages: unknown[] = [
+			{
+				role: 'user',
+				content: [{ type: 'text', text: 'Hello' }]
+			},
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'The Three Trees' },
+					{
+						type: 'tool-call',
+						toolCallId: 'tc-choices-1',
+						toolName: 'present_choices',
+						input: {}
+					}
+				]
+			},
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'tc-choices-1',
+						toolName: 'present_choices',
+						output: { type: 'text', value: 'options presented' }
+					}
+				]
+			}
+		];
+
+		mockedProjectEntries.mockReturnValue(projectedMessages as never);
+
+		const captured: Array<{
+			messages: Array<{ role: string; toolName?: string; kind?: string; content: string }>;
+		}> = [];
+		const deps = makeDeps({
+			reassembleContext: vi.fn(async () => [
+				systemRow,
+				userRow,
+				choicesRow,
+				choicesResultRow
+			]) as never,
+			onTrace: (e) => {
+				if (e.kind === 'request') {
+					captured.push(e as unknown as (typeof captured)[number]);
+				}
+			}
+		});
+		await runAgentTurn(deps);
+
+		expect(captured).toHaveLength(1);
+		const msgs = captured[0].messages;
+
+		// 1. Zero entries with role 'system'
+		expect(msgs.every((m) => m.role !== 'system')).toBe(true);
+
+		// 2. No message content contains the system preamble
+		expect(msgs.every((m) => m.content !== 'You are a helpful assistant.')).toBe(true);
+
+		// 3. Choices row carries tool identity
+		expect(msgs.some((m) => m.toolName === 'present_choices')).toBe(true);
+
+		// 4. Roles match projection
+		const projectedRoles = (projectedMessages as Array<{ role: string }>).map((m) => m.role);
+		const tracedRoles = msgs.map((m) => m.role);
+		expect(tracedRoles).toEqual(projectedRoles);
 	});
 });
 
@@ -1207,9 +1419,7 @@ describe('generative buf suppression + chip', () => {
 		const lastClearIdx = bufferCalls.findLastIndex((c: unknown[]) => c[0] === '');
 		expect(lastClearIdx).toBeGreaterThanOrEqual(0);
 		expect(deps.appendAssistantText).toHaveBeenCalledTimes(1);
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.', {
-			reasoning: undefined
-		});
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.');
 
 		expect(notifyGenerativeStatus).toHaveBeenCalledWith({
 			toolName: 'create_quiz',
@@ -1280,5 +1490,108 @@ describe('generative buf suppression + chip', () => {
 			expect.anything()
 		);
 		expect(notifyGenerativeStatus).toHaveBeenCalledWith(null);
+	});
+});
+
+describe('(w) persist order (003 US3): reasoning first, per iteration', () => {
+	function orderOf(mock: unknown, nth: number): number {
+		const calls = (mock as ReturnType<typeof vi.fn>).mock.invocationCallOrder as number[];
+		return calls[nth];
+	}
+
+	it('tool-carrying iteration persists reasoning before its text and tool rows', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'think-0' },
+					{ type: 'text-delta', text: 'interim' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'read_checklist', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'think-1' },
+					{ type: 'text-delta', text: 'Final' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(2);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(1, 'think-0', 0);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(2, 'think-1', 1);
+
+		const interimText = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls.find(
+			(c) => c[0] === 'interim'
+		);
+		expect(interimText).toBeDefined();
+
+		// iteration 0: reasoning < text < tool call < tool result
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(
+			orderOf(deps.appendAssistantToolCall, 0)
+		);
+		expect(orderOf(deps.appendAssistantToolCall, 0)).toBeLessThan(
+			orderOf(deps.appendToolResult, 0)
+		);
+		// iteration 0's reasoning precedes iteration 1's stream output entirely
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendToolResult, 0));
+		// iteration 1: reasoning < final text
+		expect(orderOf(deps.appendReasoning, 1)).toBeLessThan(orderOf(deps.appendAssistantText, 1));
+	});
+
+	it('allTerminal (present_choices) turn persists reasoning before text and the choices call', async () => {
+		mockedStreamText.mockReturnValueOnce({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-delta', text: 'pacing decision' },
+				{ type: 'text-delta', text: 'prose' },
+				{
+					type: 'tool-call',
+					toolCallId: 'tc1',
+					toolName: 'present_choices',
+					args: { nextUnit: 'Unit 2', options: ['continue'] }
+				},
+				{ type: 'finish', finishReason: 'tool-calls' }
+			])
+		} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'Next: Unit 2' });
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('pacing decision', 0);
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(
+			orderOf(deps.appendAssistantToolCall, 0)
+		);
+	});
+
+	it('stream-abort path persists reasoning before the partial text', async () => {
+		const ctrl = new AbortController();
+		const stream = (async function* () {
+			yield { type: 'reasoning-delta', text: 'half-thought' };
+			yield { type: 'text-delta', text: 'partial reply' };
+			ctrl.abort();
+			yield { type: 'finish', finishReason: 'stop' };
+		})();
+
+		mockedStreamText.mockReturnValueOnce({ fullStream: stream } as never);
+
+		const deps = makeDeps({ signal: ctrl.signal });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: true });
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('half-thought', 0);
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('partial reply');
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
 	});
 });

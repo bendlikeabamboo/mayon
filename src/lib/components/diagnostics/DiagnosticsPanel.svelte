@@ -212,7 +212,7 @@
 					</h3>
 					{#if liveParts.length > 0}
 						<div class="flex flex-wrap gap-1">
-							{#each liveParts as part (part.type)}
+							{#each liveParts as part, lpi (part.type + '@' + lpi)}
 								<span
 									class="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono"
 								>
@@ -411,7 +411,7 @@
 									<div class="space-y-1">
 										<span class="text-xs font-semibold text-muted-foreground"> Part Sequence </span>
 										<div class="flex flex-wrap gap-1">
-											{#each iter.partSequence as part (part.type)}
+											{#each iter.partSequence as part, psi (part.type + '@' + psi)}
 												<span
 													class="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-mono"
 												>
@@ -531,7 +531,7 @@
 						{#if parsed.mcpEvents && parsed.mcpEvents.length > 0}
 							<div class="mt-4">
 								<h4 class="text-sm font-medium text-muted-foreground mb-2">MCP Events</h4>
-								{#each parsed.mcpEvents as ev (ev.kind + ev.serverId)}
+								{#each parsed.mcpEvents as ev, evi (ev.kind + ev.serverId + '@' + evi)}
 									<div class="text-xs font-mono p-2 rounded bg-muted mb-1">
 										<span class="font-bold">{ev.kind}</span>
 										<span class="text-muted-foreground ml-2">{ev.serverName}</span>

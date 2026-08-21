@@ -238,7 +238,7 @@ describe('PUT /api/backup/db', () => {
 			expect(res.statusCode).toBe(400);
 			expect(res.json().decision).toBe('refuse-newer');
 			expect(res.json().dumpVersion).toBe(9);
-			expect(res.json().currentVersion).toBe(1);
+			expect(res.json().currentVersion).toBe(2);
 			expect(pool.connect).not.toHaveBeenCalled();
 		} finally {
 			await app.close();
@@ -285,10 +285,10 @@ describe('PUT /api/backup/db', () => {
 		}
 	});
 
-	it('success v1 to v1: proceeds with no migrations', async () => {
+	it('success v2 to v2: proceeds with no migrations', async () => {
 		spawnMock
 			.mockReturnValueOnce(mockChild({ exitCode: 0 }))
-			.mockReturnValueOnce(mockChild({ exitCode: 0, stdoutData: versionStdout(1) }))
+			.mockReturnValueOnce(mockChild({ exitCode: 0, stdoutData: versionStdout(2) }))
 			.mockReturnValueOnce(mockChild({ exitCode: 0, stdoutData: PGDMP_BYTES }))
 			.mockReturnValueOnce(mockChild({ exitCode: 0 }));
 
@@ -310,8 +310,8 @@ describe('PUT /api/backup/db', () => {
 			expect(res.statusCode).toBe(200);
 			const json = res.json();
 			expect(json.ok).toBe(true);
-			expect(json.dumpVersion).toBe(1);
-			expect(json.currentVersion).toBe(1);
+			expect(json.dumpVersion).toBe(2);
+			expect(json.currentVersion).toBe(2);
 			expect(json.migrated).toHaveLength(0);
 			expect(json.safetyFilename).toMatch(/^mayon-pre-restore-\d+\.dump$/);
 			expect(json.notice).toBeDefined();
@@ -353,15 +353,10 @@ describe('PUT /api/backup/db', () => {
 	});
 
 	it('success with migration: migrate fn called and listed', async () => {
+		const real1to2 = SCHEMA_MIGRATIONS.find((m) => m.from === 1 && m.to === 2);
+		const savedMigrate = real1to2?.migrate;
 		const migrateFn = vi.fn().mockResolvedValue(undefined);
-		SCHEMA_MIGRATIONS.push({
-			from: 0,
-			to: 1,
-			description: 'test breaking migration',
-			kind: 'breaking',
-			hasMigrate: true,
-			migrate: migrateFn
-		});
+		if (real1to2) real1to2.migrate = migrateFn;
 		try {
 			spawnMock
 				.mockReturnValueOnce(mockChild({ exitCode: 0 }))
@@ -387,13 +382,13 @@ describe('PUT /api/backup/db', () => {
 				expect(res.statusCode).toBe(200);
 				const json = res.json();
 				expect(json.migrated).toHaveLength(1);
-				expect(json.migrated[0]).toContain('test breaking migration');
+				expect(json.migrated[0]).toContain('add messages.kind');
 				expect(migrateFn).toHaveBeenCalledOnce();
 			} finally {
 				await app.close();
 			}
 		} finally {
-			SCHEMA_MIGRATIONS.pop();
+			if (real1to2 && savedMigrate) real1to2.migrate = savedMigrate;
 		}
 	});
 

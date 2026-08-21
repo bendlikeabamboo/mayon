@@ -87,6 +87,52 @@ describe('HttpMcpTransport', () => {
 			await expect(t.start()).rejects.toThrow('MCP server URL is required');
 		});
 
+		it('accepts root-relative URL', async () => {
+			const t = makeTransport({ url: '/api/brave-search/mcp' });
+			const info = await t.start();
+			expect(info).toEqual({ name: 'http-server', version: '0.0.0' });
+		});
+
+		it('rejects protocol-relative URL', async () => {
+			const t = makeTransport({ url: '//evil.example.com/mcp' });
+			await expect(t.start()).rejects.toThrow('MCP server URL is required');
+		});
+
+		it('rejects bare slash', async () => {
+			const t = makeTransport({ url: '/' });
+			await expect(t.start()).rejects.toThrow('MCP server URL is required');
+		});
+
+		it('requests a relative URL verbatim (same-origin path)', async () => {
+			const t = makeTransport({ url: '/api/brave-search/mcp' });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+				cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }))
+			);
+
+			await t.request('ping');
+
+			const [calledUrl] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+			expect(calledUrl).toBe('/api/brave-search/mcp');
+		});
+
+		it('does not warn for relative URL responses without mcp-session-id', async () => {
+			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			g.location = { href: 'http://localhost:5173/', origin: 'http://localhost:5173' };
+
+			const t = makeTransport({ url: '/api/brave-search/mcp' });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+				cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }))
+			);
+
+			await t.request('initialize', {});
+
+			expect(warnSpy).not.toHaveBeenCalled();
+		});
+
 		it('returns placeholder without calling fetch', async () => {
 			const t = makeTransport();
 			const info = await t.start();
@@ -516,6 +562,63 @@ describe('HttpMcpTransport', () => {
 				.mockResolvedValueOnce(
 					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
 						headers: { 'mcp-session-id': 'sess-404' }
+					})
+				)
+				.mockResolvedValueOnce(cannedResponse('', { status: 404 }))
+				.mockResolvedValueOnce(
+					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 3, result: {} }))
+				);
+
+			await t.request('initialize', {});
+			await expect(t.request('tools/list', {})).rejects.toThrow('HTTP 404');
+
+			await t.request('ping', {});
+
+			const [, init3] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[2];
+			const headers = (init3 as RequestInit).headers as Record<string, string>;
+			expect(headers['mcp-session-id']).toBeUndefined();
+		});
+	});
+
+	describe('self-hosted degradation (root-relative URL)', () => {
+		it('unreachable upstream → classified error, not a hang', async () => {
+			mockedClassify.mockImplementation((err: unknown) => err as Error);
+			const t = makeTransport({ url: '/api/brave-search/mcp' });
+			await t.start();
+
+			const boom = new TypeError('Failed to fetch');
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(boom);
+
+			await expect(t.request('ping')).rejects.toBe(boom);
+			expect(mockedClassify).toHaveBeenCalledWith(boom, '/api/brave-search/mcp');
+		});
+
+		it('callTimeoutMs expiry → abort signal fires and request rejects', async () => {
+			const t = makeTransport({ url: '/api/brave-search/mcp', callTimeoutMs: 50 });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation((_input, init) => {
+				const signal = (init as RequestInit).signal!;
+				return new Promise((_, reject) => {
+					signal.addEventListener(
+						'abort',
+						() => reject(new DOMException('Aborted', 'AbortError')),
+						{ once: true }
+					);
+				});
+			});
+
+			await expect(t.request('ping')).rejects.toBeInstanceOf(DOMException);
+		}, 10000);
+
+		it('404 with a captured session → session cleared, error thrown, next request has no session header', async () => {
+			const t = makeTransport({ url: '/api/brave-search/mcp' });
+			await t.start();
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>)
+				.mockResolvedValueOnce(
+					cannedResponse(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), {
+						headers: { 'mcp-session-id': 'sess-self' }
 					})
 				)
 				.mockResolvedValueOnce(cannedResponse('', { status: 404 }))

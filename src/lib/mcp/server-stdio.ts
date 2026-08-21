@@ -6,6 +6,9 @@ import type { McpNotification } from './types';
 import type { McpServerConfig, McpServerInfo } from './types';
 import type { McpServerRequest, McpTransport } from './transport';
 
+/** WebSocket.OPEN, with a numeric fallback for environments without the global. */
+const WS_OPEN = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1;
+
 export class ServerStdioMcpTransport implements McpTransport {
 	#pending = new Map<
 		number,
@@ -142,19 +145,31 @@ export class ServerStdioMcpTransport implements McpTransport {
 				reject(new Error('websocket closed during spawn'));
 			});
 
-			ws.send(
-				JSON.stringify({
-					kind: 'spawn',
-					serverId: this.serverId,
-					spawn: {
+			// The spawn frame may only be sent once the socket is OPEN. A fresh
+			// WebSocket is still CONNECTING here (the constructor returns before
+			// the HTTP upgrade handshake completes), so defer the send to the
+			// 'open' event. Pre-opened sockets send immediately.
+			const sendSpawn = () => {
+				ws.send(
+					JSON.stringify({
+						kind: 'spawn',
 						serverId: this.serverId,
-						command: this.config.command,
-						args: this.config.args ?? [],
-						env,
-						cwd: this.config.cwd
-					}
-				})
-			);
+						spawn: {
+							serverId: this.serverId,
+							command: this.config.command,
+							args: this.config.args ?? [],
+							env,
+							cwd: this.config.cwd
+						}
+					})
+				);
+			};
+
+			if (ws.readyState === WS_OPEN) {
+				sendSpawn();
+			} else {
+				ws.addEventListener('open', sendSpawn, { once: true });
+			}
 		});
 
 		return spawned;

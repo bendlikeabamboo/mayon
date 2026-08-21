@@ -64,8 +64,8 @@ describe('incRender', () => {
 			incRender: vi.fn()
 		};
 		setPerfSink(sink);
-		incRender('MessageRow');
+		incRender('TimelineRow');
 		expect(sink.incRender).toHaveBeenCalledOnce();
-		expect(sink.incRender).toHaveBeenCalledWith('MessageRow');
+		expect(sink.incRender).toHaveBeenCalledWith('TimelineRow');
 	});
 });

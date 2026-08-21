@@ -390,6 +390,24 @@ describe('mountMcpServer', () => {
 		const result = await toolsRun('mcp.err.fail', {}, fakeCtx());
 
 		expect(result.ok).toBe(false);
+		expect(result.summary).toBe('tool returned error: server error');
+
+		unmount();
+	});
+
+	it("returns plain 'tool returned error' when isError carries no text", async () => {
+		const transport = new FakeMcpTransport({
+			tools: [{ name: 'fail', inputSchema: { type: 'object', properties: {} } }],
+			callHandler: () => ({ content: [], isError: true })
+		});
+		const client = new McpClient(transport);
+		await client.initialize();
+
+		const unmount = await mountMcpServer('err', client);
+
+		const result = await toolsRun('mcp.err.fail', {}, fakeCtx());
+
+		expect(result.ok).toBe(false);
 		expect(result.summary).toBe('tool returned error');
 
 		unmount();

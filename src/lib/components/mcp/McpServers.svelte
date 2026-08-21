@@ -130,8 +130,22 @@
 
 	async function confirmDraft() {
 		if (!draftServer) return;
-		servers = [...servers, draftServer];
-		const savedId = draftServer.id;
+		// Persist any env secrets entered in the draft into the keystore and
+		// bind their secretRefs, so the connection works immediately after save.
+		const env = { ...(draftServer.env ?? {}) };
+		for (const [name, value] of Object.entries(draftSecretDraft)) {
+			const trimmed = value.trim();
+			if (trimmed && env[name]) {
+				await setMcpSecret(draftServer.id, name, trimmed);
+				env[name] = { secretRef: `mcp:${draftServer.id}:${name}` };
+			}
+		}
+		const toSave: McpServerConfig = {
+			...draftServer,
+			env: Object.keys(env).length > 0 ? env : undefined
+		};
+		servers = [...servers, toSave];
+		const savedId = toSave.id;
 		draftServer = null;
 		draftSecretDraft = {};
 		await persist();
@@ -232,6 +246,10 @@
 			env[k === oldName ? newName.trim() : k] = v;
 		}
 		updateDraft({ env });
+		if (draftSecretDraft[oldName] !== undefined) {
+			const { [oldName]: _moved, ...rest } = draftSecretDraft;
+			draftSecretDraft = { ...rest, [newName.trim()]: draftSecretDraft[oldName] };
+		}
 	}
 
 	function toggleEnabled(id: string) {

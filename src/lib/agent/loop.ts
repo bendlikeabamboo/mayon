@@ -2,13 +2,13 @@ import { streamText, tool, jsonSchema, APICallError } from 'ai';
 import type { LanguageModel, ToolSet } from 'ai';
 import { getToolDefinitions, getToolDefinition, toolsRun } from '$lib/agent/registry';
 import { isSessionDisabled, disableToolsForSession } from '$lib/agent/capability';
-import { validateTurn } from '$lib/agent/critic';
-import { toCoreMessages } from '$lib/chat/context';
+import { validateTurn, type CriticIssue } from '$lib/agent/critic';
+import { projectEntries } from '$lib/chat/projection';
 import { buildCapabilitiesPreamble, buildFirstTurnOrientationPreamble } from '$lib/chat/brief';
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
 import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
 import type { Message } from '$lib/db/schema';
-import type { TraceEvent } from './trace';
+import type { TraceEvent, TracedRequestMessage } from './trace';
 
 const MAX_ITERATIONS = 6;
 const MAX_CORRECTIONS = 2;
@@ -22,6 +22,11 @@ export interface AgentTurnDeps {
 	effort: ReasoningEffort;
 	updateStreamBuffer: (next: string) => void;
 	updateReasoningBuffer: (next: string) => void;
+	appendReasoning?: (text: string, iteration: number) => Promise<void>;
+	appendSelfCorrected?: (
+		report: { issues: { type: string; message: string }[]; attempts: number; succeeded: boolean },
+		finalTextLength: number
+	) => Promise<void>;
 	appendAssistantText: (
 		content: string,
 		opts?: { model?: string; reasoning?: string }
@@ -37,6 +42,7 @@ export interface AgentTurnDeps {
 		toolName: string;
 		summary: string;
 		detail?: unknown;
+		ok?: boolean;
 	}) => Promise<Message>;
 	reassembleContext: () => Promise<ChatMessage[]>;
 	requestApproval: (req: {
@@ -80,6 +86,54 @@ function buildSdkTools(enabled: boolean, disabledToolIds?: string[]): ToolSet {
 	return out;
 }
 
+function extractPartContent(p: Record<string, unknown>): string {
+	if (p.type === 'text') return String(p.text ?? '');
+	if (p.type === 'tool-call') return JSON.stringify(p.input ?? {});
+	if (p.type === 'tool-result') {
+		const out = p.output as Record<string, unknown> | undefined;
+		if (!out) return '';
+		if (out.type === 'text') return String(out.value ?? '');
+		if (out.type === 'json') return JSON.stringify(out.value ?? {});
+		return String(out.value ?? '');
+	}
+	return '';
+}
+
+function partKind(p: Record<string, unknown>): string | undefined {
+	if (p.type === 'tool-call') return 'tool_call';
+	if (p.type === 'tool-result') return 'tool_result';
+	return undefined;
+}
+
+function toTracedRequestMessage(msg: { role: string; content: unknown }): TracedRequestMessage {
+	if (typeof msg.content === 'string') {
+		return { role: msg.role, content: msg.content, kind: `${msg.role}_message` };
+	}
+
+	const parts = Array.isArray(msg.content) ? msg.content : [];
+	const texts = parts.map((p) => extractPartContent(p as Record<string, unknown>));
+	const content = texts.join('\n');
+
+	const result: TracedRequestMessage = { role: msg.role, content };
+
+	for (const p of parts) {
+		const pp = p as Record<string, unknown>;
+		const k = partKind(pp);
+		if (k) {
+			result.toolCallId = String(pp.toolCallId ?? '');
+			result.toolName = String(pp.toolName ?? '');
+			result.kind = k;
+			break;
+		}
+	}
+
+	if (!result.kind) {
+		result.kind = `${msg.role}_message`;
+	}
+
+	return result;
+}
+
 async function consumeStream(
 	fullStream: AsyncIterable<unknown>,
 	signal: AbortSignal,
@@ -121,17 +175,35 @@ async function consumeStream(
 	return { finishReason, usage: usage ?? null };
 }
 
+interface CriticReport {
+	issues: { type: string; message: string }[];
+	attempts: number;
+	succeeded: boolean;
+}
+
+interface CriticResult {
+	text: string;
+	report: CriticReport | null;
+}
+
+function stripCriticIssue(issue: CriticIssue): { type: string; message: string } {
+	return { type: issue.type, message: issue.message };
+}
+
 async function runCriticPhase(
 	buf: string,
 	deps: AgentTurnDeps,
 	ctx: ChatMessage[]
-): Promise<string> {
-	let issues = await validateTurn(buf);
-	if (issues.length === 0) return buf;
+): Promise<CriticResult> {
+	const initialIssues = await validateTurn(buf);
+	if (initialIssues.length === 0) return { text: buf, report: null };
 
+	const originalIssues = initialIssues.map(stripCriticIssue);
 	let corrected = buf;
-	for (let attempt = 0; attempt < MAX_CORRECTIONS; attempt++) {
-		const issue = issues[0];
+	let attempts = 0;
+
+	for (let i = 0; i < MAX_CORRECTIONS; i++) {
+		const issue = initialIssues[0];
 		const correctionMsg: ChatMessage = {
 			role: 'user',
 			content: `Your previous reply had a problem: ${issue.type}: ${issue.message}. Re-emit the full reply as valid markdown.`
@@ -140,7 +212,7 @@ async function runCriticPhase(
 
 		deps.updateStreamBuffer('');
 		const sysParts = correctionCtx.filter((m) => m.role === 'system').map((m) => m.content);
-		const messages = toCoreMessages(correctionCtx);
+		const messages = projectEntries(correctionCtx);
 
 		const result = streamText({
 			model: deps.model,
@@ -161,24 +233,33 @@ async function runCriticPhase(
 			}
 		}
 
+		attempts++;
+
 		if (deps.signal.aborted) {
 			corrected = freshBuf || corrected;
-			break;
+			return { text: corrected, report: null };
 		}
 
-		issues = await validateTurn(freshBuf);
-		if (issues.length === 0) {
+		const freshIssues = await validateTurn(freshBuf);
+		if (freshIssues.length === 0) {
 			corrected = freshBuf;
-			break;
+			return {
+				text: corrected,
+				report: { issues: originalIssues, attempts, succeeded: true }
+			};
 		}
 		corrected = freshBuf;
 	}
 
-	if (issues.length > 0) {
-		console.warn('[agent] critic: still broken after max corrections');
+	if (deps.signal.aborted) {
+		return { text: corrected, report: null };
 	}
 
-	return corrected;
+	console.warn('[agent] critic: still broken after max corrections');
+	return {
+		text: corrected,
+		report: { issues: originalIssues, attempts, succeeded: false }
+	};
 }
 
 export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: boolean }> {
@@ -209,7 +290,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			if (deps.firstTurn) {
 				sysParts.push(buildFirstTurnOrientationPreamble());
 			}
-			const messages = toCoreMessages(ctx);
+			const messages = projectEntries(ctx);
 
 			const system = sysParts.join('\n\n');
 			const disabled = deps.disabledToolIds ?? [];
@@ -228,10 +309,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			deps.onTrace?.({
 				kind: 'request',
 				system,
-				messages: ctx.map((m) => ({
-					role: m.role,
-					content: typeof m.content === 'string' ? m.content : String(m.content)
-				})),
+				messages: messages.map(toTracedRequestMessage),
 				tools: toolNames,
 				providerOptions: pOpts as Record<string, unknown>
 			});
@@ -294,6 +372,11 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				));
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {
+					if (reasoningBuf) {
+						await deps.appendReasoning?.(reasoningBuf, i);
+					}
+					reasoningBuf = '';
+					deps.updateReasoningBuffer('');
 					if (buf) {
 						const msg = await deps.appendAssistantText(buf);
 						deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
@@ -307,6 +390,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				});
 				throw err;
 			}
+
+			// Persist this iteration's reasoning before any text/tool rows of the same
+			// iteration, so stored order matches the canonical display order (003 US3).
+			if (reasoningBuf) {
+				await deps.appendReasoning?.(reasoningBuf, i);
+			}
+			reasoningBuf = '';
+			deps.updateReasoningBuffer('');
 
 			if (streamUsage) {
 				deps.onTrace?.({
@@ -330,10 +421,11 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 
 			if (finishReason !== 'tool-calls' || toolCalls.length === 0) {
-				const finalBuf = await runCriticPhase(buf, deps, ctx);
-				const msg = await deps.appendAssistantText(finalBuf, {
-					reasoning: reasoningBuf || undefined
-				});
+				const { text: finalBuf, report } = await runCriticPhase(buf, deps, ctx);
+				if (report && deps.appendSelfCorrected) {
+					await deps.appendSelfCorrected(report, finalBuf.length);
+				}
+				const msg = await deps.appendAssistantText(finalBuf);
 				deps.onTrace?.({
 					kind: 'persisted',
 					messageId: msg.id,
@@ -350,10 +442,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				toolCalls.every((tc) => getToolDefinition(tc.toolName)?.terminal === true);
 
 			if (buf && !hasGenerative) {
-				const msg = await deps.appendAssistantText(
-					buf,
-					allTerminal ? { reasoning: reasoningBuf || undefined } : undefined
-				);
+				const msg = await deps.appendAssistantText(buf);
 				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
 			}
 			if (hasGenerative) {
@@ -516,7 +605,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					toolCallId: tc.toolCallId,
 					toolName: tc.toolName,
 					summary: entry.result.summary,
-					detail
+					detail,
+					ok: entry.result.ok
 				});
 				deps.onTrace?.({
 					kind: 'tool-result',
@@ -543,11 +633,17 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 		const ctx = await deps.reassembleContext();
 		const finalBuf = buf + '\n\n_(…tool budget reached; continuing from here.)_';
-		await runCriticPhase(finalBuf, deps, ctx);
-		const msg = await deps.appendAssistantText(finalBuf, {
-			reasoning: reasoningBuf || undefined
+		const budgetResult = await runCriticPhase(finalBuf, deps, ctx);
+		if (budgetResult.report && deps.appendSelfCorrected) {
+			await deps.appendSelfCorrected(budgetResult.report, budgetResult.text.length);
+		}
+		const msg = await deps.appendAssistantText(budgetResult.text);
+		deps.onTrace?.({
+			kind: 'persisted',
+			messageId: msg.id,
+			finalText: budgetResult.text,
+			empty: !budgetResult.text
 		});
-		deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: finalBuf, empty: !finalBuf });
 		return { aborted: false };
 	}
 
