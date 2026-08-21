@@ -10,6 +10,7 @@
 		Hourglass
 	} from '@lucide/svelte';
 	import ToolSources from '../ToolSources.svelte';
+	import ToolResultBody from './ToolResultBody.svelte';
 	import type { ToolGroup, OrphanToolResult } from '$lib/chat/entries';
 	import {
 		parseMetadata,
@@ -17,6 +18,7 @@
 		type SharedMetadata,
 		TOOL_SUMMARY_THRESHOLD
 	} from '$lib/chat/kinds';
+	import { classifyResult } from '$lib/chat/result-shape';
 	import { extractSources } from '$lib/mcp/sources';
 	import { getToolDefinition } from '$lib/agent/registry';
 	import { incRender } from '$lib/perf/mark';
@@ -72,6 +74,9 @@
 	const needsExpander = $derived(summary.length > TOOL_SUMMARY_THRESHOLD || hasDetail);
 	const payloadLike = $derived(/^\s*[[{]/.test(summary));
 	const verbose = $derived(needsExpander || payloadLike);
+	const shape = $derived(
+		resultMsg ? classifyResult(summary, parseMetadata(resultMsg.metadata)) : null
+	);
 	let expanded = $state(false);
 
 	function artifactHref(artifact: { kind: string; id: string }): string {
@@ -81,11 +86,18 @@
 		return `/${artifact.kind}/${artifact.id}`;
 	}
 
+	function onHeaderKey(event: KeyboardEvent) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			expanded = !expanded;
+		}
+	}
+
 	onMount(() => incRender('TimelineRow'));
 </script>
 
 <div class="flex flex-col gap-1">
-	<div class="flex items-center gap-1.5 px-1">
+	{#snippet headerInner()}
 		{#if status() === 'awaiting'}
 			<Hourglass class="size-3 text-amber-500 animate-pulse" />
 		{:else if status() === 'aborted' || status() === 'declined'}
@@ -103,7 +115,11 @@
 		{/if}
 		<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
 			{#if artifact}
-				<a href={artifactHref(artifact)} class="hover:underline">{toolName}</a>
+				<a
+					href={artifactHref(artifact)}
+					class="hover:underline"
+					onclick={(e) => e.stopPropagation()}>{toolName}</a
+				>
 			{:else}
 				{toolName}
 			{/if}
@@ -115,11 +131,38 @@
 		{:else if status() === 'declined'}
 			<span class="text-xs text-muted-foreground">Declined</span>
 		{/if}
-	</div>
+		{#if verbose}
+			{#if expanded}
+				<ChevronDown class="size-3 text-muted-foreground" />
+			{:else}
+				<ChevronRight class="size-3 text-muted-foreground" />
+			{/if}
+		{/if}
+	{/snippet}
+	{#if verbose}
+		<div
+			class="flex w-fit items-center gap-1.5 px-1 cursor-pointer select-none hover:text-foreground transition-colors"
+			role="button"
+			tabindex="0"
+			aria-expanded={expanded}
+			onclick={() => (expanded = !expanded)}
+			onkeydown={onHeaderKey}
+		>
+			{@render headerInner()}
+		</div>
+	{:else}
+		<div class="flex items-center gap-1.5 px-1">
+			{@render headerInner()}
+		</div>
+	{/if}
 	{#if summary && (!verbose || expanded)}
 		{#if verbose}
-			<pre
-				class="max-h-60 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{summary}</pre>
+			{#if shape}
+				<ToolResultBody {shape} />
+			{:else}
+				<pre
+					class="max-h-60 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{summary}</pre>
+			{/if}
 		{:else}
 			<span class="px-1 block truncate max-w-full text-xs text-muted-foreground">{summary}</span>
 		{/if}
@@ -127,29 +170,7 @@
 	{#if status() === 'gap'}
 		<span class="px-1 text-xs italic text-muted-foreground">No result recorded</span>
 	{/if}
-	{#if verbose}
-		<button
-			type="button"
-			class="flex items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-			onclick={() => (expanded = !expanded)}
-		>
-			{#if expanded}
-				<ChevronDown class="size-3" />
-			{:else}
-				<ChevronRight class="size-3" />
-			{/if}
-			{expanded ? 'Hide result' : 'Show result'}
-		</button>
-	{/if}
-	{#if verbose && expanded && hasDetail}
-		<pre
-			class="max-h-60 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{JSON.stringify(
-				detail,
-				null,
-				2
-			)}</pre>
-	{/if}
-	{#if !verbose || expanded}
+	{#if (!verbose || expanded) && shape?.kind !== 'records'}
 		<ToolSources {sources} />
 	{/if}
 </div>
