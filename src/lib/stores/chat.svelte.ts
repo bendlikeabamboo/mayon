@@ -420,6 +420,8 @@ class ChatState {
 						model: opts?.model
 					});
 					this.messages = [...this.messages, row];
+					this.streamBuffer = '';
+					this.streamBufferRender = '';
 					await repos.chats.touch(chatId);
 					builder.assistantMessageId = row.id;
 					builder.empty = !content;

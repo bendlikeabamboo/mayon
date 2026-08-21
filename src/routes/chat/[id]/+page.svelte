@@ -26,13 +26,11 @@
 	import {
 		parseBrief,
 		summarizeBrief,
-		strategyForBrief,
 		DEFAULT_PERSONA,
 		personaForId,
 		type LearningBrief
 	} from '$lib/chat/brief';
 	import { parseAddFormats, type ExpoundToggle } from '$lib/chat/expound';
-	import { findGateFromMessages } from '$lib/ai/generate/generate-gate';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
@@ -217,13 +215,9 @@
 			rootBrief === null
 	);
 
-	const activeStrategy = $derived(rootBrief ? strategyForBrief(rootBrief) : null);
-
 	const personaName = $derived(
 		rootBrief ? personaForId(rootBrief.persona ?? DEFAULT_PERSONA).name : 'Mayon'
 	);
-
-	const gate = $derived(activeStrategy?.gated ? findGateFromMessages(chatStore.messages) : null);
 
 	const failedMessageId = $derived.by(() => {
 		if (!chatStore.error || !chatStore.lastFailedPrompt) return null;
@@ -232,8 +226,6 @@
 		const last = msgs[msgs.length - 1];
 		return last.role === 'user' ? last.id : null;
 	});
-
-	const suggestedReplies = $derived(gate?.options ?? activeStrategy?.replies);
 
 	async function loadNav(chat: Chat) {
 		const subtree = await repos.chats.listSubtree(chat.rootId);
@@ -379,7 +371,7 @@
 
 	async function onSend(text: string, effort: ReasoningEffort) {
 		stickToBottom = true;
-		await chatStore.send(text, { effort, choicesEntryId: gate?.entryId ?? undefined });
+		await chatStore.send(text, { effort });
 	}
 
 	async function onExpound(
@@ -791,8 +783,6 @@
 						bind:prompt={composerPrompt}
 						{onSend}
 						onStop={chatStore.stop.bind(chatStore)}
-						{suggestedReplies}
-						progress={gate?.progress ?? null}
 						{supportsDeep}
 						providerName={activeProviderName}
 						modelId={activeModelId}

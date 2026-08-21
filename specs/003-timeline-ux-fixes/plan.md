@@ -32,23 +32,23 @@ Four defect fixes on top of `specs/002-chat-timeline-kinds`, all verified agains
 
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-| # | Principle (constitution §) | Verdict | Notes |
-|---|---|---|---|
-| 1 | Layering: repos only (I) | PASS | No repository or schema changes; components read only passed props + the pure registry |
-| 2 | `StorageDriver` only storage seam (I) | PASS | No storage change at all |
-| 3 | `pnpm check` + `pnpm lint` (I) | PLANNED | Blocking gates; baseline = 10 pre-existing `server-stdio.test.ts` errors |
-| 4 | No secrets in `settings` (I) | PASS | Untouched |
-| 5 | No `+` filenames (I) | PASS | New/edited tests colocated, no prefix |
-| 6 | Tests ship with fixes; regression per bug (II) | PLANNED | One regression test per user story: duplicate-key render fixture, durable-spinner guard, pairing with distinct ids, canonical order incl. buggy-stored fixture, terminal suppression vs genuine-gap retention |
-| 7 | `search_vec` generated-only (II, IV) | PASS | Untouched |
-| 8 | UI from existing vocabulary (III) | PASS | Reuses existing icons/components; no new primitives |
-| 9 | Progressive degradation (III) | PASS | No capability changes |
-| 10 | No downtime / in-place restore (III) | PASS | No server, schema, or restore changes |
-| 11 | Expound offsets via source map (III) | PASS | Assistant content never rewritten; ordering is item-level, offsets ride the untouched entries |
-| 12 | Perf probe for sensitive changes (IV) | PASS | Reorder pass is O(n) in an already-derived computation; no measurement claim needed beyond that, verified by existing render-count tests |
-| 13 | Drizzle migrations via `db:generate` (Gates) | PASS | No migration |
-| 14 | Bundle growth justified (IV) | PASS | Zero new dependencies |
-| 15 | `@mayon/shared` build order (IV) | PASS | Shared untouched |
+| #   | Principle (constitution §)                     | Verdict | Notes                                                                                                                                                                                                         |
+| --- | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Layering: repos only (I)                       | PASS    | No repository or schema changes; components read only passed props + the pure registry                                                                                                                        |
+| 2   | `StorageDriver` only storage seam (I)          | PASS    | No storage change at all                                                                                                                                                                                      |
+| 3   | `pnpm check` + `pnpm lint` (I)                 | PLANNED | Blocking gates; baseline = 10 pre-existing `server-stdio.test.ts` errors                                                                                                                                      |
+| 4   | No secrets in `settings` (I)                   | PASS    | Untouched                                                                                                                                                                                                     |
+| 5   | No `+` filenames (I)                           | PASS    | New/edited tests colocated, no prefix                                                                                                                                                                         |
+| 6   | Tests ship with fixes; regression per bug (II) | PLANNED | One regression test per user story: duplicate-key render fixture, durable-spinner guard, pairing with distinct ids, canonical order incl. buggy-stored fixture, terminal suppression vs genuine-gap retention |
+| 7   | `search_vec` generated-only (II, IV)           | PASS    | Untouched                                                                                                                                                                                                     |
+| 8   | UI from existing vocabulary (III)              | PASS    | Reuses existing icons/components; no new primitives                                                                                                                                                           |
+| 9   | Progressive degradation (III)                  | PASS    | No capability changes                                                                                                                                                                                         |
+| 10  | No downtime / in-place restore (III)           | PASS    | No server, schema, or restore changes                                                                                                                                                                         |
+| 11  | Expound offsets via source map (III)           | PASS    | Assistant content never rewritten; ordering is item-level, offsets ride the untouched entries                                                                                                                 |
+| 12  | Perf probe for sensitive changes (IV)          | PASS    | Reorder pass is O(n) in an already-derived computation; no measurement claim needed beyond that, verified by existing render-count tests                                                                      |
+| 13  | Drizzle migrations via `db:generate` (Gates)   | PASS    | No migration                                                                                                                                                                                                  |
+| 14  | Bundle growth justified (IV)                   | PASS    | Zero new dependencies                                                                                                                                                                                         |
+| 15  | `@mayon/shared` build order (IV)               | PASS    | Shared untouched                                                                                                                                                                                              |
 
 **Post-Phase-1 re-check (2026-08-20)**: design adds no new mechanism — it repairs dispatch, keying, and ordering inside the seams established by 002 (registry, `assembleTimeline`, loop persist hooks). No violations; **no Complexity Tracking entries**.
 

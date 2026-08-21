@@ -9,6 +9,7 @@
 		type LiveEntry,
 		isDurableEntry,
 		isToolGroup,
+		isOrphanToolResult,
 		isLiveEntry
 	} from '$lib/chat/entries';
 	import UserMessage from './rows/UserMessage.svelte';
@@ -23,6 +24,7 @@
 	import type { LiveAskPayload } from '$lib/chat/entries';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { summarizeToolCall } from '$lib/agent/tool-summary';
+	import { findGateFromMessages } from '$lib/ai/generate/generate-gate';
 
 	let {
 		messages,
@@ -53,7 +55,9 @@
 		streaming?: boolean;
 	} = $props();
 
-	const timeline = $derived(assembleTimeline(messages, liveItems));
+	const activeGate = $derived(!streaming ? findGateFromMessages(messages) : null);
+
+	const timeline = $derived(assembleTimeline(messages, liveItems, streaming));
 
 	const takenChoices = $derived.by(() => {
 		const entries: [string, string][] = [];
@@ -79,6 +83,7 @@
 
 	function itemId(item: TimelineItem): string {
 		if (isToolGroup(item)) return item.call.id;
+		if (isOrphanToolResult(item)) return item.result.id;
 		if (isDurableEntry(item)) return item.entry.id;
 		if (item.live === 'live_text') return 'live-text';
 		if (item.live === 'live_reasoning') return 'live-reasoning';
@@ -141,7 +146,7 @@
 				{/if}
 			{:else}
 				<LazyMount unmountFar rootMargin="1200px">
-					{#if isToolGroup(item)}
+					{#if isToolGroup(item) || isOrphanToolResult(item)}
 						<ToolActivity {item} />
 					{:else if isDurableEntry(item)}
 						{#if item.kind === 'user_message'}
@@ -163,7 +168,15 @@
 						{:else if item.kind === 'approval' || item.kind === 'sampling' || item.kind === 'elicitation'}
 							<AskEntry {item} />
 						{:else if item.kind === 'choices'}
-							<ChoicesOffer {item} linkedTakenOption={takenChoices.get(item.entry.id)} />
+							<ChoicesOffer
+								{item}
+								linkedTakenOption={takenChoices.get(item.entry.id)}
+								onSelect={activeGate?.entryId === item.entry.id && !takenChoices.get(item.entry.id)
+									? (option: string) => {
+											void chatStore.send(option, { choicesEntryId: item.entry.id });
+										}
+									: undefined}
+							/>
 						{/if}
 					{/if}
 				</LazyMount>

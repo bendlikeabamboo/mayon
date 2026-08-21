@@ -83,6 +83,7 @@ export interface ToolCallMeta extends SharedMetadata {
 
 export interface ToolResultMeta extends SharedMetadata {
 	detail?: Record<string, unknown>;
+	ok?: boolean;
 }
 
 export interface ApprovalMeta extends SharedMetadata {
@@ -113,6 +114,8 @@ export interface ElicitationMeta extends SharedMetadata {
 		| { decision: 'declined' }
 		| { decision: 'undecided' };
 }
+
+export const TOOL_SUMMARY_THRESHOLD = 160;
 
 export interface ChoicesMeta extends SharedMetadata {
 	nextUnit?: string;

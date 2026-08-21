@@ -16,12 +16,12 @@ assembleTimeline(messages: Message[], liveItems?: LiveEntry[]): TimelineItem[]
 
 ## Renderer status rules (ToolActivity)
 
-| Group state | Icon | Message |
-|---|---|---|
-| paired, result ok | existing ok mark | summary + collapsible detail (unchanged) |
-| paired, result failed | existing fail mark | summary (unchanged) |
-| unpaired, tool registry says terminal | neutral/muted tool glyph | none ("no result recorded" suppressed) |
-| unpaired, non-terminal | existing fail mark | "No result recorded" (genuine gap — kept) |
+| Group state                           | Icon                     | Message                                   |
+| ------------------------------------- | ------------------------ | ----------------------------------------- |
+| paired, result ok                     | existing ok mark         | summary + collapsible detail (unchanged)  |
+| paired, result failed                 | existing fail mark       | summary (unchanged)                       |
+| unpaired, tool registry says terminal | neutral/muted tool glyph | none ("no result recorded" suppressed)    |
+| unpaired, non-terminal                | existing fail mark       | "No result recorded" (genuine gap — kept) |
 
 Terminality comes exclusively from `getToolDefinition(toolName)?.terminal === true` (the tool registry). The presentation layer MUST NOT contain a tool-name list.
 

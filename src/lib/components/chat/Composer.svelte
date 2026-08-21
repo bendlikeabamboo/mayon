@@ -34,22 +34,18 @@
 		streaming = $bindable(false),
 		onSend,
 		onStop,
-		suggestedReplies,
 		supportsDeep = true,
 		providerName,
 		modelId,
-		progress,
 		chatId
 	}: {
 		prompt?: string;
 		streaming?: boolean;
 		onSend: (text: string, effort: ReasoningEffort) => void | Promise<void>;
 		onStop: () => void | Promise<void>;
-		suggestedReplies?: string[];
 		supportsDeep?: boolean;
 		providerName?: string;
 		modelId?: string;
-		progress?: string | null;
 		chatId?: string;
 	} = $props();
 	/** Reasoning effort: off (disabled), on (provider default), deep (extra reasoning). */
@@ -68,9 +64,6 @@
 		el.style.height = Math.min(el.scrollHeight, MAX_TEXTAREA_H) + 'px';
 	});
 	const canSend = $derived(prompt.trim().length > 0 && !streaming);
-	const showChips = $derived(
-		!!suggestedReplies?.length && !streaming && prompt.trim().length === 0
-	);
 
 	onMount(async () => {
 		const v = await repos.settings.get<string>('reasoningEffort');
@@ -88,11 +81,6 @@
 		if (streaming) return;
 		effort = next;
 		await repos.settings.set('reasoningEffort', next);
-	}
-
-	function sendChip(text: string) {
-		prompt = '';
-		void onSend(text, effort);
 	}
 
 	function send() {
@@ -253,17 +241,9 @@
 </script>
 
 <div class="flex flex-col gap-1.5">
-	{#if (providerName && modelId) || progress}
+	{#if providerName && modelId}
 		<div class="flex items-center gap-1.5 px-1 text-[11px] leading-none text-muted-foreground">
-			{#if providerName && modelId}
-				<span>{providerName} · {modelId}</span>
-			{/if}
-			{#if providerName && modelId && progress}
-				<span aria-hidden="true">|</span>
-			{/if}
-			{#if progress}
-				<span>{progress}</span>
-			{/if}
+			<span>{providerName} · {modelId}</span>
 		</div>
 	{/if}
 	{#if toastVisible}
@@ -287,15 +267,6 @@
 						<X class="size-3" />
 					</button>
 				</div>
-			{/each}
-		</div>
-	{/if}
-	{#if showChips}
-		<div class="flex flex-wrap gap-1.5">
-			{#each suggestedReplies as chip (chip)}
-				<Button variant="outline" size="sm" onclick={() => sendChip(chip)}>
-					{chip}
-				</Button>
 			{/each}
 		</div>
 	{/if}

@@ -76,6 +76,38 @@ describe('messages repository', () => {
 		expect(resultMsg.kind).toBe('tool_result');
 	});
 
+	it('appendToolResult includes ok in metadata and handles null detail/ok', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+
+		const withOk = await repos.messages.appendToolResult(chat.id, {
+			toolCallId: 'tc1',
+			toolName: 'x',
+			summary: 's',
+			detail: { serverId: 'a' },
+			ok: false
+		});
+		const metaOk = JSON.parse(withOk.metadata!);
+		expect(metaOk.serverId).toBe('a');
+		expect(metaOk.ok).toBe(false);
+
+		const detailOnly = await repos.messages.appendToolResult(chat.id, {
+			toolCallId: 'tc2',
+			toolName: 'x',
+			summary: 's',
+			detail: { serverId: 'b' }
+		});
+		const metaDetail = JSON.parse(detailOnly.metadata!);
+		expect(metaDetail.serverId).toBe('b');
+		expect(metaDetail.ok).toBeUndefined();
+
+		const bare = await repos.messages.appendToolResult(chat.id, {
+			toolCallId: 'tc3',
+			toolName: 'x',
+			summary: 's'
+		});
+		expect(bare.metadata).toBeNull();
+	});
+
 	it('updateOutcome merges outcome into metadata and returns updated row', async () => {
 		const chat = await repos.chats.createRoot({ title: 'C' });
 		const msg = await repos.messages.append(chat.id, 'assistant', 'ask', {

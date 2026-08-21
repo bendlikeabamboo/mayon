@@ -12,6 +12,7 @@ export type PresentationKey =
 	| EntryKind
 	| 'tool_group'
 	| 'tool_group_unpaired'
+	| 'tool_result_orphan'
 	| 'live_text'
 	| 'live_reasoning'
 	| 'live_ask';
@@ -55,6 +56,15 @@ const registry = new Map<PresentationKey, Presentation>([
 	],
 	[
 		'tool_group_unpaired',
+		{
+			lane: 'internal',
+			collapsible: true,
+			collapsedByDefault: true,
+			renderer: 'ToolActivity'
+		}
+	],
+	[
+		'tool_result_orphan',
 		{
 			lane: 'internal',
 			collapsible: true,
@@ -148,6 +158,9 @@ export function presentationKeyFor(item: TimelineItem): PresentationKey {
 	}
 	if ('group' in item && item.group) {
 		return item.result ? 'tool_group' : 'tool_group_unpaired';
+	}
+	if ('orphan' in item && item.orphan) {
+		return 'tool_result_orphan';
 	}
 	return (item as DurableEntry).kind;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getPresentation, presentationKeyFor } from './presentation';
-import type { DurableEntry, ToolGroup, LiveEntry } from './entries';
+import type { DurableEntry, ToolGroup, OrphanToolResult, LiveEntry } from './entries';
 import type { PresentationKey } from './presentation';
 
 const DURABLE_KINDS: PresentationKey[] = [
@@ -14,7 +14,7 @@ const DURABLE_KINDS: PresentationKey[] = [
 	'self_corrected'
 ];
 
-const TOOL_KEYS: PresentationKey[] = ['tool_group', 'tool_group_unpaired'];
+const TOOL_KEYS: PresentationKey[] = ['tool_group', 'tool_group_unpaired', 'tool_result_orphan'];
 const LIVE_KEYS: PresentationKey[] = ['live_text', 'live_reasoning', 'live_ask'];
 const ALL_KEYS: PresentationKey[] = [...DURABLE_KINDS, ...TOOL_KEYS, ...LIVE_KEYS];
 
@@ -123,6 +123,28 @@ describe('presentationKeyFor', () => {
 			pending: false
 		};
 		expect(presentationKeyFor(item)).toBe('live_text');
+	});
+
+	it('orphan tool result → tool_result_orphan', () => {
+		const item: OrphanToolResult = {
+			source: 'durable',
+			orphan: true,
+			result: {
+				id: 'tr',
+				chatId: 'c',
+				role: 'tool',
+				content: 'orphan',
+				ord: 0,
+				model: null,
+				tokens: null,
+				toolCallId: 'ghost',
+				toolName: 'bash',
+				metadata: null,
+				createdAt: 0,
+				kind: null
+			}
+		};
+		expect(presentationKeyFor(item)).toBe('tool_result_orphan');
 	});
 });
 

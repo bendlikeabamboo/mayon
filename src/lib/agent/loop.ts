@@ -8,7 +8,7 @@ import { buildCapabilitiesPreamble, buildFirstTurnOrientationPreamble } from '$l
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
 import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
 import type { Message } from '$lib/db/schema';
-import type { TraceEvent } from './trace';
+import type { TraceEvent, TracedRequestMessage } from './trace';
 
 const MAX_ITERATIONS = 6;
 const MAX_CORRECTIONS = 2;
@@ -42,6 +42,7 @@ export interface AgentTurnDeps {
 		toolName: string;
 		summary: string;
 		detail?: unknown;
+		ok?: boolean;
 	}) => Promise<Message>;
 	reassembleContext: () => Promise<ChatMessage[]>;
 	requestApproval: (req: {
@@ -83,6 +84,54 @@ function buildSdkTools(enabled: boolean, disabledToolIds?: string[]): ToolSet {
 		});
 	}
 	return out;
+}
+
+function extractPartContent(p: Record<string, unknown>): string {
+	if (p.type === 'text') return String(p.text ?? '');
+	if (p.type === 'tool-call') return JSON.stringify(p.input ?? {});
+	if (p.type === 'tool-result') {
+		const out = p.output as Record<string, unknown> | undefined;
+		if (!out) return '';
+		if (out.type === 'text') return String(out.value ?? '');
+		if (out.type === 'json') return JSON.stringify(out.value ?? {});
+		return String(out.value ?? '');
+	}
+	return '';
+}
+
+function partKind(p: Record<string, unknown>): string | undefined {
+	if (p.type === 'tool-call') return 'tool_call';
+	if (p.type === 'tool-result') return 'tool_result';
+	return undefined;
+}
+
+function toTracedRequestMessage(msg: { role: string; content: unknown }): TracedRequestMessage {
+	if (typeof msg.content === 'string') {
+		return { role: msg.role, content: msg.content, kind: `${msg.role}_message` };
+	}
+
+	const parts = Array.isArray(msg.content) ? msg.content : [];
+	const texts = parts.map((p) => extractPartContent(p as Record<string, unknown>));
+	const content = texts.join('\n');
+
+	const result: TracedRequestMessage = { role: msg.role, content };
+
+	for (const p of parts) {
+		const pp = p as Record<string, unknown>;
+		const k = partKind(pp);
+		if (k) {
+			result.toolCallId = String(pp.toolCallId ?? '');
+			result.toolName = String(pp.toolName ?? '');
+			result.kind = k;
+			break;
+		}
+	}
+
+	if (!result.kind) {
+		result.kind = `${msg.role}_message`;
+	}
+
+	return result;
 }
 
 async function consumeStream(
@@ -223,14 +272,6 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		let reasoningBuf = '';
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
-			if (i > 0) {
-				if (reasoningBuf) {
-					await deps.appendReasoning?.(reasoningBuf, i - 1);
-				}
-				reasoningBuf = '';
-				deps.updateReasoningBuffer('');
-			}
-
 			if (deps.signal.aborted) {
 				if (buf) {
 					const msg = await deps.appendAssistantText(buf);
@@ -268,10 +309,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			deps.onTrace?.({
 				kind: 'request',
 				system,
-				messages: ctx.map((m) => ({
-					role: m.role,
-					content: typeof m.content === 'string' ? m.content : String(m.content)
-				})),
+				messages: messages.map(toTracedRequestMessage),
 				tools: toolNames,
 				providerOptions: pOpts as Record<string, unknown>
 			});
@@ -334,6 +372,11 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				));
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {
+					if (reasoningBuf) {
+						await deps.appendReasoning?.(reasoningBuf, i);
+					}
+					reasoningBuf = '';
+					deps.updateReasoningBuffer('');
 					if (buf) {
 						const msg = await deps.appendAssistantText(buf);
 						deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
@@ -347,6 +390,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				});
 				throw err;
 			}
+
+			// Persist this iteration's reasoning before any text/tool rows of the same
+			// iteration, so stored order matches the canonical display order (003 US3).
+			if (reasoningBuf) {
+				await deps.appendReasoning?.(reasoningBuf, i);
+			}
+			reasoningBuf = '';
+			deps.updateReasoningBuffer('');
 
 			if (streamUsage) {
 				deps.onTrace?.({
@@ -370,9 +421,6 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 
 			if (finishReason !== 'tool-calls' || toolCalls.length === 0) {
-				if (reasoningBuf) {
-					await deps.appendReasoning?.(reasoningBuf, i);
-				}
 				const { text: finalBuf, report } = await runCriticPhase(buf, deps, ctx);
 				if (report && deps.appendSelfCorrected) {
 					await deps.appendSelfCorrected(report, finalBuf.length);
@@ -557,7 +605,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					toolCallId: tc.toolCallId,
 					toolName: tc.toolName,
 					summary: entry.result.summary,
-					detail
+					detail,
+					ok: entry.result.ok
 				});
 				deps.onTrace?.({
 					kind: 'tool-result',
@@ -576,18 +625,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 
 			if (allTerminal) {
-				if (reasoningBuf) {
-					await deps.appendReasoning?.(reasoningBuf, i);
-				}
 				return { aborted: false };
 			}
 
 			buf = '';
 		}
 
-		if (reasoningBuf) {
-			await deps.appendReasoning?.(reasoningBuf, MAX_ITERATIONS);
-		}
 		const ctx = await deps.reassembleContext();
 		const finalBuf = buf + '\n\n_(…tool budget reached; continuing from here.)_';
 		const budgetResult = await runCriticPhase(finalBuf, deps, ctx);

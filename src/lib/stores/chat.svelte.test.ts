@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
@@ -1069,6 +1069,67 @@ describe('chatStore durable asks (reload-honesty)', () => {
 			expect(r).toBeDefined();
 			expect(JSON.parse(r!.metadata!).outcome).toEqual({ decision: 'declined', aborted: true });
 		});
+	});
+});
+
+describe('FR-001 boundary persist clears live buffers (T004)', () => {
+	let originalImpl: ((...args: unknown[]) => unknown) | undefined;
+
+	beforeEach(async () => {
+		const loop = await import('$lib/agent/loop');
+		originalImpl = (
+			vi.mocked(loop.runAgentTurn) as unknown as {
+				getMockImplementation(): (...args: unknown[]) => unknown;
+			}
+		).getMockImplementation();
+	});
+
+	afterEach(async () => {
+		if (originalImpl) {
+			const loop = await import('$lib/agent/loop');
+			(
+				vi.mocked(loop.runAgentTurn) as unknown as {
+					mockImplementation(fn: (...args: unknown[]) => unknown): unknown;
+				}
+			).mockImplementation(originalImpl);
+		}
+	});
+
+	it('appendAssistantText dep clears streamBuffer and streamBufferRender while streaming', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.updateStreamBuffer('pre-tool text');
+			await deps.appendAssistantText('pre-tool text', {});
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+
+		await vi.waitFor(() => expect(chatStore.messages.length).toBe(2));
+		expect(chatStore.streaming).toBe(true);
+		expect(chatStore.streamBuffer).toBe('');
+		expect(chatStore.streamBufferRender).toBe('');
+
+		resolveTurn();
+		await sendP;
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantMsgs = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantMsgs).toHaveLength(1);
+		expect(assistantMsgs[0].content).toBe('pre-tool text');
 	});
 });
 

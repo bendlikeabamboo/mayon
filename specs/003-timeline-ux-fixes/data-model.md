@@ -10,19 +10,19 @@ Phase 1 output. **No stored-data changes** — no columns, no migrations, no sch
 
 ### Turn (presentation grouping)
 
-| Aspect | Value |
-|---|---|
+| Aspect     | Value                                                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Definition | span between consecutive visible `user_message` items (turn starts at a user message; items before the first are a lead turn) |
-| Used by | canonical reorder pass (D5) — strictly local to a turn; user messages never move |
-| Lifecycle | computed inside `assembleTimeline`; never stored |
+| Used by    | canonical reorder pass (D5) — strictly local to a turn; user messages never move                                              |
+| Lifecycle  | computed inside `assembleTimeline`; never stored                                                                              |
 
 ### Canonical item order (within a turn)
 
-| Position | Item | Note |
-|---|---|---|
-| first | `reasoning` of the iteration | one entry per iteration (metadata `iteration`) |
-| then | `assistant_message` text of that iteration | |
-| then | tool activity of that iteration | grouped `ToolGroup` at the call/result position; choices offers render in place |
+| Position | Item                                       | Note                                                                            |
+| -------- | ------------------------------------------ | ------------------------------------------------------------------------------- |
+| first    | `reasoning` of the iteration               | one entry per iteration (metadata `iteration`)                                  |
+| then     | `assistant_message` text of that iteration |                                                                                 |
+| then     | tool activity of that iteration            | grouped `ToolGroup` at the call/result position; choices offers render in place |
 
 - Correctly stored turns (all turns persisted after this fix) already satisfy it; the reorder pass no-ops.
 - The only reorder the pass performs: `reasoning` after an `assistant_message` with no tool activity between them → move directly before that assistant message.
@@ -30,12 +30,12 @@ Phase 1 output. **No stored-data changes** — no columns, no migrations, no sch
 
 ### ToolGroup placement + pairing (repaired invariants)
 
-| Invariant | Rule |
-|---|---|
-| Pairing key | `tool_call.toolCallId === tool_result.toolCallId` (never row id) |
-| Group position | the result's position when paired; the call's own position when unpaired (no end-of-timeline flush) |
-| Choices | `choices` rows are offer entries rendered in place; a legacy paired `tool_result` of a choices call is hidden (folds under the offer) |
-| Orphan results | render visibly (never dropped); result-only presentation without a call header |
+| Invariant      | Rule                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Pairing key    | `tool_call.toolCallId === tool_result.toolCallId` (never row id)                                                                      |
+| Group position | the result's position when paired; the call's own position when unpaired (no end-of-timeline flush)                                   |
+| Choices        | `choices` rows are offer entries rendered in place; a legacy paired `tool_result` of a choices call is hidden (folds under the offer) |
+| Orphan results | render visibly (never dropped); result-only presentation without a call header                                                        |
 
 ### Terminal-tool presentation state (derived per group)
 

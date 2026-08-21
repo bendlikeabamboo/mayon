@@ -256,6 +256,21 @@ describe('findGateFromMessages', () => {
 		expect(result!.entryId).toBe('legacy-row-1');
 	});
 
+	it('taken choice (user message after choices) deactivates the gate', () => {
+		const messages = [
+			{ role: 'user', toolName: null, metadata: null, kind: null, id: 'u-1' },
+			{
+				role: 'assistant',
+				toolName: null,
+				metadata: JSON.stringify({ nextUnit: 'A', options: ['x', 'y'], progress: '1/2' }),
+				kind: 'choices',
+				id: 'choices-1'
+			},
+			{ role: 'user', toolName: null, metadata: null, kind: null, id: 'u-2' }
+		];
+		expect(findGateFromMessages(messages)).toBeNull();
+	});
+
 	it('kind-first takes priority over legacy in same scan', () => {
 		const messages = [
 			{ role: 'user', toolName: null, metadata: null, kind: null, id: null },

@@ -849,6 +849,40 @@ describe('runAgentTurn', () => {
 		);
 	});
 
+	it('(l2) ok:false from tool is forwarded to appendToolResult', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{
+						type: 'tool-call',
+						toolCallId: 'tc1',
+						toolName: 'toggle_checklist_item',
+						args: {}
+					},
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Oops' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({
+			ok: false,
+			summary: 'missing labId',
+			detail: { serverId: 'srv1' }
+		});
+
+		const deps = makeDeps();
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendToolResult).toHaveBeenCalledOnce();
+		expect(deps.appendToolResult).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+	});
+
 	it('(m) abort during approval: signal aborted while card pending → resolved as aborted', async () => {
 		const ac = new AbortController();
 		let resolveApproval!: (v: { approved: boolean; aborted?: boolean }) => void;
@@ -1187,6 +1221,114 @@ describe('runAgentTurn', () => {
 	});
 });
 
+describe('(v) request trace mirrors wire payload (FR-008)', () => {
+	it('no system-role messages; choices row carries tool identity; roles match projection', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'prose' },
+				{
+					type: 'tool-call',
+					toolCallId: 'tc1',
+					toolName: 'present_choices',
+					args: { options: ['A', 'B'] }
+				},
+				{ type: 'finish', finishReason: 'tool-calls' }
+			])
+		} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'options presented' });
+
+		const systemRow = fakeMessage({
+			role: 'system',
+			content: 'You are a helpful assistant.',
+			ord: 0
+		});
+		const userRow = fakeMessage({ role: 'user', content: 'Hello', ord: 1 });
+		const choicesRow = fakeMessage({
+			role: 'assistant',
+			content: 'The Three Trees',
+			toolCallId: 'tc-choices-1',
+			toolName: 'present_choices',
+			metadata: JSON.stringify({ options: ['Oak', 'Elm', 'Pine'] }),
+			ord: 2
+		});
+		const choicesResultRow = fakeMessage({
+			role: 'tool',
+			content: 'options presented',
+			toolCallId: 'tc-choices-1',
+			toolName: 'present_choices',
+			ord: 3
+		});
+
+		const projectedMessages: unknown[] = [
+			{
+				role: 'user',
+				content: [{ type: 'text', text: 'Hello' }]
+			},
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'The Three Trees' },
+					{
+						type: 'tool-call',
+						toolCallId: 'tc-choices-1',
+						toolName: 'present_choices',
+						input: {}
+					}
+				]
+			},
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'tc-choices-1',
+						toolName: 'present_choices',
+						output: { type: 'text', value: 'options presented' }
+					}
+				]
+			}
+		];
+
+		mockedProjectEntries.mockReturnValue(projectedMessages as never);
+
+		const captured: Array<{
+			messages: Array<{ role: string; toolName?: string; kind?: string; content: string }>;
+		}> = [];
+		const deps = makeDeps({
+			reassembleContext: vi.fn(async () => [
+				systemRow,
+				userRow,
+				choicesRow,
+				choicesResultRow
+			]) as never,
+			onTrace: (e) => {
+				if (e.kind === 'request') {
+					captured.push(e as unknown as (typeof captured)[number]);
+				}
+			}
+		});
+		await runAgentTurn(deps);
+
+		expect(captured).toHaveLength(1);
+		const msgs = captured[0].messages;
+
+		// 1. Zero entries with role 'system'
+		expect(msgs.every((m) => m.role !== 'system')).toBe(true);
+
+		// 2. No message content contains the system preamble
+		expect(msgs.every((m) => m.content !== 'You are a helpful assistant.')).toBe(true);
+
+		// 3. Choices row carries tool identity
+		expect(msgs.some((m) => m.toolName === 'present_choices')).toBe(true);
+
+		// 4. Roles match projection
+		const projectedRoles = (projectedMessages as Array<{ role: string }>).map((m) => m.role);
+		const tracedRoles = msgs.map((m) => m.role);
+		expect(tracedRoles).toEqual(projectedRoles);
+	});
+});
+
 function mockedAppendAssistantTextContent(deps: AgentTurnDeps): string {
 	return (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
 }
@@ -1348,5 +1490,108 @@ describe('generative buf suppression + chip', () => {
 			expect.anything()
 		);
 		expect(notifyGenerativeStatus).toHaveBeenCalledWith(null);
+	});
+});
+
+describe('(w) persist order (003 US3): reasoning first, per iteration', () => {
+	function orderOf(mock: unknown, nth: number): number {
+		const calls = (mock as ReturnType<typeof vi.fn>).mock.invocationCallOrder as number[];
+		return calls[nth];
+	}
+
+	it('tool-carrying iteration persists reasoning before its text and tool rows', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'think-0' },
+					{ type: 'text-delta', text: 'interim' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'read_checklist', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-delta', text: 'think-1' },
+					{ type: 'text-delta', text: 'Final' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(2);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(1, 'think-0', 0);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(2, 'think-1', 1);
+
+		const interimText = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls.find(
+			(c) => c[0] === 'interim'
+		);
+		expect(interimText).toBeDefined();
+
+		// iteration 0: reasoning < text < tool call < tool result
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(
+			orderOf(deps.appendAssistantToolCall, 0)
+		);
+		expect(orderOf(deps.appendAssistantToolCall, 0)).toBeLessThan(
+			orderOf(deps.appendToolResult, 0)
+		);
+		// iteration 0's reasoning precedes iteration 1's stream output entirely
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendToolResult, 0));
+		// iteration 1: reasoning < final text
+		expect(orderOf(deps.appendReasoning, 1)).toBeLessThan(orderOf(deps.appendAssistantText, 1));
+	});
+
+	it('allTerminal (present_choices) turn persists reasoning before text and the choices call', async () => {
+		mockedStreamText.mockReturnValueOnce({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-delta', text: 'pacing decision' },
+				{ type: 'text-delta', text: 'prose' },
+				{
+					type: 'tool-call',
+					toolCallId: 'tc1',
+					toolName: 'present_choices',
+					args: { nextUnit: 'Unit 2', options: ['continue'] }
+				},
+				{ type: 'finish', finishReason: 'tool-calls' }
+			])
+		} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'Next: Unit 2' });
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('pacing decision', 0);
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(
+			orderOf(deps.appendAssistantToolCall, 0)
+		);
+	});
+
+	it('stream-abort path persists reasoning before the partial text', async () => {
+		const ctrl = new AbortController();
+		const stream = (async function* () {
+			yield { type: 'reasoning-delta', text: 'half-thought' };
+			yield { type: 'text-delta', text: 'partial reply' };
+			ctrl.abort();
+			yield { type: 'finish', finishReason: 'stop' };
+		})();
+
+		mockedStreamText.mockReturnValueOnce({ fullStream: stream } as never);
+
+		const deps = makeDeps({ signal: ctrl.signal });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: true });
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('half-thought', 0);
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('partial reply');
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
 	});
 });

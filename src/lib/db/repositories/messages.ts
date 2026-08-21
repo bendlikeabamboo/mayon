@@ -58,12 +58,18 @@ export const messagesRepo = {
 
 	async appendToolResult(
 		chatId: string,
-		opts: { toolCallId: string; toolName: string; summary: string; detail?: unknown }
+		opts: { toolCallId: string; toolName: string; summary: string; detail?: unknown; ok?: boolean }
 	): Promise<Message> {
+		const hasDetail = opts.detail != null;
+		const hasOk = opts.ok !== undefined;
+		const metadata =
+			hasDetail || hasOk
+				? JSON.stringify({ ...(opts.detail ?? {}), ...(hasOk ? { ok: opts.ok } : {}) })
+				: undefined;
 		return this.append(chatId, 'tool', opts.summary, {
 			toolCallId: opts.toolCallId,
 			toolName: opts.toolName,
-			metadata: opts.detail != null ? JSON.stringify(opts.detail) : undefined,
+			metadata,
 			kind: 'tool_result'
 		});
 	},

@@ -98,3 +98,25 @@ The first registry entry is the v1→v2 kind backfill (`backfillKinds`): ordered
 Restore uses PG-native `pg_restore --data-only --single-transaction`. Post-load, the same `migrate(client)` runs inside the restore transaction, then the stamp. A v1/legacy dump on a v2 server proceeds with auto-migration; a v2 dump on a v1 server is refused (existing `planRestore` gate). The `__drizzle_migrations` bookkeeping table is never reloaded (existing TOC filter).
 
 While restoring, `/api/db/query` returns 503 and `/api/health` reports `restoring: true` — no server restart, no downtime.
+
+## Presentation seams (feature 004)
+
+### Compose area is input-only
+
+No assistant-initiated interaction (chips, suggestions, approvals) may be added to `Composer.svelte`. Pacing choices are tappable on the timeline's `ChoicesOffer` (active gate = `findGateFromMessages` while not streaming; taken choice links via `UserMessageMeta.choicesEntryId`). Detail: `specs/004-internal-area-unification/contracts/interactive-surfaces.md`.
+
+### Tool activity status vocabulary
+
+Derived in `assembleTimeline` (`src/lib/chat/entries.ts`) — never stored. States: awaiting / running / declined / aborted / failed / succeeded, plus 003's genuine-gap / terminal. Sources: approval-row outcomes, live pending approvals, the `streaming` flag, registry `terminal` classification (`$lib/agent/registry` only), and the additive `ok` flag on NEW `tool_result` metadata. Detail: `specs/004-internal-area-unification/contracts/tool-activity-status.md`.
+
+### Live-ask merge rule
+
+A pending live ask replaces its durable ask row at the row's chronological position — exactly one ask surface per pending ask. All other live items append at the timeline tail. Detail: `specs/004-internal-area-unification/contracts/interactive-surfaces.md`.
+
+### Trace fidelity rule
+
+The `request` trace event must mirror the projected wire payload (`projectEntries` output): system prompt lives only in `system`; message rows carry kind / toolCallId / toolName annotations; never log raw context rows. Detail: `specs/004-internal-area-unification/contracts/request-trace.md`.
+
+### Timeline entry authority
+
+Persisted assistant text is authoritative — `appendAssistantText` retires the live stream buffers in the same update (no interval where both render).

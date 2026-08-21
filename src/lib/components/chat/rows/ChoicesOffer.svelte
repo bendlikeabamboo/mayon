@@ -8,9 +8,10 @@
 	interface ChoicesOfferProps {
 		item: DurableEntry;
 		linkedTakenOption?: string;
+		onSelect?: (option: string) => void;
 	}
 
-	let { item, linkedTakenOption }: ChoicesOfferProps = $props();
+	let { item, linkedTakenOption, onSelect }: ChoicesOfferProps = $props();
 
 	const meta = $derived(parseMetadata<ChoicesMeta>(item.entry.metadata));
 	const options = $derived(meta?.options ?? []);
@@ -30,18 +31,29 @@
 	{/if}
 	<div class="flex flex-wrap gap-1.5 px-1">
 		{#each options as option (option)}
-			<span
-				class="rounded-full border px-2.5 py-1 text-xs {option === linkedTakenOption
-					? 'border-primary bg-primary/10 text-primary'
-					: 'border-border text-muted-foreground'}"
-			>
-				{#if option === linkedTakenOption}
-					<CheckCircle2 class="inline size-3 mr-1" />
-				{:else}
+			{#if onSelect && option !== linkedTakenOption}
+				<button
+					type="button"
+					class="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+					onclick={() => onSelect(option)}
+				>
 					<Circle class="inline size-3 mr-1 opacity-40" />
-				{/if}
-				{option}
-			</span>
+					{option}
+				</button>
+			{:else}
+				<span
+					class="rounded-full border px-2.5 py-1 text-xs {option === linkedTakenOption
+						? 'border-primary bg-primary/10 text-primary'
+						: 'border-border text-muted-foreground'}"
+				>
+					{#if option === linkedTakenOption}
+						<CheckCircle2 class="inline size-3 mr-1" />
+					{:else}
+						<Circle class="inline size-3 mr-1 opacity-40" />
+					{/if}
+					{option}
+				</span>
+			{/if}
 		{/each}
 	</div>
 </div>

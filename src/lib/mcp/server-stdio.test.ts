@@ -27,7 +27,7 @@ import { MissingKeyError } from '$lib/ai/types';
 
 class FakeWS extends EventTarget {
 	readyState = 0; // 0 = CONNECTING, 1 = OPEN — mirrors the browser contract
-	send = vi.fn(() => {
+	send = vi.fn((_data: string) => {
 		if (this.readyState !== 1) {
 			throw new DOMException(
 				"Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.",

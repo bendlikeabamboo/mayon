@@ -39,6 +39,7 @@ Phase 0 output. Every decision is grounded in a verified source location (read d
 ## D4 — Assembly repair: correct pairing, in-place groups, choices as offers
 
 **Decision** — `entries.ts` changes:
+
 1. **Pairing key**: set the map with `msg.toolCallId` (not `msg.id`) for `tool_call` rows. Tool results group at the result's position (existing behavior for successful pairing). Keep a separate `Set` of `toolCallId`s whose call row is `kind === 'choices'` so legacy paired results of choices offers are hidden (they fold under the offer) — the choices row itself becomes a `DurableEntry` rendered **in place** by `ChoicesOffer` (MessageList's existing branch becomes live code).
 2. **Unpaired calls in place**: an unpaired non-choices `tool_call` is emitted as a `ToolGroup` with `result: null` **at the call's own position**, not flushed at the end (delete the end flush entirely).
 3. **Orphan results**: a `tool_result` with no visible call (result-strictly-after-call cutoffs, e.g. branch truncation) renders as a `tool_result` `DurableEntry`; add a dispatch branch so it renders via `ToolActivity`-compatible presentation instead of vanishing (wrap as a synthetic group with `call: result-row-as-call` is hacky — instead give `ToolActivity` an optional result-only mode or render via a minimal orphan renderer; final choice in tasks, contract requires: never invisible).

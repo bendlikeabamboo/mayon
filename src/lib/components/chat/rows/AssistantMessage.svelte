@@ -68,7 +68,7 @@
 			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
 				{personaName}
 			</span>
-			{#if !pending && visible}
+			{#if !isDurable && !pending && visible}
 				<Spinner variant="orbit" class="ml-1.5" />
 			{/if}
 			{#if reasoning}
@@ -100,7 +100,7 @@
 			? 'border-l-2 border-red-500/60'
 			: ''}"
 	>
-		{#if pending}
+		{#if !isDurable && pending}
 			<span class="flex items-center gap-1.5 text-sm text-muted-foreground">
 				<Spinner variant="pulse" />
 				Thinking…
