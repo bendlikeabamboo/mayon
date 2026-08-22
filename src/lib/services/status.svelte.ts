@@ -6,12 +6,19 @@ class ServerStatusState {
 	version = $state<string | null>(null);
 	error = $state<string | null>(null);
 	sandboxDbPath = $state<string | null>(null);
+	restoring = $state(false);
 
-	markConnected(h: { version: string; caps: ServerCap[]; sandboxDbPath?: string }) {
+	markConnected(h: {
+		version: string;
+		caps: ServerCap[];
+		sandboxDbPath?: string;
+		restoring?: boolean;
+	}) {
 		this.connected = true;
 		this.caps = h.caps;
 		this.version = h.version;
 		this.sandboxDbPath = h.sandboxDbPath ?? null;
+		this.restoring = h.restoring ?? false;
 		this.error = null;
 	}
 
@@ -20,6 +27,7 @@ class ServerStatusState {
 		this.caps = [];
 		this.version = null;
 		this.sandboxDbPath = null;
+		this.restoring = false;
 		this.error = err ?? null;
 	}
 

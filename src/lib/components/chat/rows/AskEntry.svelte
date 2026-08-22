@@ -16,15 +16,9 @@
 		type ElicitationMeta
 	} from '$lib/chat/kinds';
 	import { incRender } from '$lib/perf/mark';
+	import ElicitationForm from '$lib/components/mcp/ElicitationForm.svelte';
 
 	type AskKind = 'approval' | 'sampling' | 'elicitation';
-
-	interface ElicitField {
-		name: string;
-		type: string;
-		title?: string;
-		description?: string;
-	}
 
 	type DurableProps = { item: DurableEntry; live?: false };
 	type LiveProps = {
@@ -65,38 +59,21 @@
 	const chipClass = $derived.by(() => {
 		const d = decision;
 		if (d === 'approved' || d === 'allowed' || d === 'accepted')
-			return 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30';
+			return 'bg-secondary text-secondary-foreground border-border';
 		if (d === 'declined' || d === 'denied')
-			return 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30';
-		return 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30';
+			return 'bg-destructive/10 text-destructive border-destructive/30';
+		return 'bg-secondary text-secondary-foreground border-border';
 	});
 
 	const content = $derived(isDurable ? (props as DurableProps).item.entry.content : '');
 
 	const livePayload = $derived(!isDurable ? (props as LiveProps).payload : null);
 
-	const fields = $derived.by<ElicitField[]>(() => {
-		if (!livePayload?.elicitation) return [];
-		return computeFields(livePayload.elicitation.schema);
-	});
-
 	let localDetailOpen = $state(false);
 	let useJsonFallback = $state(false);
 	let formData = $state<Record<string, unknown>>({});
 	let jsonText = $state('{}');
 	let jsonError = $state<string | null>(null);
-
-	function computeFields(schema: Record<string, unknown>): ElicitField[] {
-		if (!schema || typeof schema !== 'object') return [];
-		const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
-		if (!props) return [];
-		return Object.entries(props).map(([name, def]) => ({
-			name,
-			type: (def.type as string) ?? 'string',
-			title: (def.title as string) ?? name,
-			description: (def.description as string) ?? ''
-		}));
-	}
 
 	function handleLiveSubmit(): void {
 		const lp = props as LiveProps;
@@ -196,7 +173,7 @@
 				{@const lp = props as LiveProps}
 				<div class="flex items-center gap-2">
 					<span
-						class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+						class="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
 					>
 						MCP Sampling
 					</span>
@@ -220,67 +197,14 @@
 				{@const e = livePayload.elicitation}
 				{@const lp = props as LiveProps}
 				<p class="text-xs text-muted-foreground">{e.serverName}: {e.message}</p>
-				{#if !useJsonFallback && fields.length > 0}
-					<div class="space-y-3 py-2">
-						{#each fields as field (field.name)}
-							<div>
-								<label class="text-sm font-medium" for="efield-{field.name}">
-									{field.title}
-									{#if field.description}
-										<span class="ml-1 text-xs text-muted-foreground">({field.description})</span>
-									{/if}
-								</label>
-								{#if field.type === 'boolean'}
-									<input
-										type="checkbox"
-										id="efield-{field.name}"
-										bind:checked={formData[field.name] as boolean}
-										class="mt-1"
-									/>
-								{:else if field.type === 'number'}
-									<input
-										type="number"
-										id="efield-{field.name}"
-										bind:value={formData[field.name] as number}
-										class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
-									/>
-								{:else}
-									<input
-										type="text"
-										id="efield-{field.name}"
-										bind:value={formData[field.name] as string}
-										class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
-									/>
-								{/if}
-							</div>
-						{/each}
-					</div>
-					<button
-						class="text-xs text-muted-foreground underline"
-						onclick={() => (useJsonFallback = true)}
-					>
-						Switch to JSON input
-					</button>
-				{:else}
-					<div class="py-2">
-						<textarea
-							bind:value={jsonText}
-							rows="6"
-							class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
-							placeholder={'{}'}></textarea>
-						{#if jsonError}
-							<p class="mt-1 text-xs text-destructive">{jsonError}</p>
-						{/if}
-					</div>
-					{#if fields.length > 0}
-						<button
-							class="text-xs text-muted-foreground underline"
-							onclick={() => (useJsonFallback = false)}
-						>
-							Switch to form input
-						</button>
-					{/if}
-				{/if}
+				<ElicitationForm
+					schema={e.schema}
+					fieldPrefix="efield"
+					bind:formData
+					bind:useJsonFallback
+					bind:jsonText
+					bind:jsonError
+				/>
 				<div class="mt-3 flex gap-2">
 					<Button variant="outline" size="sm" onclick={lp.onDecline}>Cancel</Button>
 					<Button variant="default" size="sm" onclick={handleLiveSubmit}>Submit</Button>
