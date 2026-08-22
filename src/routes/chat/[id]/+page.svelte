@@ -36,7 +36,7 @@
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 	import { getActiveSdkProvider } from '$lib/ai/client';
-	import { supportsReasoningEffort } from '$lib/ai/sdk-factory';
+	import { describeDialect } from '$lib/ai/dialects';
 	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
@@ -64,11 +64,12 @@
 	let lg = $state(false);
 
 	let activeModelId = $state<string | undefined>(undefined);
-	let activeKind = $state<ProviderConfig['kind'] | undefined>(undefined);
+	let activeConfig = $state<ProviderConfig | null>(null);
 	let activeProviderName = $state<string | undefined>(undefined);
-	const supportsDeep = $derived(
-		activeKind === 'openai-compatible' ? supportsReasoningEffort(activeModelId) : true
-	);
+	const supportsDeep = $derived.by(() => {
+		if (!activeConfig || !activeModelId) return true;
+		return describeDialect(activeConfig, activeModelId)?.effortLevels.includes('deep') ?? false;
+	});
 
 	let viewport = $state<HTMLDivElement | null>(null);
 	let topPane = $state<HTMLDivElement | null>(null);
@@ -344,11 +345,11 @@
 			try {
 				const active = await getActiveSdkProvider();
 				activeModelId = active.config.defaultModel;
-				activeKind = active.config.kind;
+				activeConfig = active.config;
 				activeProviderName = active.config.name;
 			} catch {
 				activeModelId = undefined;
-				activeKind = undefined;
+				activeConfig = null;
 				activeProviderName = undefined;
 			}
 

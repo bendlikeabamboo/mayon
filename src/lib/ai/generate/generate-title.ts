@@ -6,7 +6,7 @@
  */
 import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ResolvedRequestSettings } from '../types';
 import { splitContextForGeneration } from './context-split';
 
 const TITLE_PROMPT = [
@@ -21,6 +21,7 @@ export const DEFAULT_TITLE = 'New chat';
 
 export interface GenerateTitleOptions {
 	signal?: AbortSignal;
+	requestSettings?: ResolvedRequestSettings;
 	onTrace?: (t: {
 		request: import('$lib/agent/trace').ObjectTraceRequest;
 		result?: { object: unknown };
@@ -38,7 +39,9 @@ export async function generateTitle(
 	const request = {
 		system,
 		messages: core.map((m) => ({ role: m.role, content: String(m.content) })),
-		schema: 'text'
+		schema: 'text',
+		providerOptions: opts?.requestSettings?.providerOptions,
+		callSettings: opts?.requestSettings?.callSettings
 	};
 	try {
 		const result = await generateText({
@@ -46,7 +49,9 @@ export async function generateTitle(
 			system,
 			messages: core,
 			abortSignal: opts?.signal,
-			maxRetries: 0
+			maxRetries: 0,
+			providerOptions: opts?.requestSettings?.providerOptions as never,
+			...opts?.requestSettings?.callSettings
 		});
 		const title = cleanTitle(result.text);
 		opts?.onTrace?.({ request, result: { object: title } });

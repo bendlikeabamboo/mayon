@@ -9,7 +9,7 @@
  * via `maxRetries`.
  */
 import type { LanguageModel } from 'ai';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ResolvedRequestSettings } from '../types';
 import { GeneratedLabSchema, type GeneratedLab } from './lab';
 import { generateObjectViaTool, extractObjectErrorRaw } from './object-tool';
 import { splitContextForGeneration } from './context-split';
@@ -68,6 +68,7 @@ export async function readLabPrompt(): Promise<string> {
 export interface GenerateLabOptions {
 	prompt?: string;
 	signal?: AbortSignal;
+	requestSettings?: ResolvedRequestSettings;
 	onTrace?: (t: {
 		request: import('$lib/agent/trace').ObjectTraceRequest;
 		result?: { object: unknown };
@@ -88,7 +89,9 @@ export async function generateLab(
 	const request = {
 		system,
 		messages: core.map((m) => ({ role: m.role, content: String(m.content) })),
-		schema: 'GeneratedLabSchema'
+		schema: 'GeneratedLabSchema',
+		providerOptions: opts.requestSettings?.providerOptions,
+		callSettings: opts.requestSettings?.callSettings
 	};
 	try {
 		const { object } = await generateObjectViaTool(model, {
@@ -96,7 +99,8 @@ export async function generateLab(
 			system,
 			messages: core,
 			signal: opts.signal,
-			maxRetries: 2
+			maxRetries: 2,
+			requestSettings: opts.requestSettings
 		});
 		opts.onTrace?.({ request, result: { object } });
 		return object;

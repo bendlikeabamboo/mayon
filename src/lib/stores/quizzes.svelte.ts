@@ -31,7 +31,8 @@ import { repos } from '$lib/db';
 import type { McqPayload, ShortPayload } from '$lib/db';
 import type { Quiz, QuizAnswer, QuizAttempt, QuizQuestion } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
-import { getActiveSdkProvider } from '$lib/ai/client';
+import { getActiveSdkProvider, getAmbientEffort } from '$lib/ai/client';
+import { resolveRequestSettings } from '$lib/ai/dialects';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 import {
 	QuizGenerationError,
@@ -175,8 +176,11 @@ class QuizzesState {
 				assembleContext(chatId),
 				getActiveSdkProvider()
 			]);
+			const effort = await getAmbientEffort();
+			const requestSettings = resolveRequestSettings(config, config.defaultModel, effort);
 			const generated = await generateQuiz(model, ctx, {
 				signal: this.controller!.signal,
+				requestSettings,
 				onTrace: (t) => {
 					traceInput = {
 						kind: 'quiz',

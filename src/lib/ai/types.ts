@@ -61,6 +61,37 @@ export type { GeneratedQuiz, GradedAnswer };
  * `providers` settings key as `{[id]: ProviderConfig}`. API keys live separately
  * in the runtime `KeyStore` (see `client.ts`); nothing secret is stored here.
  */
+export type JSONValue =
+	| string
+	| number
+	| boolean
+	| null
+	| JSONValue[]
+	| { [key: string]: JSONValue };
+
+export type SamplingRequestDefaults = {
+	temperature?: number;
+	topP?: number;
+	maxOutputTokens?: number;
+	stopSequences?: string[];
+	seed?: number;
+	frequencyPenalty?: number;
+	presencePenalty?: number;
+};
+
+export type ResolvedRequestSettings = {
+	callSettings: SamplingRequestDefaults;
+	providerOptions: Record<string, unknown>;
+	droppedExtraKeys: string[];
+};
+
+export type HazardId =
+	| 'locks-sampling'
+	| 'thinking-ignores-sampling'
+	| 'thinking-rejects-sampling'
+	| 'cannot-disable-thinking'
+	| 'reasoning-eats-token-cap';
+
 export interface ProviderConfig {
 	id: string;
 	kind: ProviderKind;
@@ -82,6 +113,8 @@ export interface ProviderConfig {
 	 * (AG3) to decide whether tool definitions are sent.
 	 */
 	toolCapability?: 'auto' | 'on' | 'off';
+	requestDefaults?: SamplingRequestDefaults;
+	extraBody?: Record<string, JSONValue>;
 }
 
 /**

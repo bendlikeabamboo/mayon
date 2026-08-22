@@ -38,6 +38,7 @@
 import { generateText, tool, APICallError } from 'ai';
 import type { LanguageModel } from 'ai';
 import type { z } from 'zod';
+import type { ResolvedRequestSettings } from '../types';
 import { extractFencedJson } from './generate-gate';
 
 export interface GenerateObjectToolOptions<T> {
@@ -47,6 +48,7 @@ export interface GenerateObjectToolOptions<T> {
 	messages: Array<{ role: 'user' | 'assistant'; content: string }>;
 	signal?: AbortSignal;
 	maxRetries?: number;
+	requestSettings?: ResolvedRequestSettings;
 }
 
 export interface GenerateObjectToolResult<T> {
@@ -154,7 +156,9 @@ export async function generateObjectViaTool<T>(
 				})
 			},
 			abortSignal: opts.signal,
-			maxRetries: opts.maxRetries ?? 2
+			maxRetries: opts.maxRetries ?? 2,
+			providerOptions: opts.requestSettings?.providerOptions as never,
+			...opts.requestSettings?.callSettings
 		});
 	} catch (err) {
 		throw new ObjectToolError(

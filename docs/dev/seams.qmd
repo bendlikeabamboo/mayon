@@ -66,6 +66,19 @@ Rules: `user_message` → `user` text; `assistant_message` → `assistant` text;
 
 **Quirk captured in golden fixtures**: `tool_call` projects with `input: {}` (empty), not `metadata.args`. The current gather step never populates `toolArgs`, so providers receive empty input on replay. This is intentional — golden equivalence requires reproducing it exactly (`src/lib/chat/golden/`). Flag, don't fix.
 
+## Request settings resolve through one pure seam
+
+`resolveRequestSettings(config, modelId, effort)` (`src/lib/ai/dialects.ts`) is the **single** seam through which a provider config becomes request parameters. Every call path — chat loop (including critic passes), lab and quiz generation, title generation — must call it; consumers spread `{callSettings, providerOptions}` onto the SDK call and add nothing of their own. The module is a static dialect catalog plus pure functions layering **kind baseline → endpoint dialect (matched on base URL) → model overlay (matched on the last `/`-segment of the model id) → `requestDefaults` → validated `extraBody`**. Do not add a second resolution path or per-adapter parameter logic.
+
+Rules:
+
+- **Omit-empty wire contract**: unset or empty sampling values are never sent — the resolver filters them, not the adapters.
+- **Namespace key**: for `openai-compatible` providers the `providerOptions` namespace key is `name.split('.')[0].trim()`, mirroring `createOpenAICompatible` in the SDK. The case/dot behavior is load-bearing: template names like "z.ai (glm)" previously emitted a namespace the SDK never consumed, silently dropping all reasoning parameters (`specs/009` research R1). Do not normalize or slugify it.
+- **Gemini `thinkingConfig`** lives at the `google` namespace root, not under `generationConfig` where the SDK schema strips it (`specs/009` research R5).
+- **extraBody guardrails**: `validateExtraBody` (JSON object, ≤ 16 KiB, no secret-like or prototype-pollution keys) plus per-kind allowlists (`EXTRA_BODY_ALLOWLISTS`). Keys a provider kind cannot forward come back as `droppedExtraKeys` and must be surfaced (Settings warning) — never a silent drop.
+
+Detail: `specs/009-provider-request-settings/contracts/request-settings-resolution.md`, `specs/009-provider-request-settings/contracts/dialect-catalog.md`.
+
 ## Presentation decided by kind only
 
 The presentation registry (`src/lib/chat/presentation.ts`) maps each kind to lane, collapsible, collapsed-by-default, and a renderer name string. Timeline assembly (`src/lib/chat/entries.ts`) builds a `TimelineItem[]` from messages; `MessageList.svelte` dispatches each item through the registry.

@@ -6,7 +6,7 @@ import { validateTurn, type CriticIssue } from '$lib/agent/critic';
 import { projectEntries } from '$lib/chat/projection';
 import { buildCapabilitiesPreamble, buildFirstTurnOrientationPreamble } from '$lib/chat/brief';
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
-import { providerOptionsForReasoning } from '$lib/ai/sdk-factory';
+import { resolveRequestSettings } from '$lib/ai/dialects';
 import type { Message } from '$lib/db/schema';
 import type { TraceEvent, TracedRequestMessage } from './trace';
 
@@ -103,6 +103,10 @@ function partKind(p: Record<string, unknown>): string | undefined {
 	if (p.type === 'tool-call') return 'tool_call';
 	if (p.type === 'tool-result') return 'tool_result';
 	return undefined;
+}
+
+function resolveTurnSettings(deps: AgentTurnDeps) {
+	return resolveRequestSettings(deps.config, deps.config.defaultModel, deps.effort);
 }
 
 function toTracedRequestMessage(msg: { role: string; content: unknown }): TracedRequestMessage {
@@ -213,12 +217,15 @@ async function runCriticPhase(
 		deps.updateStreamBuffer('');
 		const sysParts = correctionCtx.filter((m) => m.role === 'system').map((m) => m.content);
 		const messages = projectEntries(correctionCtx);
+		const resolved = resolveTurnSettings(deps);
 
 		const result = streamText({
 			model: deps.model,
 			system: sysParts.join('\n\n') || undefined,
 			messages,
-			abortSignal: deps.signal
+			abortSignal: deps.signal,
+			providerOptions: resolved.providerOptions as never,
+			...resolved.callSettings
 		});
 
 		let freshBuf = '';
@@ -295,12 +302,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			const system = sysParts.join('\n\n');
 			const disabled = deps.disabledToolIds ?? [];
 			const disabledSet = new Set(disabled);
-			const pOpts = providerOptionsForReasoning(
-				deps.config.kind,
-				deps.effort,
-				deps.config.name,
-				deps.config.defaultModel
-			);
+			const resolved = resolveTurnSettings(deps);
 			const toolNames = toolsEnabled
 				? getToolDefinitions()
 						.filter((d) => !disabledSet.has(d.id))
@@ -311,7 +313,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				system,
 				messages: messages.map(toTracedRequestMessage),
 				tools: toolNames,
-				providerOptions: pOpts as Record<string, unknown>
+				providerOptions: resolved.providerOptions as Record<string, unknown>,
+				callSettings: resolved.callSettings as Record<string, unknown>
 			});
 
 			let result;
@@ -322,7 +325,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					messages,
 					tools: buildSdkTools(toolsEnabled, disabled),
 					abortSignal: deps.signal,
-					providerOptions: pOpts as never
+					providerOptions: resolved.providerOptions as never,
+					...resolved.callSettings
 				});
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {

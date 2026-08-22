@@ -18,7 +18,8 @@ import { browser } from '$app/environment';
 import { repos } from '$lib/db';
 import type { Lab } from '$lib/db/schema';
 import { assembleContext } from '$lib/chat/context';
-import { getActiveSdkProvider } from '$lib/ai/client';
+import { getActiveSdkProvider, getAmbientEffort } from '$lib/ai/client';
+import { resolveRequestSettings } from '$lib/ai/dialects';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 import { generateLab, LabGenerationError } from '$lib/ai/generate/generate';
 import { toLabContent } from '$lib/ai/generate/lab';
@@ -94,8 +95,11 @@ class LabsState {
 				assembleContext(chatId),
 				getActiveSdkProvider()
 			]);
+			const effort = await getAmbientEffort();
+			const requestSettings = resolveRequestSettings(config, config.defaultModel, effort);
 			const generated = await generateLab(model, ctx, {
 				signal: this.controller.signal,
+				requestSettings,
 				onTrace: (t) => {
 					traceInput = {
 						kind: 'lab',

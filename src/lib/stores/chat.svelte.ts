@@ -26,6 +26,7 @@ import {
 import type { LearningBrief } from '$lib/chat/brief';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import { getActiveSdkProvider } from '$lib/ai/client';
+import { resolveRequestSettings } from '$lib/ai/dialects';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '$lib/ai/types';
@@ -699,8 +700,11 @@ class ChatState {
 		const startTime = Date.now();
 		try {
 			const ctx: ChatMessage[] = [{ role: 'user', content: firstMessage }];
+			const { config } = await getActiveSdkProvider();
+			const requestSettings = resolveRequestSettings(config, config.defaultModel, 'off');
 			const title = await generateTitle(model, ctx, {
 				signal: this.titleController.signal,
+				requestSettings,
 				onTrace: (t) => {
 					traceInput = {
 						kind: 'title',

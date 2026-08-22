@@ -12,6 +12,8 @@ afterAll(() => testDb.teardown());
 
 beforeEach(async () => {
 	mockedGetActiveSdkProvider.mockReset();
+	mockedGetAmbientEffort.mockReset();
+	mockedGetAmbientEffort.mockResolvedValue('on');
 	mockedGenerateText.mockReset();
 	labsStore.list = [];
 	labsStore.current = null;
@@ -21,7 +23,8 @@ beforeEach(async () => {
 });
 
 vi.mock('$lib/ai/client', () => ({
-	getActiveSdkProvider: vi.fn()
+	getActiveSdkProvider: vi.fn(),
+	getAmbientEffort: vi.fn()
 }));
 
 vi.mock('ai', () => ({
@@ -45,8 +48,9 @@ vi.mock('ai', () => ({
 	}
 }));
 
-const { getActiveSdkProvider } = await import('$lib/ai/client');
+const { getActiveSdkProvider, getAmbientEffort } = await import('$lib/ai/client');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
+const mockedGetAmbientEffort = vi.mocked(getAmbientEffort);
 
 const { generateText } = await import('ai');
 const mockedGenerateText = vi.mocked(generateText);
