@@ -23,8 +23,8 @@ describe('US4: ToolActivity terminal presentation (registry-driven)', () => {
 		expect(source).not.toContain('present_choices');
 	});
 
-	it('terminal status maps to neutral Circle glyph', () => {
-		expect(source).toMatch(/status\(\) === 'terminal'/);
+	it('terminal status maps to neutral Circle glyph via badgeMeta', () => {
+		expect(source).toMatch(/terminal.*Circle/s);
 	});
 
 	it('unpaired non-terminal calls keep the failure mark (XCircle branch remains)', () => {

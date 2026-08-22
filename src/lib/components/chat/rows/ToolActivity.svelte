@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import {
 		ChevronRight,
-		ChevronDown,
 		CheckCircle2,
 		XCircle,
 		Circle,
@@ -11,17 +10,19 @@
 	} from '@lucide/svelte';
 	import ToolSources from '../ToolSources.svelte';
 	import ToolResultBody from './ToolResultBody.svelte';
+	import { deriveToolStatus } from './tool-status';
 	import type { ToolGroup, OrphanToolResult } from '$lib/chat/entries';
-	import {
-		parseMetadata,
-		type ToolResultMeta,
-		type SharedMetadata,
-		TOOL_SUMMARY_THRESHOLD
-	} from '$lib/chat/kinds';
+	import { parseMetadata, type ToolResultMeta, type SharedMetadata } from '$lib/chat/kinds';
 	import { classifyResult } from '$lib/chat/result-shape';
 	import { extractSources } from '$lib/mcp/sources';
 	import { getToolDefinition } from '$lib/agent/registry';
 	import { incRender } from '$lib/perf/mark';
+	import {
+		Collapsible,
+		CollapsibleTrigger,
+		CollapsibleContent
+	} from '$lib/components/ui/collapsible/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 
 	let { item }: { item: ToolGroup | OrphanToolResult } = $props();
 
@@ -41,136 +42,137 @@
 	const terminal = $derived(
 		call !== null && getToolDefinition(call.toolName ?? '')?.terminal === true
 	);
-
-	type ToolStatus =
-		| 'awaiting'
-		| 'declined'
-		| 'aborted'
-		| 'running'
-		| 'failed'
-		| 'succeeded'
-		| 'terminal'
-		| 'gap';
-
-	const status = $derived((): ToolStatus => {
-		if ('group' in item && item.group) {
-			const g = item;
-			if (g.aborted) return 'aborted';
-			if (g.declined) return 'declined';
-			if (g.awaitingDecision) return 'awaiting';
-			if (hasResult) {
-				return g.failed === true ? 'failed' : 'succeeded';
-			}
-			if (terminal) return 'terminal';
-			if (g.running) return 'running';
-			return 'gap';
-		}
-		if ('orphan' in item && item.orphan) {
-			return item.failed === true ? 'failed' : 'succeeded';
-		}
-		return 'gap';
-	});
-
-	const needsExpander = $derived(summary.length > TOOL_SUMMARY_THRESHOLD || hasDetail);
-	const payloadLike = $derived(/^\s*[[{]/.test(summary));
-	const verbose = $derived(needsExpander || payloadLike);
+	const status = $derived(deriveToolStatus(item, { hasResult, terminal }));
+	const hasContent = $derived(summary.length > 0 || hasDetail);
 	const shape = $derived(
 		resultMsg ? classifyResult(summary, parseMetadata(resultMsg.metadata)) : null
 	);
-	let expanded = $state(false);
 
-	function artifactHref(artifact: { kind: string; id: string }): string {
-		if (artifact.kind === 'chat') return `/chat/${artifact.id}`;
-		if (artifact.kind === 'lab') return `/lab/${artifact.id}`;
-		if (artifact.kind === 'quiz') return `/quiz/${artifact.id}`;
-		return `/${artifact.kind}/${artifact.id}`;
-	}
+	const badgeMeta = $derived.by(() => {
+		const s = status;
+		if (s === 'awaiting')
+			return {
+				label: 'Waiting',
+				variant: 'secondary' as const,
+				icon: Hourglass,
+				iconClass: 'text-foreground animate-pulse'
+			};
+		if (s === 'aborted' || s === 'declined')
+			return {
+				label: s === 'aborted' ? 'Aborted' : 'Declined',
+				variant: 'outline' as const,
+				icon: CircleSlash,
+				iconClass: 'text-muted-foreground'
+			};
+		if (s === 'running')
+			return {
+				label: 'Running',
+				variant: 'secondary' as const,
+				icon: Circle,
+				iconClass: 'text-muted-foreground animate-pulse'
+			};
+		if (s === 'failed')
+			return {
+				label: 'Failed',
+				variant: 'destructive' as const,
+				icon: XCircle,
+				iconClass: 'text-destructive'
+			};
+		if (s === 'succeeded')
+			return {
+				label: 'Succeeded',
+				variant: 'secondary' as const,
+				icon: CheckCircle2,
+				iconClass: 'text-foreground'
+			};
+		if (s === 'terminal')
+			return {
+				label: 'Terminal',
+				variant: 'outline' as const,
+				icon: Circle,
+				iconClass: 'text-muted-foreground/70'
+			};
+		return {
+			label: '',
+			variant: 'outline' as const,
+			icon: XCircle,
+			iconClass: 'text-muted-foreground'
+		};
+	});
 
-	function onHeaderKey(event: KeyboardEvent) {
-		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault();
-			expanded = !expanded;
-		}
+	function artifactHref(a: { kind: string; id: string }): string {
+		if (a.kind === 'chat') return `/chat/${a.id}`;
+		if (a.kind === 'lab') return `/lab/${a.id}`;
+		if (a.kind === 'quiz') return `/quiz/${a.id}`;
+		return `/${a.kind}/${a.id}`;
 	}
 
 	onMount(() => incRender('TimelineRow'));
 </script>
 
 <div class="flex flex-col gap-1">
-	{#snippet headerInner()}
-		{#if status() === 'awaiting'}
-			<Hourglass class="size-3 text-amber-500 animate-pulse" />
-		{:else if status() === 'aborted' || status() === 'declined'}
-			<CircleSlash class="size-3 text-muted-foreground" />
-		{:else if status() === 'running'}
-			<Circle class="size-3 text-muted-foreground animate-pulse" />
-		{:else if status() === 'failed'}
-			<XCircle class="size-3 text-red-500" />
-		{:else if status() === 'succeeded'}
-			<CheckCircle2 class="size-3 text-green-600 dark:text-green-400" />
-		{:else if status() === 'terminal'}
-			<Circle class="size-3 text-muted-foreground/70" />
-		{:else}
-			<XCircle class="size-3 text-red-500/60" />
-		{/if}
-		<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-			{#if artifact}
-				<a
-					href={artifactHref(artifact)}
-					class="hover:underline"
-					onclick={(e) => e.stopPropagation()}>{toolName}</a
-				>
-			{:else}
-				{toolName}
-			{/if}
-		</span>
-		{#if status() === 'awaiting'}
-			<span class="text-xs italic text-muted-foreground">Waiting for your approval</span>
-		{:else if status() === 'aborted'}
-			<span class="text-xs text-muted-foreground">Aborted</span>
-		{:else if status() === 'declined'}
-			<span class="text-xs text-muted-foreground">Declined</span>
-		{/if}
-		{#if verbose}
-			{#if expanded}
-				<ChevronDown class="size-3 text-muted-foreground" />
-			{:else}
+	{#if hasContent}
+		<Collapsible>
+			<CollapsibleTrigger
+				class="flex w-fit items-center gap-1.5 px-1 cursor-pointer select-none hover:text-foreground transition-colors"
+			>
+				{@const Icon = badgeMeta.icon}
+				<Icon class="size-3 {badgeMeta.iconClass}" />
+				<Badge variant={badgeMeta.variant} class="text-[10px] px-1.5 py-0">
+					{badgeMeta.label}
+				</Badge>
+				<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					{#if artifact}
+						<a
+							href={artifactHref(artifact)}
+							class="hover:underline"
+							onclick={(e) => e.stopPropagation()}>{toolName}</a
+						>
+					{:else}
+						{toolName}
+					{/if}
+				</span>
+				{#if status === 'awaiting'}
+					<span class="text-xs italic text-muted-foreground">Waiting for your approval</span>
+				{/if}
 				<ChevronRight class="size-3 text-muted-foreground" />
-			{/if}
-		{/if}
-	{/snippet}
-	{#if verbose}
-		<div
-			class="flex w-fit items-center gap-1.5 px-1 cursor-pointer select-none hover:text-foreground transition-colors"
-			role="button"
-			tabindex="0"
-			aria-expanded={expanded}
-			onclick={() => (expanded = !expanded)}
-			onkeydown={onHeaderKey}
-		>
-			{@render headerInner()}
-		</div>
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				{#if shape}
+					<ToolResultBody {shape} />
+				{:else}
+					<pre
+						class="max-h-60 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{summary}</pre>
+				{/if}
+				{#if shape?.kind !== 'records'}
+					<ToolSources {sources} />
+				{/if}
+			</CollapsibleContent>
+		</Collapsible>
 	{:else}
+		{#snippet noContentHeader()}
+			{@const Icon2 = badgeMeta.icon}
+			<Icon2 class="size-3 {badgeMeta.iconClass}" />
+		{/snippet}
 		<div class="flex items-center gap-1.5 px-1">
-			{@render headerInner()}
+			{@render noContentHeader()}
+			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+				{#if artifact}
+					<a href={artifactHref(artifact)} class="hover:underline">{toolName}</a>
+				{:else}
+					{toolName}
+				{/if}
+			</span>
+			{#if status === 'awaiting'}
+				<span class="text-xs italic text-muted-foreground">Waiting for your approval</span>
+			{:else if status === 'aborted'}
+				<span class="text-xs text-muted-foreground">Aborted</span>
+			{:else if status === 'declined'}
+				<span class="text-xs text-muted-foreground">Declined</span>
+			{/if}
 		</div>
 	{/if}
-	{#if summary && (!verbose || expanded)}
-		{#if verbose}
-			{#if shape}
-				<ToolResultBody {shape} />
-			{:else}
-				<pre
-					class="max-h-60 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{summary}</pre>
-			{/if}
-		{:else}
-			<span class="px-1 block truncate max-w-full text-xs text-muted-foreground">{summary}</span>
-		{/if}
-	{/if}
-	{#if status() === 'gap'}
+	{#if status === 'gap'}
 		<span class="px-1 text-xs italic text-muted-foreground">No result recorded</span>
-	{/if}
-	{#if (!verbose || expanded) && shape?.kind !== 'records'}
-		<ToolSources {sources} />
 	{/if}
 </div>
