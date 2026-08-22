@@ -3,7 +3,7 @@
 	import { CheckCircle2, KeyRound, Plus, Trash2 } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import ModelSelect from '$lib/components/ai/ModelSelect.svelte';
+	import { ModelSelect } from '$lib/components/ai/model-select/index.js';
 	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
 	import {
 		deleteProviderKey,
