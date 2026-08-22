@@ -66,6 +66,43 @@ describe('parseModelIds', () => {
 	it('returns [] for unrecognized shapes', () => {
 		expect(parseModelIds(JSON.stringify({ objects: [] }))).toEqual([]);
 	});
+
+	it('keeps entries with a non-embedding type in { data } shape', () => {
+		expect(
+			parseModelIds(
+				JSON.stringify({
+					data: [
+						{ id: 'c', type: 'chat' },
+						{ id: 'l', type: 'language' }
+					]
+				})
+			)
+		).toEqual(['c', 'l']);
+	});
+
+	it('keeps entries with a non-embedding type in a bare array', () => {
+		expect(parseModelIds(JSON.stringify([{ id: 'c', type: 'chat' }]))).toEqual(['c']);
+	});
+
+	it('keeps entries with an absent type field alongside typed ones', () => {
+		expect(
+			parseModelIds(JSON.stringify({ data: [{ id: 'plain' }, { id: 'typed', type: 'chat' }] }))
+		).toEqual(['plain', 'typed']);
+	});
+
+	it('excludes entries with type "embedding" in the { data } shape', () => {
+		expect(
+			parseModelIds(
+				JSON.stringify({ data: [{ id: 'chat-1' }, { id: 'embed-1', type: 'embedding' }] })
+			)
+		).toEqual(['chat-1']);
+	});
+
+	it('excludes entries with type "embedding" in a bare array', () => {
+		expect(
+			parseModelIds(JSON.stringify([{ id: 'chat-1' }, { id: 'embed-1', type: 'embedding' }]))
+		).toEqual(['chat-1']);
+	});
 });
 
 describe('readAll', () => {
