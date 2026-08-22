@@ -12,4 +12,5 @@ docs/
 refinement/
 prompts/
 .kilo/
+specs/**/donors/
 

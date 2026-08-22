@@ -15,6 +15,7 @@ export default ts.config(
 			'.kilo/',
 			'docs/',
 			'tests/fixtures/',
+			'specs/**/donors/',
 			'server/dist/',
 			'packages/*/dist/'
 		]
