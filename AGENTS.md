@@ -21,25 +21,25 @@ topology, and the invariants you must respect when editing.
 
 ## Commands
 
-| Command                            | What it does                                                                                                    |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `pnpm install`                     | Install dependencies.                                                                                           |
-| `pnpm dev`                         | Bring up the all-Docker dev stack (web HMR on http://localhost:5173, server on :4319, db), project `mayon-dev`. |
-| `pnpm dev:up`                      | Same as `pnpm dev` but detached (`-d`).                                                                         |
-| `pnpm dev:down`                    | Stop and remove the dev stack (keeps `pg-data-dev`/`server-data-dev` volumes).                                  |
-| `pnpm dev:build`                   | Rebuild the dev images (after deps, config, or `@mayon/shared` changes).                                        |
-| `pnpm dev:vite`                    | Run Vite directly — used **inside** the dev `web` container.                                                    |
-| `pnpm --filter @mayon/server dev`  | Run the server (`tsx watch`) — used **inside** the dev `server` container.                                      |
-| `pnpm build`                       | Build the SPA into `build/`.                                                                                    |
-| `pnpm check`                       | Type-check with `svelte-check`.                                                                                 |
-| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                                                      |
-| `pnpm format`                      | Prettier `--write`.                                                                                             |
-| `pnpm test`                        | Vitest (pglite test driver) — run once.                                                                         |
-| `pnpm test:watch`                  | Vitest in watch mode.                                                                                           |
-| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                                                  |
-| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                   |
-| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                         |
-| `docker compose up`                | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first. |
+| Command                            | What it does                                                                                                                                             |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`                     | Install dependencies.                                                                                                                                    |
+| `pnpm dev`                         | Bring up the all-Docker dev stack (web HMR on http://localhost:5173, server on :4319, db), project `mayon-dev`. Docker or Podman via `MAYON_DEV_ENGINE`. |
+| `pnpm dev:up`                      | Same as `pnpm dev` but detached (`-d`). Engine selectable via `MAYON_DEV_ENGINE`.                                                                        |
+| `pnpm dev:down`                    | Stop and remove the dev stack (keeps `pg-data-dev`/`server-data-dev` volumes).                                                                           |
+| `pnpm dev:build`                   | Rebuild the dev images (after deps, config, or `@mayon/shared` changes). Engine selectable via `MAYON_DEV_ENGINE`.                                       |
+| `pnpm dev:vite`                    | Run Vite directly — used **inside** the dev `web` container.                                                                                             |
+| `pnpm --filter @mayon/server dev`  | Run the server (`tsx watch`) — used **inside** the dev `server` container.                                                                               |
+| `pnpm build`                       | Build the SPA into `build/`.                                                                                                                             |
+| `pnpm check`                       | Type-check with `svelte-check`.                                                                                                                          |
+| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                                                                                               |
+| `pnpm format`                      | Prettier `--write`.                                                                                                                                      |
+| `pnpm test`                        | Vitest (pglite test driver) — run once.                                                                                                                  |
+| `pnpm test:watch`                  | Vitest in watch mode.                                                                                                                                    |
+| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                                                                                           |
+| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                                                            |
+| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                                                                  |
+| `docker compose up`                | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first.                                          |
 
 ## Releasing & versioning
 

@@ -6,11 +6,18 @@ Thank you for your interest in contributing! This guide covers the essentials fo
 
 ### Prerequisites
 
-| Tool   | Version | Notes                                    |
-| ------ | ------- | ---------------------------------------- |
-| Node   | 22      | `.nvmrc` — use `nvm use`                 |
-| pnpm   | 10      | `packageManager` field in `package.json` |
-| Docker | —       | Required to run Postgres + server        |
+| Tool            | Version | Notes                                              |
+| --------------- | ------- | -------------------------------------------------- |
+| Node            | 22      | `.nvmrc` — use `nvm use`                           |
+| pnpm            | 10      | `packageManager` field in `package.json`           |
+| Docker / Podman | —       | Required to run Postgres + server (Docker default) |
+
+> **Podman contributors:** the dev commands run under Podman too. Set
+> `MAYON_DEV_ENGINE=podman` to force it, or rely on auto-detection (with
+> neither engine overridden, Docker is preferred when both are installed).
+> Dev images, caches, and the dev database volume are engine-scoped — switching
+> engines mid-stream resets the dev database and requires `pnpm dev:build`.
+> Shell aliases (`docker` → `podman`) are not consulted by the scripts.
 
 ### Install
 
@@ -20,18 +27,17 @@ pnpm install
 
 ### Development Commands
 
-| Command             | Description                                                               |
-| ------------------- | ------------------------------------------------------------------------- |
-| `pnpm dev`          | All-Docker dev stack: web HMR (:5173) + server + db (project `mayon-dev`) |
-| `pnpm dev:build`    | Rebuild dev images (after deps, config, or `@mayon/shared` changes)       |
-| `docker compose up` | Full stack: web SPA + server + Postgres (web on :8080)                    |
-| `pnpm test`         | Vitest suite (pglite Postgres test driver)                                |
-| `pnpm test:watch`   | Vitest in watch mode                                                      |
-| `pnpm check`        | `svelte-check` type-checking                                              |
-| `pnpm lint`         | ESLint + Prettier check                                                   |
-| `pnpm format`       | Prettier write                                                            |
-| `pnpm build`        | Production SPA build into `build/`                                        |
-| `pnpm db:generate`  | Generate drizzle migration from schema                                    |
+| Command              | Description                                                               |
+| -------------------- | ------------------------------------------------------------------------- |
+| `pnpm dev`           | All-Docker dev stack: web HMR (:5173) + server + db (project `mayon-dev`) |
+| `pnpm dev:build`     | Rebuild dev images (after deps, config, or `@mayon/shared` changes)       |
+| `docker compose up`  | Full stack: web SPA + server + Postgres (web on :8080)                    |
+| `pnpm test`          | Vitest suite (pglite Postgres test driver)                                |
+| `pnpm check`         | `svelte-check` type-checking                                              |
+| `pnpm lint`          | ESLint + Prettier check                                                   |
+| `pnpm format`        | Prettier write                                                            |
+| `pnpm build`         | Production SPA build into `build/`                                        |
+| `pnpm db:generate`   | Generate drizzle migration from schema                                    |
 
 ## Code Style
 
