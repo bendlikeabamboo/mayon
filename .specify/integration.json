@@ -1,13 +1,15 @@
 {
-	"version": "0.16.4",
-	"integration_state_schema": 1,
-	"installed_integrations": ["kilocode"],
-	"integration_settings": {
-		"kilocode": {
-			"script": "sh",
-			"invoke_separator": "."
-		}
-	},
-	"integration": "kilocode",
-	"default_integration": "kilocode"
+  "version": "1.0.1",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "copilot"
+  ],
+  "integration_settings": {
+    "copilot": {
+      "script": "py",
+      "invoke_separator": "-"
+    }
+  },
+  "integration": "copilot",
+  "default_integration": "copilot"
 }
