@@ -32,20 +32,20 @@ Replace the three hardcoded expound "added instruction" toggles (`ExpoundToggle`
 
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-| Principle | Verdict | How satisfied |
-| --- | --- | --- |
-| I. Layering: app code calls repositories only | PASS | New component + module call `repos.settings` exclusively; no `db` import outside `src/lib/db/`. The repo→`$lib/chat` import precedent (`settings.ts:4` imports `DEFAULT_PROFILE` from `$lib/chat/brief`) is followed in reverse for defaults. |
-| I. `StorageDriver` is the only storage seam | PASS | No driver changes; all access via `settingsRepo.get/set`. |
-| I. `pnpm check` + `pnpm lint` before merge | PASS | Listed as task gates. |
-| I. No secrets in `settings` | PASS | Values are user-authored display text (name + optional description) only. |
-| I. No `+`-prefixed non-route files | PASS | No new route files. |
-| II. Tests accompany new `src/lib/` behavior | PASS | New module `expound-instructions.ts` ships with `expound-instructions.test.ts`; updated behavior in `expound.ts` (parse/serialize/prompt) and `settings.ts` (seeding) covered by updated/new tests. |
-| II. `pnpm test` (pglite) green | PASS | Task gate. No server-side changes → server tests unaffected. |
-| III. UI from existing Tailwind v4 + shadcn vocabulary | PASS | Reuses `Button`, `Dialog`, `Badge` + the raw-`<input>`-with-shared-`inputClass` pattern used by `McpServers.svelte:66-67`; inline `role="status"`/`role="alert"` feedback per `DataSection`. |
-| III. Progressive degradation | PASS | Settings KV is the same storage every settings section already uses; no new capability dependency. |
-| III. Expound offsets via source map; no substring heuristics | PASS | Selection/offset/overlap code paths untouched; only the instruction-label source changes. |
-| IV. Bundle growth justified | PASS | Zero new dependencies. |
-| IV. Drizzle migrations via `pnpm db:generate` | PASS/N.A. | No schema change — no migration generated; nothing hand-edited. |
+| Principle                                                    | Verdict   | How satisfied                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I. Layering: app code calls repositories only                | PASS      | New component + module call `repos.settings` exclusively; no `db` import outside `src/lib/db/`. The repo→`$lib/chat` import precedent (`settings.ts:4` imports `DEFAULT_PROFILE` from `$lib/chat/brief`) is followed in reverse for defaults. |
+| I. `StorageDriver` is the only storage seam                  | PASS      | No driver changes; all access via `settingsRepo.get/set`.                                                                                                                                                                                     |
+| I. `pnpm check` + `pnpm lint` before merge                   | PASS      | Listed as task gates.                                                                                                                                                                                                                         |
+| I. No secrets in `settings`                                  | PASS      | Values are user-authored display text (name + optional description) only.                                                                                                                                                                     |
+| I. No `+`-prefixed non-route files                           | PASS      | No new route files.                                                                                                                                                                                                                           |
+| II. Tests accompany new `src/lib/` behavior                  | PASS      | New module `expound-instructions.ts` ships with `expound-instructions.test.ts`; updated behavior in `expound.ts` (parse/serialize/prompt) and `settings.ts` (seeding) covered by updated/new tests.                                           |
+| II. `pnpm test` (pglite) green                               | PASS      | Task gate. No server-side changes → server tests unaffected.                                                                                                                                                                                  |
+| III. UI from existing Tailwind v4 + shadcn vocabulary        | PASS      | Reuses `Button`, `Dialog`, `Badge` + the raw-`<input>`-with-shared-`inputClass` pattern used by `McpServers.svelte:66-67`; inline `role="status"`/`role="alert"` feedback per `DataSection`.                                                  |
+| III. Progressive degradation                                 | PASS      | Settings KV is the same storage every settings section already uses; no new capability dependency.                                                                                                                                            |
+| III. Expound offsets via source map; no substring heuristics | PASS      | Selection/offset/overlap code paths untouched; only the instruction-label source changes.                                                                                                                                                     |
+| IV. Bundle growth justified                                  | PASS      | Zero new dependencies.                                                                                                                                                                                                                        |
+| IV. Drizzle migrations via `pnpm db:generate`                | PASS/N.A. | No schema change — no migration generated; nothing hand-edited.                                                                                                                                                                               |
 
 No violations → Complexity Tracking left empty.
 

@@ -24,7 +24,7 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 **Purpose**: Confirm clean baseline before feature work
 
-- [ ] T001 Verify baseline gates are green on the working branch: `pnpm check && pnpm lint && pnpm test` (fix/pre-existing failures are out of scope; note them if any)
+- [x] T001 Verify baseline gates are green on the working branch: `pnpm check && pnpm lint && pnpm test` (fix/pre-existing failures are out of scope; note them if any)
 
 ---
 
@@ -34,12 +34,12 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T002 Create `src/lib/chat/expound-instructions.ts`: `ExpoundInstruction` type (`id`, `name`, optional `description`, optional `builtin`), `DEFAULT_EXPOUND_INSTRUCTIONS` (five built-ins incl. `mermaid-diagram` "Mermaid Diagram" and `focus-callouts` "Focus Callouts", first three names matching today's `TOGGLE_LABELS` exactly, per data-model.md table), `sanitizeInstructions(raw): ExpoundInstruction[]` (invalid elements dropped, null/corrupt → defaults), `validateInstruction(list, draft)` (name trimmed non-blank, unique case-insensitive, ≤ 60 chars; description ≤ 200 chars, empty → undefined), and `getExpoundInstructions()` / `saveExpoundInstructions(list)` over `repos.settings` key `expoundInstructions` per contracts/expound-instructions-settings-key.md
-- [ ] T003 [P] Create `src/lib/chat/expound-instructions.test.ts`: defaults contain exactly the five built-ins in order incl. the two new ones; sanitize falls back to defaults on null/malformed/non-array and drops invalid elements; validation rejects blank, duplicate (case-insensitive), oversized names and oversized descriptions; round-trip save/read via the pglite test driver (`useFileTestDb()` from `src/lib/db/driver/pg-test.ts`)
-- [ ] T004 Migrate `src/lib/chat/expound.ts` per contracts/branch-add-formats-format.md: change `ExpoundOptions.toggles` to `string[]` (display names), make `buildExpoundPrompt` join names, delete `ExpoundToggle` and `TOGGLE_LABELS` exports, add private frozen `LEGACY_TOGGLE_LABELS` map (`diagrams`/`tables`/`code` → current labels), and rewrite `parseAddFormats(raw): string[]` (null/malformed/non-array → `[]`, non-strings dropped, legacy keys mapped, all other strings kept verbatim — NO valid-set filtering); `serializeAddFormats` stays `JSON.stringify`
-- [ ] T005 [P] Update `src/lib/chat/expound.test.ts`: prompt tests use display names (input-order preservation, empty → "Adding no extra formats whenever possible.", `(none provided)`, `provideSummary` unchanged); new `parseAddFormats` tests (legacy mapping `'["diagrams","tables"]'` → labels; unknown strings verbatim `'["diagrams","unknown"]'` → `['Diagrams (prompt diagrams)', 'unknown']`; null/`'not json'` → `[]`)
-- [ ] T006 [P] Update `src/lib/stores/chat.svelte.test.ts` round-trip block (lines ~928–946): serialize/parse round-trips names; replace the unknown-dropping assertion with verbatim-preservation; keep null/invalid-JSON cases; update `branch_sources` extra-columns block to a names-based stored string (e.g. `'["Mermaid Diagram","Focus Callouts"]'`)
-- [ ] T007 Update consumers for compile-green after the type migration: `src/lib/stores/chat.svelte.ts` (imports; `createExpoundBranch`/`createBranchChild` flow unchanged), `src/routes/chat/[id]/+page.svelte` (drop the `as ExpoundToggle[]` cast at line ~683; remove stale import), `src/lib/components/chat/Highlighter.svelte` + `src/lib/components/chat/rows/AssistantMessage.svelte` (type-only `ExpoundOptions` imports — no behavioral change), `src/lib/components/chat/ExpoundPromptConstructor.svelte` (options enumerated from `DEFAULT_EXPOUND_INSTRUCTIONS`, `SvelteSet<string>`, submit names in list order), `src/lib/components/chat/ExpoundCard.svelte` (render `addFormats: string[]` pills verbatim, no label lookup; `(none)` when empty)
+- [x] T002 Create `src/lib/chat/expound-instructions.ts`: `ExpoundInstruction` type (`id`, `name`, optional `description`, optional `builtin`), `DEFAULT_EXPOUND_INSTRUCTIONS` (five built-ins incl. `mermaid-diagram` "Mermaid Diagram" and `focus-callouts` "Focus Callouts", first three names matching today's `TOGGLE_LABELS` exactly, per data-model.md table), `sanitizeInstructions(raw): ExpoundInstruction[]` (invalid elements dropped, null/corrupt → defaults), `validateInstruction(list, draft)` (name trimmed non-blank, unique case-insensitive, ≤ 60 chars; description ≤ 200 chars, empty → undefined), and `getExpoundInstructions()` / `saveExpoundInstructions(list)` over `repos.settings` key `expoundInstructions` per contracts/expound-instructions-settings-key.md
+- [x] T003 [P] Create `src/lib/chat/expound-instructions.test.ts`: defaults contain exactly the five built-ins in order incl. the two new ones; sanitize falls back to defaults on null/malformed/non-array and drops invalid elements; validation rejects blank, duplicate (case-insensitive), oversized names and oversized descriptions; round-trip save/read via the pglite test driver (`useFileTestDb()` from `src/lib/db/driver/pg-test.ts`)
+- [x] T004 Migrate `src/lib/chat/expound.ts` per contracts/branch-add-formats-format.md: change `ExpoundOptions.toggles` to `string[]` (display names), make `buildExpoundPrompt` join names, delete `ExpoundToggle` and `TOGGLE_LABELS` exports, add private frozen `LEGACY_TOGGLE_LABELS` map (`diagrams`/`tables`/`code` → current labels), and rewrite `parseAddFormats(raw): string[]` (null/malformed/non-array → `[]`, non-strings dropped, legacy keys mapped, all other strings kept verbatim — NO valid-set filtering); `serializeAddFormats` stays `JSON.stringify`
+- [x] T005 [P] Update `src/lib/chat/expound.test.ts`: prompt tests use display names (input-order preservation, empty → "Adding no extra formats whenever possible.", `(none provided)`, `provideSummary` unchanged); new `parseAddFormats` tests (legacy mapping `'["diagrams","tables"]'` → labels; unknown strings verbatim `'["diagrams","unknown"]'` → `['Diagrams (prompt diagrams)', 'unknown']`; null/`'not json'` → `[]`)
+- [x] T006 [P] Update `src/lib/stores/chat.svelte.test.ts` round-trip block (lines ~928–946): serialize/parse round-trips names; replace the unknown-dropping assertion with verbatim-preservation; keep null/invalid-JSON cases; update `branch_sources` extra-columns block to a names-based stored string (e.g. `'["Mermaid Diagram","Focus Callouts"]'`)
+- [x] T007 Update consumers for compile-green after the type migration: `src/lib/stores/chat.svelte.ts` (imports; `createExpoundBranch`/`createBranchChild` flow unchanged), `src/routes/chat/[id]/+page.svelte` (drop the `as ExpoundToggle[]` cast at line ~683; remove stale import), `src/lib/components/chat/Highlighter.svelte` + `src/lib/components/chat/rows/AssistantMessage.svelte` (type-only `ExpoundOptions` imports — no behavioral change), `src/lib/components/chat/ExpoundPromptConstructor.svelte` (options enumerated from `DEFAULT_EXPOUND_INSTRUCTIONS`, `SvelteSet<string>`, submit names in list order), `src/lib/components/chat/ExpoundCard.svelte` (render `addFormats: string[]` pills verbatim, no label lookup; `(none)` when empty)
 
 **Checkpoint**: `pnpm check && pnpm lint && pnpm test` green; highlighting → expound works with the five defaults; branch pills show names.
 
@@ -53,11 +53,11 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Create `src/lib/components/chat/ExpoundInstructionsConfig.svelte` skeleton: settings-section layout modeled on `src/lib/components/chat/LearnerProfileConfig.svelte` / `src/lib/components/mcp/McpServers.svelte` (heading, `onMount` load via `getExpoundInstructions()`, local `$state` array, shared Tailwind `inputClass` constant for raw inputs, `Built-in` Badge for `builtin` entries from `$lib/components/ui/badge/index.js`)
-- [ ] T009 [US1] Implement add/edit with validation in `src/lib/components/chat/ExpoundInstructionsConfig.svelte`: inline name+description inputs per entry, "Add instruction" appends a draft (`uuid()` from `src/lib/db/ids.ts`), `validateInstruction` gates saves (blank/duplicate/oversized) with inline `role="alert"` messages (FR-010); description optional
-- [ ] T010 [US1] Implement remove + persistence in `src/lib/components/chat/ExpoundInstructionsConfig.svelte`: delete filters the array, every mutation persists the whole list via `saveExpoundInstructions` (replace-on-write per contract) with `saving` guard and inline `role="status"` feedback ("Saved." / "Save failed: …")
-- [ ] T011 [US1] Mount the section in `src/routes/settings/+page.svelte` as `<ExpoundInstructionsConfig />` after `<LearnerProfileConfig />`
-- [ ] T012 [US1] Manual smoke per quickstart.md Scenario A steps 1–7 on `pnpm dev`; then `pnpm check && pnpm lint && pnpm test`
+- [x] T008 [US1] Create `src/lib/components/chat/ExpoundInstructionsConfig.svelte` skeleton: settings-section layout modeled on `src/lib/components/chat/LearnerProfileConfig.svelte` / `src/lib/components/mcp/McpServers.svelte` (heading, `onMount` load via `getExpoundInstructions()`, local `$state` array, shared Tailwind `inputClass` constant for raw inputs, `Built-in` Badge for `builtin` entries from `$lib/components/ui/badge/index.js`)
+- [x] T009 [US1] Implement add/edit with validation in `src/lib/components/chat/ExpoundInstructionsConfig.svelte`: inline name+description inputs per entry, "Add instruction" appends a draft (`uuid()` from `src/lib/db/ids.ts`), `validateInstruction` gates saves (blank/duplicate/oversized) with inline `role="alert"` messages (FR-010); description optional
+- [x] T010 [US1] Implement remove + persistence in `src/lib/components/chat/ExpoundInstructionsConfig.svelte`: delete filters the array, every mutation persists the whole list via `saveExpoundInstructions` (replace-on-write per contract) with `saving` guard and inline `role="status"` feedback ("Saved." / "Save failed: …")
+- [x] T011 [US1] Mount the section in `src/routes/settings/+page.svelte` as `<ExpoundInstructionsConfig />` after `<LearnerProfileConfig />`
+- [x] T012 [US1] Manual smoke per quickstart.md Scenario A steps 1–7 on `pnpm dev`; then `pnpm check && pnpm lint && pnpm test`
 
 **Checkpoint**: Settings CRUD fully functional and persistent; expound flow still uses defaults until US2.
 
@@ -71,9 +71,9 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Wire `src/lib/components/chat/ExpoundPromptConstructor.svelte` to the live list: load options via `getExpoundInstructions()` in `onMount` (initialize from `DEFAULT_EXPOUND_INSTRUCTIONS` while loading), render each option's name as the toggle label and its `description` as helper text beneath
-- [ ] T014 [US2] Confirm submit path carries names in list order (`toggles: keys.filter((k) => set.has(k))` semantics preserved over `string` ids/names) and that `buildExpoundPrompt` + `serializeAddFormats` receive the selected names unchanged through `src/routes/chat/[id]/+page.svelte` → `chatStore.createExpoundBranch`; extend `src/lib/stores/chat.svelte.test.ts` `createExpoundBranch` block with one names-based `expoundOpts` case asserting the stored `add_formats` string and prompt line
-- [ ] T015 [US2] Verify SC-002 manually per quickstart.md Scenario B steps 1–5 + step B3 no-restart check (edit list in Settings → reopen picker reflects changes); run `pnpm check && pnpm lint && pnpm test`
+- [x] T013 [US2] Wire `src/lib/components/chat/ExpoundPromptConstructor.svelte` to the live list: load options via `getExpoundInstructions()` in `onMount` (initialize from `DEFAULT_EXPOUND_INSTRUCTIONS` while loading), render each option's name as the toggle label and its `description` as helper text beneath
+- [x] T014 [US2] Confirm submit path carries names in list order (`toggles: keys.filter((k) => set.has(k))` semantics preserved over `string` ids/names) and that `buildExpoundPrompt` + `serializeAddFormats` receive the selected names unchanged through `src/routes/chat/[id]/+page.svelte` → `chatStore.createExpoundBranch`; extend `src/lib/stores/chat.svelte.test.ts` `createExpoundBranch` block with one names-based `expoundOpts` case asserting the stored `add_formats` string and prompt line
+- [x] T015 [US2] Verify SC-002 manually per quickstart.md Scenario B steps 1–5 + step B3 no-restart check (edit list in Settings → reopen picker reflects changes); run `pnpm check && pnpm lint && pnpm test`
 
 **Checkpoint**: Customization is live in the expound flow; US1+US2 together deliver the core user request.
 
@@ -87,9 +87,9 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Add null-guarded seeding to `settingsRepo.seedDefaults()` in `src/lib/db/repositories/settings.ts`: `if ((await this.get('expoundInstructions')) === null) await this.set('expoundInstructions', DEFAULT_EXPOUND_INSTRUCTIONS)` (import from `$lib/chat/expound-instructions`, precedent: `DEFAULT_PROFILE` import at settings.ts:4)
-- [ ] T017 [P] [US3] Extend the settings-repository describe block in `src/lib/db/repositories/repositories.test.ts`: seed inserts the key when absent, double-run is idempotent, and an existing (customized) value is NOT overwritten (upgrade safety, FR-007)
-- [ ] T018 [US3] Verify upgrade + fresh-install behavior per quickstart.md Scenario C step 4 (Drizzle Studio: delete `expoundInstructions` row → reload app → five built-ins reseeded; customized value survives reload); run `pnpm test`
+- [x] T016 [US3] Add null-guarded seeding to `settingsRepo.seedDefaults()` in `src/lib/db/repositories/settings.ts`: `if ((await this.get('expoundInstructions')) === null) await this.set('expoundInstructions', DEFAULT_EXPOUND_INSTRUCTIONS)` (import from `$lib/chat/expound-instructions`, precedent: `DEFAULT_PROFILE` import at settings.ts:4)
+- [x] T017 [P] [US3] Extend the settings-repository describe block in `src/lib/db/repositories/repositories.test.ts`: seed inserts the key when absent, double-run is idempotent, and an existing (customized) value is NOT overwritten (upgrade safety, FR-007)
+- [x] T018 [US3] Verify upgrade + fresh-install behavior per quickstart.md Scenario C step 4 (Drizzle Studio: delete `expoundInstructions` row → reload app → five built-ins reseeded; customized value survives reload); run `pnpm test`
 
 **Checkpoint**: SC-003 and FR-006/FR-007 hold on fresh and upgraded installs.
 
@@ -103,8 +103,8 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 ### Implementation for User Story 4
 
-- [ ] T019 [US4] Add restore-defaults to `src/lib/components/chat/ExpoundInstructionsConfig.svelte`: "Restore defaults" `Button` from `$lib/components/ui/button/index.js` opening a shadcn `Dialog` confirmation (pattern: `McpServers.svelte` import dialog / `DataSection` destructive confirm); on confirm, overwrite the list via `saveExpoundInstructions(DEFAULT_EXPOUND_INSTRUCTIONS)` (overwrite, never key-delete — per contract invariant)
-- [ ] T020 [US4] Verify historical continuity per quickstart.md Scenario C steps 1–3: rename/remove an instruction and confirm old branch pills unchanged; insert a legacy `branch_sources.add_formats = '["diagrams","tables"]'` row via `pnpm db:studio` and confirm pills render "Diagrams (prompt diagrams)" / "Comparison Tables" (read-time mapping is covered by T005 tests); run `pnpm check && pnpm lint && pnpm test`
+- [x] T019 [US4] Add restore-defaults to `src/lib/components/chat/ExpoundInstructionsConfig.svelte`: "Restore defaults" `Button` from `$lib/components/ui/button/index.js` opening a shadcn `Dialog` confirmation (pattern: `McpServers.svelte` import dialog / `DataSection` destructive confirm); on confirm, overwrite the list via `saveExpoundInstructions(DEFAULT_EXPOUND_INSTRUCTIONS)` (overwrite, never key-delete — per contract invariant)
+- [x] T020 [US4] Verify historical continuity per quickstart.md Scenario C steps 1–3: rename/remove an instruction and confirm old branch pills unchanged; insert a legacy `branch_sources.add_formats = '["diagrams","tables"]'` row via `pnpm db:studio` and confirm pills render "Diagrams (prompt diagrams)" / "Comparison Tables" (read-time mapping is covered by T005 tests); run `pnpm check && pnpm lint && pnpm test`
 
 **Checkpoint**: SC-004 / FR-011 / FR-012 hold; all four stories complete.
 
@@ -114,8 +114,8 @@ description: 'Task list for Customizable Expound Instructions implementation'
 
 **Purpose**: Final validation across all stories
 
-- [ ] T021 [P] Run full quality gates per constitution: `pnpm check && pnpm lint && pnpm test` (no server-side changes, so `pnpm --filter @mayon/server test` is not required — confirm no `server/`/`packages/` files were touched)
-- [ ] T022 Execute the full quickstart.md validation pass (Scenarios A–D incl. the zero-selection regression `Adding no extra formats whenever possible.` and the overlap-guard check)
+- [x] T021 [P] Run full quality gates per constitution: `pnpm check && pnpm lint && pnpm test` (no server-side changes, so `pnpm --filter @mayon/server test` is not required — confirm no `server/`/`packages/` files were touched)
+- [x] T022 Execute the full quickstart.md validation pass (Scenarios A–D incl. the zero-selection regression `Adding no extra formats whenever possible.` and the overlap-guard check)
 
 ---
 
@@ -177,10 +177,10 @@ Task: "Update src/lib/stores/chat.svelte.test.ts (T006)"
 ### Incremental Delivery
 
 1. Setup + Foundational → five defaults live end-to-end (US3 mechanics effectively proven)
-2. + US1 → editable, persistent list (MVP)
-3. + US2 → customization live in the expound flow (core request complete)
-4. + US3 → seeded defaults for fresh/upgraded installs (upgrade safety proven)
-5. + US4 → restore-defaults + historical continuity (safety nets)
+2. - US1 → editable, persistent list (MVP)
+3. - US2 → customization live in the expound flow (core request complete)
+4. - US3 → seeded defaults for fresh/upgraded installs (upgrade safety proven)
+5. - US4 → restore-defaults + historical continuity (safety nets)
 6. Polish → full quickstart pass
 
 ### Parallel Team Strategy

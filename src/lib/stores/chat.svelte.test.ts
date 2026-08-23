@@ -286,6 +286,51 @@ describe('chatStore.createExpoundBranch', () => {
 		expect(msgs.find((m) => m.role === 'user')?.content).toBe(prompt);
 		expect(msgs.find((m) => m.role === 'assistant')?.content).toBe('Hello world');
 	});
+
+	it('carries selected instruction names into add_formats and the hidden prompt', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const reply = 'The mitochondrion is the powerhouse of the cell. Remember this.';
+		const assistant = await repos.messages.append(parent.id, 'assistant', reply);
+		await chatStore.load(parent.id);
+
+		const start = reply.indexOf('powerhouse');
+		const end = start + 'powerhouse of the cell'.length;
+		const opts = {
+			excerpt: 'powerhouse of the cell',
+			customInstructions: 'use plain language',
+			toggles: ['Mermaid Diagram', 'Real-world Analogies']
+		};
+		const prompt = buildExpoundPrompt(opts);
+
+		const childId = await chatStore.createExpoundBranch(
+			assistant.id,
+			reply,
+			{ startChar: start, endChar: end, excerpt: 'powerhouse of the cell' },
+			prompt,
+			opts
+		);
+
+		const src = await repos.branchSources.getByBranchChat(childId);
+		expect(src).not.toBeNull();
+		expect(src!.addFormats).toBe('["Mermaid Diagram","Real-world Analogies"]');
+
+		mockDefaultProvider();
+		mockStreamReply(['Expanded.']);
+
+		await chatStore.load(childId);
+		const drained = chatStore.pendingPrompt;
+		if (drained) {
+			chatStore.clearPendingPrompt();
+			await chatStore.send(drained.text, { hidden: drained.hidden });
+		}
+
+		const msgs = await repos.messages.listByChat(childId);
+		const firstUser = msgs.find((m) => m.role === 'user');
+		expect(firstUser?.content).toContain(
+			'Adding [Mermaid Diagram, Real-world Analogies] whenever possible.'
+		);
+		expect(firstUser?.metadata).toContain('"hidden":true');
+	});
 });
 
 describe('chatStore auto-title', () => {
@@ -926,10 +971,11 @@ describe('hidden message metadata', () => {
 });
 
 describe('serializeAddFormats / parseAddFormats round-trip', () => {
-	it('round-trips toggles through JSON', () => {
-		const toggles = ['diagrams', 'tables'] as const;
-		const json = serializeAddFormats([...toggles]);
-		expect(parseAddFormats(json)).toEqual([...toggles]);
+	it('round-trips instruction names through JSON', () => {
+		const names = ['Mermaid Diagram', 'Focus Callouts'];
+		const json = serializeAddFormats(names);
+		expect(json).toBe('["Mermaid Diagram","Focus Callouts"]');
+		expect(parseAddFormats(json)).toEqual(names);
 	});
 
 	it('parseAddFormats handles null gracefully', () => {
@@ -940,8 +986,11 @@ describe('serializeAddFormats / parseAddFormats round-trip', () => {
 		expect(parseAddFormats('not json')).toEqual([]);
 	});
 
-	it('parseAddFormats filters out unknown values', () => {
-		expect(parseAddFormats('["diagrams","unknown"]')).toEqual(['diagrams']);
+	it('parseAddFormats keeps unknown values verbatim', () => {
+		expect(parseAddFormats('["diagrams","unknown"]')).toEqual([
+			'Diagrams (prompt diagrams)',
+			'unknown'
+		]);
 	});
 });
 
@@ -956,13 +1005,13 @@ describe('branch_sources extra columns', () => {
 			excerpt: 'conte',
 			branchChatId: root.id,
 			customInstructions: 'explain in detail',
-			addFormats: '["diagrams","tables"]'
+			addFormats: '["Mermaid Diagram","Focus Callouts"]'
 		});
 
 		const fetched = await repos.branchSources.getByBranchChat(root.id);
 		expect(fetched).not.toBeNull();
 		expect(fetched!.customInstructions).toBe('explain in detail');
-		expect(fetched!.addFormats).toBe('["diagrams","tables"]');
+		expect(fetched!.addFormats).toBe('["Mermaid Diagram","Focus Callouts"]');
 	});
 
 	it('create without extra columns persists nulls', async () => {

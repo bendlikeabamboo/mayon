@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildExpoundPrompt,
+	parseAddFormats,
 	selectionOverlapsExisting,
-	spansOverlap,
-	TOGGLE_LABELS,
-	type ExpoundToggle
+	spansOverlap
 } from './expound';
 
 describe('buildExpoundPrompt', () => {
@@ -17,15 +16,14 @@ describe('buildExpoundPrompt', () => {
 		expect(p).toContain('"""\npowerhouse of the cell\n"""');
 	});
 
-	it('lists all selected toggle labels in stable order', () => {
+	it('lists selected instruction names in input order', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: 'go deep',
-			// Intentionally out of declaration order.
-			toggles: ['code', 'diagrams', 'tables'] as ExpoundToggle[]
+			toggles: ['Code Examples', 'Diagrams (prompt diagrams)', 'Comparison Tables']
 		});
 		expect(p).toContain(
-			`Adding [${TOGGLE_LABELS.code}, ${TOGGLE_LABELS.diagrams}, ${TOGGLE_LABELS.tables}] whenever possible.`
+			'Adding [Code Examples, Diagrams (prompt diagrams), Comparison Tables] whenever possible.'
 		);
 	});
 
@@ -43,7 +41,7 @@ describe('buildExpoundPrompt', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: '   \n\t  ',
-			toggles: ['diagrams']
+			toggles: ['Code Examples']
 		});
 		expect(p).toContain('With the following instructions:\n(none provided)');
 	});
@@ -58,13 +56,13 @@ describe('buildExpoundPrompt', () => {
 		expect(p).not.toContain('  focus on trade-offs');
 	});
 
-	it('keeps a single toggle readable', () => {
+	it('keeps a single name readable', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: '',
-			toggles: ['tables']
+			toggles: ['Comparison Tables']
 		});
-		expect(p).toContain(`Adding [${TOGGLE_LABELS.tables}] whenever possible.`);
+		expect(p).toContain('Adding [Comparison Tables] whenever possible.');
 	});
 
 	it('omits summary line by default (provideSummary not set)', () => {
@@ -86,6 +84,38 @@ describe('buildExpoundPrompt', () => {
 		});
 		expect(p.startsWith('Summarize the current discussion.\n')).toBe(true);
 		expect(p).toContain('Summarize the current discussion.');
+	});
+});
+
+describe('parseAddFormats', () => {
+	it('maps legacy toggle keys to their labels', () => {
+		expect(parseAddFormats('["diagrams","tables"]')).toEqual([
+			'Diagrams (prompt diagrams)',
+			'Comparison Tables'
+		]);
+	});
+
+	it('keeps unknown strings verbatim', () => {
+		expect(parseAddFormats('["diagrams","unknown"]')).toEqual([
+			'Diagrams (prompt diagrams)',
+			'unknown'
+		]);
+	});
+
+	it('drops non-string elements', () => {
+		expect(parseAddFormats('["Code Examples",42,null]')).toEqual(['Code Examples']);
+	});
+
+	it('returns [] on null', () => {
+		expect(parseAddFormats(null)).toEqual([]);
+	});
+
+	it('returns [] on malformed JSON', () => {
+		expect(parseAddFormats('not json')).toEqual([]);
+	});
+
+	it('returns [] on non-array JSON', () => {
+		expect(parseAddFormats('{"diagrams":true}')).toEqual([]);
 	});
 });
 

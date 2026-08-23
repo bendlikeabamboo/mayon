@@ -34,32 +34,57 @@ export interface ProjectableRow {
 	kind?: string | null;
 }
 
-export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] {
-	const toolResultIds = new Set<string>();
-	for (const r of rows) {
-		if (kindOf(r) === 'tool_result') toolResultIds.add(r.toolCallId ?? '');
+/**
+ * Placeholder result synthesized for a tool call whose result row was never
+ * persisted (turn interrupted between appending the call and its result).
+ * Providers reject requests containing a dangling tool call, so every emitted
+ * tool-call part must have a matching tool-result part.
+ */
+const INTERRUPTED_TOOL_RESULT = '(no result recorded — the turn was interrupted)';
+
+/**
+ * Compute, for each row, the set of tool-result ids in its TURN (the run of
+ * rows since the last `user_message`). Pairing must be turn-scoped, not
+ * conversation-global: many providers (OpenRouter DeepSeek, Z.AI GLM) restart
+ * tool-call ids per response (`call_0`, `call_1`, …), so ids repeat across
+ * turns. A global set lets a later turn's result falsely "satisfy" an earlier
+ * turn's call, which is then sent as a dangling tool call — the provider
+ * rejects the whole request with "Tool result is missing for tool call call_0".
+ */
+function turnResultScopes(rows: readonly ProjectableRow[]): Array<Set<string>> {
+	const scopes: Array<Set<string>> = [];
+	let current: Set<string> | null = null;
+	for (let i = 0; i < rows.length; i++) {
+		const k = kindOf(rows[i]!);
+		if (k === 'user_message' || current === null) current = new Set<string>();
+		if (k === 'tool_result') current.add(rows[i]!.toolCallId ?? '');
+		scopes.push(current);
 	}
+	return scopes;
+}
+
+export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] {
+	const resultScopes = turnResultScopes(rows);
 
 	const raw: ModelMessage[] = [];
-	for (const r of rows) {
+	for (let i = 0; i < rows.length; i++) {
+		const r = rows[i]!;
 		const k = kindOf(r);
 
 		if (EXCLUDED_KINDS.has(k)) continue;
 		if (r.role === 'system') continue;
 
-		if (k === 'choices' && (!r.toolCallId || !toolResultIds.has(r.toolCallId))) {
+		if (k === 'choices' && (!r.toolCallId || !resultScopes[i]!.has(r.toolCallId))) {
 			const syntheticId = r.toolCallId ?? '';
-			raw.push({
-				role: 'assistant' as const,
-				content: [
-					{
-						type: 'tool-call',
-						toolCallId: syntheticId,
-						toolName: 'present_choices',
-						input: {}
-					}
-				]
-			} as unknown as ModelMessage);
+			const parts: unknown[] = [];
+			if (r.content) parts.push({ type: 'text', text: r.content });
+			parts.push({
+				type: 'tool-call',
+				toolCallId: syntheticId,
+				toolName: 'present_choices',
+				input: {}
+			});
+			raw.push({ role: 'assistant' as const, content: parts } as unknown as ModelMessage);
 			raw.push({
 				role: 'tool' as const,
 				content: [
@@ -77,13 +102,30 @@ export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] 
 		if (k === 'tool_call' || k === 'choices') {
 			const parts: unknown[] = [];
 			if (r.content) parts.push({ type: 'text', text: r.content });
+			const toolCallId = r.toolCallId ?? '';
 			parts.push({
 				type: 'tool-call',
-				toolCallId: r.toolCallId ?? '',
+				toolCallId,
 				toolName: r.toolName ?? '',
 				input: {}
 			});
 			raw.push({ role: 'assistant' as const, content: parts } as unknown as ModelMessage);
+			// Orphaned tool call (no result row in this turn — e.g. the turn was
+			// aborted between appending the call and its result): synthesize a
+			// placeholder result so the provider never sees a dangling call.
+			if (!resultScopes[i]!.has(toolCallId)) {
+				raw.push({
+					role: 'tool' as const,
+					content: [
+						{
+							type: 'tool-result',
+							toolCallId,
+							toolName: r.toolName ?? '',
+							output: { type: 'text', value: INTERRUPTED_TOOL_RESULT }
+						}
+					]
+				} as unknown as ModelMessage);
+			}
 			continue;
 		}
 

@@ -71,12 +71,12 @@ Phase 0 output. All Technical Context unknowns resolved via two explore-agent re
 
 ## Consolidated unknown-resolution table
 
-| Technical Context unknown | Resolved by |
-| --- | --- |
-| Storage mechanism for the list | R-1 (settings KV, no migration) |
-| Upgrade path for new built-ins | R-2 (null-guarded boot seed) |
-| Serialization/persistence format | R-3 (names verbatim), R-4 (read-time legacy mapping) |
-| Picker freshness without restart | R-5 (load per mount, re-read pattern) |
-| UI primitives/conventions | R-6 (McpServers/LearnerProfile patterns, shadcn + inputClass) |
-| Validation semantics | R-7 (blank/duplicate/length) |
-| Type migration surface | R-8, R-9 (ids, string toggles, full consumer list) |
+| Technical Context unknown        | Resolved by                                                   |
+| -------------------------------- | ------------------------------------------------------------- |
+| Storage mechanism for the list   | R-1 (settings KV, no migration)                               |
+| Upgrade path for new built-ins   | R-2 (null-guarded boot seed)                                  |
+| Serialization/persistence format | R-3 (names verbatim), R-4 (read-time legacy mapping)          |
+| Picker freshness without restart | R-5 (load per mount, re-read pattern)                         |
+| UI primitives/conventions        | R-6 (McpServers/LearnerProfile patterns, shadcn + inputClass) |
+| Validation semantics             | R-7 (blank/duplicate/length)                                  |
+| Type migration surface           | R-8, R-9 (ids, string toggles, full consumer list)            |

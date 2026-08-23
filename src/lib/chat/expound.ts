@@ -12,18 +12,16 @@
  * register as overlapping.
  */
 
-export type ExpoundToggle = 'diagrams' | 'tables' | 'code';
-
-export const TOGGLE_LABELS: Record<ExpoundToggle, string> = {
+const LEGACY_TOGGLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
 	diagrams: 'Diagrams (prompt diagrams)',
 	tables: 'Comparison Tables',
 	code: 'Code Examples'
-};
+});
 
 export interface ExpoundOptions {
 	excerpt: string;
 	customInstructions: string;
-	toggles: ExpoundToggle[];
+	toggles: string[];
 	provideSummary?: boolean;
 }
 
@@ -36,12 +34,12 @@ export interface CharSpan {
 /**
  * Build the expound prompt sent as the first user message of the new branch.
  * The excerpt is embedded verbatim; empty custom instructions collapse to a
- * "(none provided)" placeholder; selected toggles name the extra formats to
- * prefer, or "no extra formats" when none are chosen.
+ * "(none provided)" placeholder; selected instruction names name the extra
+ * formats to prefer, or "no extra formats" when none are chosen.
  */
 export function buildExpoundPrompt(o: ExpoundOptions): string {
 	const instructions = o.customInstructions.trim() || '(none provided)';
-	const formats = o.toggles.map((t) => TOGGLE_LABELS[t]).join(', ');
+	const formats = o.toggles.join(', ');
 	const formatsLine =
 		formats.length > 0
 			? `Adding [${formats}] whenever possible.`
@@ -70,17 +68,24 @@ export function spansOverlap(a: CharSpan, b: CharSpan): boolean {
 	return a.startChar < b.endChar && b.startChar < a.endChar;
 }
 
-export function serializeAddFormats(toggles: ExpoundToggle[]): string {
-	return JSON.stringify(toggles);
+export function serializeAddFormats(names: string[]): string {
+	return JSON.stringify(names);
 }
 
-export function parseAddFormats(raw: string | null | undefined): ExpoundToggle[] {
+/**
+ * Parse a stored `add_formats` value into display names. Legacy v1 keys
+ * (`diagrams`/`tables`/`code`) map to their labels at read time; every other
+ * string passes through verbatim — recorded names of since-removed or renamed
+ * instructions must keep rendering (no valid-set filtering).
+ */
+export function parseAddFormats(raw: string | null | undefined): string[] {
 	if (!raw) return [];
 	try {
 		const arr = JSON.parse(raw);
 		if (!Array.isArray(arr)) return [];
-		const valid = new Set<ExpoundToggle>(['diagrams', 'tables', 'code']);
-		return arr.filter((v: unknown) => typeof v === 'string' && valid.has(v as ExpoundToggle));
+		return arr
+			.filter((v: unknown) => typeof v === 'string')
+			.map((v: string) => LEGACY_TOGGLE_LABELS[v] ?? v);
 	} catch {
 		return [];
 	}

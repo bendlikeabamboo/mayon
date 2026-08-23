@@ -87,6 +87,17 @@ describe('new-shape projection tests (T027)', () => {
 			{
 				role: 'assistant',
 				content: [{ type: 'tool-call', toolCallId: 'tc_k', toolName: 'some_tool', input: {} }]
+			},
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'tc_k',
+						toolName: 'some_tool',
+						output: { type: 'text', value: '(no result recorded — the turn was interrupted)' }
+					}
+				]
 			}
 		] as ModelMessage[]);
 	});
@@ -98,5 +109,205 @@ describe('new-shape projection tests (T027)', () => {
 		];
 		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
 		expect(result).toEqual([] as ModelMessage[]);
+	});
+});
+
+describe('turn-scoped tool pairing (dangling tool call prevention)', () => {
+	interface ToolPart {
+		toolCallId: string;
+		toolName: string;
+	}
+
+	function partsOf(messages: ModelMessage[], type: 'tool-call' | 'tool-result'): ToolPart[] {
+		const out: ToolPart[] = [];
+		for (const m of messages) {
+			for (const p of (m.content as unknown[]) ?? []) {
+				const part = p as Record<string, unknown>;
+				if (part.type === type) {
+					out.push({
+						toolCallId: String(part.toolCallId),
+						toolName: String(part.toolName)
+					});
+				}
+			}
+		}
+		return out;
+	}
+
+	it('a later turn reusing the same toolCallId does not suppress the choices synthesis', () => {
+		// Exact production incident: providers that restart tool-call ids per
+		// response (OpenRouter DeepSeek, Z.AI GLM) emit `call_0` in both the
+		// orientation turn (present_choices) and a later MCP turn. The old
+		// conversation-global result set let the MCP result "satisfy" the
+		// present_choices call, sending it as a dangling tool call.
+		resetOrd();
+		const rows: LegacyRow[] = [
+			makeRow({ role: 'user', content: 'teach me Azure Durable Functions' }),
+			makeRow({
+				role: 'assistant',
+				content: 'Unit 1…',
+				toolCallId: 'call_0',
+				toolName: 'present_choices',
+				kind: 'choices'
+			}),
+			makeRow({ role: 'user', content: 'continue' }),
+			makeRow({
+				role: 'assistant',
+				content: '',
+				toolCallId: 'call_0',
+				toolName: 'mcp.brave_web_search',
+				kind: 'tool_call'
+			}),
+			makeRow({
+				role: 'tool',
+				content: '{"results":[]}',
+				toolCallId: 'call_0',
+				toolName: 'mcp.brave_web_search',
+				kind: 'tool_result'
+			}),
+			makeRow({ role: 'user', content: 'continue' })
+		];
+		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
+
+		const calls = partsOf(result, 'tool-call');
+		const callIds = calls.map((c) => c.toolCallId);
+		const resultIds = partsOf(result, 'tool-result').map((c) => c.toolCallId);
+
+		// Every emitted tool call has a matching tool result — no dangling call.
+		for (const id of callIds) {
+			expect(resultIds).toContain(id);
+		}
+		// The present_choices call_0 got its synthetic 'options presented' result…
+		expect(resultIds.filter((id) => id === 'call_0')).toHaveLength(2);
+		// …and no synthetic result was fabricated for the satisfied MCP call.
+		expect(result).toEqual([
+			{ role: 'user', content: [{ type: 'text', text: 'teach me Azure Durable Functions' }] },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'Unit 1…' },
+					{ type: 'tool-call', toolCallId: 'call_0', toolName: 'present_choices', input: {} }
+				]
+			},
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'call_0',
+						toolName: 'present_choices',
+						output: { type: 'text', value: 'options presented' }
+					}
+				]
+			},
+			{ role: 'user', content: [{ type: 'text', text: 'continue' }] },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'tool-call', toolCallId: 'call_0', toolName: 'mcp.brave_web_search', input: {} }
+				]
+			},
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'call_0',
+						toolName: 'mcp.brave_web_search',
+						output: { type: 'json', value: { results: [] } }
+					}
+				]
+			},
+			{ role: 'user', content: [{ type: 'text', text: 'continue' }] }
+		] as ModelMessage[]);
+	});
+
+	it('an orphaned tool_call (interrupted turn) gets a placeholder result', () => {
+		resetOrd();
+		const rows: LegacyRow[] = [
+			makeRow({ role: 'user', content: 'check my progress' }),
+			makeRow({
+				role: 'assistant',
+				content: 'Let me check.',
+				toolCallId: 'call_7',
+				toolName: 'summarize_progress',
+				kind: 'tool_call'
+			}),
+			makeRow({ role: 'user', content: 'hello again' })
+		];
+		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{ role: 'user', content: [{ type: 'text', text: 'check my progress' }] },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'Let me check.' },
+					{ type: 'tool-call', toolCallId: 'call_7', toolName: 'summarize_progress', input: {} }
+				]
+			},
+			{
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: 'call_7',
+						toolName: 'summarize_progress',
+						output: {
+							type: 'text',
+							value: '(no result recorded — the turn was interrupted)'
+						}
+					}
+				]
+			},
+			{ role: 'user', content: [{ type: 'text', text: 'hello again' }] }
+		] as ModelMessage[]);
+	});
+
+	it('a result in the same turn satisfies the call; no placeholder is synthesized', () => {
+		resetOrd();
+		const rows: LegacyRow[] = [
+			makeRow({ role: 'user', content: 'go' }),
+			makeRow({
+				role: 'assistant',
+				content: '',
+				toolCallId: 'call_3',
+				toolName: 'list_artifacts',
+				kind: 'tool_call'
+			}),
+			makeRow({
+				role: 'tool',
+				content: '[]',
+				toolCallId: 'call_3',
+				toolName: 'list_artifacts',
+				kind: 'tool_result'
+			})
+		];
+		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
+		const resultIds = partsOf(result, 'tool-result').map((c) => c.toolCallId);
+		expect(resultIds).toEqual(['call_3']);
+	});
+
+	it('a legacy persisted present_choices result in the same turn is not duplicated', () => {
+		resetOrd();
+		const rows: LegacyRow[] = [
+			makeRow({
+				role: 'assistant',
+				content: '',
+				toolCallId: 'pc_1',
+				toolName: 'present_choices',
+				kind: 'choices'
+			}),
+			makeRow({
+				role: 'tool',
+				content: 'options presented',
+				toolCallId: 'pc_1',
+				toolName: 'present_choices',
+				kind: 'tool_result'
+			}),
+			makeRow({ role: 'user', content: 'I choose B' })
+		];
+		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
+		const results = partsOf(result, 'tool-result');
+		expect(results).toEqual([{ toolCallId: 'pc_1', toolName: 'present_choices' }]);
 	});
 });

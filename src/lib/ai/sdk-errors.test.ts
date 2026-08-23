@@ -29,7 +29,13 @@ vi.mock('ai', () => {
 
 import { APICallError } from 'ai';
 import { mapSdkError } from './sdk-errors';
-import { CorsBlockedError, RateLimitError, ProviderHttpError, NetworkError } from './types';
+import {
+	CorsBlockedError,
+	RateLimitError,
+	ProviderHttpError,
+	NetworkError,
+	MissingKeyError
+} from './types';
 
 function makeApiCallError(
 	statusCode: number,
@@ -91,6 +97,30 @@ describe('mapSdkError', () => {
 		const err = new DOMException('Aborted', 'AbortError');
 		const result = mapSdkError(err);
 		expect(result).toBe(err);
+	});
+
+	it('passes typed provider errors through unchanged (custom-fetch seam throws)', () => {
+		// A ProviderHttpError thrown by our custom fetch inside the SDK must keep
+		// its classification; re-wrapping as NetworkError mislabels provider 4xx
+		// responses as "Network error / check your connection".
+		const httpErr = new ProviderHttpError(
+			'Tool result is missing for tool call call_0.',
+			400,
+			'{...}'
+		);
+		expect(mapSdkError(httpErr)).toBe(httpErr);
+
+		const rateErr = new RateLimitError(undefined, 30);
+		expect(mapSdkError(rateErr)).toBe(rateErr);
+
+		const corsErr = new CorsBlockedError();
+		expect(mapSdkError(corsErr)).toBe(corsErr);
+
+		const netErr = new NetworkError('offline');
+		expect(mapSdkError(netErr)).toBe(netErr);
+
+		const keyErr = new MissingKeyError();
+		expect(mapSdkError(keyErr)).toBe(keyErr);
 	});
 
 	it('maps generic Error to NetworkError', () => {

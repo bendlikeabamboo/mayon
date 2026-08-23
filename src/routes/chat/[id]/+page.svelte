@@ -30,7 +30,7 @@
 		personaForId,
 		type LearningBrief
 	} from '$lib/chat/brief';
-	import { parseAddFormats, type ExpoundToggle } from '$lib/chat/expound';
+	import { parseAddFormats } from '$lib/chat/expound';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
@@ -680,7 +680,7 @@
 							{#snippet header()}
 								{#if chatStore.chat?.parentId !== null && chatStore.chat && branchSource}
 									{@const chat = chatStore.chat}
-									{@const formats = parseAddFormats(branchSource.addFormats) as ExpoundToggle[]}
+									{@const formats = parseAddFormats(branchSource.addFormats)}
 									<ExpoundCard
 										excerpt={branchSource.excerpt}
 										customInstructions={branchSource.customInstructions}

@@ -1,7 +1,28 @@
 import { APICallError } from 'ai';
-import { CorsBlockedError, RateLimitError, ProviderHttpError, NetworkError } from './types';
+import {
+	CorsBlockedError,
+	RateLimitError,
+	ProviderHttpError,
+	NetworkError,
+	MissingKeyError
+} from './types';
 
 export function mapSdkError(err: unknown): Error {
+	// Our typed provider errors (thrown by the custom-fetch seam inside the SDK)
+	// pass through unchanged so their classification — and the user-facing
+	// title/hint from formatProviderError — survives the SDK boundary. Without
+	// this, a ProviderHttpError(400) from the fetch seam would be re-wrapped as
+	// NetworkError and mislabeled "Network error / check your connection".
+	if (
+		err instanceof ProviderHttpError ||
+		err instanceof RateLimitError ||
+		err instanceof CorsBlockedError ||
+		err instanceof NetworkError ||
+		err instanceof MissingKeyError
+	) {
+		return err;
+	}
+
 	if (err instanceof APICallError) {
 		if (err.statusCode === 429) {
 			const retryAfter = err.responseHeaders?.['retry-after'];
