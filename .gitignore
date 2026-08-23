@@ -34,6 +34,10 @@ pnpm-debug.log*
 # Testing
 coverage/
 
+# Python cache (speckit scripts)
+__pycache__/
+.specify/scripts/python/__pycache__/
+
 # OPFS runtime caches
 
 # Quarto build output
