@@ -33,6 +33,7 @@ pnpm install
 | `pnpm dev:build`     | Rebuild dev images (after deps, config, or `@mayon/shared` changes)       |
 | `docker compose up`  | Full stack: web SPA + server + Postgres (web on :8080)                    |
 | `pnpm test`          | Vitest suite (pglite Postgres test driver)                                |
+| `pnpm test:low-spec` | Vitest with the tracked low-spec profile                                  |
 | `pnpm check`         | `svelte-check` type-checking                                              |
 | `pnpm lint`          | ESLint + Prettier check                                                   |
 | `pnpm format`        | Prettier write                                                            |

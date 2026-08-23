@@ -23,6 +23,7 @@
 		"lint": "eslint . && prettier --check .",
 		"format": "prettier --write .",
 		"test": "vitest run",
+		"test:low-spec": "vitest run --mode low-spec",
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",

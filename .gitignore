@@ -17,6 +17,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.low-spec
 
 # Logs
 *.log
