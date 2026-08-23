@@ -138,6 +138,23 @@ describe('generateTitle', () => {
 		);
 	});
 
+	it('spreads requestSettings callSettings as top-level generateText params', async () => {
+		mockedGenerateText.mockResolvedValue({ text: 'T' } as never);
+		await generateTitle(mockModel, [{ role: 'user', content: 'hi' }], {
+			requestSettings: {
+				callSettings: { temperature: 0.2 },
+				providerOptions: { Z: { thinking: { type: 'disabled' } } },
+				droppedExtraKeys: []
+			}
+		});
+		expect(mockedGenerateText).toHaveBeenCalledWith(
+			expect.objectContaining({
+				temperature: 0.2,
+				providerOptions: { Z: { thinking: { type: 'disabled' } } }
+			})
+		);
+	});
+
 	it('propagates errors from generateText', async () => {
 		mockedGenerateText.mockRejectedValue(new Error('model error'));
 		await expect(generateTitle(mockModel, [{ role: 'user', content: 'hi' }])).rejects.toThrow(

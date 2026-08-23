@@ -170,6 +170,34 @@
 	}
 </script>
 
+{#snippet requestSettings(
+	providerOptions: Record<string, unknown> | undefined,
+	callSettings: Record<string, unknown> | undefined
+)}
+	{#if providerOptions && Object.keys(providerOptions).length > 0}
+		<div>
+			<span class="text-xs font-medium text-muted-foreground">Provider Options</span>
+			<pre
+				class="overflow-auto max-h-32 bg-muted rounded p-2 font-mono text-xs mt-1 whitespace-pre-wrap text-muted-foreground">{JSON.stringify(
+					providerOptions,
+					null,
+					2
+				)}</pre>
+		</div>
+	{/if}
+	{#if callSettings && Object.keys(callSettings).length > 0}
+		<div>
+			<span class="text-xs font-medium text-muted-foreground">Call Settings</span>
+			<pre
+				class="overflow-auto max-h-32 bg-muted rounded p-2 font-mono text-xs mt-1 whitespace-pre-wrap text-muted-foreground">{JSON.stringify(
+					callSettings,
+					null,
+					2
+				)}</pre>
+		</div>
+	{/if}
+{/snippet}
+
 <Sheet bind:open={diagnosticsStore.open}>
 	<SheetContent side="right" class="w-[480px] sm:w-[540px]">
 		<SheetHeader>
@@ -405,6 +433,8 @@
 											</div>
 										{/each}
 									</div>
+
+									{@render requestSettings(iter.request.providerOptions, iter.request.callSettings)}
 								</div>
 
 								{#if iter.partSequence && iter.partSequence.length > 0}
@@ -608,6 +638,8 @@
 										{/each}
 									</div>
 								{/if}
+
+								{@render requestSettings(request.providerOptions, request.callSettings)}
 								<div class="flex justify-end">
 									<Button
 										variant="ghost"

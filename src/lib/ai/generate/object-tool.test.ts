@@ -136,6 +136,39 @@ describe('generateObjectViaTool', () => {
 		expect(mockedGenerateText).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 2 }));
 	});
 
+	it('spreads requestSettings callSettings as top-level params and forwards providerOptions', async () => {
+		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
+		await generateObjectViaTool(mockModel, {
+			schema: Schema,
+			system: 's',
+			messages: [{ role: 'user', content: 'go' }],
+			requestSettings: {
+				callSettings: { temperature: 0.4, maxOutputTokens: 1024 },
+				providerOptions: { Z: { thinking: { type: 'enabled' } } },
+				droppedExtraKeys: []
+			}
+		});
+		expect(mockedGenerateText).toHaveBeenCalledWith(
+			expect.objectContaining({
+				temperature: 0.4,
+				maxOutputTokens: 1024,
+				providerOptions: { Z: { thinking: { type: 'enabled' } } }
+			})
+		);
+	});
+
+	it('omits callSettings keys entirely when no requestSettings is given', async () => {
+		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
+		await generateObjectViaTool(mockModel, {
+			schema: Schema,
+			system: 's',
+			messages: [{ role: 'user', content: 'go' }]
+		});
+		const args = mockedGenerateText.mock.calls[0][0] as Record<string, unknown>;
+		expect('temperature' in args).toBe(false);
+		expect(args.providerOptions).toBeUndefined();
+	});
+
 	it('falls back to parsing JSON text when the model emits no tool call', async () => {
 		mockedGenerateText.mockResolvedValue({
 			toolCalls: [],

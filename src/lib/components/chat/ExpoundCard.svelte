@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { ArrowLeft, FileText } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { TOGGLE_LABELS, type ExpoundToggle } from '$lib/chat/expound';
 
 	let {
 		excerpt,
@@ -13,7 +12,7 @@
 	}: {
 		excerpt: string;
 		customInstructions: string | null;
-		addFormats: ExpoundToggle[];
+		addFormats: string[];
 		parentChatId: string;
 		sourceMessageId: string;
 		childId: string;
@@ -45,7 +44,7 @@
 						<span
 							class="rounded-full border border-border bg-background px-2 py-0.5 text-muted-foreground"
 						>
-							{TOGGLE_LABELS[fmt]}
+							{fmt}
 						</span>
 					{/each}
 				</span>

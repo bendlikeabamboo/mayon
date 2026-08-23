@@ -465,7 +465,9 @@ describe('assembleContext', () => {
 				}
 			];
 			const core = projectEntries(rows);
-			expect(core).toHaveLength(1);
+			// The unpaired tool call gets a synthesized placeholder result so no
+			// dangling tool call is ever sent to the provider.
+			expect(core).toHaveLength(2);
 			expect(core[0].role).toBe('assistant');
 			if (core[0].role === 'assistant') {
 				const parts = core[0].content as Array<{
@@ -479,6 +481,7 @@ describe('assembleContext', () => {
 				expect(parts[1].type).toBe('tool-call');
 				expect(parts[1].toolCallId).toBe('tc_2');
 			}
+			expect(core[1].role).toBe('tool');
 		});
 
 		it('filters out system messages from the output', () => {

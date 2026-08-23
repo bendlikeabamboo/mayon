@@ -13,6 +13,7 @@ export type TraceEvent =
 			messages: TracedRequestMessage[];
 			tools: string[];
 			providerOptions: Record<string, unknown>;
+			callSettings?: Record<string, unknown>;
 	  }
 	| { kind: 'part'; type: string; payload?: unknown }
 	| { kind: 'tool-call'; toolCallId: string; toolName: string; args: Record<string, unknown> }
@@ -51,6 +52,7 @@ interface TurnTrace {
 			messages: TracedRequestMessage[];
 			tools: string[];
 			providerOptions: Record<string, unknown>;
+			callSettings?: Record<string, unknown>;
 		};
 		partSequence: Array<{ type: string; count: number }>;
 		reasoning: string;
@@ -71,6 +73,7 @@ interface IterationState {
 		messages: TracedRequestMessage[];
 		tools: string[];
 		providerOptions: Record<string, unknown>;
+		callSettings?: Record<string, unknown>;
 	};
 	partSequence: Array<{ type: string; count: number }>;
 	reasoning: string;
@@ -84,6 +87,8 @@ export interface ObjectTraceRequest {
 	system: string;
 	messages: TracedRequestMessage[];
 	schema?: string;
+	providerOptions?: Record<string, unknown>;
+	callSettings?: Record<string, unknown>;
 }
 
 export interface ObjectTraceInput {
@@ -143,7 +148,8 @@ export class TraceBuilder {
 						system: event.system,
 						messages: event.messages,
 						tools: event.tools,
-						providerOptions: event.providerOptions
+						providerOptions: event.providerOptions,
+						callSettings: event.callSettings
 					},
 					partSequence: [],
 					reasoning: '',

@@ -4,6 +4,7 @@
 	import LabPromptConfig from '$lib/components/labs/LabPromptConfig.svelte';
 	import QuizPromptConfig from '$lib/components/quizzes/QuizPromptConfig.svelte';
 	import LearnerProfileConfig from '$lib/components/chat/LearnerProfileConfig.svelte';
+	import ExpoundInstructionsConfig from '$lib/components/chat/ExpoundInstructionsConfig.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
 	import SandboxDbSection from '$lib/components/settings/SandboxDbSection.svelte';
 	import { serverStatus } from '$lib/services/status.svelte';
@@ -12,6 +13,7 @@
 <ProviderConfig>
 	<McpServers />
 	<LearnerProfileConfig />
+	<ExpoundInstructionsConfig />
 	<LabPromptConfig />
 	<QuizPromptConfig />
 	<DataSection />

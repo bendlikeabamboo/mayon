@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { settings } from '$lib/db/schema';
 import { awaitDb } from '$lib/db/driver/client';
 import { DEFAULT_PROFILE } from '$lib/chat/brief';
+import { DEFAULT_EXPOUND_INSTRUCTIONS } from '$lib/chat/expound-instructions';
 
 /**
  * Key/value store with JSON values. The ONLY way app code reads/writes settings.
@@ -48,5 +49,7 @@ export const settingsRepo = {
 		if ((await this.get('providers')) === null) await this.set('providers', {});
 		if ((await this.get('learnerProfile')) === null)
 			await this.set('learnerProfile', DEFAULT_PROFILE);
+		if ((await this.get('expoundInstructions')) === null)
+			await this.set('expoundInstructions', DEFAULT_EXPOUND_INSTRUCTIONS);
 	}
 };

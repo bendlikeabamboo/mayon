@@ -12,10 +12,11 @@ import { repos } from '$lib/db';
 import { buildSdkModel, type ActiveProvider } from './sdk-factory';
 import { createKeyStore } from './keystore/client';
 import { discoverModels } from './model-discovery';
-import { MissingKeyError, type ProviderConfig } from './types';
+import { MissingKeyError, type ProviderConfig, type ReasoningEffort } from './types';
 
 const ACTIVE_KEY = 'activeProvider';
 const PROVIDERS_KEY = 'providers';
+const EFFORT_KEY = 'reasoningEffort';
 
 /** Runtime secret store (OS keychain on desktop / IndexedDB in browser). */
 const keyStore = createKeyStore();
@@ -30,6 +31,12 @@ export async function listProviders(): Promise<ProviderConfig[]> {
 /** Read the id of the currently active provider (or null if none selected). */
 export async function getActiveProviderId(): Promise<string | null> {
 	return (await repos.settings.get<string>(ACTIVE_KEY)) ?? null;
+}
+
+/** Read the persisted ambient reasoning effort (the Composer toggle), default 'on'. */
+export async function getAmbientEffort(): Promise<ReasoningEffort> {
+	const value = await repos.settings.get<string>(EFFORT_KEY);
+	return value === 'off' || value === 'on' || value === 'deep' ? value : 'on';
 }
 
 /** Persist the full provider map (used by the Settings UI on add/edit/delete). */

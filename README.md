@@ -19,8 +19,13 @@ telemetry.
 - **Local-first / self-hosted** — browser SPA backed by a Postgres primary
   store via a small local server. Self-host with `docker compose up`; no
   account, no telemetry.
-- **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, Ollama, OpenRouter, and
-  more; switch providers freely.
+- **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, DeepSeek, xAI (Grok),
+  Moonshot Kimi, Qwen, Groq, Mistral, Ollama, OpenRouter, Kilo Gateway, OpenCode Zen,
+  LiteLLM (self-hosted), Vercel AI Gateway, Requesty, and more — any
+  OpenAI-compatible endpoint works with a custom base URL; switch providers freely.
+  When Mayon runs in Docker and you use a local gateway (LiteLLM, Ollama on the
+  host), point at `http://host.docker.internal:<port>` (or the host LAN IP)
+  instead of `localhost`.
 
 ## Get Mayon
 

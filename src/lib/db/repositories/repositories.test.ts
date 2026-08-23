@@ -189,6 +189,32 @@ describe('settings repository', () => {
 		expect(await repos.settings.get('learnerProfile')).toEqual(DEFAULT_PROFILE);
 	});
 
+	it('seeds the five built-in expound instructions on first run', async () => {
+		await repos.settings.seedDefaults();
+		const stored = await repos.settings.get<{ name: string }[]>('expoundInstructions');
+		expect(stored?.map((e) => e.name)).toEqual([
+			'Diagrams (prompt diagrams)',
+			'Comparison Tables',
+			'Code Examples',
+			'Mermaid Diagram',
+			'Focus Callouts'
+		]);
+	});
+
+	it('seeding expound instructions twice is idempotent', async () => {
+		await repos.settings.seedDefaults();
+		const first = await repos.settings.get('expoundInstructions');
+		await repos.settings.seedDefaults();
+		expect(await repos.settings.get('expoundInstructions')).toEqual(first);
+	});
+
+	it('does not overwrite a customized expound instructions value', async () => {
+		const custom = [{ id: 'custom-1', name: 'Real-world Analogies' }];
+		await repos.settings.set('expoundInstructions', custom);
+		await repos.settings.seedDefaults();
+		expect(await repos.settings.get('expoundInstructions')).toEqual(custom);
+	});
+
 	it('round-trips a learner profile', async () => {
 		const profile = { context: 'x', level: 'regular' as const, mode: 'build' as const };
 		await setLearnerProfile(profile);

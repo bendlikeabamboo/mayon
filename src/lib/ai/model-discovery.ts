@@ -23,7 +23,7 @@ export interface ModelDiscoveryDeps {
 
 /** Shape of an OpenAI-compatible `/models` response (only the fields we read). */
 interface ModelsListResponse {
-	data?: Array<{ id?: unknown }>;
+	data?: Array<{ id?: unknown; type?: unknown }>;
 }
 
 /**
@@ -100,8 +100,10 @@ export function parseModelIds(body: string): string[] {
 	for (const entry of candidates) {
 		let id: unknown;
 		if (typeof entry === 'string') id = entry;
-		else if (entry && typeof entry === 'object' && 'id' in entry)
-			id = (entry as { id: unknown }).id;
+		else if (entry && typeof entry === 'object') {
+			if ((entry as { type?: unknown }).type === 'embedding') continue;
+			if ('id' in entry) id = (entry as { id: unknown }).id;
+		}
 		if (typeof id === 'string' && id.length > 0) ids.add(id);
 	}
 	return [...ids].sort((a, b) => a.localeCompare(b));

@@ -47,6 +47,120 @@ export interface ProviderTemplate {
 export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 	{
 		kind: 'openai-compatible',
+		label: 'DeepSeek',
+		description: 'DeepSeek official API — OpenAI-compatible. Models discovered automatically.',
+		baseUrl: 'https://api.deepseek.com',
+		defaultModel: 'deepseek-chat',
+		models: ['deepseek-chat', 'deepseek-reasoner'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'xAI (Grok)',
+		description: 'xAI Grok — OpenAI-compatible. Models discovered automatically.',
+		baseUrl: 'https://api.x.ai/v1',
+		defaultModel: 'grok-4.6',
+		models: ['grok-4.6', 'grok-4.3'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Moonshot Kimi',
+		description: 'Moonshot Kimi — OpenAI-compatible. Models discovered automatically.',
+		baseUrl: 'https://api.moonshot.ai/v1',
+		defaultModel: 'kimi-k3',
+		models: ['kimi-k3', 'kimi-k2.6'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Qwen (DashScope)',
+		description: 'Qwen via Alibaba Cloud DashScope — OpenAI-compatible, international endpoint.',
+		baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+		defaultModel: 'qwen3.8-max',
+		models: ['qwen3.8-max', 'qwen-plus'],
+		requiresKey: true,
+		discoverable: false,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Groq',
+		description: 'Groq — ultra-fast OpenAI-compatible inference. Models discovered automatically.',
+		baseUrl: 'https://api.groq.com/openai/v1',
+		defaultModel: 'openai/gpt-oss-120b',
+		models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'groq/compound'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Mistral',
+		description: 'Mistral — EU-hosted OpenAI-compatible API. Models discovered automatically.',
+		baseUrl: 'https://api.mistral.ai/v1',
+		defaultModel: 'mistral-large-latest',
+		models: ['mistral-large-latest', 'devstral-medium-2507'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'OpenCode Zen',
+		description:
+			'OpenCode Zen — curated coding-agent gateway with free tier and automatic model discovery.',
+		baseUrl: 'https://opencode.ai/zen/v1',
+		defaultModel: 'big-pickle',
+		models: ['big-pickle', 'claude-sonnet-5'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'LiteLLM (self-hosted)',
+		description:
+			'Your own LiteLLM proxy on port 4000; model list discovered from your proxy config aliases. No API key needed unless your proxy enforces one.',
+		baseUrl: 'http://localhost:4000',
+		defaultModel: 'gpt-4o-mini',
+		models: ['gpt-4o-mini', 'claude-sonnet-4-5'],
+		requiresKey: false,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Vercel AI Gateway',
+		description:
+			"Vercel's zero-markup gateway to hundreds of models across providers; models discovered automatically",
+		baseUrl: 'https://ai-gateway.vercel.sh/v1',
+		defaultModel: 'openai/gpt-5.6-sol',
+		models: ['openai/gpt-5.6-sol', 'openai/gpt-4o-mini'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'Requesty',
+		description:
+			'Routing gateway to 600+ models with smart routing and failover; models discovered automatically',
+		baseUrl: 'https://router.requesty.ai/v1',
+		defaultModel: 'openai/gpt-4o',
+		models: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-5'],
+		requiresKey: true,
+		discoverable: true,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'openai-compatible',
 		label: 'Z.AI (GLM)',
 		description: 'Z.AI coding endpoint — OpenAI-compatible. Models discovered automatically.',
 		baseUrl: 'https://api.z.ai/api/coding/paas/v4',

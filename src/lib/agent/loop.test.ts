@@ -104,8 +104,12 @@ vi.mock('$lib/chat/brief', () => ({
 	buildFirstTurnOrientationPreamble: vi.fn(() => 'orientation')
 }));
 
-vi.mock('$lib/ai/sdk-factory', () => ({
-	providerOptionsForReasoning: vi.fn(() => ({}))
+vi.mock('$lib/ai/dialects', () => ({
+	resolveRequestSettings: vi.fn(() => ({
+		callSettings: {},
+		providerOptions: {},
+		droppedExtraKeys: []
+	}))
 }));
 
 const { streamText, APICallError } = await import('ai');
@@ -137,8 +141,8 @@ const mockedBuildCapabilitiesPreamble = vi.mocked(buildCapabilitiesPreamble);
 const { buildFirstTurnOrientationPreamble } = await import('$lib/chat/brief');
 const mockedBuildFirstTurnOrientationPreamble = vi.mocked(buildFirstTurnOrientationPreamble);
 
-const { providerOptionsForReasoning } = await import('$lib/ai/sdk-factory');
-const mockedProviderOptionsForReasoning = vi.mocked(providerOptionsForReasoning);
+const { resolveRequestSettings } = await import('$lib/ai/dialects');
+const mockedResolveRequestSettings = vi.mocked(resolveRequestSettings);
 
 const { runAgentTurn } = await import('./loop');
 
@@ -239,7 +243,11 @@ beforeEach(() => {
 	mockedProjectEntries.mockImplementation((msgs) => msgs as never);
 	mockedBuildCapabilitiesPreamble.mockReturnValue('preamble');
 	mockedBuildFirstTurnOrientationPreamble.mockReturnValue('orientation');
-	mockedProviderOptionsForReasoning.mockReturnValue({});
+	mockedResolveRequestSettings.mockReturnValue({
+		callSettings: {},
+		providerOptions: {},
+		droppedExtraKeys: []
+	});
 });
 
 describe('runAgentTurn', () => {

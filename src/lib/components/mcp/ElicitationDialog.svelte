@@ -1,63 +1,70 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		Dialog,
 		DialogContent,
 		DialogHeader,
 		DialogTitle,
-		DialogDescription,
-		DialogFooter
+		DialogDescription
 	} from '$lib/components/ui/dialog/index.js';
+	import { serverStatus } from '$lib/services/status.svelte';
+	import {
+		ConfirmationRequest,
+		ConfirmationActions,
+		ConfirmationAction,
+		ConfirmationAccepted,
+		ConfirmationRejected,
+		ConfirmationFailed,
+		createApprovalStateMachine,
+		setConfirmationContext
+	} from '$lib/components/mcp/confirmation/index.js';
+	import ElicitationForm from './ElicitationForm.svelte';
 	import type { PublicElicitationEntry } from '$lib/stores/chat.svelte';
 
 	type Props = {
 		entry: PublicElicitationEntry;
 		onSubmit: (data: Record<string, unknown>) => void;
 		onCancel: () => void;
+		onError?: () => void;
 	};
 
-	let { entry, onSubmit, onCancel }: Props = $props();
+	let { entry, onSubmit, onCancel, onError }: Props = $props();
 
-	interface FieldDef {
-		name: string;
-		type: string;
-		title?: string;
-		description?: string;
-	}
+	const sm = createApprovalStateMachine();
+	setConfirmationContext(sm);
 
-	let fields = $derived<FieldDef[]>(computeFields(entry.schema));
-
-	function computeFields(schema: Record<string, unknown>): FieldDef[] {
-		if (!schema || typeof schema !== 'object') return [];
-		const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
-		if (!props) return [];
-		return Object.entries(props).map(([name, def]) => ({
-			name,
-			type: (def.type as string) ?? 'string',
-			title: (def.title as string) ?? name,
-			description: (def.description as string) ?? ''
-		}));
-	}
-
-	let useJsonFallback = $state(false);
 	let formData = $state<Record<string, unknown>>({});
+	let useJsonFallback = $state(false);
 	let jsonText = $state('{}');
 	let jsonError = $state<string | null>(null);
-	const placeholderText = '{}';
 
 	function handleSubmit(): void {
+		if (sm.state !== 'pending') return;
 		if (useJsonFallback) {
 			try {
 				const parsed = JSON.parse(jsonText);
 				jsonError = null;
+				sm.succeed();
 				onSubmit(parsed);
 			} catch (err) {
 				jsonError = err instanceof Error ? err.message : 'Invalid JSON';
 			}
 			return;
 		}
+		sm.succeed();
 		onSubmit(formData);
 	}
+
+	function handleCancel(): void {
+		if (sm.state !== 'pending') return;
+		sm.reject();
+		onCancel();
+	}
+
+	sm.onAction = () => {};
+
+	$effect(() => {
+		if (sm.state === 'failed') onError?.();
+	});
 </script>
 
 <Dialog open>
@@ -69,71 +76,37 @@
 			</DialogDescription>
 		</DialogHeader>
 
-		{#if !useJsonFallback && fields.length > 0}
-			<div class="space-y-3 py-2">
-				{#each fields as field (field.name)}
-					<div>
-						<label class="text-sm font-medium" for="field-{field.name}">
-							{field.title}
-							{#if field.description}
-								<span class="ml-1 text-xs text-muted-foreground">({field.description})</span>
-							{/if}
-						</label>
-						{#if field.type === 'boolean'}
-							<input
-								type="checkbox"
-								id="field-{field.name}"
-								bind:checked={formData[field.name] as boolean}
-								class="mt-1"
-							/>
-						{:else if field.type === 'number'}
-							<input
-								type="number"
-								id="field-{field.name}"
-								bind:value={formData[field.name] as number}
-								class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
-							/>
-						{:else}
-							<input
-								type="text"
-								id="field-{field.name}"
-								bind:value={formData[field.name] as string}
-								class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
-							/>
-						{/if}
-					</div>
-				{/each}
-			</div>
-			<button
-				class="text-xs text-muted-foreground underline"
-				onclick={() => (useJsonFallback = true)}
-			>
-				Switch to JSON input
-			</button>
-		{:else}
-			<div class="py-2">
-				<textarea
-					bind:value={jsonText}
-					rows="6"
-					class="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
-					placeholder={placeholderText}></textarea>
-				{#if jsonError}
-					<p class="mt-1 text-xs text-destructive">{jsonError}</p>
-				{/if}
-			</div>
-			{#if fields.length > 0}
-				<button
-					class="text-xs text-muted-foreground underline"
-					onclick={() => (useJsonFallback = false)}
-				>
-					Switch to form input
-				</button>
-			{/if}
-		{/if}
+		<ConfirmationRequest>
+			<p class="text-sm">{entry.message}</p>
+		</ConfirmationRequest>
 
-		<DialogFooter>
-			<Button variant="outline" size="sm" onclick={onCancel}>Cancel</Button>
-			<Button variant="default" size="sm" onclick={handleSubmit}>Submit</Button>
-		</DialogFooter>
+		<ElicitationForm
+			schema={entry.schema}
+			bind:formData
+			bind:useJsonFallback
+			bind:jsonText
+			bind:jsonError
+		/>
+
+		<ConfirmationActions>
+			<ConfirmationAction variant="outline" onclick={handleCancel} disabled={serverStatus.restoring}
+				>Cancel</ConfirmationAction
+			>
+			<ConfirmationAction onclick={handleSubmit} disabled={serverStatus.restoring}
+				>Submit</ConfirmationAction
+			>
+		</ConfirmationActions>
+
+		<ConfirmationAccepted>
+			<p class="text-xs text-muted-foreground">Submitted.</p>
+		</ConfirmationAccepted>
+
+		<ConfirmationRejected>
+			<p class="text-xs text-muted-foreground">Cancelled.</p>
+		</ConfirmationRejected>
+
+		<ConfirmationFailed>
+			<p class="text-xs text-destructive">Request failed.</p>
+		</ConfirmationFailed>
 	</DialogContent>
 </Dialog>

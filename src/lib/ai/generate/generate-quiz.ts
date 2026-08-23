@@ -7,7 +7,7 @@
  * internally by the SDK via `maxRetries`.
  */
 import type { LanguageModel } from 'ai';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ResolvedRequestSettings } from '../types';
 import {
 	GeneratedQuizSchema,
 	GradedAnswerSchema,
@@ -119,6 +119,7 @@ export async function readQuizPrompt(): Promise<string> {
 export interface GenerateQuizOptions {
 	prompt?: string;
 	signal?: AbortSignal;
+	requestSettings?: ResolvedRequestSettings;
 	onTrace?: (t: {
 		request: import('$lib/agent/trace').ObjectTraceRequest;
 		result?: { object: unknown };
@@ -185,7 +186,9 @@ export async function generateQuiz(
 	const toTraceRequest = (msgs: typeof core) => ({
 		system,
 		messages: msgs.map((m) => ({ role: m.role, content: String(m.content) })),
-		schema: 'GeneratedQuizSchema' as const
+		schema: 'GeneratedQuizSchema' as const,
+		providerOptions: opts.requestSettings?.providerOptions,
+		callSettings: opts.requestSettings?.callSettings
 	});
 	let attemptMessages = core;
 	try {
@@ -196,7 +199,8 @@ export async function generateQuiz(
 					system,
 					messages: attemptMessages,
 					signal: opts.signal,
-					maxRetries: 2
+					maxRetries: 2,
+					requestSettings: opts.requestSettings
 				});
 				opts.onTrace?.({ request: toTraceRequest(attemptMessages), result: { object } });
 				return object;
