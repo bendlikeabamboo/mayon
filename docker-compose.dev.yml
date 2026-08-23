@@ -47,7 +47,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
   db:
-    image: postgres:17-alpine
+    image: docker.io/library/postgres:17-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mayon}
       POSTGRES_USER: ${POSTGRES_USER:-mayon}

@@ -15,7 +15,7 @@
 		]
 	},
 	"scripts": {
-		"dev": "docker compose -p mayon-dev -f docker-compose.dev.yml up",
+		"dev": "node scripts/dev-compose.mjs up",
 		"build": "vite build",
 		"preview": "vite preview",
 		"check": "svelte-check --tsconfig ./tsconfig.json",
@@ -23,13 +23,14 @@
 		"lint": "eslint . && prettier --check .",
 		"format": "prettier --write .",
 		"test": "vitest run",
+		"test:low-spec": "vitest run --mode low-spec",
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
 		"dev:vite": "vite dev",
-		"dev:up": "docker compose -p mayon-dev -f docker-compose.dev.yml up -d",
-		"dev:down": "docker compose -p mayon-dev -f docker-compose.dev.yml down",
-		"dev:build": "docker compose -p mayon-dev -f docker-compose.dev.yml build",
+		"dev:up": "node scripts/dev-compose.mjs up -d",
+		"dev:down": "node scripts/dev-compose.mjs down",
+		"dev:build": "node scripts/dev-compose.mjs build",
 		"test:all": "pnpm -r --include-workspace-root test"
 	},
 	"dependencies": {

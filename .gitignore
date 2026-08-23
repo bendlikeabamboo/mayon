@@ -17,6 +17,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.low-spec
 
 # Logs
 *.log
@@ -32,6 +33,10 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+
+# Python cache (speckit scripts)
+__pycache__/
+.specify/scripts/python/__pycache__/
 
 # OPFS runtime caches
 

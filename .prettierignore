@@ -12,5 +12,7 @@ docs/
 refinement/
 prompts/
 .kilo/
-specs/**/donors/
+specs/
+.specify/
+.github/skills/
 

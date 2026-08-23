@@ -1,8 +1,9 @@
 {
-	"ai": "kilocode",
-	"feature_numbering": "sequential",
-	"here": false,
-	"integration": "kilocode",
-	"script": "sh",
-	"speckit_version": "0.16.4"
+  "ai": "copilot",
+  "ai_skills": true,
+  "feature_numbering": "sequential",
+  "here": true,
+  "integration": "copilot",
+  "script": "py",
+  "speckit_version": "1.0.1"
 }

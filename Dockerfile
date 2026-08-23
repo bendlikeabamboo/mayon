@@ -23,9 +23,9 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 RUN mkdir -p /var/cache/nginx && chown -R nginx:nginx /var/cache/nginx /run
 
-EXPOSE 80
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://localhost/ || exit 1
+  CMD wget -qO- http://localhost:8080/ || exit 1
 
 USER nginx

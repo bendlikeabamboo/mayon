@@ -17,14 +17,15 @@ telemetry.
 - **Quizzes** — MCQ, flashcard, and short-answer questions with AI grading and
   score tracking.
 - **Local-first / self-hosted** — browser SPA backed by a Postgres primary
-  store via a small local server. Self-host with `docker compose up`; no
-  account, no telemetry.
+  store via a small local server. Self-host with `docker compose up` (or
+  `podman compose up`); no account, no telemetry.
 - **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, DeepSeek, xAI (Grok),
   Moonshot Kimi, Qwen, Groq, Mistral, Ollama, OpenRouter, Kilo Gateway, OpenCode Zen,
   LiteLLM (self-hosted), Vercel AI Gateway, Requesty, and more — any
   OpenAI-compatible endpoint works with a custom base URL; switch providers freely.
-  When Mayon runs in Docker and you use a local gateway (LiteLLM, Ollama on the
-  host), point at `http://host.docker.internal:<port>` (or the host LAN IP)
+  When Mayon runs in a container and you use a local gateway (LiteLLM, Ollama
+  on the host), point at `http://host.docker.internal:<port>` under Docker or
+  `http://host.containers.internal:<port>` under Podman (or the host LAN IP)
   instead of `localhost`.
 
 ## Get Mayon
@@ -34,11 +35,12 @@ telemetry.
 Try the live demo at
 [bendlikeabamboo.github.io/mayon](https://bendlikeabamboo.github.io/mayon).
 
-### Docker (self-host)
+### Docker / Podman (self-host)
 
-Mayon runs as three containers (web SPA, server, Postgres). The quickest way to
-run it — a single command that checks for Docker, generates a secure Postgres
-password, writes the files to `~/.mayon`, and starts the stack:
+Mayon runs as three containers (web SPA, server, Postgres) on Docker or Podman
+with identical behavior; Docker is the default when both are installed. The
+quickest way to run it — a single command that detects the engine, generates a
+secure Postgres password, writes the files to `~/.mayon`, and starts the stack:
 
 ```bash
 curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/install.sh | bash
@@ -47,6 +49,11 @@ curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/ins
 Then open http://localhost:8080. Files land in `~/.mayon`; use
 `~/.mayon/install.sh` to manage the stack afterwards (`stop`, `start`,
 `restart`, `logs`, `status`, `upgrade`, `uninstall`).
+
+**Podman** works out of the box on Podman 4+ (rootless is supported). To force
+Podman on a machine that also has Docker, prefix the install with
+`MAYON_CONTAINER_ENGINE=podman`; the engine is recorded in `~/.mayon/.env`, so
+the saved-installer subcommands keep using it too.
 
 **Pin a release** (recommended for reproducible installs):
 
@@ -63,6 +70,9 @@ docker compose -f https://raw.githubusercontent.com/bendlikeabamboo/mayon/main/d
   -e POSTGRES_PASSWORD="$(openssl rand -hex 24)" up -d
 ```
 
+For Podman, the same command works — `podman compose -f <url> ... up -d` with
+identical flags.
+
 Or save an `.env` next to your `docker-compose.yml`:
 
 ```
@@ -77,6 +87,23 @@ POSTGRES_PASSWORD=<your-password>
 All three paths accept `MAYON_PORT` (web port, default `8080`) and
 `MAYON_VERSION` (image tag) via env. To move off port 8080, set
 `MAYON_PORT=3000` in `~/.mayon/.env` and restart.
+
+#### Podman notes
+
+- Image refs in the compose file are fully qualified
+  (`docker.io/library/postgres:17-alpine`), so hosts without
+  unqualified-search registries work with no config changes.
+- The default web port `8080` is unprivileged, so rootless Podman works out
+  of the box; ports below 1024 require rootful Podman or
+  `sysctl net.ipv4.ip_unprivileged_port_start`.
+- To reach a host service (LiteLLM, Ollama) from containers, use
+  `http://host.containers.internal:<port>` — Podman's equivalent of
+  `host.docker.internal` — or the host LAN IP.
+- Volumes are engine-scoped: switching engines starts a new, empty database.
+  The installer warns before that happens.
+- Aliasing `docker` → `podman` helps manual typing only; the installer and
+  docs commands use real binaries — pass `MAYON_CONTAINER_ENGINE=podman`
+  instead.
 
 #### Optional: Brave Search (self-hosted web search for chats)
 
@@ -104,6 +131,9 @@ in-app backup/restore if you want a safety copy).
 ~/.mayon/install.sh upgrade
 ```
 
+This works the same under Podman — the engine recorded in `~/.mayon/.env` is
+reused.
+
 **Pin a specific version** (e.g. to stay on or roll back to a known release):
 
 ```bash
@@ -117,12 +147,15 @@ MAYON_VERSION=0.2.0 ~/.mayon/install.sh install
 MAYON_VERSION=0.2.0 docker compose pull && MAYON_VERSION=0.2.0 docker compose up -d
 ```
 
+Under Podman: `podman compose pull && podman compose up -d`.
+
 To roll back, repeat with the previous version tag. If something goes wrong,
 restore from a backup taken before the upgrade.
 
 ## Build from source
 
-**Prerequisites:** Node 22, pnpm 10, and Docker (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+**Prerequisites:** Node 22, pnpm 10, and Docker or Podman (the dev engine is
+selectable via `MAYON_DEV_ENGINE`; see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ```bash
 pnpm install
@@ -137,7 +170,8 @@ This means the server container cannot authenticate with Postgres. Common causes
 
 - **Stale volume from a previous install.** If you deleted `~/.mayon/` and
   re-ran the installer, a new random password was generated but the old
-  Postgres data volume still has the old password. Fix:
+  Postgres data volume still has the old password. Fix (substitute `podman`
+  if installed under Podman):
   ```bash
   cd ~/.mayon && docker compose down -v   # removes volumes (data is lost)
   ~/.mayon/install.sh start               # reinitializes with the new password
@@ -149,6 +183,20 @@ This means the server container cannot authenticate with Postgres. Common causes
   ```bash
   ~/.mayon/install.sh upgrade
   ```
+
+### Podman: short-name image resolution
+
+If `podman compose up` fails with an error like `short-name "postgres:17-alpine"
+did not resolve to a registry`, the host's registry policy blocks unqualified
+image names. Current releases ship fully-qualified refs (`docker.io/library/...`)
+in the compose file, so this is fixed — run `~/.mayon/install.sh upgrade` on an
+older install.
+
+### Podman rootless: web container fails to bind port 80
+
+Older releases had the web container listen on port 80 inside the container,
+which failed under rootless Podman. Current releases listen on 8080 inside
+the container; run `~/.mayon/install.sh upgrade` if you see this.
 
 ## Documentation
 

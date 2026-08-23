@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Podman support (secondary engine) for installation & lifecycle** — the
+  one-line installer now selects a container engine per run: explicit
+  `MAYON_CONTAINER_ENGINE=docker|podman` override → engine recorded in
+  `~/.mayon/.env` → auto-detection preferring Docker, falling back to the
+  other engine when the preferred one lacks compose support. The chosen
+  engine is recorded once at install and every lifecycle subcommand
+  (`start/stop/restart/logs/status/upgrade/uninstall`) binds to it; a
+  recorded engine whose binary is missing is a hard error (never a silent
+  switch — volumes are engine-scoped). Install prints `Using engine: …
+(source: …)`, verifies the stack actually became reachable before
+  reporting success, and cross-engine installs warn + require confirmation
+  when the other engine already holds data volumes.
+- **Podman support for the dev workflow** — the four dev commands
+  (`pnpm dev`, `dev:up`, `dev:down`, `dev:build`) dispatch through a single
+  shared mechanism (`scripts/dev-compose.mjs`): `MAYON_DEV_ENGINE` env
+  override or Docker-preferring auto-detection. No shell-alias reliance.
+- **Rootless-Podman compatibility fixes** — the web image now listens on
+  8080 inside the container (nginx no longer binds privileged port 80), and
+  the Postgres image is fully qualified (`docker.io/library/postgres:17-alpine`)
+  so short-name resolution works under strict Podman registry policies.
+  Docker behavior is unchanged.
+- **Docs** — README self-host/install/upgrade/gateway/troubleshooting
+  sections cover both engines (Podman notes: rootless ports, host gateway
+  `host.containers.internal`, short-name resolution, docker→podman alias
+  limits); CONTRIBUTING/AGENTS document the dev-engine selector and the
+  engine-switch caveat (dev volumes/caches are engine-scoped).
+
 ## [0.3.0] - 2026-08-21
 
 ### Added
