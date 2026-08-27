@@ -213,7 +213,7 @@ describe('generateQuiz', () => {
 		expect(retryArgs.messages[0]).toEqual({ role: 'user', content: 'go' });
 	});
 
-	it('gives up after one corrective retry if the model still fails the schema', async () => {
+	it('gives up after two corrective retries if the model still fails the schema', async () => {
 		const badInput = { questions: [] };
 		mockedGenerateText.mockResolvedValue({
 			toolCalls: [{ toolName: 'json', input: badInput }],
@@ -222,7 +222,53 @@ describe('generateQuiz', () => {
 		await expect(generateQuiz(mockModel, messages, quizOpts('p'))).rejects.toThrow(
 			QuizGenerationError
 		);
-		expect(mockedGenerateText).toHaveBeenCalledTimes(2);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(3);
+	});
+
+	it('recovers on the second corrective retry (three calls)', async () => {
+		mockedGenerateText
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: { questions: [] } }],
+				text: ''
+			} as never)
+			.mockResolvedValueOnce({
+				toolCalls: [
+					{
+						toolName: 'json',
+						input: { questions: [{ type: 'dropdown', prompt: '', payload: {} }] }
+					}
+				],
+				text: ''
+			} as never)
+			.mockResolvedValueOnce({
+				toolCalls: [{ toolName: 'json', input: validQuiz }],
+				text: ''
+			} as never);
+
+		const quiz = await generateQuiz(mockModel, messages, quizOpts('p'));
+
+		expect(quiz).toEqual(validQuiz);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(3);
+		const retryMessages = mockedGenerateText.mock.calls
+			.slice(1)
+			.map((call) =>
+				(call[0] as { messages: Array<{ role: string; content: string }> }).messages.at(-1)
+			);
+		for (const last of retryMessages) {
+			expect(last?.role).toBe('user');
+			expect(last?.content).toContain('rejected by validation');
+		}
+	});
+
+	it('repairs a fence-wrapped double-serialized tool input without a retry', async () => {
+		const serializedTwice = JSON.stringify(JSON.stringify(validQuiz));
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: '```json\n' + serializedTwice + '\n```' }],
+			text: ''
+		} as never);
+		const quiz = await generateQuiz(mockModel, messages, quizOpts('p'));
+		expect(quiz).toEqual(validQuiz);
+		expect(mockedGenerateText).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not retry on transport failures', async () => {
@@ -376,6 +422,16 @@ describe('DEFAULT_QUIZ_PROMPT', () => {
 		expect(DEFAULT_QUIZ_PROMPT).toContain('flashcard');
 		expect(DEFAULT_QUIZ_PROMPT).toContain('short');
 	});
+
+	it('calls out the observed drift modes explicitly', () => {
+		// These mirror the local repairs in quiz.ts / object-tool.ts: flat
+		// payloads, prompt-in-payload, duplicate type-in-payload, out-of-range
+		// answerIndex, fences/stringified arguments.
+		expect(DEFAULT_QUIZ_PROMPT).toMatch(/NEXT TO "type"/);
+		expect(DEFAULT_QUIZ_PROMPT).toMatch(/never "type", never "prompt"/);
+		expect(DEFAULT_QUIZ_PROMPT).toMatch(/0 <= answerIndex < options\.length/);
+		expect(DEFAULT_QUIZ_PROMPT).toMatch(/no markdown code fences/);
+	});
 });
 
 describe('DEFAULT_GRADE_PROMPT', () => {
@@ -383,5 +439,45 @@ describe('DEFAULT_GRADE_PROMPT', () => {
 		expect(DEFAULT_GRADE_PROMPT).not.toContain('```json');
 		expect(DEFAULT_GRADE_PROMPT).toContain('isCorrect');
 		expect(DEFAULT_GRADE_PROMPT).toContain('feedback');
+	});
+});
+
+describe('tool description pass-through', () => {
+	beforeEach(() => {
+		mockedGenerateText.mockReset();
+	});
+
+	function calledToolDescription(): string | undefined {
+		const args = mockedGenerateText.mock.calls[0][0] as {
+			tools?: { json?: { description?: string } };
+		};
+		return args.tools?.json?.description;
+	}
+
+	it('sends the quiz-specific `json` tool description', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validQuiz }],
+			text: ''
+		} as never);
+		await generateQuiz(mockModel, messages, quizOpts('p'));
+		const description = calledToolDescription();
+		expect(description).toContain('"mcq"');
+		expect(description).toContain('"payload"');
+		expect(description).toContain('exactly once');
+	});
+
+	it('sends the grading-specific `json` tool description', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: validGrade }],
+			text: ''
+		} as never);
+		await gradeShortAnswer(
+			mockModel,
+			{ prompt: 'q', rubric: 'r', answer: 'a', context: [] },
+			gradeOpts('p')
+		);
+		const description = calledToolDescription();
+		expect(description).toContain('"isCorrect"');
+		expect(description).toContain('"feedback"');
 	});
 });

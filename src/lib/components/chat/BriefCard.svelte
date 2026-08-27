@@ -154,7 +154,7 @@
 </script>
 
 <div
-	class="space-y-4 rounded-lg border border-border bg-card p-4 text-card-foreground"
+	class="surface-card space-y-4 p-4 text-card-foreground"
 	role="dialog"
 	aria-label="Learning brief"
 >

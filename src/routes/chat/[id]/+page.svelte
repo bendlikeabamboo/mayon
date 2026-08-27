@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
+		ChevronDown,
 		FlaskConical,
 		ListChecks,
 		LoaderCircle,
@@ -12,8 +13,7 @@
 		Plus,
 		Sparkles,
 		SquareTerminal,
-		Target,
-		GraduationCap
+		Target
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
@@ -32,11 +32,13 @@
 	} from '$lib/chat/brief';
 	import { parseAddFormats } from '$lib/chat/expound';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
+	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 	import { getActiveSdkProvider } from '$lib/ai/client';
 	import { describeDialect } from '$lib/ai/dialects';
+	import { DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
@@ -45,6 +47,7 @@
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
 	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
 	import { mark } from '$lib/perf/mark';
+	import { entry } from '$lib/motion/stagger';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 
 	let breadcrumb = $state<Chat[]>([]);
@@ -52,8 +55,12 @@
 	let siblings = $state<Chat[]>([]);
 	let labs = $state<Lab[]>([]);
 	let quizzes = $state<Quiz[]>([]);
-	/** When true, the brief editor is open (root only). */
-	let editingBrief = $state(false);
+	/**
+	 * Expanded state of the consolidated brief summary chip's inline detail
+	 * panel (per-chat persisted via `uiState`, see `contracts/settings-keys.md`).
+	 */
+	let briefExpanded = $state(false);
+	let briefExpandedWriteSeq = 0;
 	/** When true, the intake card on this chat is dismissed for the session. */
 	let intakeDismissed = $state(false);
 	let editingInferred = $state(false);
@@ -193,6 +200,31 @@
 		localStorage.setItem('mayon:ui:rail', railCollapsed ? '1' : '0');
 	});
 
+	// Per-chat brief-chip expansion: stored value wins whenever present; an
+	// absent value re-resolves the default (untitled→expanded, titled→collapsed)
+	// e.g. when a title arrives after creation. Explicit toggles bump a sequence
+	// so a stale async read can't clobber the optimistic local state.
+	$effect(() => {
+		const id = chatStore.chat?.id;
+		const title = chatStore.chat?.title ?? null;
+		if (!id) return;
+		const seqAtRead = briefExpandedWriteSeq;
+		void isBriefExpanded(id, title).then((expanded) => {
+			if (seqAtRead === briefExpandedWriteSeq && id === chatStore.chat?.id) {
+				briefExpanded = expanded;
+			}
+		});
+	});
+
+	/** Chevron / chip-body toggle: optimistic locally, persisted per chat. */
+	function toggleBriefExpanded() {
+		briefExpanded = !briefExpanded;
+		const id = chatStore.chat?.id;
+		if (!id) return;
+		briefExpandedWriteSeq++;
+		void setBriefExpanded(id, briefExpanded);
+	}
+
 	/** The parsed brief for the ROOT of this chat's tree (inherited by branches). */
 	const rootBrief = $derived<LearningBrief | null>(
 		chatStore.chat
@@ -254,7 +286,7 @@
 	}
 
 	async function loadAll(chatId: string) {
-		editingBrief = false;
+		briefExpanded = false; // optimistically collapsed until hydration resolves
 		intakeDismissed = false;
 		editingInferred = false;
 		rootChat = null;
@@ -431,6 +463,69 @@
 		if (id) await goto(`/lab/${id}`);
 	}
 
+	/**
+	 * Launcher prerequisite: a conversation to bind artifacts to. On this route
+	 * a chat is always open (launchers only render in the open-chat layout); the
+	 * fallback exists so future hero-composer reuse stays total.
+	 */
+	async function ensureLauncherChat(): Promise<string | null> {
+		if (chatStore.chat) return chatStore.chat.id;
+		const createdId = await chatStore.createAndNavigate();
+		await chatStore.load(createdId);
+		return chatStore.chat ? createdId : null;
+	}
+
+	/**
+	 * Composer "branch here": a root-level branch with NO source message. Uses
+	 * the same persisted row `chatStore.branchFromMessage` writes
+	 * (`repos.chats.createChild`) minus the fork-point message — there is none
+	 * yet. No `branchSourcesRepo.create` edge is written because an edge row
+	 * requires a sourceMessageId (`createExpoundBranch` is the only writer),
+	 * matching `branchFromMessage`, which also writes no edge. Outcome =
+	 * navigation into the child conversation.
+	 */
+	async function onLaunchBranch() {
+		const parentId = await ensureLauncherChat();
+		const parent = chatStore.chat;
+		if (!parentId || !parent) return;
+		try {
+			// Same UX1a intent as branchFromMessage: suppress auto-branch_chat next turn.
+			chatStore.manualBranchPending = true;
+			const child = await repos.chats.createChild({
+				parentId,
+				branchPointMessageId: null,
+				title: 'Branch of ' + (parent.title ?? DEFAULT_TITLE)
+			});
+			await goto(`/chat/${child.id}`);
+		} catch (err) {
+			chatStore.error = {
+				title: 'Could not branch',
+				message: err instanceof Error ? err.message : String(err)
+			};
+		}
+	}
+
+	/** Composer "quiz me": mirror of onGenerateQuiz via launcher ensure-chat. */
+	async function onLaunchQuiz() {
+		const chatId = await ensureLauncherChat();
+		if (!chatId) return;
+		const id = await quizzesStore.generate(chatId);
+		if (id) await goto(`/quiz/${id}`);
+	}
+
+	/**
+	 * Composer "open lab": mirror of onGenerateLab via launcher ensure-chat.
+	 * Raw-output fallback needs no separate saveRaw call here: the existing
+	 * LabGenerationError path sets labsStore.rawOffer and the bottom-pane card
+	 * above this composer already offers the visible "Save raw text as lab".
+	 */
+	async function onLaunchLab() {
+		const chatId = await ensureLauncherChat();
+		if (!chatId) return;
+		const id = await labsStore.generate(chatId);
+		if (id) await goto(`/lab/${id}`);
+	}
+
 	async function onGenerateQuiz() {
 		if (!chatStore.chat) return;
 		const id = await quizzesStore.generate(chatStore.chat.id);
@@ -454,7 +549,7 @@
 
 	async function onSaveBrief(brief: LearningBrief) {
 		await chatStore.saveBrief(brief);
-		editingBrief = false;
+		if (briefExpanded) toggleBriefExpanded(); // saving closes the editor, like before
 	}
 
 	async function onSaveIntakeBrief(brief: LearningBrief) {
@@ -516,8 +611,12 @@
 					<PanelRight class="size-4" />
 				{/if}
 			</Button>
-			<div class="mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-3 p-4">
-				<div class="flex shrink-0 flex-col gap-3" bind:this={topPane}>
+			<div class="art-stagger mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-3 p-4">
+				<div
+					in:entry|global={{ index: 0, count: 3 }}
+					class="flex shrink-0 flex-col gap-3"
+					bind:this={topPane}
+				>
 					<div class="flex items-center justify-between gap-2">
 						<div class="min-w-0 flex-1">
 							<Breadcrumb chain={breadcrumb} />
@@ -580,52 +679,55 @@
 
 					{#if showBriefIntake}
 						<BriefCard mode="intake" onSave={onSaveIntakeBrief} onSkip={onSkipIntake} />
-					{:else if rootBrief && editingBrief}
-						<BriefCard
-							mode="edit"
-							brief={rootBrief}
-							onSave={onSaveBrief}
-							onDismiss={() => {
-								editingBrief = false;
-							}}
-						/>
 					{:else if rootBrief}
-						<div class="flex flex-wrap items-center gap-2 self-start">
-							<button
-								type="button"
-								class="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
-									.chat?.parentId
-									? 'cursor-default'
-									: 'cursor-pointer'}"
-								title={chatStore.chat?.parentId
-									? 'Inherited from the root chat'
-									: 'Edit your brief'}
-								onclick={() => {
-									if (!chatStore.chat?.parentId) editingBrief = true;
-								}}
-							>
-								<Target class="size-3 shrink-0" />
-								<span class="truncate">{summarizeBrief(rootBrief)}</span>
-								{#if chatStore.chat?.parentId}
-									<span class="shrink-0 text-muted-foreground/70">(inherited)</span>
+						<div class="flex flex-col gap-2">
+							<div class="flex flex-wrap items-center gap-2 self-start">
+								<button
+									type="button"
+									class="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
+										.chat?.parentId
+										? 'cursor-default'
+										: 'cursor-pointer'}"
+									title={chatStore.chat?.parentId
+										? 'Inherited from the root chat'
+										: 'Edit your brief'}
+									onclick={() => {
+										if (!chatStore.chat?.parentId && !briefExpanded) toggleBriefExpanded();
+									}}
+								>
+									<Target class="size-3 shrink-0" />
+									<span class="truncate">{summarizeBrief(rootBrief)} · {personaName}</span>
+									{#if chatStore.chat?.parentId}
+										<span class="shrink-0 text-muted-foreground/70">(inherited)</span>
+									{/if}
+								</button>
+								{#if !chatStore.chat?.parentId}
+									<button
+										type="button"
+										class="rounded-full border border-border bg-background p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+										data-tip={briefExpanded ? 'Collapse brief details' : 'Expand brief details'}
+										aria-label={briefExpanded ? 'Collapse brief details' : 'Expand brief details'}
+										aria-expanded={briefExpanded}
+										onclick={toggleBriefExpanded}
+									>
+										<ChevronDown
+											class="size-3 transition-transform duration-200 motion-reduce:transition-none {briefExpanded
+												? 'rotate-180'
+												: ''}"
+										/>
+									</button>
 								{/if}
-							</button>
-							<button
-								type="button"
-								class="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground {chatStore
-									.chat?.parentId
-									? 'cursor-default'
-									: 'cursor-pointer'}"
-								title={chatStore.chat?.parentId
-									? 'Inherited from the root chat'
-									: 'Switch teacher persona'}
-								onclick={() => {
-									if (!chatStore.chat?.parentId) editingBrief = true;
-								}}
-							>
-								<GraduationCap class="size-3 shrink-0" />
-								<span>{personaForId(rootBrief.persona ?? DEFAULT_PERSONA).name}</span>
-							</button>
+							</div>
+							{#if briefExpanded}
+								<BriefCard
+									mode="edit"
+									brief={rootBrief}
+									onSave={onSaveBrief}
+									onDismiss={() => {
+										if (briefExpanded) toggleBriefExpanded();
+									}}
+								/>
+							{/if}
 						</div>
 					{:else if chatStore.inferredBrief && chatStore.chat?.parentId === null && !editingInferred}
 						<div class="self-start rounded-md border border-border bg-card p-3 text-sm">
@@ -660,6 +762,7 @@
 					{/if}
 				</div>
 				<div
+					in:entry|global={{ index: 1, count: 3 }}
 					class="relative min-h-0 flex-1"
 					bind:this={middleWrapper}
 					style="--fade-top:{fadeTop}px; --fade-bottom:{fadeBottom}px;"
@@ -708,7 +811,11 @@
 					></div>
 				</div>
 
-				<div class="flex shrink-0 flex-col gap-3" bind:this={bottomPane}>
+				<div
+					in:entry|global={{ index: 2, count: 3 }}
+					class="flex shrink-0 flex-col gap-3"
+					bind:this={bottomPane}
+				>
 					{#if chatStore.generativeStatus}
 						<div
 							class="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm text-muted-foreground"
@@ -784,10 +891,16 @@
 						bind:prompt={composerPrompt}
 						{onSend}
 						onStop={chatStore.stop.bind(chatStore)}
+						onBranch={onLaunchBranch}
+						onQuiz={onLaunchQuiz}
+						onLab={onLaunchLab}
 						{supportsDeep}
 						providerName={activeProviderName}
 						modelId={activeModelId}
 						chatId={chatStore.chat.id}
+						canGenerate={Boolean(activeProviderName && activeModelId)}
+						quizBusy={quizzesStore.generating}
+						labBusy={labsStore.generating}
 					/>
 				</div>
 			</div>

@@ -20,18 +20,22 @@ import { splitContextForGeneration } from './context-split';
 export const DEFAULT_QUIZ_PROMPT = [
 	'You are a quiz designer. Given a conversation, produce a mixed quiz that lets a learner self-check the topic.',
 	'',
-	'The output must be a JSON object with EXACTLY one field:',
+	'# Output shape',
 	'',
-	'- "questions": array of question objects, each {"type", "prompt", "payload"}.',
+	'Return ONE JSON object with exactly one top-level field:',
+	'- "questions": a non-empty array of question objects.',
 	'',
-	'Each question has a type and a type-specific payload:',
-	'- "type": "mcq" — payload is {"options": array of >=2 strings, "answerIndex": 0-based index of the correct option}.',
-	'- "type": "flashcard" — payload is {"front": string, "back": string}.',
-	'- "type": "short" — payload is {"rubric": what a correct answer must include}.',
+	'Every question object has EXACTLY three keys: "type", "prompt", "payload".',
+	'"prompt" sits NEXT TO "type" on the question. NEVER inside "payload".',
+	'"payload" contains ONLY the variant fields listed below — never "type", never "prompt":',
+	'"type" is EXACTLY one of "mcq", "flashcard", "short" (lowercase), and its payload is:',
+	'- {"type": "mcq",       "payload": {"options": ["...", "at least 2 strings"], "answerIndex": <0-based index into options>}}',
+	'- {"type": "flashcard", "payload": {"front": "...", "back": "..."}}',
+	'- {"type": "short",     "payload": {"rubric": "<what a correct answer must include>"}}',
 	'',
 	'Aim for roughly 6-10 questions mixing the three types.',
 	'',
-	'Example of the exact shape (use this structure):',
+	'# Example of the exact structure',
 	'',
 	'{',
 	'  "questions": [',
@@ -61,34 +65,60 @@ export const DEFAULT_QUIZ_PROMPT = [
 	'  ]',
 	'}',
 	'',
+	'# Content guidance',
+	'',
 	'The conversation may open with a learner brief (goal/level/mode/scope). Align the quiz to that goal and level; make the questions test whether the learner can DO the goal.',
 	'',
-	'Rules:',
-	'- Field names are lowercase and exactly as shown; payloads must match their type.',
-	'- Do NOT include ids or ordering — emit only type/prompt/payload (ordering is assigned at save time).',
-	'- "answerIndex" must be a valid 0-based index into "options"; mcq needs >=2 options.',
-	'- "questions" is a non-empty array.',
-	'- The value of "type" must be EXACTLY the string "mcq", "flashcard", or "short" — lowercase, no variants.'
+	'# Hard rules',
+	'',
+	'- Field names are lowercase and exactly as shown.',
+	'- "payload" holds ONLY its variant fields: {"options", "answerIndex"} for mcq, {"front", "back"} for flashcard, {"rubric"} for short. Do not repeat "type" or "prompt" inside "payload".',
+	'- Every mcq satisfies 0 <= answerIndex < options.length.',
+	'- No ids, no ordering field — emit only type/prompt/payload per question (ordering is assigned at save time).',
+	'- Return raw JSON as the tool arguments only: no prose around it, no markdown code fences, no stringified encoding.'
+].join('\n');
+
+/**
+ * Tool-description contract for quiz generation. Some providers weight the
+ * tool description alongside the system prompt, so we restate the discriminated
+ * union here compactly — including the observed drift modes (flat payloads,
+ * stray type/prompt keys inside payload, alias type names, stringified
+ * arguments).
+ */
+const QUIZ_TOOL_DESCRIPTION = [
+	'Emit the generated quiz for the conversation above.',
+	'Call this tool exactly once with the complete quiz object as the arguments: {"questions": [{type, prompt, payload}]}.',
+	'Each question carries "type" and "prompt" at its top level; "payload" contains ONLY the variant fields — never "type", never "prompt":',
+	'- {"type": "mcq", "prompt": "...", "payload": {"options": ["...", "..."], "answerIndex": 0}}',
+	'- {"type": "flashcard", "prompt": "...", "payload": {"front": "...", "back": "..."}}',
+	'- {"type": "short", "prompt": "...", "payload": {"rubric": "..."}}'
 ].join('\n');
 
 export const DEFAULT_GRADE_PROMPT = [
 	"You grade a learner's short answer against a rubric, using the provided source conversation as grounding.",
 	'',
-	'The output must be a JSON object with EXACTLY these two fields:',
+	'# Output shape',
 	'',
+	'Return ONE JSON object with exactly these two fields:',
 	'- "isCorrect": boolean — true only if the answer satisfies the rubric.',
 	'- "feedback": string — one or two sentences explaining the verdict (what was right or missing).',
 	'',
-	'Example of the exact shape (use this structure):',
+	'# Example of the exact structure',
 	'',
 	'{',
 	'  "isCorrect": true,',
 	'  "feedback": "Yes — you correctly described what `make` does."',
 	'}',
 	'',
-	'Rules:',
-	"- Be lenient on phrasing and word choice; grade on whether the rubric's substance is present, not exact wording."
+	'# Rules',
+	'',
+	"- Be lenient on phrasing and word choice; grade on whether the rubric's substance is present, not exact wording.",
+	'- Return raw JSON as the tool arguments only: no prose around it, no markdown code fences.'
 ].join('\n');
+
+/** Tool-description contract for grading — see QUIZ_TOOL_DESCRIPTION rationale. */
+const GRADE_TOOL_DESCRIPTION =
+	'Emit the grading verdict for the learner\'s short answer. Call this tool exactly once with the verdict object as the arguments: {"isCorrect": boolean, "feedback": string} — no other fields, no nesting, no stringified encoding.';
 
 export class QuizGenerationError extends Error {
 	constructor(
@@ -163,12 +193,22 @@ function correctionMessage(detail: string): string {
 		'',
 		'Try again: call the `json` tool with a corrected object.',
 		'- Each question "type" must be exactly "mcq", "flashcard", or "short" (lowercase).',
+		'- Each question has exactly {type, prompt, payload}: "prompt" next to "type", never inside "payload".',
+		'- "payload" contains ONLY variant fields — no "type"/"prompt"/id inside it:',
 		'- mcq payload: {"options": array of >=2 strings, "answerIndex": 0-based index into options}.',
 		'- flashcard payload: {"front": string, "back": string}.',
 		'- short payload: {"rubric": string}.',
 		'- Emit only {"questions": [...]} with no extra fields; no prose, no ids.'
 	].join('\n');
 }
+
+/**
+ * Corrective schema-mismatch re-asks allowed beyond the initial generation
+ * call. Observed drift sometimes survives one correction (fixing issue A then
+ * surfaces issue B), so we allow up to two before giving up. Transport errors
+ * and missing results stay fatal immediately.
+ */
+const MAX_CORRECTIVE_RETRIES = 2;
 
 export async function generateQuiz(
 	model: LanguageModel,
@@ -179,10 +219,10 @@ export async function generateQuiz(
 	const { system, messages: core } = splitContextForGeneration(messages, prompt, {
 		includeSystemNotes: false
 	});
-	// One corrective retry: models occasionally emit alias discriminators or drift
-	// on payload shape (observed with Z.AI/GLM). On a schema mismatch we re-ask
-	// once with the validation error appended; anything else (transport errors,
-	// no result) is fatal immediately.
+	// Up to MAX_CORRECTIVE_RETRIES corrective retries: models occasionally emit
+	// alias discriminators or drift on payload shape (observed with Z.AI/GLM).
+	// On a schema mismatch we re-ask with the validation errors appended;
+	// anything else (transport errors, no result) is fatal immediately.
 	const toTraceRequest = (msgs: typeof core) => ({
 		system,
 		messages: msgs.map((m) => ({ role: m.role, content: String(m.content) })),
@@ -197,6 +237,7 @@ export async function generateQuiz(
 				const { object } = await generateObjectViaTool(model, {
 					schema: GeneratedQuizSchema,
 					system,
+					toolDescription: QUIZ_TOOL_DESCRIPTION,
 					messages: attemptMessages,
 					signal: opts.signal,
 					maxRetries: 2,
@@ -206,7 +247,7 @@ export async function generateQuiz(
 				return object;
 			} catch (err) {
 				if (
-					attempt === 0 &&
+					attempt < MAX_CORRECTIVE_RETRIES &&
 					err instanceof ObjectToolError &&
 					err.code === 'schema_mismatch' &&
 					!opts.signal?.aborted
@@ -249,6 +290,7 @@ export async function gradeShortAnswer(
 		const { object } = await generateObjectViaTool(model, {
 			schema: GradedAnswerSchema,
 			system,
+			toolDescription: GRADE_TOOL_DESCRIPTION,
 			messages: finalMessages,
 			signal: opts.signal,
 			maxRetries: 2
