@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-27
+
+### Added
+
+- **UI visual articulation pass** — actionable controls no longer blend into
+  static text. One warm accent hue (terracotta) is reserved system-wide for
+  actions (buttons, links, active nav, focus rings, focused composer); surfaces
+  articulate through hairline borders and subtle shadows across a three-step
+  hierarchy (canvas / panel / raised card). The composer is reborn as a centered
+  rounded card whose launchers immediately create persistent artifacts —
+  "branch here" creates a tree node, "quiz me" opens the quiz composer, the lab
+  launcher starts a lab, each anchored to the conversation and reload-proof.
+  Also included: a home page with a resume card, hover-revealed copy/branch/
+  regenerate row actions, rotating tree carets with connector lines, one shared
+  row-card grammar across chat/quiz/lab lists, stagger-fade motion honoring
+  `prefers-reduced-motion`, compressed status chrome, and skeletons that appear
+  only past ~300 ms.
+- **Decision history** — `docs/history/index.qmd` condenses every shipped
+  feature's decision story (goal / rationale / reversals / learnings) into one
+  narrative; contract detail referenced from living docs and code is preserved
+  verbatim under `docs/history/appendices/`, with `specs/history-map.md` as a
+  tombstone for the retired specification archive.
+
+### Fixed
+
+- **Quiz generation retries hardened** — when the model's structured output
+  fails schema validation, generation now attempts two corrective retries
+  (previously one) and recovers when the second correction validates;
+  the object-tool call path was slimmed accordingly.
+
 ## [0.4.0] - 2026-08-23
 
 ### Added
