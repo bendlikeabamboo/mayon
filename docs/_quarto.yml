@@ -50,4 +50,4 @@ website:
     collapse-level: 2
     search: true
   page-navigation: true
-  breadcrumbs: true
+  bread-crumbs: true
