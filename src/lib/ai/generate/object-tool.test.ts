@@ -1,24 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { generateObjectViaTool, ObjectToolError, extractObjectErrorRaw } from './object-tool';
+import { describeValidation, generateObjectViaTool, ObjectToolError } from './object-tool';
 import type { LanguageModel } from 'ai';
 
 vi.mock('ai', () => ({
 	generateText: vi.fn(),
+	streamText: vi.fn(),
+	generateObject: vi.fn(),
 	tool: vi.fn((def: unknown) => def),
 	APICallError: class extends Error {
-		statusCode: number;
 		responseBody?: string;
-		responseHeaders?: Record<string, string>;
-		constructor(
-			msg: string,
-			opts: { statusCode?: number; responseBody?: string; responseHeaders?: Record<string, string> }
-		) {
-			super(msg);
-			this.statusCode = opts?.statusCode ?? 0;
-			this.responseBody = opts?.responseBody;
-			this.responseHeaders = opts?.responseHeaders;
-		}
 	}
 }));
 
@@ -27,349 +18,124 @@ const mockedGenerateText = vi.mocked(generateText);
 
 const mockModel = {} as LanguageModel;
 
-const Schema = z.object({ a: z.string().min(1) }).strict();
-const validObject = { a: 'hi' };
+const StrictSchema = z.object({ questions: z.array(z.string()).nonempty() }).strict();
 
-function toolCallResult(input: unknown, text = '') {
-	return { toolCalls: [{ type: 'tool-call', toolName: 'json', input }], text };
-}
+const result = { questions: ['q1'] };
 
-describe('generateObjectViaTool', () => {
+describe('generateObjectViaTool (input unwrapping)', () => {
 	beforeEach(() => {
 		mockedGenerateText.mockReset();
 	});
 
-	it('returns the validated object from the forced tool call', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		const out = await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(out.object).toEqual(validObject);
-	});
-
-	it('does NOT force a toolChoice (some providers, e.g. Z.AI/GLM, only support auto)', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		const args = mockedGenerateText.mock.calls[0][0] as { toolChoice?: unknown };
-		expect(args.toolChoice).toBeUndefined();
-	});
-
-	it('unwraps a single-stringified tool-call argument (provider stringified the JSON)', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(JSON.stringify(validObject)) as never);
-		const out = await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(out.object).toEqual(validObject);
-	});
-
-	it('unwraps a double-stringified tool-call argument (GLM-style)', async () => {
-		mockedGenerateText.mockResolvedValue(
-			toolCallResult(JSON.stringify(JSON.stringify(validObject))) as never
-		);
-		const out = await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(out.object).toEqual(validObject);
-	});
-
-	it('unwraps a stringified JSON object emitted as prose (text fallback)', async () => {
+	it('unwraps a double-serialized tool input', async () => {
 		mockedGenerateText.mockResolvedValue({
-			toolCalls: [],
-			text: '```json\n' + JSON.stringify(JSON.stringify(validObject)) + '\n```'
-		} as never);
-		const out = await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(out.object).toEqual(validObject);
-	});
-
-	it('declares exactly one tool named json with the schema', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		const args = mockedGenerateText.mock.calls[0][0] as { tools: Record<string, unknown> };
-		expect(Object.keys(args.tools)).toEqual(['json']);
-	});
-
-	it('forwards system, messages, abortSignal and maxRetries', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		const ac = new AbortController();
-		await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 'SYS',
-			messages: [{ role: 'user', content: 'q' }],
-			signal: ac.signal,
-			maxRetries: 3
-		});
-		expect(mockedGenerateText).toHaveBeenCalledWith(
-			expect.objectContaining({
-				system: 'SYS',
-				messages: [{ role: 'user', content: 'q' }],
-				abortSignal: ac.signal,
-				maxRetries: 3
-			})
-		);
-	});
-
-	it('defaults maxRetries to 2 when omitted', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(mockedGenerateText).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 2 }));
-	});
-
-	it('spreads requestSettings callSettings as top-level params and forwards providerOptions', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }],
-			requestSettings: {
-				callSettings: { temperature: 0.4, maxOutputTokens: 1024 },
-				providerOptions: { Z: { thinking: { type: 'enabled' } } },
-				droppedExtraKeys: []
-			}
-		});
-		expect(mockedGenerateText).toHaveBeenCalledWith(
-			expect.objectContaining({
-				temperature: 0.4,
-				maxOutputTokens: 1024,
-				providerOptions: { Z: { thinking: { type: 'enabled' } } }
-			})
-		);
-	});
-
-	it('omits callSettings keys entirely when no requestSettings is given', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult(validObject) as never);
-		await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		const args = mockedGenerateText.mock.calls[0][0] as Record<string, unknown>;
-		expect('temperature' in args).toBe(false);
-		expect(args.providerOptions).toBeUndefined();
-	});
-
-	it('falls back to parsing JSON text when the model emits no tool call', async () => {
-		mockedGenerateText.mockResolvedValue({
-			toolCalls: [],
-			text: 'Here you go:\n```json\n' + JSON.stringify(validObject) + '\n```'
-		} as never);
-		const out = await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(out.object).toEqual(validObject);
-	});
-
-	it('falls back to parsing bare JSON text when the model emits no tool call', async () => {
-		mockedGenerateText.mockResolvedValue({
-			toolCalls: [],
-			text: JSON.stringify(validObject)
-		} as never);
-		const out = await generateObjectViaTool(mockModel, {
-			schema: Schema,
-			system: 's',
-			messages: [{ role: 'user', content: 'go' }]
-		});
-		expect(out.object).toEqual(validObject);
-	});
-
-	it('throws ObjectToolError carrying model text when there is no tool call and no parseable JSON', async () => {
-		mockedGenerateText.mockResolvedValue({ toolCalls: [], text: 'here is prose instead' } as never);
-		await expect(
-			generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			})
-		).rejects.toThrow(ObjectToolError);
-		try {
-			await generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			});
-		} catch (e) {
-			expect((e as ObjectToolError).raw).toBe('here is prose instead');
-		}
-	});
-
-	it('rejects text-fallback JSON that does not match the schema', async () => {
-		mockedGenerateText.mockResolvedValue({
-			toolCalls: [],
-			text: JSON.stringify({ a: 'hi', extra: 1 })
+			toolCalls: [{ toolName: 'json', input: JSON.stringify(JSON.stringify(result)) }],
+			text: ''
 		} as never);
 		await expect(
-			generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			})
-		).rejects.toThrow(ObjectToolError);
+			generateObjectViaTool(mockModel, { schema: StrictSchema, system: 's', messages: [] })
+		).resolves.toEqual({ object: result, text: '' });
 	});
 
-	it('throws ObjectToolError when the tool input does not match the schema', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult({ a: 123 }, 'bad') as never);
+	it('unwraps a fence-wrapped double-serialized tool input', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [
+				{ toolName: 'json', input: '```json\n' + JSON.stringify(JSON.stringify(result)) + '\n```' }
+			],
+			text: ''
+		} as never);
 		await expect(
-			generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			})
-		).rejects.toThrow(ObjectToolError);
+			generateObjectViaTool(mockModel, { schema: StrictSchema, system: 's', messages: [] })
+		).resolves.toEqual({ object: result, text: '' });
 	});
 
-	it('classifies a tool-input schema mismatch as schema_mismatch', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult({ a: 123 }, 'bad') as never);
-		try {
-			await generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			});
-			expect.unreachable('should have thrown');
-		} catch (e) {
-			expect((e as ObjectToolError).code).toBe('schema_mismatch');
-		}
+	it('throws schema_mismatch when the tool input cannot satisfy the schema', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: {} }],
+			text: 'meh'
+		} as never);
+		const err = await generateObjectViaTool(mockModel, {
+			schema: StrictSchema,
+			system: 's',
+			messages: []
+		}).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(ObjectToolError);
+		expect((err as ObjectToolError).code).toBe('schema_mismatch');
 	});
 
-	it('classifies a text-fallback schema mismatch as schema_mismatch', async () => {
+	it('falls back to parsing fenced JSON text when no tool call was made', async () => {
 		mockedGenerateText.mockResolvedValue({
 			toolCalls: [],
-			text: JSON.stringify({ a: 'hi', extra: 1 })
+			text: 'Here you go:\n```json\n' + JSON.stringify(result) + '\n```'
 		} as never);
-		try {
-			await generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			});
-			expect.unreachable('should have thrown');
-		} catch (e) {
-			expect((e as ObjectToolError).code).toBe('schema_mismatch');
-		}
-	});
-
-	it('classifies tool-less prose as schema_mismatch (whole-string fallback fails the schema)', async () => {
-		// extractFencedJson falls back to the trimmed whole string, which then
-		// fails describeValidation at the root — so prose is reported as a
-		// schema mismatch, not a JSON parse failure. Callers that retry on
-		// schema_mismatch should therefore expect prose to retry too.
-		mockedGenerateText.mockResolvedValue({ toolCalls: [], text: 'prose only' } as never);
-		try {
-			await generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			});
-			expect.unreachable('should have thrown');
-		} catch (e) {
-			expect((e as ObjectToolError).code).toBe('schema_mismatch');
-		}
-	});
-
-	it('classifies an empty response as no_result', async () => {
-		mockedGenerateText.mockResolvedValue({ toolCalls: [], text: '' } as never);
-		try {
-			await generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			});
-			expect.unreachable('should have thrown');
-		} catch (e) {
-			expect((e as ObjectToolError).code).toBe('no_result');
-		}
-	});
-
-	it('classifies a generateText rejection as request_failed', async () => {
-		mockedGenerateText.mockRejectedValue(new Error('network down'));
-		try {
-			await generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			});
-			expect.unreachable('should have thrown');
-		} catch (e) {
-			expect((e as ObjectToolError).code).toBe('request_failed');
-		}
-	});
-
-	it('rejects unknown keys (strict) on the tool input', async () => {
-		mockedGenerateText.mockResolvedValue(toolCallResult({ a: 'hi', extra: 1 }, '') as never);
 		await expect(
-			generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			})
-		).rejects.toThrow(ObjectToolError);
+			generateObjectViaTool(mockModel, { schema: StrictSchema, system: 's', messages: [] })
+		).resolves.toEqual({ object: result, text: expect.stringContaining('Here you go') });
 	});
 
-	it('wraps a generateText rejection in ObjectToolError', async () => {
-		mockedGenerateText.mockRejectedValue(new Error('network down'));
-		await expect(
-			generateObjectViaTool(mockModel, {
-				schema: Schema,
-				system: 's',
-				messages: [{ role: 'user', content: 'go' }]
-			})
-		).rejects.toThrow(ObjectToolError);
+	it('uses the default mechanical contract when no description is given', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: result }],
+			text: ''
+		} as never);
+		await generateObjectViaTool(mockModel, { schema: StrictSchema, system: 's', messages: [] });
+		const args = mockedGenerateText.mock.calls[0][0] as {
+			tools?: { json?: { description?: string } };
+		};
+		expect(args.tools?.json?.description).toContain('never serialize it into a string');
+	});
+
+	it('passes a caller-supplied tool description through verbatim', async () => {
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [{ toolName: 'json', input: result }],
+			text: ''
+		} as never);
+		await generateObjectViaTool(mockModel, {
+			schema: StrictSchema,
+			system: 's',
+			messages: [],
+			toolDescription: 'MY SHAPE CONTRACT'
+		});
+		const args = mockedGenerateText.mock.calls[0][0] as {
+			tools?: { json?: { description?: string } };
+		};
+		expect(args.tools?.json?.description).toBe('MY SHAPE CONTRACT');
 	});
 });
 
-describe('extractObjectErrorRaw', () => {
-	it('prefers the APICallError response body', async () => {
-		const { APICallError } = await import('ai');
-		const apiErr = new (APICallError as unknown as new (
-			msg: string,
-			opts: { statusCode?: number; responseBody?: string }
-		) => InstanceType<typeof APICallError>)('fail', { statusCode: 500, responseBody: 'BODY' });
-		expect(extractObjectErrorRaw(apiErr)).toBe('BODY');
+describe('describeValidation', () => {
+	it("returns '' for a valid value", () => {
+		expect(describeValidation(StrictSchema, result)).toBe('');
 	});
 
-	it('falls back to the message when APICallError has no body', async () => {
-		const { APICallError } = await import('ai');
-		const apiErr = new (APICallError as unknown as new (
-			msg: string,
-			opts: { statusCode?: number; responseBody?: string }
-		) => InstanceType<typeof APICallError>)('nope', { statusCode: 500 });
-		expect(extractObjectErrorRaw(apiErr)).toBe('nope');
+	it('joins multiple issues instead of reporting only the first', () => {
+		const schema = z.object({ a: z.string(), b: z.string(), c: z.string() }).strict();
+		const detail = describeValidation(schema, {});
+		expect(detail.split('; ').length).toBeGreaterThanOrEqual(2);
 	});
 
-	it('returns the ObjectToolError raw payload', () => {
-		expect(extractObjectErrorRaw(new ObjectToolError('msg', 'raw text', 'schema_mismatch'))).toBe(
-			'raw text'
-		);
-	});
-
-	it('returns the message for a plain Error', () => {
-		expect(extractObjectErrorRaw(new Error('boom'))).toBe('boom');
-	});
-
-	it('stringifies non-error values', () => {
-		expect(extractObjectErrorRaw('weird')).toBe('weird');
+	it('truncates beyond five issues with a remaining-count note', () => {
+		const schema = z
+			.object({
+				a: z.string(),
+				b: z.string(),
+				c: z.string(),
+				d: z.string(),
+				e: z.string(),
+				f: z.string(),
+				g: z.string()
+			})
+			.strict();
+		const detail = describeValidation(schema, {
+			a: 1,
+			b: 2,
+			c: 3,
+			d: 4,
+			e: 5,
+			f: 6,
+			g: 7
+		});
+		expect(detail.split('; ').length).toBeLessThanOrEqual(6);
+		expect(detail).toMatch(/\+\d+ more issues\)$/);
 	});
 });

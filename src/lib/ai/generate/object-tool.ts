@@ -44,6 +44,13 @@ import { extractFencedJson } from './generate-gate';
 export interface GenerateObjectToolOptions<T> {
 	/** Strict Zod schema. Validated again after the call (wire JSON Schema can't express refinements). */
 	schema: z.ZodType<T>;
+	/**
+	 * Overrides the `json` tool's description. The description is prime
+	 * instruction real estate — some providers weight it alongside the system
+	 * prompt — so callers should restate their exact object shape and known
+	 * drift modes here (see QUIZ_TOOL_DESCRIPTION in `generate-quiz.ts`).
+	 */
+	toolDescription?: string;
 	system: string;
 	messages: Array<{ role: 'user' | 'assistant'; content: string }>;
 	signal?: AbortSignal;
@@ -106,12 +113,36 @@ export function extractObjectErrorRaw(err: unknown): string {
 
 const RESULT_TOOL = 'json';
 
-function describeValidation<T>(schema: z.ZodType<T>, value: unknown): string {
+/**
+ * Default `json` tool description when the caller doesn't supply a
+ * schema-specific one. States the mechanical contract (one call, object as
+ * arguments, no stringification/fences) rather than any shape.
+ */
+const RESULT_TOOL_DESCRIPTION = [
+	'Emit the structured result.',
+	'Call this tool exactly once, with the complete result object as the arguments.',
+	'The arguments ARE the JSON object itself: never serialize it into a string, never wrap it in markdown code fences, and return no prose or other tool calls.'
+].join(' ');
+
+/**
+ * Describe a schema validation failure for the corrective-feedback loop. Joins
+ * the first few issues (with their paths) instead of only the first: a model
+ * that sees every defect fixes them all in one pass, while seeing only issue
+ * one tends to surface issue two on the next attempt.
+ */
+export function describeValidation<T>(schema: z.ZodType<T>, value: unknown): string {
 	const result = schema.safeParse(value);
 	if (result.success) return '';
-	const first = result.error.issues[0];
-	const path = first && first.path.length > 0 ? ` at ${first.path.join('.')}` : '';
-	return first ? `${first.message}${path}` : 'schema validation failed';
+	const maxIssues = 5;
+	const shown = result.error.issues.slice(0, maxIssues);
+	const rendered = shown.map((issue) => {
+		const path = issue.path.length > 0 ? ` at ${issue.path.join('.')}` : '';
+		return `${issue.message}${path}`;
+	});
+	if (result.error.issues.length > shown.length) {
+		rendered.push(`(+${result.error.issues.length - shown.length} more issues)`);
+	}
+	return rendered.join('; ');
 }
 
 /**
@@ -120,17 +151,22 @@ function describeValidation<T>(schema: z.ZodType<T>, value: unknown): string {
  * Some OpenAI-compatible providers — notably Z.AI/GLM — return tool-call
  * `function.arguments` already serialized, and occasionally *double*-
  * serialized, so the parsed tool `input` (or the JSON parsed from emitted text)
- * is itself a JSON string like `'{"title":...}'` instead of an object. Validating
- * that string against an object schema fails at the root with
- * "expected object, received string". This unwraps up to a few layers of
- * `{`/`[`-prefixed JSON strings; non-string values pass through unchanged.
+ * is itself a JSON string like `'{"title":...}'` (or a doubly-encoded
+ * `'"{\"title\":...}"'`) instead of an object. That string may also be wrapped
+ * in a ```json fence. Validating either raw form against an object schema
+ * fails with "expected object, received string". This strips fences and
+ * unwraps up to a few layers of `{`/`[`/`"`-prefixed JSON; anything that isn't
+ * such a layer (including non-string values) passes through unchanged,
+ * leaving strict validation to report the real problem.
  */
 function unwrapJsonString(value: unknown): unknown {
 	let current = value;
 	for (let i = 0; i < 4; i++) {
 		if (typeof current !== 'string') break;
+		const jsonText = extractFencedJson(current);
+		if (!/^[{["]/.test(jsonText)) break;
 		try {
-			current = JSON.parse(current);
+			current = JSON.parse(jsonText);
 		} catch {
 			break;
 		}
@@ -150,8 +186,7 @@ export async function generateObjectViaTool<T>(
 			messages: opts.messages,
 			tools: {
 				[RESULT_TOOL]: tool({
-					description:
-						'Emit the structured result. You MUST call this single tool with the complete object; do not return prose or call any other tool.',
+					description: opts.toolDescription ?? RESULT_TOOL_DESCRIPTION,
 					inputSchema: opts.schema
 				})
 			},

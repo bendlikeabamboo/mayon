@@ -162,6 +162,184 @@ describe('GeneratedQuizSchema (question-type alias normalization)', () => {
 	});
 });
 
+describe('GeneratedQuizSchema (payload-shape repair)', () => {
+	// Models occasionally flatten the variant payload onto the question object
+	// or serialize it; these drift modes are repaired locally instead of
+	// failing (and burning a corrective retry on) the whole generation.
+	it('lifts flattened mcq payload fields into payload', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{
+					type: 'mcq',
+					prompt: 'What is 2 + 2?',
+					options: ['3', '4', '5', '6'],
+					answerIndex: 1
+				}
+			]
+		});
+		expect(out.questions[0]).toEqual(validMcq);
+	});
+
+	it('lifts flattened flashcard and short payloads', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{ type: 'flashcard', prompt: 'Define ATP', front: 'ATP', back: 'Adenosine triphosphate' },
+				{
+					type: 'short',
+					prompt: 'Explain osmosis.',
+					rubric: 'Mentions water moving across a semi-permeable membrane.'
+				}
+			]
+		});
+		expect(out.questions[0]).toEqual(validFlashcard);
+		expect(out.questions[1]).toEqual(validShort);
+	});
+
+	it('lifts flattened payloads through an aliased type', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{
+					type: 'multiple_choice',
+					prompt: 'What is 2 + 2?',
+					options: ['3', '4', '5', '6'],
+					answerIndex: 1
+				}
+			]
+		});
+		expect(out.questions[0]).toEqual(validMcq);
+	});
+
+	it('keeps an explicit payload when one is present (no lifting)', () => {
+		const out = GeneratedQuizSchema.parse({ questions: [{ ...validMcq, type: 'mcq' }] });
+		expect(out.questions[0]).toEqual(validMcq);
+	});
+
+	it('does not lift when required flat keys are missing', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [{ type: 'mcq', prompt: 'x', options: ['a', 'b'] }]
+			})
+		).toThrow();
+	});
+
+	it('still rejects genuinely unknown payload keys', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [
+					{
+						type: 'mcq',
+						prompt: 'x',
+						payload: { options: ['a', 'b'], answerIndex: 0, surprise: 1 }
+					}
+				]
+			})
+		).toThrow();
+	});
+
+	it('peels a payload emitted as a JSON string', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{ type: 'short', prompt: 'Explain osmosis.', payload: JSON.stringify({ rubric: 'R' }) }
+			]
+		});
+		expect(out.questions[0]).toEqual({
+			type: 'short',
+			prompt: 'Explain osmosis.',
+			payload: { rubric: 'R' }
+		});
+	});
+
+	it('peels a payload emitted as a fenced JSON string', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{
+					type: 'short',
+					prompt: 'Explain osmosis.',
+					payload: '```json\n' + JSON.stringify({ rubric: 'R' }) + '\n```'
+				}
+			]
+		});
+		expect(out.questions[0].payload).toEqual({ rubric: 'R' });
+	});
+
+	it('lifts a prompt the model nested inside payload', () => {
+		// Observed drift: the model over-applied "nest INSIDE payload" and put
+		// "prompt" in there too, leaving the question-level prompt undefined.
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{
+					type: 'mcq',
+					payload: { prompt: 'What is 2 + 2?', options: ['3', '4'], answerIndex: 1 }
+				}
+			]
+		});
+		expect(out.questions[0]).toEqual({
+			type: 'mcq',
+			prompt: 'What is 2 + 2?',
+			payload: { options: ['3', '4'], answerIndex: 1 }
+		});
+	});
+
+	it('drops a duplicate type repeated inside payload', () => {
+		// Observed drift (post-correction): the model added a redundant
+		// "type" discriminator inside every payload.
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{
+					type: 'flashcard',
+					prompt: 'Define ATP',
+					payload: { type: 'flashcard', front: 'ATP', back: 'Adenosine triphosphate' }
+				}
+			]
+		});
+		expect(out.questions[0]).toEqual(validFlashcard);
+	});
+
+	it('adopts a question-level type from payload when missing there', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [{ prompt: 'Explain osmosis.', payload: { type: 'short', rubric: 'R' } }]
+		});
+		expect(out.questions[0]).toEqual({
+			type: 'short',
+			prompt: 'Explain osmosis.',
+			payload: { rubric: 'R' }
+		});
+	});
+
+	it('keeps the question-level prompt when payload also carries one', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [
+				{
+					type: 'short',
+					prompt: 'Top-level wins',
+					payload: { prompt: 'Nested copy', rubric: 'R' }
+				}
+			]
+		});
+		expect(out.questions[0].prompt).toBe('Top-level wins');
+		expect(out.questions[0].payload).toEqual({ rubric: 'R' });
+	});
+
+	it('lifts flat variant fields into an accompanying empty payload', () => {
+		const out = GeneratedQuizSchema.parse({
+			questions: [{ type: 'mcq', prompt: 'p', payload: {}, options: ['a', 'b'], answerIndex: 0 }]
+		});
+		expect(out.questions[0]).toEqual({
+			type: 'mcq',
+			prompt: 'p',
+			payload: { options: ['a', 'b'], answerIndex: 0 }
+		});
+	});
+
+	it('leaves an unparseable payload string to fail strict validation', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [{ type: 'short', prompt: 'x', payload: 'not json {oops' }]
+			})
+		).toThrow();
+	});
+});
+
 describe('extractFencedJson', () => {
 	it('pulls the first ```json fenced block', () => {
 		const raw = `Here is the quiz:\n${fence(mixedQuiz)}\nThanks!`;

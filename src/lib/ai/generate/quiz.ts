@@ -115,20 +115,107 @@ const QUESTION_TYPE_ALIASES: Record<string, GeneratedQuizQuestion['type']> = {
 };
 
 /**
- * Normalize one emitted question object: map a string `type` through the alias
- * table (trimmed, lowercased, separators collapsed). Everything else — including
- * non-string types, unknown keys, and non-object inputs — passes through
- * unchanged so strict validation still reports the real problem.
+ * Payload keys each variant expects — used to lift fields a model flattened
+ * onto the question object back under `payload` (declared in lift order so
+ * repaired questions get a deterministic shape).
+ */
+const PAYLOAD_KEYS_BY_TYPE: Record<GeneratedQuizQuestion['type'], readonly string[]> = {
+	mcq: ['options', 'answerIndex'],
+	flashcard: ['front', 'back'],
+	short: ['rubric']
+};
+
+/**
+ * Parse a stringified JSON value (`'{...}'` / `'"[\"...\"]"'`, optionally
+ * wrapped in a ```json fence). Returns the input unchanged when it can't be
+ * peeled into something other than a string so strict validation downstream
+ * reports the real problem instead of masking it.
+ */
+function coerceStringifiedValue(value: unknown): unknown {
+	let current = value;
+	for (let i = 0; i < 4; i++) {
+		if (typeof current !== 'string') break;
+		const jsonText = extractFencedJson(current);
+		if (!/^[{["]/.test(jsonText)) break;
+		try {
+			current = JSON.parse(jsonText);
+		} catch {
+			break;
+		}
+	}
+	return typeof current === 'string' ? value : current;
+}
+
+/**
+ * Normalize one emitted question object with best-effort repairs for observed
+ * provider drift:
+ *
+ * 1. peel a `payload` emitted as a serialized JSON string (fenced or bare);
+ * 2. strip a duplicate `type` the model repeated inside `payload` (and adopt
+ *    it as the discriminator when the question itself lacks one);
+ * 3. lift a `prompt` the model nested inside `payload` back onto the question;
+ * 4. map a string `type` through the alias table (trimmed, lowercased,
+ *    separators collapsed);
+ * 5. lift variant fields the model flattened onto the question itself — e.g.
+ *    `{type:'mcq', prompt, options, answerIndex}` — back under `payload`,
+ *    keyed off the canonicalized type (also fires when an empty `payload: {}`
+ *    accompanies flat fields).
+ *
+ * Everything else passes through unchanged so strict validation still reports
+ * the real problem: non-string types, unmappable type values, partial
+ * flattening (some but not all required keys), unparseable payload strings,
+ * and unknown keys all fail validation honestly.
  */
 function normalizeQuestion(value: unknown): unknown {
 	if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
-	const { type, ...rest } = value as Record<string, unknown>;
-	if (typeof type !== 'string') return value;
-	const key = type
+	const question = { ...(value as Record<string, unknown>) };
+
+	if (typeof question.payload === 'string') {
+		question.payload = coerceStringifiedValue(question.payload);
+	}
+
+	if (
+		question.payload != null &&
+		typeof question.payload === 'object' &&
+		!Array.isArray(question.payload)
+	) {
+		const payload = { ...(question.payload as Record<string, unknown>) };
+		if (!('type' in question) || question.type == null) {
+			if (typeof payload.type === 'string') question.type = payload.type;
+		}
+		delete payload.type;
+		if (!('prompt' in question) || question.prompt == null) {
+			if (typeof payload.prompt === 'string') question.prompt = payload.prompt;
+		}
+		delete payload.prompt;
+		question.payload = payload;
+	}
+
+	if (typeof question.type !== 'string') return question;
+	const key = question.type
 		.trim()
 		.toLowerCase()
 		.replace(/[-\s]+/g, '_');
-	return { ...rest, type: QUESTION_TYPE_ALIASES[key] ?? type };
+	const canonical = QUESTION_TYPE_ALIASES[key];
+	question.type = canonical ?? question.type;
+
+	if (canonical) {
+		const hasEmptyPayload =
+			question.payload == null ||
+			(typeof question.payload === 'object' &&
+				!Array.isArray(question.payload) &&
+				Object.keys(question.payload).length === 0);
+		const keys = PAYLOAD_KEYS_BY_TYPE[canonical];
+		if (hasEmptyPayload && keys.every((k) => k in question)) {
+			const payload: Record<string, unknown> = {};
+			for (const k of keys) {
+				payload[k] = question[k];
+				delete question[k];
+			}
+			question.payload = payload;
+		}
+	}
+	return question;
 }
 
 const QuizQuestionSchema = z.preprocess(
