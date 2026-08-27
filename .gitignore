@@ -40,8 +40,11 @@ __pycache__/
 
 # OPFS runtime caches
 
-# Quarto build output
+# Quarto build output + caches
 docs/_book/
+.quarto/
+**/*.quarto_ipynb
+.quarto_ipynb_checkpoints/
 
 .playwright/
 .playwright-cli/
