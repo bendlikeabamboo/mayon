@@ -1,5 +1,14 @@
 # US7 — Warm Charcoal Night Mode (T034/T035 evidence)
 
+> **⚠️ SUPERSEDED 2026-08-27 — OWNER RULING**: the owner rejected the warm-charcoal
+> direction after review ("stick to the gray palette, only keeping the accent color
+> intact"). All `.dark` neutrals were reverted to achromatic gray at digit-identical
+> lightness (hierarchy + eye-comfort invariants unchanged); the terracotta accent
+> trio (`--primary` / `--primary-foreground` / `--ring`) is retained as the sole
+> saturated family. Warm-tinted artifacts (card shadows both themes, dark `hljs`
+> background triad, dark scrollbar thumbs) were neutralized as well. The tables and
+> captures below are preserved as historical record of the rejected variant.
+
 **Task**: T034 retune `.dark` neutrals toward warm charcoal · T035 owner gate SC-7 assembly.
 **Method**: token-level hue shift at constant lightness per GP-1; live captures on
 `feat/ui_overhaul` against `http://localhost:5173` using the baseline ThemeToggle

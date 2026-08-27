@@ -52,8 +52,8 @@ pnpm --filter @mayon/server test
 1. Sidebar footer: ONE compact indicator row replacing the two legacy pills; its popover lists db readiness/runtime, server version, capabilities, restoring flag — every previously shown fact (GP-4 ≤ 2 actions, FR-18); operable by keyboard alone.
 2. In a titled chat: header shows ONE summary chip (`summarizeBrief · persona`) + chevron; toggle open, navigate away/back → same chat restores expanded; sibling chats keep their own remembered states across full reloads (FR-19). Untitled/new chats render expanded until titled.
 
-### Story 7 — warm charcoal dark
-Side-by-side vs pre-change screenshots: dark panels/backgrounds read warm-charcoal (not neutral gray); text softness identical to before — no brightening (FR-20; SC-7 gate explicitly requires owner's comfort sign-off here).
+### Story 7 — neutral charcoal dark (revised per owner ruling 2026-08-27)
+Side-by-side vs pre-change screenshots: dark panels/backgrounds are achromatic gray (the original gray palette; warm-charcoal variant was rejected by the owner); terracotta accent remains the only saturated family; text softness identical to before — no brightening (FR-20 as revised; SC-7 satisfied via the owner ruling recorded in `evidence/us7-warm-charcoal.md`).
 
 ### Story 8 — unified RowCard
 Chat list beside quiz list beside lab list: identical anatomy `title · timestamp · progress-meta`, equal spacing rhythm, hover response, edge treatment (FR-21). Quiz progress slot may show question-count meta as shipped baseline.

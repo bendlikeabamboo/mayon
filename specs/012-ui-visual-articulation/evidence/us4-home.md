@@ -42,6 +42,12 @@ Keyboard traversal from page load (Tab sequence, verbatim probe):
 
 ## Chip seed verification
 
+> **⚠️ REVISED 2026-08-27 — OWNER RULING**: Home now shows ONLY the
+> "Explore a new topic" chip (`src/lib/chat/starters.ts`). The other generic
+> seeds and the brief-derived seed set below were removed — they duplicated
+> affordances already present on Home (quiz/lab launchers, continue-learning
+> card). The multi-seed verification below is historical record.
+
 - Brief-less context (seeded DB default): stable generic set —
   `Explore a new topic · Quiz me · Plan a study session` (chat/quiz/lab
   artifact world per A-3).

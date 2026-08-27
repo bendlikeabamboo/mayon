@@ -313,7 +313,7 @@
 		<div class="px-1 py-0.5 text-xs text-destructive">{toastMessage}</div>
 	{/if}
 	<div
-		class="surface-card rounded-xl transition-[box-shadow,border-color] duration-200 focus-within:border-ring focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30"
+		class="surface-card flex flex-col rounded-xl transition-[box-shadow,border-color] duration-200 focus-within:border-ring focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30"
 	>
 		{#if attachments.length > 0}
 			<div class="flex flex-wrap gap-1.5 px-3 pt-2.5">
@@ -342,7 +342,7 @@
 			onkeydown={onKeydown}
 			rows="2"
 			placeholder="Message the active provider…  (⌘/Ctrl+Enter to send)"
-			class="min-w-0 flex-1 resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground/60"
+			class="w-full min-w-0 flex-1 resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground/60"
 			disabled={streaming}></textarea>
 		<div class="flex flex-wrap items-center justify-between gap-2 px-2 pb-2">
 			<div class="flex items-center gap-0.5">

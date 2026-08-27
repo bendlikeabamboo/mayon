@@ -30,7 +30,7 @@
 	let latestRoot = $state<Chat | null>(null);
 	let inProgressLabs = $state<InProgressLab[]>([]);
 	let recentQuizzes = $state<Quiz[]>([]);
-	let starters = $state<Starter[]>(deriveStarters(null));
+	let starters = $state<Starter[]>(deriveStarters());
 	let greeting = $state('Welcome');
 	let loading = $state(true);
 
@@ -67,12 +67,6 @@
 		}
 		inProgressLabs = inProgress;
 		recentQuizzes = allQuizzes.slice(0, 3);
-
-		starters = deriveStarters({
-			brief: parseBrief(latestRoot?.brief ?? null),
-			labTitles: inProgress.map((l) => l.title),
-			chatTitles: recentChats.map((c) => c.title)
-		});
 
 		const h = new Date().getHours();
 		greeting =
