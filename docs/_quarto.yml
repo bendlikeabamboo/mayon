@@ -30,6 +30,9 @@ book:
         - developer_notes/index.qmd
         - developer_notes/foundation-phases.qmd
         - developer_notes/postgres-migration.qmd
+    - part: 'Decision History'
+      chapters:
+        - history/index.qmd
     - contributing.qmd
 
 website:

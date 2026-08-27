@@ -2,7 +2,7 @@
  * Per-chat UI display preferences persisted through the settings KV store
  * (`repos.settings.get/set`, JSON values) — no schema migration.
  *
- * Key convention (`specs/012-ui-visual-articulation/contracts/settings-keys.md`):
+ * Key convention (preserved appendix: `docs/history/appendices/012-settings-keys.md`):
  * `ui-state:<chatId>:<facet>`. This module is the SOLE authorized writer of
  * `ui-state:*` keys; components read only via these helpers.
  *

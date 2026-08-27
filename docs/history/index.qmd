@@ -1,0 +1,588 @@
+---
+title: "Decision History"
+---
+
+# Decision History
+
+Every feature this project has shipped through its specification process, condensed into
+one story: what each set out to achieve, why it mattered, where later decisions undid or
+refined an earlier one, and what we learned along the way. It favors judgment over
+procedure — for step-by-step acceptance gates from before this process existed, read the
+[development notes](developer_notes/index.qmd); for the design of the system *as it stands
+today*, read [architecture](dev/architecture.qmd) and [seams](dev/seams.qmd).
+
+The twelve features fall into three arcs: the agent surface taking shape, the AI plumbing
+industrializing, and platform polish. Within each arc the entries flow chronologically;
+reversals are stated openly wherever they happened — including two decisions that were
+built and then replaced inside their own feature before landing.
+
+## Arc A — The agent surface takes shape
+
+Mayon gained its first external tool, then rebuilt the surface where tool activity
+appears. A web-search integration produced a flood of raw tool rows; typed timeline
+entries made that flood legible; live use exposed what fixtures could not catch; and a
+contract pass converged every assistant-initiated interaction into one governed place.
+
+## 001 — Brave Search MCP service
+
+> **Status:** standing (its credential/topology design was revised twice within the
+> feature itself, before release)
+
+**Goal.** Give the assistant web search through the official Brave Search MCP server as
+Mayon's first external tool integration. A self-hoster adds a "Brave Search" connection
+like any other MCP server, and during conversation the model consults search whenever a
+question touches something recent or fast-moving that its training data cannot answer
+reliably. Every reply that drew on results displays its consulted sources as links, so
+answers become checkable rather than stale guesses. Success criteria set the bar: a
+healthy connection within two minutes of opening settings, at least 90% correct answers
+on twenty post-training-cutoff questions, sources visible on 100% of search-backed
+replies, and graceful degradation — normal chat completes with an unobtrusive notice
+whenever search is down, disabled, or out of quota.
+
+**Why.** The requester's recorded rationale is explicit: model knowledge goes stale and
+external validation is the only cure, and the compose-based deployment made adding a
+component cheap. Without it, any question about events after the model's cutoff got an
+unverifiable answer. Privacy shaped the design too: third-party-hosted Brave endpoints
+put the API key into URL query parameters and interpose an intermediary, so the spec
+demanded a private path where the key never appears in a URL, settings, or logs.
+
+**Outcome & reversals.** The feature shipped twice in one day. Research established that
+the official package accepts its API key only at process startup, so the first shipped
+design was a dedicated companion container holding the key as deployment configuration,
+reached browser-to-container through a same-origin streaming proxy route on the Mayon
+server and gated by a new capability flag. The same day, the owner revised the
+requirement: all credentials must live in one place, the app's existing keystore.
+Everything container-specific — compose service, proxy route, capability, HTTP template —
+was removed, and Brave became a plain stdio template: the Mayon server spawns the pinned
+package per session, injecting the key from the browser keystore at spawn time. Key
+rotation applies next turn with no restarts; an invalid key surfaces only when a search
+runs, since the handshake succeeds regardless. Retained from the container iteration were
+the transport-agnostic pieces: the citations extractor rendering source links from
+already-persisted tool-result metadata (zero migrations, retroactive for old chats),
+degradation/recovery tests, and root-relative URL support. Accepted cost: a one-to-three-
+second per-session spawn while enabled.
+
+**Learnings.**
+
+- An upstream constraint does not dictate topology: for a spawned child, spawn time *is*
+  startup, so keystore-to-env injection reconciles unified secret custody with the key's
+  startup-only injection.
+- Derive view-only data from already-persisted metadata when a single consumer exists —
+  no migrations, and history upgrades retroactively.
+- Work built for a reverted design is not waste if kept general; URL support and
+  degradation tests outlived the proxy, capability, and container.
+- One consistent secret home for all MCP servers beat a leaner deployment with split
+  custody.
+
+## 002 — Chat timeline kind model
+
+> **Status:** core standing; presentation rules partly superseded by
+> [#004](#sec-004) (live-item placement and stream-buffer retirement only)
+
+**Goal.** Replace the timeline's implied content model — provider intent and UI
+presentation both guessed from nullable column combinations — with one explicit durable
+`kind` per timeline event from a closed ten-value enum. Lane (user/internal/external)
+becomes a pure derivation from kind, never stored; a single kind→presentation registry
+drives every renderer for persisted rows and live streaming alike; permission, sampling,
+and elicitation asks persist with resolved outcomes surviving reload; choice offers
+persist with the tapped chip linked back; reasoning persists per agent-loop iteration;
+critic corrections record a self-corrected note. Context assembly becomes a pure
+entries→provider-messages projection locked to prior behavior by golden tests. Storage
+evolves in place: an additive column plus a stamped migration backfilling every legacy
+row.
+
+**Why.** The verified pre-existing facts were damning: approval asks lived in ephemeral
+in-memory arrays and vanished on reload; reasoning from all iterations accumulated into
+one buffer glued onto the final assistant row, misattributing thinking; the render ladder
+hid blank bookkeeping rows through scattered special cases; tool-heavy turns produced a
+wall of muted text; and context assembly re-guessed provider intent from the same
+ambiguous columns the UI guessed from — a standing invitation to divergence between what
+the user sees and what the model receives.
+
+**Outcome & reversals.** Delivered in full across five stories. The legacy render ladder
+was deleted in favor of per-kind renderers dispatched through the registry; a boot-time
+migration runner was added (research found version-stamped upgrades previously had no
+consumer that ran data migrations); the backfill classifies 100% of legacy rows and fails
+loudly on unmatched shapes, preserving row IDs so branch points and expound offsets stay
+valid; full-text search was deliberately tightened to user/assistant kinds — tool
+summaries were searchable noise before; new-turn choices collapse from a hidden tool-call
+pair into one offer entry linked to the tapped chip. One quirk was deliberately preserved:
+replayed tool calls project with empty input because the old gather step never populated
+args — "flag, don't fix" to keep golden equivalence. Later refinement: feature
+[#004](#sec-004) replaced the rule that live items always append after durable ones,
+moving stream-buffer retirement into the store at tool-call boundaries and merging pending
+asks to their durable row's chronological position.
+
+**Learnings.**
+
+- Intent inferred from nullable column combinations rots independently in every consumer;
+  one explicit kind fixed UI, migration, and projection at once.
+- Snapshot golden fixtures from current code *before* rewriting the seam they protect —
+  equivalence claims need a prior baseline to compare against.
+- Earn constraints: backfill everything first, then enforce non-null — silent defaults
+  mask exactly the rot the migration exists to classify.
+- Phase risk down: ship new semantics as runtime derivation first, land storage second.
+
+One day of live use against the new registry surfaced four defects no fixture caught —
+the agenda for the next feature.
+
+## 003 — Timeline UX fixes
+
+> **Status:** standing
+
+**Goal.** Fix four defects reported against the freshly shipped timeline: (1) the orbit
+spinner spun forever on finished replies, persisting after reload; (2) turn order rendered
+the reply before its thought process, violating canonical chronological order — reasoning,
+then assistant text, then tool activity; (3) terminal tools such as the choices presenter
+ended the turn by design yet displayed a failure icon and "No Result Recorded"; (4) the
+diagnostics panel crashed whenever an MCP server connected and disconnected in one
+session, blocking users from opening chats at all. Each fix ships with a regression test
+that fails without it.
+
+**Why.** These were the first real-world verdicts on the kind registry. The permanent
+spinner trained users to ignore genuine progress signals. Misordered renders read as
+dishonest history — the exact failure mode the kind model was built to eliminate. And the
+diagnostics crash took priority purely operationally: it destroyed the reporting channel
+the other three bugs depended on.
+
+**Outcome & reversals.** All four landed as presentation-layer surgery plus one
+persist-order correction, with no schema change and golden provider-context tests passing
+unmodified. Root-causing the third defect revealed deeper rot: the agent loop persisted
+tool iterations out of order, and worse, the tool-pairing map was keyed by row id instead
+of tool-call id — meaning **no production tool pair had ever grouped**, invisible because
+test fixtures set both fields to identical strings. The fixes: persist reasoning first per
+iteration; key pairing correctly; drop the end-of-timeline flush that fabricated false
+chronology; add a stable within-turn reorder pass that repairs wrongly-stored history
+without touching stored data. Later features extended this work:
+[#004](#sec-004) taught awaiting-approval calls to read as pending rather than failed, and
+[#005](#sec-005) rebuilt the expanded result body.
+
+**Learnings.**
+
+- Never let fixture identifiers equal their join keys — synthetic equality masked a
+  production-wide pairing failure.
+- Pair a presentation-time repair pass (fixes historical display without data writes) with
+  persist-order fixes (stop manufacturing bad history going forward).
+- Classification belongs to one registry; a UI-maintained tool-name list drifts the moment
+  the backend changes.
+- Availability of the bug-reporting path ranks above UX polish in triage.
+
+With kinds, ordering, and pairing sound, the first real MCP server — whose risky calls
+need human approval — exposed honesty gaps that only a contract-level pass could close.
+
+## 004 — Internal area unification
+
+> **Status:** contracts standing; result-body presentation section superseded by
+> [#005](#sec-005)
+
+**Goal.** The third iteration on the chat surface closed five verified defect classes
+exposed by one live MCP tool-call turn, and converged all assistant-initiated interaction
+into the timeline's internal lane: an assistant text segment renders exactly once across
+the streaming→persisted boundary; a tool call awaiting approval reads as waiting, not
+failed; results render collapsed with a one-line summary; approvals, sampling asks, and
+elicitation offers live at their chronological position while the composer stays strictly
+user-input-only; and the captured request trace mirrors what was actually sent to the
+provider. Four written contracts came out of it — timeline assembly, tool activity status,
+interactive surfaces, request trace — with zero schema change.
+
+**Why.** Live use proved the timeline could lie. Persisted text kept rendering again from
+a stale stream buffer until turn end — a duplicate that fixed itself only after approval.
+A pending approval showed two ask surfaces at once while its tool row wore a failure icon,
+actively convincing the reporter something had errored. Multi-part MCP search results
+dumped as a wall of raw JSON. Pacing chips sat in the composer, asks at the tail, choices
+in the lane — three places answering one need. Worst, the diagnostics trace duplicated the
+system prompt and stripped tool identity, making users suspect double-sent context. At
+stake was trust in every approval wait.
+
+**Outcome & reversals.** All shipped presentation-layer: no migrations, one additive field
+on new tool-result metadata, golden provider-context tests unmodified. Three contracts
+stand today: no assistant-initiated interaction may ever be added to the composer — pacing
+offers are tappable on the timeline's choices offer, overriding the earlier rule
+([#002](#sec-002)) that live items simply append after durable rows; tool activity
+statuses derive at render time from stored rows, live state, and the registry — never
+stored; and the request trace mirrors only the projected wire payload. Within days, the
+collapsed-result body section (truncated summary plus floating expander) was replaced by
+[#005](#sec-005)'s shape-driven renderer, which explicitly supersedes that contract section
+while keeping collapse-by-default intact.
+
+**Learnings.**
+
+- Retire live state at the persist choke point; content-matching dedupe at assembly hides
+  staleness instead of fixing it.
+- Derive display states, never store them — a pure function of stored rows, live state,
+  and registry is testable and migration-free.
+- Diagnostics that log transformed data lie; log the wire payload itself.
+- Interaction placement is a contract, not styling: writing down "composer = user input
+  only" is what prevents slow regression.
+
+That collapse fix also exposed the next gap: hiding the payload was easy, but whatever
+appeared on expand still read like a wall.
+
+*Arc A in retrospect:* the surface learned to tell the truth in layers — first structural
+truth (typed entries), then behavioral truth (ordering, pairing), then contractual truth
+(where interaction may live and what diagnostics may say). Every later arc inherited those
+contracts instead of rediscovering them.
+
+## Arc B — The AI plumbing industrializes
+
+Results learned to render by shape rather than server identity, bespoke UI gave way to
+adopted community patterns, provider onboarding turned into catalog data, request
+behavior centralized into one resolution seam, and study controls opened up without
+touching fragile geometry.
+
+## 005 — Shape-driven tool result rendering
+
+> **Status:** standing
+
+**Goal.** Make expanded tool-result bodies readable by classifying each result through
+one pure classifier returning exactly one shape — records, JSON, markdown, text, or short
+prose — and rendering accordingly: URL-bearing records become a capped list of link cards
+with the separate sources list folded in; markdown renders as markdown; other JSON
+pretty-prints; anything unrecognized degrades to today's bounded raw view. Classification
+precedence is fixed, tolerant of multi-part payloads joined without separators. Strictly
+presentation-only: stored payloads are read-only inputs, so legacy chats render nicely
+with zero data change.
+
+**Why.** MCP mount code joins content parts with no separator, so concatenated JSON is
+the normal case, and nothing between storage and screen parsed it. The same payload was
+parsed again for the sources link list — links shown twice, once as a wall. Meanwhile the
+constitution forbids UI-side per-tool special cases, ruling out hand-maintained branches
+by tool name or server. Identity-blind shape detection was the only road that scales.
+
+**Outcome & reversals.** Standing today: the classifier is named the single shape
+authority in the current architecture docs — never tool identity, never a UI-side tool
+list — with degradation structural: the raw view is the ladder's bottom rung, not an error
+boundary around rendering. It replaced feature [#004](#sec-004)'s result-body expander
+section and swapped the floating toggle for the header row itself; for record shapes the
+sources row is suppressed so exactly one list renders — partially retiring the separate
+Sources list that [#001](#sec-001) had introduced (it survives for other shapes). Feature
+[#006](#sec-006) retained the body renderer untouched inside its new collapsible shell and
+deliberately skipped a donor code-highlighting block to avoid a second path — a direct
+endorsement. Nothing later overturns it.
+
+**Learnings.**
+
+- Classify payload shape, never tool identity: shape-based rendering survives every new
+  tool without registry coupling.
+- Build graceful degradation structurally — make the old-correct view the ladder's bottom
+  rung instead of wrapping rendering in error handling.
+- Share parsers between consumers so two views can never disagree about the payload.
+- Read actual storage shape before designing APIs: a spec'd nested-field read would have
+  silently seen nothing for every real row.
+
+## 006 — AI elements adoption
+
+> **Status:** standing
+
+**Goal.** Converge three leaf UI surfaces onto community consensus patterns by copying
+donor blocks from the Svelte AI Elements registry into the repo as first-party code —
+trimmed, locally owned, no runtime dependency: a searchable command-palette model picker
+replacing the hand-rolled dropdown; one shared confirmation pattern unifying elicitation
+and sampling approval; and a collapsible tool-call shell for transcript rows. Constraint
+terms: zero new packages — donors depend only on libraries already present — plus four
+dependency-free vocabulary primitives added. The message render path, expound highlighting,
+and branching stayed deliberately hand-maintained.
+
+**Why.** Maintenance cost concentrated in hand-built interaction logic nobody wanted to
+own. The picker was the largest hand-maintained component with real accessibility gaps:
+no arrow-key navigation, no escape handling, no focus management. Elicitation dialog and
+sampling card were two bespoke surfaces answering one safety-critical UX. Aligning on
+widely-used patterns buys familiarity and community-hardened keyboard behavior while
+deleting bespoke code.
+
+**Outcome & reversals.** All three surfaces shipped; the dependency-manifest diff stayed
+empty end-to-end. An honest miss recorded rather than hidden: the success criterion
+required net custom UI code to shrink against its baseline, but the ledger shows growth —
+justified line-by-line as capabilities the old code lacked (keyboard nav, focus trap,
+failure badges, a failed terminal state, genuine deduplication). The ledger's argument:
+the risk actually being targeted — hand-rolled outside-click handlers, ad-hoc state spans
+— measurably retired. Adoption trade-offs held: donor auto-open behavior dropped, logos
+trimmed, domain-specific schema forms kept where generic blocks don't fit. Later features
+extended the picker's list rather than replacing it.
+
+**Learnings.**
+
+- Copy-in adoption harvests consensus behavior without registry dependency risk — but
+  "net less code" is the wrong success metric; count retired interaction logic instead.
+- Adapt donors aggressively: replace helpers, delete unwanted behaviors, keep domain forms.
+- Vocabulary primitives amortize beyond the triggering feature; ledger them separately or
+  bundle-size rules punish doing the right thing.
+
+With the interaction surface settled, the same industrializing instinct turned to the
+provider side of the wire — where manual endpoint entry had become the bottleneck.
+
+## 007 — First-class inference provider templates
+
+> **Status:** standing
+
+**Goal.** Promote six high-demand inference providers — DeepSeek, xAI Grok, Moonshot
+Kimi, Qwen/DashScope, Groq, Mistral — from manual custom-endpoint setup to first-class
+one-click entries: paste an API key, pick a model, chat with tool calling on by default,
+in under two minutes without typing an endpoint address or reading provider docs.
+
+**Why.** All six were reachable only through the generic OpenAI-compatible escape hatch,
+which demanded knowing each endpoint address and tool-calling implications. Usage evidence
+showed DeepSeek alone carrying more weekly routed usage than Google and OpenAI combined.
+Following the project's Pareto rule for provider support, six promotions were selected and
+ordered by measured demand. Everything outside stayed deliberately template-free.
+
+**Outcome & reversals.** Shipped as pure catalog data: six template constants, gateway
+URLs added to the exact-string tool-defaulting set — including regional variants and alias
+spellings — curated fallback model lists snapshotted at implementation time. No new
+dependency, transport, auth flow, or UI component (a success criterion made that
+verifiable). One designed non-outcome: whether DashScope exposes a model listing was
+probed live during implementation and answered no, so Qwen ships a curated list instead of
+live discovery — the spec had pre-approved both outcomes. Automated order tests passed;
+per-provider end-to-end chats needing real keys were logged as requiring user validation.
+Standing: feature [#008](#sec-008) appends downstream in the same array and
+[#009](#sec-009) left templates untouched.
+
+**Learnings.**
+
+- When candidates share one wire format, provider onboarding industrializes into data
+  entry on existing machinery.
+- Exact-string URL matching forces enumeration of every valid spelling — undocumented
+  variants would silently lose tools-on-by-default.
+- Curated fallback model lists go stale by design: snapshot at implementation, let live
+  discovery supersede them.
+- Frame verification questions so either answer ships: the DashScope probe had both
+  outcomes pre-specified, requiring no re-planning.
+
+## 008 — First-class inference router templates
+
+> **Status:** standing
+
+**Goal.** Extend the one-click treatment from direct providers to inference routers —
+services fronting many upstream models behind one endpoint: a curated coding-agent
+gateway with a free tier, self-hosted LiteLLM, a zero-markup hosted gateway, and an
+EU-endpoint router — alongside the existing OpenRouter and Kilo Gateway entries.
+
+**Why.** Companion research identified four high-audience routers users could only reach
+via manual custom endpoints. LiteLLM mattered doubly: it is the de-facto self-hosted
+gateway of Mayon's audience, and the sanctioned path to enterprise-cloud models — cloud
+credentials stay server-side inside the user's own gateway, so Mayon ever sees only
+standard wire format. Direct enterprise integrations remained explicit non-goals.
+
+**Outcome & reversals.** Shipped in roughly half a day: four templates appended after the
+direct-provider block (order tests extended, catalog grew to seventeen), more gateway URLs
+added, and — the single runtime change — discovery now skips entries typed as embedding:
+a conservative one-value denylist protecting discoverable providers from mixed catalogs,
+provably leaving untyped catalogs unchanged. LiteLLM became the first hosted template with
+no required key, reusing Ollama's keyless flow: setup completes without a key prompt,
+anonymous discovery works, and a key saved later upgrades the connection. Its fallback
+list ships intentionally wrong placeholders: for a private gateway, the user's own
+configured aliases are the only real catalog. Documented rough edge rather than solved:
+inside Mayon's containerized server, localhost resolves within the container, so docs
+point self-hosted-gateway users at the docker host address — an address edit, not
+auto-detection. No reversals; feature [#009](#sec-009) routes router-prefixed model ids
+through last-segment matching instead of adding router dialect rows.
+
+**Learnings.**
+
+- Delegation beats accumulation: one self-hosted-gateway template covers arbitrarily many
+  upstreams, including clouds whose auth flows Mayon will never implement.
+- Append template cohorts as contiguous demand-ordered blocks; order stays meaningful and
+  tests extend instead of rewriting.
+- Discovery filters should be denylists grown only on observed evidence; an allowlist
+  would have emptied the many untyped catalogs.
+- Keyless support is positive capability design — skip the prompt, discover anonymously,
+  upgrade later.
+
+Direct providers and routers could now be added without code — but the parameters each
+request carried were still hard-coded and, for newer models, broken.
+
+## 009 — Provider request settings
+
+> **Status:** standing (today's single request-settings seam, confirmed by current
+> architecture docs)
+
+**Goal.** Decide every outgoing model request's parameters through one shared, testable
+mechanism: a static dialect catalog plus a pure resolver producing top-level call
+settings, provider-namespaced body options, and a dropped-keys list; two new optional user
+fields on provider config — sampling defaults and a validated raw extra-body passthrough —
+applied identically across all four call paths (chat, critic correction pass, lab/quiz
+generation, title generation) and rendered in traces plus a settings preview.
+
+**Why.** Users controlled exactly one knob — the reasoning toggle — and it worked only
+for unprefixed GLM ids: prefixed ids via routers silently lost their mapping. Sampling
+control did not exist, and mapping data was stale: Anthropic rejected the emitted
+deprecated form outright, Gemini switched parameter names, Groq leaked raw think tags, and
+three providers needed entirely new forms.
+
+**Outcome & reversals.** Shipped with replacement at its core: the previous reasoning-map
+functions were deleted outright (zero references remained). Resolution layers, each
+overriding the last: kind baseline → endpoint dialect matched on base URL → model overlay
+matched on the model id's last segment → user sampling defaults → validated extra body,
+where the user wins. It builds on features [#007](#sec-007)/[#008](#sec-008) — registry
+pinned unchanged, dialect rows attach to the same catalog, routers need none. Research
+surfaced two silent-defect fixes folded in: the options namespace key must mirror how the
+SDK itself derives it (case-preserved, dot-truncating); the old lowercasing meant the SDK
+consumed nothing, silently dropping all reasoning parameters for template-named providers,
+and because of that the old baseline had been junk-emitting empty thinking objects to
+every compatible endpoint undetected — so the baseline now invents nothing, with previously
+served endpoints re-served by dialect tables; separately, Gemini's thinking configuration
+moved out from under a key where schema validation stripped it, to the namespace root where
+it reaches the wire. Extra-body guardrails: object only, ≤16 KiB, secret-like and
+prototype-pollution keys rejected before persist; schemas that strip unknown keys return
+them as dropped keys surfaced as a Settings warning — never a silent drop.
+
+**Learnings.**
+
+- Emit namespaced options under the key the consumer itself derives, verified against SDK
+  sources — an asymmetrical key fails with no error anywhere.
+- Fixing a transport bug can activate a payload bug hiding underneath it: remove both
+  together or the fix becomes the regression.
+- Omission is part of the wire contract: unset fields must be absent at every call site.
+- Static transcribed tables carrying source-and-date provenance, plus a validated raw
+  passthrough escape hatch, absorb provider drift without dynamic capability discovery.
+
+Study controls were the last feature-boundary piece still decided unilaterally by the app;
+opening them up safely meant working next to some of the most fragile geometry in the
+codebase.
+
+## 010 — Customizable expound instructions
+
+> **Status:** standing
+
+**Goal.** Make the option list offered during expound — highlighting a passage in a chat
+and branching off a model elaboration — fully user-managed: add/edit/remove entries with
+required unique names and optional descriptions in Settings, expand built-in defaults from
+three to five, and provide a restore-defaults escape hatch behind confirmation.
+
+**Why.** The list lived as hardcoded constants; users could not extend it, so every
+personal instruction style had to squeeze into a free-text box each time instead of
+persisting as selectable one-click options.
+
+**Outcome & reversals.** Shipped the same week it was specced. The list lives as a JSON
+value under one settings key in the generic key-value table — no schema migration — seeded
+idempotently at boot so upgrades gain the new built-ins untouched and customizations
+survive restarts. Selected instruction names serialize verbatim onto branch records;
+legacy toggle keys are mapped at read time and unknown strings preserved verbatim, so
+branches created before edits or removals keep rendering their recorded labels — no
+backfill ever rewrites history. Names validate trimmed, case-insensitively unique, length-
+capped. Two constraints shaped everything around it: this feature's labels are pure
+prompt/display strings riding atop deliberately frozen geometry — expound selections still
+resolve through raw-markdown offsets via the source map plus DOM alignment; selections
+touching generated content disable the menu; stale rows self-heal in memory only. That
+frozen geometry itself encodes an earlier reversal recorded here for completeness: an
+approach embedding links by mutating original markdown source was rejected outright
+(offset cascades, content mutation) — substring heuristics, surround-style selection, and
+full-span fallbacks are permanently banned, and the plan explicitly left selection/offset/
+overlap paths untouched.
+
+**Learnings.**
+
+- A generic settings key absorbs new preference lists with zero migration when the value
+  is loaded whole and never queried by column.
+- Recording display names at creation time keeps history stable under later renames and
+  removals — cheaper than ids or backfills.
+- Read-time legacy mapping beats one-time data rewrites for backward compatibility.
+- Features adjacent to fragile machinery should be scoped to plumbing; keeping label logic
+  out of offset/alignment code avoided regression risk entirely.
+
+*Arc B in retrospect:* every entry traded ad-hoc branching for data, derivation, or
+adoption — shapes over identities, catalogs over code, one resolver over scattered maps,
+user-managed strings over constants. Notably, the arc shipped almost entirely additive to
+Arc A's contracts, validating them as a stable foundation. The one deep rewrite —
+request-settings resolution — earned its deletion by replacing code the dialect research
+proved defective.
+
+## Arc C — Platform & delivery polish
+
+The closing arc widened who can install Mayon and made the product legible at a glance —
+and both features carry decision reversals handled the way we now consider standard:
+built, evidenced, reviewed, and calmly revised.
+
+## 011 — Podman compatibility
+
+> **Status:** standing (one scope reversal inside the feature, same session)
+
+**Goal.** Let self-hosters install and lifecycle-manage Mayon with Podman — containers
+running rootless, without root privileges — while Docker remains the primary engine
+everywhere: detection default, dev default, CI, release packaging. One installer and one
+engine-neutral compose file serve both engines; no forked variants.
+
+**Why.** The owner's own workstation is Podman-only; shell aliases help interactive
+typing but are useless for non-interactive contexts — piped installs and npm scripts never
+load them — so real binary-level engine resolution was required, not convenience.
+
+**Outcome & reversals.** Shipped and merged. The installer resolves the engine in a fixed
+order — explicit override → recorded preference file → auto-detection preferring Docker —
+falling back if the preferred engine lacks working compose support. Every lifecycle
+subcommand binds to the recorded engine thereafter: a missing engine dies with a clear
+message naming the preference key rather than silently switching. The cross-engine hazard
+— named volumes are engine-scoped and invisible to the other engine — is detected before
+deploy, with interactive confirm defaulting to abort and a hard abort under non-interactive
+stdin, so an empty fresh database can never masquerade as the user's data. Rootless
+low-port attempts get engine-specific remediation guidance. The dev workflow gained the
+same policy through one shared dispatcher script used structurally by all dev commands —
+with the important nuance that this *secondary* dev support was itself a same-session
+scope reversal: the clarification originally excluded dev entirely, and CI/release
+packaging remain Docker-only permanently. Runtime code and app behavior were untouched.
+
+**Learnings.**
+
+- Engine-scoped storage turns "which engine created this volume" into the central
+  correctness hazard, bigger than CLI compatibility.
+- Persist the engine decision at creation time; it prevents silent divergence later.
+- Non-interactive invocations invalidate interactive conveniences; selection logic must
+  inspect real binaries.
+
+## 012 — UI visual articulation pass
+
+> **Status:** standing — three mid-flight owner reversals, all landed before merge
+
+**Goal.** A restyling-and-affordance pass over every screen: exactly one warm accent hue
+reserved for actionable emphasis (buttons, links, active nav, focus rings, focused
+composer); a three-step surface hierarchy — canvas, panel, raised card; the composer as a
+centered rounded card whose launchers immediately create persistent artifacts anchored to
+the conversation; a home page with resume affordances; hover-revealed row actions;
+connector-line tree carets; one shared row-card grammar for chat/quiz/lab lists;
+stagger-fade motion honoring reduced-motion preferences; skeletons only past ~300 ms.
+
+**Why.** Nothing looked clickable without trial and error; hierarchy was encoded nowhere
+perceivable; powerful features (branching, quizzes, labs) were tribal knowledge. Hard
+governing principles bounded the how: articulation comes from hairline borders and subtle
+shadows — edges, not brightness — because the low text contrast is intentional eye
+comfort, so flatness must never be fixed by raising text contrast; exactly one sans-serif
+type family; everything persists, reinforcing the standing rule that interactions become
+artifacts on the main screen rather than ephemeral modals; compress chrome without
+amputating facts; one accent system-wide, status colors stay status-only.
+
+**Outcome & reversals.** Landed through the feature branch and merged with all ten success
+criteria verdicts PASS and test gates green. Three reversals were caught by the pass's own
+evidence discipline and landed before merge: (1) the proposed warm-charcoal night theme —
+fully built as a token-level hue shift at constant lightness — was ruled down to achromatic
+grays ("stick to the gray palette, keeping the accent"), reverting neutrals at digit-
+identical lightness with the accent trio surviving as the sole saturated family — proving
+hairline-edge articulation carries hierarchy without warmth; (2) the serif typography
+experiment was introduced and cut within the same effort, confirming the sans-serif ruling;
+(3) the five-seed home starter chip set was reduced to a single explore-new-topic chip,
+the removed seeds duplicating what composer launchers and the resume card already cover.
+Launcher persistence was demonstrated as real database rows, honoring the artifacts-not-
+modals principle. A pre-existing cold-load bootstrap race was reproduced during testing,
+pinned as predating the feature, and flagged for follow-up.
+
+**Learnings.**
+
+- Depth reads through edges and shadow, never brightened text; preserving exact lightness
+  made the achromatic revert risk-free.
+- Tokenize experiments so an owner veto is a cheap revert, not a redesign.
+- A hard persistence principle keeps shiny new affordances from minting ephemeral state.
+- Per-story evidence captured before sign-off meant reversals cost almost nothing and left
+  an auditable trail.
+
+*Arc C in retrospect:* neither feature moved a schema; both changed how much of the system
+users can see and steer. The repeated pattern — build the strong form, capture evidence,
+let an explicit ruling trim it — is the project's decisive-method matured: reversals
+stopped being failures once they stopped being expensive.
+
+## Where the story stands
+
+Twelve features in ten days of calendar time, with one recurring shape: invent narrowly,
+prove broadly, revise without ceremony. The durable mechanics — typed entries, derived
+states, written contracts, catalog-driven extensibility, offset-sanctified selection,
+evidenced styling rulings — now function as the platform every future feature inherits.
+The know-how distilled above is deliberately opinionated; when a future change contradicts
+an entry here, update that entry in the same change — this document is a living decision
+record, not a museum.

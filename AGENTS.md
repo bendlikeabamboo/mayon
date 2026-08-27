@@ -177,4 +177,7 @@ summary output. The probe imports at `+layout.svelte:6` but is inert without the
 - **As-is design / architecture:** `docs/dev/architecture.qmd`, `docs/dev/seams.qmd`.
 - **Build & test commands (user-facing):** `docs/dev/building.qmd`, `CONTRIBUTING.md`.
 - **Phase-by-phase build history & past decisions:** `docs/developer_notes/`.
+- **Feature decision history (what/why/reversals/learnings per shipped feature):**
+  `docs/history/index.qmd` — narrative record; consult it for rationale recall, while
+  `architecture.qmd`/`seams.qmd` remain the authority on how the system works today.
 - **Troubleshooting (Postgres password, etc.):** `README.md`.

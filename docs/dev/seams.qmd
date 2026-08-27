@@ -73,11 +73,11 @@ Rules: `user_message` → `user` text; `assistant_message` → `assistant` text;
 Rules:
 
 - **Omit-empty wire contract**: unset or empty sampling values are never sent — the resolver filters them, not the adapters.
-- **Namespace key**: for `openai-compatible` providers the `providerOptions` namespace key is `name.split('.')[0].trim()`, mirroring `createOpenAICompatible` in the SDK. The case/dot behavior is load-bearing: template names like "z.ai (glm)" previously emitted a namespace the SDK never consumed, silently dropping all reasoning parameters (`specs/009` research R1). Do not normalize or slugify it.
-- **Gemini `thinkingConfig`** lives at the `google` namespace root, not under `generationConfig` where the SDK schema strips it (`specs/009` research R5).
+- **Namespace key**: for `openai-compatible` providers the `providerOptions` namespace key is `name.split('.')[0].trim()`, mirroring `createOpenAICompatible` in the SDK. The case/dot behavior is load-bearing: template names like "z.ai (glm)" previously emitted a namespace the SDK never consumed, silently dropping all reasoning parameters (009 request-settings-resolution appendix). Do not normalize or slugify it.
+- **Gemini `thinkingConfig`** lives at the `google` namespace root, not under `generationConfig` where the SDK schema strips it (009 dialect-catalog appendix).
 - **extraBody guardrails**: `validateExtraBody` (JSON object, ≤ 16 KiB, no secret-like or prototype-pollution keys) plus per-kind allowlists (`EXTRA_BODY_ALLOWLISTS`). Keys a provider kind cannot forward come back as `droppedExtraKeys` and must be surfaced (Settings warning) — never a silent drop.
 
-Detail: `specs/009-provider-request-settings/contracts/request-settings-resolution.md`, `specs/009-provider-request-settings/contracts/dialect-catalog.md`.
+Detail: `docs/history/appendices/009-request-settings-resolution.md`, `docs/history/appendices/009-dialect-catalog.md`.
 
 ## Presentation decided by kind only
 
@@ -116,23 +116,23 @@ While restoring, `/api/db/query` returns 503 and `/api/health` reports `restorin
 
 ### Compose area is input-only
 
-No assistant-initiated interaction (chips, suggestions, approvals) may be added to `Composer.svelte`. Pacing choices are tappable on the timeline's `ChoicesOffer` (active gate = `findGateFromMessages` while not streaming; taken choice links via `UserMessageMeta.choicesEntryId`). Detail: `specs/004-internal-area-unification/contracts/interactive-surfaces.md`.
+No assistant-initiated interaction (chips, suggestions, approvals) may be added to `Composer.svelte`. Pacing choices are tappable on the timeline's `ChoicesOffer` (active gate = `findGateFromMessages` while not streaming; taken choice links via `UserMessageMeta.choicesEntryId`). Detail: `docs/history/appendices/004-interactive-surfaces.md`.
 
 ### Tool activity status vocabulary
 
-Derived in `assembleTimeline` (`src/lib/chat/entries.ts`) — never stored. States: awaiting / running / declined / aborted / failed / succeeded, plus 003's genuine-gap / terminal. Sources: approval-row outcomes, live pending approvals, the `streaming` flag, registry `terminal` classification (`$lib/agent/registry` only), and the additive `ok` flag on NEW `tool_result` metadata. Detail: `specs/004-internal-area-unification/contracts/tool-activity-status.md`.
+Derived in `assembleTimeline` (`src/lib/chat/entries.ts`) — never stored. States: awaiting / running / declined / aborted / failed / succeeded, plus 003's genuine-gap / terminal. Sources: approval-row outcomes, live pending approvals, the `streaming` flag, registry `terminal` classification (`$lib/agent/registry` only), and the additive `ok` flag on NEW `tool_result` metadata. Detail: `docs/history/appendices/004-tool-activity-status.md`.
 
 ### Shape-driven result bodies
 
-The expanded body of a tool-result row is rendered per its classified shape: `classifyResult(summary, detail)` in `src/lib/chat/result-shape.ts` is the single shape authority (records-with-urls → link cards with the sources row folded in; markdown → timeline markdown renderer; other JSON → pretty-printed; else bounded raw view) — never tool-name or server identity, never a UI-side tool list. Stored payloads are read-only inputs. Detail: `specs/005-shape-driven-results/contracts/tool-result-shapes.md`.
+The expanded body of a tool-result row is rendered per its classified shape: `classifyResult(summary, detail)` in `src/lib/chat/result-shape.ts` is the single shape authority (records-with-urls → link cards with the sources row folded in; markdown → timeline markdown renderer; other JSON → pretty-printed; else bounded raw view) — never tool-name or server identity, never a UI-side tool list. Stored payloads are read-only inputs. Detail: `docs/history/appendices/005-tool-result-shapes.md`.
 
 ### Live-ask merge rule
 
-A pending live ask replaces its durable ask row at the row's chronological position — exactly one ask surface per pending ask. All other live items append at the timeline tail. Detail: `specs/004-internal-area-unification/contracts/interactive-surfaces.md`.
+A pending live ask replaces its durable ask row at the row's chronological position — exactly one ask surface per pending ask. All other live items append at the timeline tail. Detail: `docs/history/appendices/004-interactive-surfaces.md`.
 
 ### Trace fidelity rule
 
-The `request` trace event must mirror the projected wire payload (`projectEntries` output): system prompt lives only in `system`; message rows carry kind / toolCallId / toolName annotations; never log raw context rows. Detail: `specs/004-internal-area-unification/contracts/request-trace.md`.
+The `request` trace event must mirror the projected wire payload (`projectEntries` output): system prompt lives only in `system`; message rows carry kind / toolCallId / toolName annotations; never log raw context rows. Detail: `docs/history/appendices/004-request-trace.md`.
 
 ### Timeline entry authority
 

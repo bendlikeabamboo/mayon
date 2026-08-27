@@ -37,7 +37,7 @@ warn() { printf '%s!%s %s\n' "$C_YELLOW" "$C_RESET" "$*" >&2; }
 die() { printf '%s✗%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; exit 1; }
 
 # Container engine used for every invocation (docker | podman), resolved by
-# resolve_engine() per specs/011-podman-support/contracts/engine-selection.md
+# resolve_engine() per docs/history/appendices/011-engine-selection.md (preserved decision-history appendix)
 # before any compose call.
 ENGINE=""
 ENGINE_SOURCE="" # "override" | "recorded" | "detected" | "fallback"
