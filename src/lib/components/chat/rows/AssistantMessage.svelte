@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { GitBranch } from '@lucide/svelte';
+	import { Copy, GitBranch, RotateCcw } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from '../Markdown.svelte';
 	import Reasoning from '../Reasoning.svelte';
@@ -31,6 +31,14 @@
 		live?: false;
 		personaName?: string;
 		failed?: boolean;
+		/**
+		 * Regenerate reveal gate threaded from MessageList: true only when this
+		 * row is the newest assistant turn and generation is idle. The page's
+		 * `onRegenerate` (delete reply + re-send preceding user turn) is only
+		 * chronology-safe in that position, so older rows keep the action hidden
+		 * even though the prop contract itself is unchanged.
+		 */
+		canRegenerate?: boolean;
 	} & SharedCallbacks;
 
 	type LiveProps = {
@@ -62,7 +70,7 @@
 	onMount(() => incRender('TimelineRow'));
 </script>
 
-<div class="flex flex-col gap-1 items-start">
+<div class="group/message flex flex-col gap-1 items-start">
 	<div class="flex w-full items-center justify-between">
 		<div class="flex items-center">
 			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -75,17 +83,6 @@
 				<Reasoning {reasoning} inline bind:open={reasoningOpen} />
 			{/if}
 		</div>
-		{#if isDurable}
-			<Button
-				variant="ghost"
-				size="sm"
-				class="h-6 px-2 text-xs text-muted-foreground"
-				title="Branch a new chat from this whole message"
-				onclick={() => void (props as DurableProps).onBranchWhole(entry!.id)}
-			>
-				<GitBranch class="size-3" /> Branch from this message
-			</Button>
-		{/if}
 	</div>
 	{#if reasoning && reasoningOpen}
 		<div
@@ -118,19 +115,59 @@
 			<Markdown raw={visible} live={true} />
 		{/if}
 	</div>
-	{#if interrupted && isDurable}
+	{#if isDurable}
+		<!-- us5-actions: hover/focus-revealed row. Reserved h-6 keeps the strip in
+		     flow at constant size, so reveal/hide never shifts message layout.
+		     z-10 stays below the Highlighter selection pill and ContextMenu (z-50). -->
 		<div
-			class="mt-2 flex items-center gap-2 border-t border-border/60 pt-2 text-xs text-muted-foreground"
+			class="message-actions pointer-events-none mt-0.5 flex h-6 items-center justify-end gap-0.5 self-end opacity-0 transition-opacity duration-150 z-10 group-hover/message:pointer-events-auto group-hover/message:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 motion-reduce:transition-none"
 		>
-			This reply was interrupted.
-			{#if (props as DurableProps).onRegenerate}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-6 rounded-md text-muted-foreground hover:text-foreground"
+				title="Copy message"
+				aria-label="Copy message"
+				onclick={() => (props as DurableProps).onCopy(visible)}
+			>
+				<Copy class="size-3.5" />
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-6 rounded-md text-muted-foreground hover:text-foreground"
+				title="Branch a new chat from this whole message"
+				aria-label="Branch a new chat from this whole message"
+				onclick={() => void (props as DurableProps).onBranchWhole(entry!.id)}
+			>
+				<GitBranch class="size-3.5" />
+			</Button>
+			{#if (props as DurableProps).onRegenerate && (props as DurableProps).canRegenerate}
 				<Button
-					variant="outline"
-					size="sm"
-					class="h-6 px-2"
-					onclick={() => void (props as DurableProps).onRegenerate?.(entry!.id)}>Regenerate</Button
+					variant="ghost"
+					size="icon"
+					class="size-6 rounded-md text-muted-foreground hover:text-foreground"
+					title="Delete this reply and generate again"
+					aria-label="Regenerate response"
+					onclick={() => void (props as DurableProps).onRegenerate?.(entry!.id)}
 				>
+					<RotateCcw class="size-3.5" />
+				</Button>
 			{/if}
 		</div>
 	{/if}
+	{#if interrupted && isDurable}
+		<div class="mt-1 text-xs text-muted-foreground">This reply was interrupted.</div>
+	{/if}
 </div>
+
+<style>
+	/* us5-coarse-pointer: touch devices have no hover, so the action row stays
+	   steadily visible. Doubled class out-specifies the opacity-0 utility. */
+	@media (pointer: coarse) {
+		.message-actions.message-actions {
+			opacity: 1;
+			pointer-events: auto;
+		}
+	}
+</style>

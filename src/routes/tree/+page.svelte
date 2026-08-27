@@ -3,11 +3,12 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { ChevronDown, ChevronRight, Trash2 } from '@lucide/svelte';
+	import { ChevronRight, Trash2 } from '@lucide/svelte';
 	import { repos } from '$lib/db';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { buildSubtreeModel, type SubtreeNode } from '$lib/chat/tree';
 	import Pagination from '$lib/components/Pagination.svelte';
+	import { entry } from '$lib/motion/stagger';
 	import type { Chat } from '$lib/db/schema';
 
 	const ITEMS_PER_PAGE = 7;
@@ -75,8 +76,8 @@
 	<title>Tree — Mayon</title>
 </svelte:head>
 
-<div class="mx-auto flex max-w-5xl flex-col gap-6 p-8">
-	<div class="space-y-1">
+<div class="art-stagger mx-auto flex max-w-5xl flex-col gap-6 p-8">
+	<div in:entry|global={{ index: 0, count: pagedForests.length + 1 }} class="space-y-1">
 		<h1 class="text-2xl font-semibold tracking-tight">Conversation tree</h1>
 		<p class="text-sm text-muted-foreground">
 			Every chat and its branches. Click a node to open it; click a caret to collapse a subtree.
@@ -86,7 +87,10 @@
 	{#if loading}
 		<p class="text-sm text-muted-foreground">Loading…</p>
 	{:else if forests.length === 0}
-		<div class="rounded-xl border border-dashed border-border bg-card p-8 text-center shadow-sm">
+		<div
+			in:entry|global={{ index: 1, count: 2 }}
+			class="surface-card border-dashed p-8 text-center"
+		>
 			<p class="text-sm text-muted-foreground">No chats yet.</p>
 			<a href="/chat" class="mt-1 inline-block text-sm text-primary underline">Start one</a>
 		</div>
@@ -95,26 +99,38 @@
 			{@const isCollapsed = collapsed.has(node.chat.id)}
 			{@const isCurrent = node.chat.id === currentId}
 			{@const hasChildren = node.children.length > 0}
-			<div class="group flex items-center gap-2" style="padding-left: {depth * 1.5}rem">
+			{@const rowHoverTint = isCurrent ? '' : 'hover:bg-accent'}
+			<!-- Elbow tick (depth > 0): hairline from the ancestor rail to this row.
+			     Rail indentation now comes from nesting the children container below,
+			     so no inline padding-left is needed here. -->
+			<div
+				class="group flex items-center gap-2 {depth > 0
+					? 'relative before:absolute before:-left-4 before:top-1/2 before:h-px before:w-4 before:bg-border/60 before:content-[""]'
+					: ''}"
+			>
 				{#if hasChildren}
 					<button
 						type="button"
-						class="shrink-0 text-muted-foreground hover:text-foreground"
+						class="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						onclick={() => toggle(node.chat.id)}
+						aria-expanded={!isCollapsed}
 						aria-label={isCollapsed ? 'Expand' : 'Collapse'}
 					>
-						{#if isCollapsed}
-							<ChevronRight class="size-4" />
-						{:else}
-							<ChevronDown class="size-4" />
-						{/if}
+						<!-- Single rotating caret (US5): art-caret hooks the app.css
+						     reduced-motion suppression — under reduce it snaps, otherwise
+						     the 90° rotation transitions smoothly. -->
+						<ChevronRight
+							class="art-caret size-4 transition-transform duration-150 {!isCollapsed
+								? 'rotate-90'
+								: ''}"
+						/>
 					</button>
 				{:else}
 					<span class="inline-block w-4 shrink-0"></span>
 				{/if}
 				<a
 					href="/chat/{node.chat.id}"
-					class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm transition-colors hover:bg-accent"
+					class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm transition-colors {rowHoverTint}"
 					class:bg-primary={isCurrent}
 					class:text-primary-foreground={isCurrent}
 				>
@@ -135,15 +151,22 @@
 				{/if}
 			</div>
 			{#if hasChildren && !isCollapsed}
-				{#each node.children as child (child.chat.id)}
-					{@render row(child, depth + 1)}
-				{/each}
+				<!-- Guide rail drops from beneath the parent's caret column; each
+				     direct child row carries an elbow tick back to it. -->
+				<div class="ml-2 space-y-2 border-l border-border/60 pl-4">
+					{#each node.children as child (child.chat.id)}
+						{@render row(child, depth + 1)}
+					{/each}
+				</div>
 			{/if}
 		{/snippet}
 
 		<div class="space-y-4">
-			{#each pagedForests as root (root.chat.id)}
-				<div class="space-y-2 rounded-xl border border-border bg-card p-5 shadow-sm">
+			{#each pagedForests as root, r (root.chat.id)}
+				<div
+					in:entry|global={{ index: r + 1, count: pagedForests.length + 1 }}
+					class="surface-card space-y-2 p-5"
+				>
 					{@render row(root, 0)}
 					{#if root.children.length > 0}
 						<span class="text-xs text-muted-foreground">{root.children.length} branches</span>

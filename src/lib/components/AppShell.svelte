@@ -14,12 +14,9 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Sidebar from './Sidebar.svelte';
-	import DbStatus from './DbStatus.svelte';
-	import ServerStatus from './ServerStatus.svelte';
+	import StatusIndicator from './StatusIndicator.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import Toaster from './Toaster.svelte';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
-	import { runtimeLabel } from '$lib/utils/runtime';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 	import type { Component, Snippet } from 'svelte';
@@ -113,9 +110,7 @@
 					</nav>
 					<div class="flex flex-col gap-1 border-t border-sidebar-border p-2">
 						<ThemeToggle />
-						<span class="px-2 text-xs text-muted-foreground">{runtimeLabel(dbStatus.runtime)}</span>
-						<DbStatus />
-						<ServerStatus />
+						<StatusIndicator />
 					</div>
 				</aside>
 			</SheetContent>

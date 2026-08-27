@@ -5,6 +5,8 @@
 	import { chatStore, listRootChats } from '$lib/stores/chat.svelte';
 	import { timeAgo } from '$lib/utils/time';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
+	import RowCard from '$lib/components/RowCard.svelte';
+	import { entry } from '$lib/motion/stagger';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import type { LearningBrief } from '$lib/chat/brief';
 	import type { Chat } from '$lib/db/schema';
@@ -85,7 +87,7 @@
 	<title>Chat — Mayon</title>
 </svelte:head>
 
-<div class="mx-auto flex max-w-3xl flex-col gap-4 p-6">
+<div class="art-stagger mx-auto flex max-w-3xl flex-col gap-4 p-6">
 	{#if showIntake}
 		<BriefCard mode="intake" onSave={onSaveBrief} onSkip={onSkipBrief} />
 		<div class="flex justify-start">
@@ -94,7 +96,10 @@
 			</Button>
 		</div>
 	{:else}
-		<div class="flex items-center justify-between">
+		<div
+			in:entry|global={{ index: 0, count: pagedRoots.length + 1 }}
+			class="flex items-center justify-between"
+		>
 			<div class="space-y-1">
 				<h1 class="text-2xl font-semibold tracking-tight">Chat</h1>
 				<p class="text-sm text-muted-foreground">Start a new conversation or continue one below.</p>
@@ -107,7 +112,10 @@
 		{#if loading}
 			<p class="text-sm text-muted-foreground">Loading…</p>
 		{:else if roots.length === 0}
-			<div class="rounded-lg border border-dashed border-border p-8 text-center">
+			<div
+				in:entry|global={{ index: 1, count: 2 }}
+				class="rounded-lg border border-dashed border-border p-8 text-center"
+			>
 				{#if !hasProviders}
 					<p class="text-sm text-muted-foreground">Add a provider first.</p>
 					<Button href="/settings" variant="outline" size="sm" class="mt-2">Open Settings</Button>
@@ -118,30 +126,23 @@
 			</div>
 		{:else}
 			<ul class="space-y-2">
-				{#each pagedRoots as chat (chat.id)}
-					<li
-						class="group flex items-center gap-2 rounded-lg border border-border bg-card p-3 pr-2 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-					>
-						<a
-							href="/chat/{chat.id}"
-							class="flex min-w-0 flex-1 items-center justify-between gap-3"
-						>
-							<div class="min-w-0">
-								<p class="truncate text-sm font-medium">{chat.title}</p>
-							</div>
-							<span class="shrink-0 text-xs text-muted-foreground">{timeAgo(chat.updatedAt)}</span>
-						</a>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-8 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-							title="Delete this chat and its branches"
-							aria-label="Delete chat"
-							disabled={deletingId === chat.id}
-							onclick={() => deleteChat(chat)}
-						>
-							<Trash2 class="size-4" />
-						</Button>
+				{#each pagedRoots as chat, i (chat.id)}
+					<li in:entry|global={{ index: i + 1, count: pagedRoots.length + 1 }}>
+						<RowCard href="/chat/{chat.id}" title={chat.title} meta={timeAgo(chat.updatedAt)}>
+							{#snippet action()}
+								<Button
+									variant="ghost"
+									size="icon"
+									class="size-8 text-muted-foreground hover:text-destructive"
+									title="Delete this chat and its branches"
+									aria-label="Delete chat"
+									disabled={deletingId === chat.id}
+									onclick={() => deleteChat(chat)}
+								>
+									<Trash2 class="size-4" />
+								</Button>
+							{/snippet}
+						</RowCard>
 					</li>
 				{/each}
 			</ul>

@@ -34,7 +34,7 @@
 			{#if onSelect && option !== linkedTakenOption}
 				<button
 					type="button"
-					class="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+					class="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs text-primary cursor-pointer hover:border-primary/50 hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
 					onclick={() => onSelect(option)}
 				>
 					<Circle class="inline size-3 mr-1 opacity-40" />

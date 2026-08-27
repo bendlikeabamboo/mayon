@@ -4,6 +4,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { quizzesStore } from '$lib/stores/quizzes.svelte';
 	import { repos } from '$lib/db';
+	import RowCard from '$lib/components/RowCard.svelte';
+	import { entry } from '$lib/motion/stagger';
 	import type { Chat, Quiz } from '$lib/db/schema';
 
 	/**
@@ -68,8 +70,8 @@
 	<title>Quizzes — Mayon</title>
 </svelte:head>
 
-<div class="mx-auto flex max-w-3xl flex-col gap-4 p-6">
-	<div class="space-y-1">
+<div class="art-stagger mx-auto flex max-w-3xl flex-col gap-4 p-6">
+	<div in:entry|global={{ index: 0, count: groups.length + 1 }} class="space-y-1">
 		<h1 class="text-2xl font-semibold tracking-tight">Quizzes</h1>
 		<p class="text-sm text-muted-foreground">Self-graded quizzes generated from your chats.</p>
 	</div>
@@ -77,7 +79,10 @@
 	{#if quizzesStore.loading}
 		<p class="text-sm text-muted-foreground">Loading…</p>
 	{:else if groups.length === 0}
-		<div class="rounded-lg border border-dashed border-border p-8 text-center">
+		<div
+			in:entry|global={{ index: 1, count: 2 }}
+			class="rounded-lg border border-dashed border-border p-8 text-center"
+		>
 			<ListChecks class="mx-auto size-6 text-muted-foreground" />
 			<p class="mt-2 text-sm text-muted-foreground">No quizzes yet.</p>
 			<p class="mt-1 text-sm text-muted-foreground">
@@ -87,8 +92,8 @@
 		</div>
 	{:else}
 		<div class="space-y-6">
-			{#each groups as group (group.chat?.id ?? group.quizzes[0].chatId)}
-				<section class="space-y-2">
+			{#each groups as group, g (group.chat?.id ?? group.quizzes[0].chatId)}
+				<section in:entry|global={{ index: g + 1, count: groups.length + 1 }} class="space-y-2">
 					{#if group.chat}
 						<a
 							href="/chat/{group.chat.id}"
@@ -103,23 +108,19 @@
 					{/if}
 					<ul class="space-y-2">
 						{#each group.quizzes as quiz (quiz.id)}
-							<li
-								class="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3"
-							>
-								<a href="/quiz/{quiz.id}" class="min-w-0 flex-1">
-									<p class="truncate text-sm font-medium">
-										Quiz #{quizzesStore.getQuizNumber(quiz.id)} · {quiz.questionCount} questions
-									</p>
-									<p class="text-xs text-muted-foreground">{timeAgo(quiz.createdAt)}</p>
-								</a>
-								<Button
-									variant="ghost"
-									size="sm"
-									class="opacity-0 transition-opacity group-hover:opacity-100"
-									onclick={() => onDelete(quiz.id)}
+							<li>
+								<RowCard
+									href="/quiz/{quiz.id}"
+									title={'Quiz #' + quizzesStore.getQuizNumber(quiz.id)}
+									meta={timeAgo(quiz.createdAt)}
+									badges={[`${quiz.questionCount} questions`]}
 								>
-									Delete
-								</Button>
+									{#snippet action()}
+										<Button variant="ghost" size="sm" onclick={() => onDelete(quiz.id)}>
+											Delete
+										</Button>
+									{/snippet}
+								</RowCard>
 							</li>
 						{/each}
 					</ul>

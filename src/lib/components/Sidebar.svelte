@@ -10,11 +10,8 @@
 		Settings
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
-	import DbStatus from './DbStatus.svelte';
-	import ServerStatus from './ServerStatus.svelte';
+	import StatusIndicator from './StatusIndicator.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
-	import { runtimeLabel } from '$lib/utils/runtime';
 
 	type NavItem = { href: string; label: string; icon: Component };
 
@@ -80,6 +77,12 @@
 				class:tip={collapsed}
 				data-tip={item.label}
 			>
+				{#if isActive(item.href)}
+					<span
+						class="absolute top-1/2 left-1 h-4 w-1 -translate-y-1/2 rounded-full bg-primary"
+						aria-hidden="true"
+					></span>
+				{/if}
 				<item.icon class="relative z-10 size-4 shrink-0" />
 				<span
 					class="overflow-hidden whitespace-nowrap transition-all duration-200 ease-out"
@@ -98,16 +101,6 @@
 
 	<div class="flex flex-col gap-1 border-t border-sidebar-border p-2">
 		<ThemeToggle {collapsed} />
-		<span
-			class="overflow-hidden whitespace-nowrap px-2 text-xs text-muted-foreground transition-all duration-200 ease-out"
-			class:max-w-0={collapsed}
-			class:opacity-0={collapsed}
-			class:max-w-[12rem]={!collapsed}
-			class:opacity-100={!collapsed}
-		>
-			{runtimeLabel(dbStatus.runtime)}
-		</span>
-		<DbStatus {collapsed} />
-		<ServerStatus {collapsed} />
+		<StatusIndicator {collapsed} />
 	</div>
 </aside>

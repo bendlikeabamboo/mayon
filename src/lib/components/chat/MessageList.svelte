@@ -59,6 +59,19 @@
 
 	const timeline = $derived(assembleTimeline(messages, liveItems, streaming));
 
+	/**
+	 * Regenerate reveal gate (US5): only the newest timeline item qualifies
+	 * when generation is idle. `onRegenerate` deletes a reply row and re-sends
+	 * the preceding user turn, which appends at the end — chronology-safe only
+	 * for the latest turn (interrupted replies always sit there). Live tails or
+	 * trailing entries (e.g. choices) disable it.
+	 */
+	const lastAssistantId = $derived.by(() => {
+		if (streaming || timeline.length === 0) return null;
+		const last = timeline[timeline.length - 1];
+		return isDurableEntry(last) && last.kind === 'assistant_message' ? last.entry.id : null;
+	});
+
 	const takenChoices = $derived.by(() => {
 		const entries: [string, string][] = [];
 		for (const item of timeline) {
@@ -160,6 +173,7 @@
 								{onRegenerate}
 								{personaName}
 								failed={item.entry.id === failedMessageId}
+								canRegenerate={item.entry.id === lastAssistantId}
 							/>
 						{:else if item.kind === 'reasoning'}
 							<ReasoningEntry {item} />

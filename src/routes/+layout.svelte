@@ -1,7 +1,4 @@
 <script lang="ts">
-	import '@fontsource/newsreader/400.css';
-	import '@fontsource/newsreader/400-italic.css';
-	import '@fontsource/newsreader/600.css';
 	import '../app.css';
 	import '$lib/perf/probe';
 	import { migrateLegacyKeys } from '$lib/ai/keystore/migrate';
