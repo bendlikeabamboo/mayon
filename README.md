@@ -200,7 +200,7 @@ the container; run `~/.mayon/install.sh upgrade` if you see this.
 
 ## Documentation
 
-Full docs: [bendlikeabamboo.github.io/mayon/docs](https://bendlikeabamboo.github.io/mayon/docs)
+Full docs: [bendlikeabamboo.github.io/mayon](https://bendlikeabamboo.github.io/mayon)
 
 ## Contributing
 

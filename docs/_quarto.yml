@@ -3,8 +3,8 @@ project:
   output-dir: ../build/docs
 
 title: 'Mayon Docs'
-favicon: /favicon.png
-site-url: https://bendlikeabamboo.github.io/mayon/docs
+favicon: favicon.png
+site-url: https://bendlikeabamboo.github.io/mayon
 repo-url: https://github.com/bendlikeabamboo/mayon
 
 book:
