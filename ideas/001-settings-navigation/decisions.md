@@ -24,4 +24,3 @@
 - Scroll-spy/offset drift as section heights change (provider list grows, conditional Sandbox DB section appears/disappears).
 - Search serves known names only; discovery browsing relies on the rail, and the alias list needs maintenance as sections are added or renamed.
 - No palette culture exists in the app yet — the search affordance must be visible, not gesture-only.
-
