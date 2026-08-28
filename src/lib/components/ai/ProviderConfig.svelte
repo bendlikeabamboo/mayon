@@ -37,7 +37,7 @@
 	// Optional extra sections rendered inside the page's column (e.g. the lab
 	// prompt override). Keeps the page chrome (title + max-width + padding) in
 	// one place.
-	let { children }: { children?: Snippet } = $props();
+	let { children, header }: { children?: Snippet; header?: Snippet } = $props();
 
 	let providers = $state<ProviderConfig[]>([]);
 	let activeId = $state<string | null>(null);
@@ -384,11 +384,13 @@
 		</p>
 	</div>
 
+	{@render header?.()}
+
 	{#if status}
 		<p class="text-xs text-muted-foreground" role="status">{status}</p>
 	{/if}
 
-	<section class="space-y-3">
+	<section id="providers" class="scroll-mt-4 space-y-3">
 		<div class="flex items-center justify-between">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Providers</h2>
 			{#if !adding}
