@@ -1,0 +1,1 @@
+../../.specify/extensions/prespec/.specify-dev/agent-commands/kilocode/speckit.prespec.playthrough.md
