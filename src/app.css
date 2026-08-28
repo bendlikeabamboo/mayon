@@ -417,6 +417,9 @@
 		.expound-flash {
 			animation-duration: 0s !important;
 		}
+		.section-flash {
+			animation-duration: 0s !important;
+		}
 		/* US9 route-entry stagger hooks. Primary suppression is the gate in
 		   src/lib/motion/stagger.ts: under prefers-reduced-motion it emits NO
 		   svelte transition directive at all, so no keyframes/inline styles are
@@ -525,6 +528,29 @@
 }
 .expound-flash {
 	animation: expound-flash-bg 1.5s ease-out forwards;
+	border-radius: 2px;
+}
+
+@keyframes section-flash-bg {
+	0% {
+		background-color: color-mix(in oklch, var(--ring) 25%, transparent);
+	}
+	100% {
+		background-color: transparent;
+	}
+}
+@keyframes section-flash-ring {
+	0% {
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 45%, transparent);
+	}
+	100% {
+		box-shadow: 0 0 0 3px transparent;
+	}
+}
+.section-flash {
+	animation:
+		section-flash-bg 1.5s ease-out forwards,
+		section-flash-ring 1.5s ease-out forwards;
 	border-radius: 2px;
 }
 
