@@ -49,6 +49,48 @@ export interface LlmProxyRequest {
 	body?: string;
 }
 
+/**
+ * GitHub Copilot server endpoints (016). The server runs the GitHub device
+ * flow and mints session tokens; the browser never talks to github.com
+ * directly. See `specs/016-github-copilot-support/contracts/copilot-server-api.md`.
+ */
+export type CopilotAuthStartRequest = Record<string, never>;
+export interface CopilotAuthStartResponse {
+	flowId: string;
+	userCode: string;
+	verificationUri: string;
+	expiresAt: number;
+	interval: number;
+}
+export interface CopilotAuthPollRequest {
+	flowId: string;
+}
+/**
+ * One poll of a device flow. `complete` is returned exactly once (the flow is
+ * dropped afterwards); `slowDownAfter` appears only when GitHub said
+ * `slow_down` (the new interval, in seconds).
+ */
+export type CopilotAuthPollResponse =
+	| { status: 'pending' }
+	| { status: 'pending'; slowDownAfter: number }
+	| { status: 'complete'; githubToken: string; user: { login: string } }
+	| { status: 'expired' }
+	| { status: 'denied' };
+export interface CopilotTokenRequest {
+	githubToken: string;
+}
+export interface CopilotTokenResponse {
+	token: string;
+	expiresAt: number;
+	endpoint: string;
+	refreshInSeconds: number;
+}
+export type CopilotErrorCode = 'upstream' | 'unknown_flow' | 'grant_invalid' | 'not_entitled';
+export interface CopilotErrorResponse {
+	error: CopilotErrorCode;
+	message?: string;
+}
+
 export interface McpFrame {
 	serverId: string;
 	kind: McpFrameKind;

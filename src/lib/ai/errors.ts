@@ -8,6 +8,8 @@
  * to the user through `formatProviderError`.
  */
 import {
+	CopilotAuthRequiredError,
+	CopilotSubscriptionError,
 	CorsBlockedError,
 	MissingKeyError,
 	NetworkError,
@@ -35,6 +37,20 @@ export function formatProviderError(err: unknown): FormattedProviderError {
 			title: 'Missing API key',
 			message: err.message,
 			hint: 'Add an API key for this provider in Settings.'
+		};
+	}
+	if (err instanceof CopilotAuthRequiredError) {
+		return {
+			title: 'Reconnect GitHub',
+			message: err.message,
+			hint: 'Your GitHub authorization expired or was revoked. Reconnect from Settings → Providers.'
+		};
+	}
+	if (err instanceof CopilotSubscriptionError) {
+		return {
+			title: 'No Copilot subscription',
+			message: err.message,
+			hint: 'The authorized GitHub account has no active Copilot subscription.'
 		};
 	}
 	if (err instanceof RateLimitError) {
@@ -154,6 +170,8 @@ function truncate(s: string, max: number): string {
 
 // Re-export the classes so callers can `instanceof` from a single module.
 export {
+	CopilotAuthRequiredError,
+	CopilotSubscriptionError,
 	CorsBlockedError,
 	MissingKeyError,
 	NetworkError,

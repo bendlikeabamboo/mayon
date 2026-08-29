@@ -1,8 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { invalidateCopilotSession } from './copilot-session';
 import { createFetchTransport, setHttpTransport } from './http-transport';
 import type { BrowserKeyStore } from './keystore/browser';
 import { discoverModels, parseModelIds, readAll } from './model-discovery';
-import { ProviderHttpError, type ProviderConfig } from './types';
+import { MissingKeyError, ProviderHttpError, type ProviderConfig } from './types';
+
+const keys = vi.hoisted(() => ({ current: {} as Record<string, string> }));
+
+vi.mock('./keystore/browser', () => ({
+	createBrowserKeyStore: () => ({
+		get: async (id: string) => keys.current[id] ?? null,
+		has: async (id: string) => id in keys.current,
+		set: async (id: string, key: string) => {
+			keys.current[id] = key;
+		},
+		delete: async (id: string) => {
+			delete keys.current[id];
+		}
+	})
+}));
 
 const config: ProviderConfig = {
 	id: 'or-1',
@@ -32,6 +48,57 @@ function makeFakeStore(seed: Record<string, string> = {}): BrowserKeyStore {
 			delete map[id];
 		}
 	};
+}
+
+const copilotConfig: ProviderConfig = {
+	id: 'cop-1',
+	kind: 'github-copilot',
+	name: 'GitHub Copilot',
+	baseUrl: 'https://api.githubcopilot.com',
+	defaultModel: 'gpt-5',
+	models: ['gpt-5'],
+	discoverable: true
+};
+
+const sessionDescriptor = {
+	token: 'tid=test;exp=999;',
+	expiresAt: Date.now() + 10 * 60 * 1000,
+	endpoint: 'https://api.business.githubcopilot.com',
+	refreshInSeconds: 1500
+};
+
+interface RecordedCall {
+	url: string;
+	init: RequestInit;
+}
+
+/** Dispatch-style fetch mock: answers the Copilot token exchange and records
+ *  the `/models` call (mirrors copilot-fetch.test.ts). */
+function mockCopilotDispatch(modelsBody: string): {
+	tokenCalls: Array<{ url: string; method: string | undefined; body: unknown }>;
+	modelCalls: RecordedCall[];
+} {
+	const tokenCalls: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+	const modelCalls: RecordedCall[] = [];
+	(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+		async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+			if (url === '/api/llm/copilot/token') {
+				tokenCalls.push({
+					url,
+					method: init?.method,
+					body: JSON.parse((init?.body as string) ?? '{}')
+				});
+				return jsonBody(JSON.stringify(sessionDescriptor));
+			}
+			modelCalls.push({
+				url,
+				init: { ...init, headers: Object.fromEntries(new Headers(init?.headers)) }
+			});
+			return jsonBody(modelsBody);
+		}
+	);
+	return { tokenCalls, modelCalls };
 }
 
 describe('parseModelIds', () => {
@@ -127,6 +194,7 @@ describe('discoverModels', () => {
 		globalThis.fetch = vi.fn();
 		fakeKeyStore = makeFakeStore();
 		setHttpTransport(createFetchTransport(fakeKeyStore));
+		invalidateCopilotSession(copilotConfig.id);
 	});
 
 	afterEach(() => {
@@ -193,5 +261,76 @@ describe('discoverModels', () => {
 		await discoverModels(slashy, { hasKey: (id) => fakeKeyStore.has(id) });
 		const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0];
 		expect(url).toBe('https://openrouter.ai/api/v1/models');
+	});
+
+	describe('github-copilot discovery', () => {
+		it('resolves a session first and sends the Copilot header set to the session endpoint', async () => {
+			keys.current = { [copilotConfig.id]: 'ghu_grant' };
+			const { tokenCalls, modelCalls } = mockCopilotDispatch(
+				JSON.stringify({
+					data: [{ id: 'gpt-5', object: 'model', capabilities: { type: 'chat' } }]
+				})
+			);
+
+			const ids = await discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) });
+
+			expect(ids).toEqual(['gpt-5']);
+			expect(tokenCalls).toEqual([
+				{ url: '/api/llm/copilot/token', method: 'POST', body: { githubToken: 'ghu_grant' } }
+			]);
+			expect(modelCalls).toHaveLength(1);
+			expect(modelCalls[0].url).toBe('https://api.business.githubcopilot.com/models');
+			const headers = new Headers(modelCalls[0].init.headers as HeadersInit);
+			expect(headers.get('Authorization')).toBe(`Bearer ${sessionDescriptor.token}`);
+			expect(headers.get('Copilot-Integration-Id')).toBe('vscode-chat');
+			expect(headers.get('Editor-Version')).toBe('vscode/1.98.0');
+			expect(headers.get('Editor-Plugin-Version')).toBe('copilot-chat/0.35.0');
+			expect(headers.get('x-github-api-version')).toBe('2025-05-01');
+		});
+
+		it('keeps only chat-capable, policy-enabled model entries and ignores model_picker_enabled', async () => {
+			keys.current = { [copilotConfig.id]: 'ghu_grant' };
+			mockCopilotDispatch(
+				JSON.stringify({
+					data: [
+						{
+							id: 'gpt-5',
+							object: 'model',
+							capabilities: { type: 'chat' },
+							policy: { state: 'enabled' },
+							model_picker_enabled: false
+						},
+						{ id: 'claude-sonnet-4', object: 'model', capabilities: { type: 'chat' } },
+						{ id: 'gpt-5', object: 'model', capabilities: { type: 'chat' } },
+						{
+							id: 'blocked',
+							object: 'model',
+							capabilities: { type: 'chat' },
+							policy: { state: 'disabled' }
+						},
+						{ id: 'embed-1', object: 'model', capabilities: { type: 'embedding' } },
+						{ id: 'legacy-embed', type: 'embedding' },
+						{ id: 'router', object: 'model_listing', capabilities: { type: 'chat' } },
+						'bare-string'
+					]
+				})
+			);
+
+			const ids = await discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) });
+
+			expect(ids).toEqual(['claude-sonnet-4', 'gpt-5']);
+		});
+
+		it('throws MissingKeyError before any request when no grant is stored', async () => {
+			keys.current = {};
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+				jsonBody(JSON.stringify({ data: [] }))
+			);
+
+			await expect(
+				discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) })
+			).rejects.toBeInstanceOf(MissingKeyError);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+		});
 	});
 });

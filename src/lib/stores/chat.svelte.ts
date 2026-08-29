@@ -30,6 +30,7 @@ import { resolveRequestSettings } from '$lib/ai/dialects';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '$lib/ai/types';
+import { CopilotAuthRequiredError } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { runAgentTurn } from '$lib/agent/loop';
 import { getToolDefinitions } from '$lib/agent/registry';
@@ -101,6 +102,14 @@ class ChatState {
 	reasoningBuffer = $state('');
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
+	/**
+	 * Raw mapped error from the last failed turn. The formatted `error` above
+	 * drops the typed class; this keeps it (e.g. a `CopilotAuthRequiredError`
+	 * carrying its `providerId`) so provider UIs can react — the Settings card
+	 * latches its needs-reconnect badge from it. Cleared when the next send
+	 * starts, or per provider once reconnecting succeeds.
+	 */
+	lastMappedError = $state<Error | null>(null);
 	loading = $state(false);
 	generativeStatus = $state<{ toolName: string; label: string } | null>(null);
 
@@ -296,6 +305,7 @@ class ChatState {
 		if (!prompt || this.streaming || !this.chatId) return;
 
 		this.error = null;
+		this.lastMappedError = null;
 		const chatId = this.chatId;
 		const effort: ReasoningEffort = opts?.effort ?? 'on';
 		const hidden = opts?.hidden ?? false;
@@ -547,7 +557,9 @@ class ChatState {
 			}
 		} catch (err) {
 			if (!isAbortError(err)) {
-				this.error = formatProviderError(mapSdkError(err));
+				const mapped = mapSdkError(err);
+				this.error = formatProviderError(mapped);
+				this.lastMappedError = mapped;
 				this.lastFailedPrompt = prompt;
 				builder.emit({
 					kind: 'error',
@@ -625,6 +637,18 @@ class ChatState {
 					this.updateAskRow(rowId, { decision: 'undecided' }).catch(() => {})
 				)
 			);
+		}
+	}
+
+	/**
+	 * Drop the latched auth-required error for `providerId` once its device
+	 * flow has succeeded again, so provider cards don't re-latch a stale
+	 * needs-reconnect badge from a pre-reconnect failure.
+	 */
+	clearAuthRequiredError(providerId: string): void {
+		const err = this.lastMappedError;
+		if (err instanceof CopilotAuthRequiredError && err.providerId === providerId) {
+			this.lastMappedError = null;
 		}
 	}
 

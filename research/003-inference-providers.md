@@ -192,6 +192,55 @@ to self-hosters. Chat Completions
 
 ---
 
+## GitHub Copilot — shipped as a first-class kind (feature 016, 2026-08-29)
+
+The user's primary work AI provider: the feature exists so Mayon runs on a workplace
+Copilot license with zero manual secret handling. Not on the shortlist above: Copilot
+access isn't a pasted key, so the S-effort playbook didn't apply. Shipped via
+[feature 016](../specs/016-github-copilot-support/research.md) as the fifth kind —
+the L-effort case (new kind), though it reuses the OpenAI wire format and the AI SDK
+path, so no new SDK package or transport work.
+
+| Fact         | Value                                                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kind         | `github-copilot` — first-class `ProviderKind` (`src/lib/ai/types.ts`), registered in dialects/capability like the others                             |
+| Wire format  | OpenAI Chat Completions + SSE via `createOpenAICompatible` plus a session-aware fetch wrapper (`src/lib/ai/copilot-fetch.ts`)                        |
+| Base URL     | The api host from the token exchange's `endpoints.api` is authoritative (Business/Enterprise hosts differ); fallback `https://api.githubcopilot.com` |
+| Auth         | GitHub OAuth **device flow run on the server** — no key paste, no client_secret (three moving parts below)                                           |
+| Discovery    | `GET /models` on the derived host with session-token auth; keep chat-capable entries, drop `policy.state === 'disabled'`                             |
+| Tool calling | Yes (`toolCapability: 'auto'`, tools default-on like the openai-compatible gateways)                                                                 |
+| CORS         | Designed around: device flow and token exchange run server-side; inference rides the same-origin llm-proxy                                           |
+
+**Auth architecture** (three moving parts):
+
+1. **Server-run device flow** (`server/src/copilot-auth.ts`, routes
+   `/api/llm/copilot/auth/start|poll`) with client_id `Iv1.b507a08c87ecfe98`, scope
+   `read:user` — the browser only ever sees `userCode` + `verificationUri`
+   (`github.com/login/device/code` sends no CORS headers).
+2. **Grant in the browser KeyStore** — the resulting `ghu_` token is stored under the
+   provider id in the same IndexedDB KeyStore as every other provider secret ("no
+   secrets in `settings`"; nothing persists server-side).
+3. **Server-minted session tokens** — the server exchanges the grant for a ~30-min
+   Copilot session token (`copilot_internal/v2/token`), cached by grant hash and
+   refreshed eagerly ~120 s before expiry; the client wrapper fetches the descriptor
+   per request and injects the header set below.
+
+**Mandatory header set** (measured: 400 without the integration id, 403 without the
+editor headers): `Authorization: Bearer <session token>` plus
+`Copilot-Integration-Id: vscode-chat`, `Editor-Version: vscode/1.98.0`,
+`Editor-Plugin-Version: copilot-chat/0.35.0`, `User-Agent: GitHubCopilotChat/0.35.0`,
+`x-github-api-version: 2025-05-01`.
+
+**Risk (accepted):** `api.githubcopilot.com` is an undocumented IDE surface — there is
+no official third-party client program, and GitHub's tolerance of the shared VS Code
+client_id is informal. If tolerance is revoked the feature breaks at the exchange (404).
+Containment: the client_id and header constants are isolated in
+`server/src/copilot-auth.ts` and `src/lib/ai/copilot-fetch.ts`, making a future official
+path a one-file change. **Depth:** `specs/016-github-copilot-support/research.md`
+(D2 auth rationale, D3 serving, D4 renewal/error mapping).
+
+---
+
 ## Tier 2 — document, don't template (works today via custom OpenAI-compatible provider)
 
 All OpenAI-compatible with Bearer auth and `GET /models`; add a template only on user

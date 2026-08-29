@@ -45,6 +45,7 @@ function defaultForKind(kind: ProviderConfig['kind'], baseUrl: string): boolean 
 	switch (kind) {
 		case 'anthropic':
 		case 'gemini':
+		case 'github-copilot':
 			return true;
 		case 'ollama':
 			return false;

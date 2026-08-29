@@ -201,8 +201,38 @@ describe('PROVIDER_TEMPLATES catalog order and length', () => {
 		]);
 	});
 
-	it('total catalog length is 17', () => {
-		expect(labels).toHaveLength(17);
+	it('total catalog length is 18', () => {
+		expect(labels).toHaveLength(18);
+	});
+
+	it('Ollama stays at index 16 and GitHub Copilot is pinned last', () => {
+		expect(labels[16]).toBe('Ollama (local)');
+		expect(labels[17]).toBe('GitHub Copilot');
+	});
+});
+
+describe('GitHub Copilot template', () => {
+	const t = PROVIDER_TEMPLATES[17];
+
+	it('is at position 17 (last)', () => {
+		expect(t.label).toBe('GitHub Copilot');
+	});
+
+	it('has correct shape', () => {
+		expect(t.kind).toBe('github-copilot');
+		expect(t.baseUrl).toBe('https://api.githubcopilot.com');
+		expect(t.requiresKey).toBe(true);
+		expect(t.discoverable).toBe(true);
+		expect(t.toolCapability).toBe('auto');
+		expect(t.defaultModel).toBe('gpt-5.4');
+		expect(t.models).toEqual([
+			'gpt-5.4',
+			'gpt-5.3-codex',
+			'gpt-5-mini',
+			'claude-sonnet-4.6',
+			'claude-opus-4.6',
+			'gemini-3.7-flash'
+		]);
 	});
 });
 

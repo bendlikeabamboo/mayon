@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { formatProviderError, SERVER_REQUIRED_HINT } from './errors';
 import {
+	CopilotAuthRequiredError,
+	CopilotSubscriptionError,
 	CorsBlockedError,
 	MissingKeyError,
 	NetworkError,
@@ -15,10 +17,29 @@ describe('formatProviderError', () => {
 		expect(out.hint).toMatch(/Settings/);
 	});
 
+	it('maps CopilotAuthRequiredError with the reconnect hint', () => {
+		const out = formatProviderError(new CopilotAuthRequiredError(undefined, 'copilot-1'));
+		expect(out.title).toBe('Reconnect GitHub');
+		expect(out.hint).toMatch(/Reconnect from Settings/);
+	});
+
+	it('maps CopilotSubscriptionError as a distinct no-reauth message', () => {
+		const out = formatProviderError(new CopilotSubscriptionError());
+		expect(out.title).toBe('No Copilot subscription');
+		expect(out.message).toMatch(/subscription/);
+		expect(out.hint).toMatch(/no active Copilot subscription/);
+	});
+
 	it('maps RateLimitError, including a retry-after hint when present', () => {
 		const out = formatProviderError(new RateLimitError(undefined, 30));
 		expect(out.title).toBe('Rate limited');
 		expect(out.hint).toMatch(/30s/);
+	});
+
+	it('maps RateLimitError without a retry hint to the generic wait hint', () => {
+		const out = formatProviderError(new RateLimitError());
+		expect(out.title).toBe('Rate limited');
+		expect(out.hint).toMatch(/Wait/);
 	});
 
 	it('maps CorsBlockedError with the desktop-fallback hint', () => {

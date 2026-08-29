@@ -62,7 +62,8 @@ export const EXTRA_BODY_ALLOWLISTS: Record<
 		'cachedContent',
 		'structuredOutputs'
 	]),
-	ollama: new Set(['think', 'options'])
+	ollama: new Set(['think', 'options']),
+	'github-copilot': new Set<string>()
 };
 
 const EXTRA_BODY_MAX_BYTES = 16384;
@@ -107,7 +108,8 @@ const KIND_BASELINES: Record<ProviderKind, Record<ReasoningEffort, ProviderOptio
 		deep: { thinking: { type: 'adaptive', display: 'summarized' }, effort: 'high' }
 	},
 	gemini: { off: {}, on: {}, deep: {} },
-	ollama: { off: {}, on: { think: true }, deep: { think: true } }
+	ollama: { off: {}, on: { think: true }, deep: { think: true } },
+	'github-copilot': { off: {}, on: {}, deep: {} }
 };
 
 const KIND_DESCRIPTIONS: Record<ProviderKind, DialectDescription> = {
@@ -118,7 +120,8 @@ const KIND_DESCRIPTIONS: Record<ProviderKind, DialectDescription> = {
 		hazards: ['thinking-rejects-sampling']
 	},
 	gemini: { locksSampling: false, effortLevels: ['off', 'on', 'deep'], hazards: [] },
-	ollama: { locksSampling: false, effortLevels: ['off', 'on'], hazards: [] }
+	ollama: { locksSampling: false, effortLevels: ['off', 'on'], hazards: [] },
+	'github-copilot': { locksSampling: false, effortLevels: ['off', 'on', 'deep'], hazards: [] }
 };
 
 export const ENDPOINT_DIALECTS: EndpointDialect[] = [
@@ -378,7 +381,7 @@ function mergeFragment(target: ProviderOptionsFragment, fragment: ProviderOption
 	}
 }
 
-function namespaceFor(config: ProviderConfig): string {
+export function namespaceFor(config: ProviderConfig): string {
 	switch (config.kind) {
 		case 'anthropic':
 			return 'anthropic';
@@ -386,6 +389,8 @@ function namespaceFor(config: ProviderConfig): string {
 			return 'google';
 		case 'ollama':
 			return 'ollama';
+		case 'github-copilot':
+			return 'github-copilot';
 		default:
 			return namespaceKeyFor(config);
 	}
