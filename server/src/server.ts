@@ -12,6 +12,7 @@ import {
 import { VERSION } from './version';
 import { registerMcpBridge } from './mcp';
 import { registerLlmProxy } from './llm-proxy';
+import { registerCopilotAuth } from './copilot-auth';
 import { createSandboxDb, registerSandboxDb } from './db';
 import { registerBackup } from './backup';
 import { createPgPool, probePg, registerPgDb, runPgMigrations, isRestoring } from './pg';
@@ -63,6 +64,7 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 
 		registerMcpBridge(fastify);
 		registerLlmProxy(fastify);
+		registerCopilotAuth(fastify);
 
 		const sandboxDb = createSandboxDb(dbPath);
 		registerSandboxDb(fastify, sandboxDb);

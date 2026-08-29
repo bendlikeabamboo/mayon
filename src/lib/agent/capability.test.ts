@@ -37,6 +37,14 @@ describe('resolveToolCapability', () => {
 		).toBe(true);
 	});
 
+	it('returns true for github-copilot with auto (default)', () => {
+		expect(
+			resolveToolCapability(
+				makeConfig({ kind: 'github-copilot', baseUrl: 'https://api.githubcopilot.com' })
+			)
+		).toBe(true);
+	});
+
 	it('returns false for ollama with auto (default)', () => {
 		expect(
 			resolveToolCapability(makeConfig({ kind: 'ollama', baseUrl: 'http://localhost:11434' }))

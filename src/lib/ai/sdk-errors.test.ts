@@ -30,6 +30,8 @@ vi.mock('ai', () => {
 import { APICallError } from 'ai';
 import { mapSdkError } from './sdk-errors';
 import {
+	CopilotAuthRequiredError,
+	CopilotSubscriptionError,
 	CorsBlockedError,
 	RateLimitError,
 	ProviderHttpError,
@@ -121,6 +123,18 @@ describe('mapSdkError', () => {
 
 		const keyErr = new MissingKeyError();
 		expect(mapSdkError(keyErr)).toBe(keyErr);
+	});
+
+	it('passes through CopilotAuthRequiredError unchanged (carries the provider id)', () => {
+		const err = new CopilotAuthRequiredError(undefined, 'cop-1');
+		const result = mapSdkError(err);
+		expect(result).toBe(err);
+		expect((result as CopilotAuthRequiredError).providerId).toBe('cop-1');
+	});
+
+	it('passes through CopilotSubscriptionError unchanged', () => {
+		const err = new CopilotSubscriptionError();
+		expect(mapSdkError(err)).toBe(err);
 	});
 
 	it('maps generic Error to NetworkError', () => {

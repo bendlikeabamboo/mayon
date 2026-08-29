@@ -1,5 +1,7 @@
 import { APICallError } from 'ai';
 import {
+	CopilotAuthRequiredError,
+	CopilotSubscriptionError,
 	CorsBlockedError,
 	RateLimitError,
 	ProviderHttpError,
@@ -18,7 +20,9 @@ export function mapSdkError(err: unknown): Error {
 		err instanceof RateLimitError ||
 		err instanceof CorsBlockedError ||
 		err instanceof NetworkError ||
-		err instanceof MissingKeyError
+		err instanceof MissingKeyError ||
+		err instanceof CopilotAuthRequiredError ||
+		err instanceof CopilotSubscriptionError
 	) {
 		return err;
 	}

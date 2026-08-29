@@ -10,7 +10,7 @@ import type { ProviderKind } from './types';
 
 /** The set of kinds selectable in the Settings UI. */
 export function listProviderKinds(): ProviderKind[] {
-	return ['openai-compatible', 'anthropic', 'gemini', 'ollama'];
+	return ['openai-compatible', 'anthropic', 'gemini', 'ollama', 'github-copilot'];
 }
 
 /**
@@ -238,6 +238,25 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'llama3.2',
 		models: ['llama3.2', 'qwen2.5', 'mistral'],
 		requiresKey: false,
+		toolCapability: 'auto'
+	},
+	{
+		kind: 'github-copilot',
+		label: 'GitHub Copilot',
+		description:
+			'Chat with your GitHub Copilot subscription via device-flow account authorization. Models discovered automatically after connecting.',
+		baseUrl: 'https://api.githubcopilot.com',
+		defaultModel: 'gpt-5.4',
+		models: [
+			'gpt-5.4',
+			'gpt-5.3-codex',
+			'gpt-5-mini',
+			'claude-sonnet-4.6',
+			'claude-opus-4.6',
+			'gemini-3.7-flash'
+		],
+		requiresKey: true,
+		discoverable: true,
 		toolCapability: 'auto'
 	}
 ];

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	EXTRA_BODY_ALLOWLISTS,
 	describeDialect,
+	namespaceFor,
 	namespaceKeyFor,
 	resolveRequestSettings,
 	validateExtraBody
@@ -55,6 +56,11 @@ const OLLAMA_CONFIG = makeConfig({
 	kind: 'ollama',
 	name: 'Ollama',
 	baseUrl: 'http://localhost:11434'
+});
+const GITHUB_COPILOT_CONFIG = makeConfig({
+	kind: 'github-copilot',
+	name: 'GitHub Copilot',
+	baseUrl: 'https://api.githubcopilot.com'
 });
 const ROUTER_CONFIG = makeConfig({
 	name: 'OpenRouter',
@@ -473,6 +479,25 @@ describe('catalog: kind baselines', () => {
 		expect(resolveRequestSettings(GEMINI_CONFIG, 'gemini-2.0-flash', 'on')).toEqual(EMPTY_RESULT);
 		expect(resolveRequestSettings(GEMINI_CONFIG, 'gemini-2.0-flash', 'deep')).toEqual(EMPTY_RESULT);
 	});
+
+	it('github-copilot: baseline invents nothing, namespace is the kind, empty allowlist drops extra body', () => {
+		expect(namespaceFor(GITHUB_COPILOT_CONFIG)).toBe('github-copilot');
+		expect(resolveRequestSettings(GITHUB_COPILOT_CONFIG, 'gpt-5', 'off')).toEqual(EMPTY_RESULT);
+		expect(resolveRequestSettings(GITHUB_COPILOT_CONFIG, 'gpt-5', 'on')).toEqual(EMPTY_RESULT);
+		expect(resolveRequestSettings(GITHUB_COPILOT_CONFIG, 'gpt-5', 'deep')).toEqual(EMPTY_RESULT);
+
+		const withExtra = makeConfig({
+			kind: 'github-copilot',
+			name: 'GitHub Copilot',
+			baseUrl: 'https://api.githubcopilot.com',
+			extraBody: { top_k: 40 }
+		});
+		expect(resolveRequestSettings(withExtra, 'gpt-5', 'on')).toEqual({
+			callSettings: {},
+			providerOptions: {},
+			droppedExtraKeys: ['top_k']
+		});
+	});
 });
 
 describe('generic openai-compatible baseline invents nothing (R2)', () => {
@@ -588,6 +613,14 @@ describe('describeDialect', () => {
 
 	it('plain ollama kind hides deep', () => {
 		expect(describeDialect(OLLAMA_CONFIG, 'llama3.2')?.effortLevels).toEqual(['off', 'on']);
+	});
+
+	it('github-copilot kind reports no sampling locks and all three efforts', () => {
+		expect(describeDialect(GITHUB_COPILOT_CONFIG, 'gpt-5')).toEqual({
+			locksSampling: false,
+			effortLevels: ['off', 'on', 'deep'],
+			hazards: []
+		});
 	});
 
 	it('generic openai-compatible returns null', () => {
@@ -843,5 +876,6 @@ describe('extraBody (Tier C layer 5)', () => {
 			'thinkingConfig'
 		]);
 		expect([...EXTRA_BODY_ALLOWLISTS.ollama].sort()).toEqual(['options', 'think'].sort());
+		expect([...EXTRA_BODY_ALLOWLISTS['github-copilot']]).toEqual([]);
 	});
 });

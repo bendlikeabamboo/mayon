@@ -4,6 +4,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOllama } from 'ollama-ai-provider-v2';
 import type { LanguageModel } from 'ai';
 import { createKeychainFetch } from './sdk-fetch';
+import { createCopilotFetch } from './copilot-fetch';
 import type { ProviderConfig } from './types';
 import { resolveToolCapability } from '$lib/agent/capability';
 
@@ -58,6 +59,17 @@ export async function buildSdkModel(
 		}
 		case 'ollama': {
 			const provider = createOllama({ baseURL: config.baseUrl });
+			const model = provider(config.defaultModel);
+			return { model, config, toolCapability };
+		}
+		case 'github-copilot': {
+			const customFetch = createCopilotFetch(config);
+			const provider = createOpenAICompatible({
+				name: config.name ?? 'github-copilot',
+				baseURL: config.baseUrl,
+				fetch: customFetch,
+				apiKey: 'keychain'
+			});
 			const model = provider(config.defaultModel);
 			return { model, config, toolCapability };
 		}

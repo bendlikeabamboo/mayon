@@ -9,7 +9,12 @@
  */
 
 /** Provider kinds the registry can build adapters for. */
-export type ProviderKind = 'openai-compatible' | 'anthropic' | 'gemini' | 'ollama';
+export type ProviderKind =
+	| 'openai-compatible'
+	| 'anthropic'
+	| 'gemini'
+	| 'ollama'
+	| 'github-copilot';
 
 /** A single chat message, provider-agnostic. Maps into each adapter's wire shape. */
 export interface ChatMessage {
@@ -219,5 +224,25 @@ export class NetworkError extends Error {
 	) {
 		super(message);
 		this.name = 'NetworkError';
+	}
+}
+
+/** GitHub authorization is missing, expired, or revoked — the device flow must
+ *  be rerun (one-action "Reconnect GitHub"). */
+export class CopilotAuthRequiredError extends Error {
+	constructor(
+		message = 'GitHub authorization required. Reconnect your GitHub account.',
+		public readonly providerId?: string
+	) {
+		super(message);
+		this.name = 'CopilotAuthRequiredError';
+	}
+}
+
+/** The authorized GitHub account has no active Copilot subscription. */
+export class CopilotSubscriptionError extends Error {
+	constructor(message = 'This GitHub account does not have an active Copilot subscription.') {
+		super(message);
+		this.name = 'CopilotSubscriptionError';
 	}
 }

@@ -31,16 +31,28 @@ function runDump(databaseUrl: string, destPath: string): Promise<void> {
 			databaseUrl
 		]);
 		const ws = createWriteStream(destPath);
+		// Resolving on child 'close' alone races the file writes: pg_dump exiting
+		// does not mean the piped WriteStream has flushed. Wait for 'finish' so
+		// callers never read a truncated dump.
+		const flushed = new Promise<void>((resolveFlush, rejectFlush) => {
+			ws.on('finish', resolveFlush);
+			ws.on('error', rejectFlush);
+		});
 		child.stdout.pipe(ws);
 		let stderr = '';
 		child.stderr.on('data', (d: Buffer) => {
 			stderr += d.toString();
 		});
-		ws.on('error', reject);
-		child.on('error', reject);
+		child.on('error', (err) => {
+			ws.destroy();
+			reject(err);
+		});
 		child.on('close', (code) => {
-			if (code === 0) resolve();
-			else reject(new Error(`pg_dump exited ${code}: ${stderr}`));
+			if (code === 0) flushed.then(resolve, reject);
+			else {
+				ws.destroy();
+				reject(new Error(`pg_dump exited ${code}: ${stderr}`));
+			}
 		});
 	});
 }

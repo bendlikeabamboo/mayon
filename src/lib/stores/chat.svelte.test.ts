@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
+import { MissingKeyError } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
@@ -1029,6 +1030,23 @@ describe('branch_sources extra columns', () => {
 		expect(fetched).not.toBeNull();
 		expect(fetched!.customInstructions).toBeNull();
 		expect(fetched!.addFormats).toBeNull();
+	});
+});
+
+describe('chatStore provider error surfacing (T015)', () => {
+	it('surfaces a Copilot MissingKeyError as add-key guidance, not a stack trace', async () => {
+		mockedGetActiveSdkProvider.mockRejectedValue(new MissingKeyError(undefined, 'cop-1'));
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		expect(chatStore.error).toEqual({
+			title: 'Missing API key',
+			message: 'No API key configured for this provider.',
+			hint: 'Add an API key for this provider in Settings.'
+		});
+		expect(chatStore.lastFailedPrompt).toBe('hello');
 	});
 });
 

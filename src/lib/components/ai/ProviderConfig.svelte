@@ -9,6 +9,7 @@
 		CollapsibleTrigger
 	} from '$lib/components/ui/collapsible/index.js';
 	import { ModelSelect } from '$lib/components/ai/model-select/index.js';
+	import CopilotAuthDialog from '$lib/components/ai/copilot-auth-dialog.svelte';
 	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
 	import { describeDialect, resolveRequestSettings, validateExtraBody } from '$lib/ai/dialects';
 	import {
@@ -28,7 +29,9 @@
 		ReasoningEffort,
 		SamplingRequestDefaults
 	} from '$lib/ai/types';
+	import { CopilotAuthRequiredError } from '$lib/ai/types';
 	import { uuid } from '$lib/db/ids';
+	import { chatStore } from '$lib/stores/chat.svelte';
 
 	// API keys live in the runtime KeyStore (IndexedDB) — not the local settings store.
 	// The "replace key" affordance below never echoes a stored key back; it only
@@ -44,6 +47,15 @@
 	let keyFlags = $state<Record<string, boolean>>({}); // id → has a key set
 	let keyDrafts = $state<Record<string, string>>({}); // id → unsaved key input value
 	let discovering = $state<Record<string, boolean>>({}); // id → model list refreshing
+	// GitHub Copilot device-flow connector: which provider's auth dialog is open,
+	// and the GitHub login shown on the connected line (local state only — the
+	// KeyStore grant is the only persisted secret).
+	let copilotAuthFor = $state<string | null>(null);
+	let copilotLogins = $state<Record<string, string>>({});
+	// needs-reconnect (US2): latched when a chat turn fails with
+	// CopilotAuthRequiredError for this provider; cleared by a successful
+	// reconnect. Conversation content is untouched (FR-008) — this is a badge.
+	let needsReconnect = $state<Record<string, boolean>>({});
 	let loading = $state(true);
 	let saving = $state(false);
 	let status = $state<string | null>(null);
@@ -92,6 +104,16 @@
 	};
 
 	onMount(load);
+
+	// Chat-side bridge: the chat store keeps the raw mapped error of the last
+	// failed turn; an auth-required failure latches the needs-reconnect badge
+	// on the matching provider card (reads `lastMappedError` only — no loop).
+	$effect(() => {
+		const err = chatStore.lastMappedError;
+		if (err instanceof CopilotAuthRequiredError && err.providerId) {
+			needsReconnect[err.providerId] = true;
+		}
+	});
 
 	async function load() {
 		loading = true;
@@ -181,11 +203,17 @@
 				const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
 				providers = providers.map((x) => (x.id === id ? { ...x, models: merged } : x));
 				await saveProviders(providers);
-				if (!silent) status = `Found ${discovered.length} models.`;
+				if (!merged.includes(p.defaultModel)) {
+					// FR-011: point at the picker — never auto-mutate the user's choice.
+					status = `Saved model '${p.defaultModel}' is no longer offered — pick another.`;
+				} else if (!silent) {
+					status = `Found ${discovered.length} models.`;
+				}
 			} else if (!silent) {
 				status = 'No models returned. Check the base URL / API key.';
 			}
 		} catch (err) {
+			// Best-effort: the stored fallback list stays intact on failure.
 			if (!silent) status = `Discovery failed: ${err instanceof Error ? err.message : String(err)}`;
 		} finally {
 			discovering = { ...discovering, [id]: false };
@@ -329,6 +357,19 @@
 		if (p?.discoverable) void refreshModels(id);
 	}
 
+	function onCopilotAuthSuccess(id: string, login?: string) {
+		keyFlags = { ...keyFlags, [id]: true };
+		copilotLogins = { ...copilotLogins, [id]: login ?? '' };
+		const reconnect = { ...needsReconnect };
+		delete reconnect[id];
+		needsReconnect = reconnect;
+		chatStore.clearAuthRequiredError(id);
+		status = 'GitHub account connected.';
+		// A fresh grant unlocks authenticated discovery; refresh the catalog.
+		const p = providers.find((x) => x.id === id);
+		if (p?.discoverable) void refreshModels(id);
+	}
+
 	async function activate(id: string) {
 		await setActiveProvider(id);
 		activeId = id;
@@ -348,6 +389,8 @@
 		const extraDrafts = { ...extraBodyDrafts };
 		const extraErr = { ...extraBodyErrors };
 		const efforts = { ...previewEfforts };
+		const logins = { ...copilotLogins };
+		const reconnect = { ...needsReconnect };
 		delete flags[id];
 		delete drafts[id];
 		delete probing[id];
@@ -356,6 +399,8 @@
 		delete extraDrafts[id];
 		delete extraErr[id];
 		delete efforts[id];
+		delete logins[id];
+		delete reconnect[id];
 		keyFlags = flags;
 		keyDrafts = drafts;
 		discovering = probing;
@@ -364,6 +409,8 @@
 		extraBodyDrafts = extraDrafts;
 		extraBodyErrors = extraErr;
 		previewEfforts = efforts;
+		copilotLogins = logins;
+		needsReconnect = reconnect;
 		if (activeId === id) {
 			activeId = next.length > 0 ? next[0].id : null;
 			await setActiveProvider(activeId);
@@ -667,7 +714,46 @@
 							</CollapsibleContent>
 						</Collapsible>
 
-						{#if needsKey}
+						{#if needsKey && p.kind === 'github-copilot'}
+							<div class="space-y-1">
+								<span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+									<KeyRound class="size-3" />
+									GitHub account
+								</span>
+								{#if keyFlags[p.id]}
+									<div class="flex items-center gap-2">
+										{#if needsReconnect[p.id]}
+											<span
+												class="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400"
+												role="status"
+											>
+												Reconnect needed
+											</span>
+											<Button variant="outline" size="sm" onclick={() => (copilotAuthFor = p.id)}>
+												Reconnect GitHub
+											</Button>
+										{:else}
+											<span
+												class="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+												role="status"
+											>
+												<CheckCircle2 class="size-3" />
+												Connected{copilotLogins[p.id] ? ` · ${copilotLogins[p.id]}` : ''}
+											</span>
+											<Button variant="outline" size="sm" onclick={() => (copilotAuthFor = p.id)}>
+												Reconnect
+											</Button>
+										{/if}
+									</div>
+								{:else}
+									<div>
+										<Button variant="outline" size="sm" onclick={() => (copilotAuthFor = p.id)}>
+											Connect GitHub account
+										</Button>
+									</div>
+								{/if}
+							</div>
+						{:else if needsKey}
 							<label class="space-y-1 text-xs text-muted-foreground">
 								<span class="inline-flex items-center gap-1">
 									<KeyRound class="size-3" />
@@ -696,6 +782,16 @@
 			</ul>
 		{/if}
 	</section>
+
+	{#if copilotAuthFor}
+		{@const pid = copilotAuthFor}
+		<CopilotAuthDialog
+			providerId={pid}
+			open
+			onSuccess={(login) => onCopilotAuthSuccess(pid, login)}
+			onClose={() => (copilotAuthFor = null)}
+		/>
+	{/if}
 
 	{@render children?.()}
 </div>

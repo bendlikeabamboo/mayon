@@ -12,9 +12,19 @@
  * is also tolerated. Unknown/empty shapes contribute nothing — discovery is
  * best-effort and never throws a *new* error class: on failure it surfaces the
  * same typed provider errors as a chat request (see `errors.ts`).
+ *
+ * Auth is resolved per kind. Keyed gateways attach a static Bearer descriptor
+ * (transport resolves the secret); `github-copilot` cannot — the KeyStore grant
+ * is not usable against `/models` — so discovery resolves a short-lived session
+ * descriptor first and calls the session's endpoint with the mandatory Copilot
+ * header set (constants owned by `copilot-fetch.ts`), filtering the parsed
+ * entries to chat-capable, policy-enabled models (research D5).
  */
+import { COPILOT_HEADERS } from './copilot-fetch';
+import { getCopilotSession } from './copilot-session';
 import { getHttpTransport } from './http-transport';
-import type { ProviderConfig } from './types';
+import { createBrowserKeyStore } from './keystore/browser';
+import { MissingKeyError, type ProviderConfig } from './types';
 
 export interface ModelDiscoveryDeps {
 	/** True if an API key is configured for `id` (decides whether to attach auth). */
@@ -26,17 +36,30 @@ interface ModelsListResponse {
 	data?: Array<{ id?: unknown; type?: unknown }>;
 }
 
+/** Shape of a Copilot `/models` entry (only the fields the filter reads). */
+interface CopilotModelEntry {
+	id?: unknown;
+	object?: unknown;
+	capabilities?: { type?: unknown };
+	policy?: { state?: unknown };
+}
+
 /**
  * Discover the available model IDs from a provider's `/models` endpoint. Returns
- * a de-duplicated, alphabetically-sorted list. Throws the same typed provider
- * errors as a chat request on HTTP/network failure (so the UI can format them
- * via `formatProviderError`).
+ * a de-duplicated, alphabetically-sorted list. Auth is resolved per kind (static
+ * Bearer from the KeyStore, or the Copilot session for `github-copilot`). Throws
+ * the same typed provider errors as a chat request on HTTP/network failure (so
+ * the UI can format them via `formatProviderError`).
  */
 export async function discoverModels(
 	config: ProviderConfig,
 	deps: ModelDiscoveryDeps,
 	signal?: AbortSignal
 ): Promise<string[]> {
+	if (config.kind === 'github-copilot') {
+		return discoverCopilotModels(config, signal);
+	}
+
 	const url = joinUrl(config.baseUrl, '/models');
 	const req: { method: string; auth?: { header: string; scheme: string; keyId: string } } = {
 		method: 'GET'
@@ -50,6 +73,35 @@ export async function discoverModels(
 		signal
 	);
 	return parseModelIds(await readAll(body));
+}
+
+/**
+ * Copilot discovery: the KeyStore grant is not itself usable against `/models` —
+ * the endpoint requires the short-lived session token plus the mandatory Copilot
+ * header set, on the session's authoritative endpoint host (research D5). A
+ * missing grant throws `MissingKeyError`, the same typed error the transport's
+ * auth resolution produces; session and HTTP failures surface as the usual
+ * typed provider errors since the request still routes through the shared
+ * transport seam.
+ */
+async function discoverCopilotModels(
+	config: ProviderConfig,
+	signal?: AbortSignal
+): Promise<string[]> {
+	const grant = await createBrowserKeyStore().get(config.id);
+	if (!grant) throw new MissingKeyError(undefined, config.id);
+
+	const session = await getCopilotSession(config.id, grant, signal);
+	const url = joinUrl(session.endpoint || config.baseUrl, '/models');
+	const body = await getHttpTransport().request(
+		{
+			url,
+			method: 'GET',
+			headers: { Authorization: `Bearer ${session.token}`, ...COPILOT_HEADERS }
+		},
+		signal
+	);
+	return parseCopilotModelIds(await readAll(body));
 }
 
 /**
@@ -77,6 +129,16 @@ export async function readAll(body: ReadableStream<Uint8Array>): Promise<string>
 	return out;
 }
 
+/** Pull the entry array out of a `/models` body: the OpenAI `{ data: [...] }`
+ *  shape or a bare array; anything else contributes nothing. */
+function extractCandidates(json: unknown): unknown[] {
+	return Array.isArray(json)
+		? json
+		: Array.isArray((json as ModelsListResponse)?.data)
+			? (json as ModelsListResponse).data!
+			: [];
+}
+
 /**
  * Extract model IDs from a `/models` response body. Tolerates the OpenAI shape
  * (`{ data: [{ id }] }`) as well as a bare array of `{ id }` objects or strings.
@@ -90,14 +152,8 @@ export function parseModelIds(body: string): string[] {
 		return [];
 	}
 
-	const candidates: unknown[] = Array.isArray(json)
-		? json
-		: Array.isArray((json as ModelsListResponse)?.data)
-			? (json as ModelsListResponse).data!
-			: [];
-
 	const ids = new Set<string>();
-	for (const entry of candidates) {
+	for (const entry of extractCandidates(json)) {
 		let id: unknown;
 		if (typeof entry === 'string') id = entry;
 		else if (entry && typeof entry === 'object') {
@@ -105,6 +161,34 @@ export function parseModelIds(body: string): string[] {
 			if ('id' in entry) id = (entry as { id: unknown }).id;
 		}
 		if (typeof id === 'string' && id.length > 0) ids.add(id);
+	}
+	return [...ids].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Extract model IDs from a Copilot `/models` response body. Deliberately
+ * stricter than `parseModelIds`: Copilot's catalog mixes in embeddings and
+ * internal router objects, so an entry is kept only when `object === 'model'`
+ * && `capabilities.type === 'chat'` && `policy.state !== 'disabled'` — and
+ * never filtered on `model_picker_enabled` (known to report false for working
+ * models). Unparseable / unrecognized shapes yield an empty list.
+ */
+export function parseCopilotModelIds(body: string): string[] {
+	let json: unknown;
+	try {
+		json = JSON.parse(body);
+	} catch {
+		return [];
+	}
+
+	const ids = new Set<string>();
+	for (const entry of extractCandidates(json)) {
+		if (!entry || typeof entry !== 'object') continue;
+		const model = entry as CopilotModelEntry;
+		if (model.object !== 'model') continue;
+		if (model.capabilities?.type !== 'chat') continue;
+		if (model.policy?.state === 'disabled') continue;
+		if (typeof model.id === 'string' && model.id.length > 0) ids.add(model.id);
 	}
 	return [...ids].sort((a, b) => a.localeCompare(b));
 }
