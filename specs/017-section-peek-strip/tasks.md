@@ -31,7 +31,7 @@ Single SvelteKit project: all paths under `src/`. Tests are colocated beside sou
 
 **Purpose**: Establish a green baseline before any feature code lands.
 
-- [ ] T001 [P] Verify toolchain baseline: run `pnpm install`, then `pnpm check`, `pnpm lint`, `pnpm test` in repo root and confirm all green before any edits (records the pre-feature state the perf comparison in T021 needs)
+- [x] T001 [P] Verify toolchain baseline: run `pnpm install`, then `pnpm check`, `pnpm lint`, `pnpm test` in repo root and confirm all green before any edits (records the pre-feature state the perf comparison in T021 needs)
 
 **Checkpoint**: Gates green on the untouched branch.
 
@@ -43,11 +43,11 @@ Single SvelteKit project: all paths under `src/`. Tests are colocated beside sou
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T002 [P] Write failing unit tests for section extraction in src/lib/markdown/sections.test.ts per contracts §1: heading walk in document order; exclusions (headings inside fenced/indented code, blockquote/admonition bodies, tables, math, HTML are NOT sections); setext headings count; `start`/`end` offsets tile from first heading to end of input; `length === end - start`; excerpt is plain text (no markdown syntax), whitespace-collapsed, capped (~240 chars); empty title allowed for bare `##`; memoization returns identical output for repeated input; `isStripCandidate` true at ≥3 sections, false below
-- [ ] T003 [P] Implement src/lib/markdown/sections.ts per contracts §1 to make T002 green: `Section` interface, `extractSections(raw)` (remarkParse + remarkGfm walk, Last-Value memoization, wrapped in `mark('strip:extract', …)`), `isStripCandidate`, `clearSectionsCache` (test hook); no DOM access, no render.ts dependence
-- [ ] T004 [P] Register strip selectors in src/lib/chat/selection.ts: append `'.section-strip'` and `'.section-strip-preview'` to `EXCLUDED_CHROME_SELECTORS` (contracts §7)
-- [ ] T005 Extend src/lib/chat/selection.test.ts with strip/preview fixtures (depends T004): a reply body containing rendered `.section-strip`/`.section-strip-preview` markup — alignment of real reply text is unchanged, and a selection touching preview text still fails safely with `reason: 'generated'`
-- [ ] T006 Run gates `pnpm check && pnpm lint && pnpm test` and confirm green (foundational complete)
+- [x] T002 [P] Write failing unit tests for section extraction in src/lib/markdown/sections.test.ts per contracts §1: heading walk in document order; exclusions (headings inside fenced/indented code, blockquote/admonition bodies, tables, math, HTML are NOT sections); setext headings count; `start`/`end` offsets tile from first heading to end of input; `length === end - start`; excerpt is plain text (no markdown syntax), whitespace-collapsed, capped (~240 chars); empty title allowed for bare `##`; memoization returns identical output for repeated input; `isStripCandidate` true at ≥3 sections, false below
+- [x] T003 [P] Implement src/lib/markdown/sections.ts per contracts §1 to make T002 green: `Section` interface, `extractSections(raw)` (remarkParse + remarkGfm walk, Last-Value memoization, wrapped in `mark('strip:extract', …)`), `isStripCandidate`, `clearSectionsCache` (test hook); no DOM access, no render.ts dependence
+- [x] T004 [P] Register strip selectors in src/lib/chat/selection.ts: append `'.section-strip'` and `'.section-strip-preview'` to `EXCLUDED_CHROME_SELECTORS` (contracts §7)
+- [x] T005 Extend src/lib/chat/selection.test.ts with strip/preview fixtures (depends T004): a reply body containing rendered `.section-strip`/`.section-strip-preview` markup — alignment of real reply text is unchanged, and a selection touching preview text still fails safely with `reason: 'generated'`
+- [x] T006 Run gates `pnpm check && pnpm lint && pnpm test` and confirm green (foundational complete)
 
 **Checkpoint**: Extraction + selection safety ready — user story implementation can begin.
 

@@ -32,7 +32,9 @@ export const EXCLUDED_CHROME_SELECTORS = [
 	'.md-focusable-btn',
 	'.external-link-icon',
 	'.mermaid-svg',
-	'.mermaid-pending'
+	'.mermaid-pending',
+	'.section-strip',
+	'.section-strip-preview'
 ] as const;
 
 export function canonicalize(s: string): string {
