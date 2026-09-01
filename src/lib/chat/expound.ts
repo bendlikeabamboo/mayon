@@ -18,10 +18,15 @@ const LEGACY_TOGGLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
 	code: 'Code Examples'
 });
 
+export interface ExpoundFormat {
+	name: string;
+	description?: string;
+}
+
 export interface ExpoundOptions {
 	excerpt: string;
 	customInstructions: string;
-	toggles: string[];
+	formats: ExpoundFormat[];
 	provideSummary?: boolean;
 }
 
@@ -34,16 +39,21 @@ export interface CharSpan {
 /**
  * Build the expound prompt sent as the first user message of the new branch.
  * The excerpt is embedded verbatim; empty custom instructions collapse to a
- * "(none provided)" placeholder; selected instruction names name the extra
- * formats to prefer, or "no extra formats" when none are chosen.
+ * "(none provided)" placeholder. Selected formats are emitted as imperative
+ * directives ("Extra formats to include in this reply:") with their
+ * descriptions, so the model knows what each format concretely requires — a
+ * bare name list reads as optional garnish and models ignore it. With no
+ * formats selected, the prompt explicitly asks for plain prose.
  */
 export function buildExpoundPrompt(o: ExpoundOptions): string {
 	const instructions = o.customInstructions.trim() || '(none provided)';
-	const formats = o.toggles.join(', ');
-	const formatsLine =
-		formats.length > 0
-			? `Adding [${formats}] whenever possible.`
-			: 'Adding no extra formats whenever possible.';
+	const formatsBlock =
+		o.formats.length > 0
+			? [
+					'Extra formats to include in this reply:',
+					...o.formats.map((f) => (f.description ? `- ${f.name}: ${f.description}` : `- ${f.name}`))
+				]
+			: ['Extra formats: none — reply in prose.'];
 
 	return [
 		...(o.provideSummary === true ? ['Summarize the current discussion.', ''] : []),
@@ -55,7 +65,7 @@ export function buildExpoundPrompt(o: ExpoundOptions): string {
 		'With the following instructions:',
 		instructions,
 		'',
-		formatsLine
+		...formatsBlock
 	].join('\n');
 }
 

@@ -1043,7 +1043,7 @@ class ChatState {
 			expoundOpts
 				? {
 						customInstructions: expoundOpts.customInstructions || undefined,
-						addFormats: serializeAddFormats(expoundOpts.toggles)
+						addFormats: serializeAddFormats(expoundOpts.formats.map((f) => f.name))
 					}
 				: undefined
 		);
