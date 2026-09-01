@@ -47,7 +47,7 @@
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
 	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
 	import { mark } from '$lib/perf/mark';
-	import { entry } from '$lib/motion/stagger';
+	import { entry, prefersReducedMotion } from '$lib/motion/stagger';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 
 	let breadcrumb = $state<Chat[]>([]);
@@ -360,6 +360,49 @@
 		function retry() {
 			tries++;
 			if (tries >= 20 || tryFlash()) return;
+			requestAnimationFrame(retry);
+		}
+		requestAnimationFrame(retry);
+	}
+
+	let sectionFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function flashSectionHeading(anchor: Element) {
+		if (sectionFlashTimer) clearTimeout(sectionFlashTimer);
+		sectionFlashTimer = null;
+		viewport
+			?.querySelectorAll('.section-flash')
+			.forEach((el) => el.classList.remove('section-flash'));
+		anchor.classList.add('section-flash');
+		sectionFlashTimer = setTimeout(() => {
+			anchor.classList.remove('section-flash');
+			sectionFlashTimer = null;
+		}, 1600);
+	}
+
+	function handleSectionJump(msgId: string, index: number) {
+		if (!viewport) return;
+		scrolledToHash = true;
+
+		function attemptJump(): boolean {
+			const body = document.getElementById(`msg-${msgId}`)?.querySelector('.markdown-body');
+			if (!body) return false;
+			const anchor = body.querySelectorAll('h1, h2, h3, h4, h5, h6')[index] ?? null;
+			if (!anchor) return false;
+			anchor.scrollIntoView({
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				block: 'start'
+			});
+			flashSectionHeading(anchor);
+			return true;
+		}
+
+		if (attemptJump()) return;
+		let tries = 0;
+		const maxTries = 5;
+		function retry() {
+			tries++;
+			if (tries >= maxTries || attemptJump()) return;
 			requestAnimationFrame(retry);
 		}
 		requestAnimationFrame(retry);
@@ -776,6 +819,7 @@
 							{onCopy}
 							{onBranchWhole}
 							{onRegenerate}
+							onJumpToSection={handleSectionJump}
 							{personaName}
 							{failedMessageId}
 							streaming={chatStore.streaming}

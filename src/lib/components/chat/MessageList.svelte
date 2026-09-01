@@ -33,6 +33,7 @@
 		onCopy,
 		onBranchWhole,
 		onRegenerate,
+		onJumpToSection,
 		header,
 		personaName = 'Mayon',
 		failedMessageId = null,
@@ -49,6 +50,7 @@
 		onCopy: (text: string) => void;
 		onBranchWhole: (messageId: string) => void | Promise<void>;
 		onRegenerate?: (messageId: string) => void | Promise<void>;
+		onJumpToSection?: (msgId: string, index: number) => void;
 		header?: Snippet;
 		personaName?: string;
 		failedMessageId?: string | null;
@@ -171,6 +173,7 @@
 								{onCopy}
 								{onBranchWhole}
 								{onRegenerate}
+								{onJumpToSection}
 								{personaName}
 								failed={item.entry.id === failedMessageId}
 								canRegenerate={item.entry.id === lastAssistantId}
