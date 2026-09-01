@@ -22,6 +22,12 @@ export function clearEnrollCookie(reply: FastifyReply): void {
 	reply.clearCookie(ENROLL_COOKIE, cookieOptions(0));
 }
 
+export function nextLocalMidnight(nowMs: number): number {
+	const d = new Date(nowMs);
+	d.setHours(24, 0, 0, 0);
+	return d.getTime();
+}
+
 function cookieOptions(maxAge: number): CookieSerializeOptions {
 	return {
 		httpOnly: true,

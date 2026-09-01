@@ -24,6 +24,7 @@ import { registerPgImport } from './pg-import';
 import { runFtsBootstrap } from './fts';
 import { runSchemaDataMigrations } from './schema-migrations';
 import { registerAuthGate } from './auth/gate';
+import { registerAuth } from './auth/index';
 import { createAuthStore } from './auth/store';
 import { resolveAuthSecretKey } from './auth/secret-key';
 import { SESSION_COOKIE } from './auth/cookies';
@@ -113,10 +114,20 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 	app.register(cookie);
 	app.register(async (fastify) => {
 		const now = opts.authNow ?? (() => Date.now());
+		const authStore = createAuthStore(opts.pgPool, now);
 
 		registerAuthGate(fastify, {
-			store: createAuthStore(opts.pgPool, now),
+			store: authStore,
 			getSecurityMode: () => getSecurityMode(opts.pgPool, now),
+			resolveSessionToken: (request) => request.cookies?.[SESSION_COOKIE],
+			now
+		});
+
+		registerAuth(fastify, {
+			store: authStore,
+			getSecurityMode: () => getSecurityMode(opts.pgPool, now),
+			setSecurityMode: (mode) => setSecurityMode(opts.pgPool, mode, now),
+			getAuthKey: () => fastify.getAuthKey(),
 			resolveSessionToken: (request) => request.cookies?.[SESSION_COOKIE],
 			now
 		});

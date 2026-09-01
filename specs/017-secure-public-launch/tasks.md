@@ -63,13 +63,13 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 ### Tests for User Story 1 (write FIRST, must FAIL)
 
-- [ ] T014 [US1] Create `server/src/auth-setup.test.ts`: happy path (setup → otpauthUri → confirm live code via injected fixed-step secret → session issued, mode locked, second setup 409); wrong confirm code → 400, no session cookie, mode still open, no active owner; replayed code refused; label/password validation bounds per data-model.md
+- [x] T014 [US1] Create `server/src/auth-setup.test.ts`: happy path (setup → otpauthUri → confirm live code via injected fixed-step secret → session issued, mode locked, second setup 409); wrong confirm code → 400, no session cookie, mode still open, no active owner; replayed code refused; label/password validation bounds per data-model.md
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Implement `POST /api/auth/session` (public status payload per contract) in `server/src/auth/index.ts` (new Fastify plugin registered alongside the others in `server/src/server.ts` route plugin)
-- [ ] T016 [US1] Implement `POST /api/auth/setup` in `server/src/auth/index.ts`: validate label (1–64 chars)/password (8–1024), 409 if active owner exists, argon2id hash, otplib secret generate + GCM-wrap (pending), return otpauthUri (`otpauth://totp/mayon:<label>?…&issuer=mayon`)
-- [ ] T017 [US1] Implement `POST /api/auth/setup/confirm` in `server/src/auth/index.ts`: verify ±1 step via otplib against decrypted secret, set `mfa_enrolled_at`, set `security.mode = locked` (settings upsert), issue session cookie, atomically close setup
+- [x] T015 [US1] Implement `POST /api/auth/session` (public status payload per contract) in `server/src/auth/index.ts` (new Fastify plugin registered alongside the others in `server/src/server.ts` route plugin)
+- [x] T016 [US1] Implement `POST /api/auth/setup` in `server/src/auth/index.ts`: validate label (1–64 chars)/password (8–1024), 409 if active owner exists, argon2id hash, otplib secret generate + GCM-wrap (pending), return otpauthUri (`otpauth://totp/mayon:<label>?…&issuer=mayon`)
+- [x] T017 [US1] Implement `POST /api/auth/setup/confirm` in `server/src/auth/index.ts`: verify ±1 step via otplib against decrypted secret, set `mfa_enrolled_at`, set `security.mode = locked` (settings upsert), issue session cookie, atomically close setup
 - [ ] T018 [P] [US1] Create `src/lib/components/AuthQr.svelte`: render an otpauth URI as a QR (qrcode lib, SVG) with the raw URI shown as fallback text
 - [ ] T019 [US1] Create `src/lib/auth/client.ts` (typed fetch wrappers for /api/auth/*) and `src/lib/auth/state.svelte.ts` (boot-time auth state: calls POST /api/auth/session, exposes mode/authenticated/setupRequired, refresh() after login/logout)
 - [ ] T020 [US1] Integrate boot ordering in `src/routes/+layout.svelte`: resolve auth state BEFORE `bootstrapDb()`; when locked+unauthenticated render the login branch (placeholder shell ok) and DO NOT bootstrap db; when setup offered (open, no owner, not dismissed) show setup prompt; remember dismissal in localStorage (`mayon_setup_dismissed`) so the prompt never re-nags (FR-022)
