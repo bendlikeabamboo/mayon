@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import fp from '@fastify/websocket';
+import cookie from '@fastify/cookie';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
@@ -7,6 +8,7 @@ import {
 	LEGACY_VERSION,
 	SCHEMA_VERSION_SETTINGS_KEY,
 	AUTH_BOOTSTRAP_SQL,
+	type AuthMode,
 	type HealthResponse,
 	type ServerCap
 } from '@mayon/shared';
@@ -21,7 +23,17 @@ import { registerPgBackup } from './pg-backup';
 import { registerPgImport } from './pg-import';
 import { runFtsBootstrap } from './fts';
 import { runSchemaDataMigrations } from './schema-migrations';
+import { registerAuthGate } from './auth/gate';
+import { createAuthStore } from './auth/store';
+import { resolveAuthSecretKey } from './auth/secret-key';
+import { SESSION_COOKIE } from './auth/cookies';
 import type { PgPoolLike } from './pg';
+
+declare module 'fastify' {
+	interface FastifyInstance {
+		getAuthKey(): Buffer;
+	}
+}
 
 const HOST = '0.0.0.0';
 const PORT = parseInt(process.env.PORT ?? '4319', 10);
@@ -30,18 +42,94 @@ const SANDBOX_DB_PATH = process.env.SANDBOX_DB_PATH ?? '/data/sandbox.sqlite';
 
 const BASE_CAPS: ServerCap[] = ['stdio-mcp', 'llm-proxy', 'sandbox-db', 'backup'];
 
+const SECURITY_MODE_KEY = 'security.mode';
+const SECURITY_MODE_TTL_MS = 5000;
+
+interface SecurityModeCache {
+	value: AuthMode;
+	readAt: number;
+}
+const securityModeCaches = new WeakMap<PgPoolLike, SecurityModeCache>();
+
+export async function getSecurityMode(
+	pool: PgPoolLike | undefined,
+	now: () => number = Date.now
+): Promise<AuthMode> {
+	if (!pool) {
+		return 'open';
+	}
+	const cached = securityModeCaches.get(pool);
+	if (cached && now() - cached.readAt < SECURITY_MODE_TTL_MS) {
+		return cached.value;
+	}
+	let value: AuthMode = 'open';
+	try {
+		const res = await pool.query('SELECT value FROM settings WHERE key = $1', [SECURITY_MODE_KEY]);
+		const raw = res.rows[0]?.value;
+		if (typeof raw === 'string') {
+			const parsed: unknown = JSON.parse(raw);
+			if (parsed === 'open' || parsed === 'locked') {
+				value = parsed;
+			}
+		}
+	} catch {
+		value = 'open';
+	}
+	securityModeCaches.set(pool, { value, readAt: now() });
+	return value;
+}
+
+export async function setSecurityMode(
+	pool: PgPoolLike | undefined,
+	value: AuthMode,
+	now: () => number = Date.now
+): Promise<void> {
+	if (!pool) {
+		return;
+	}
+	await pool.query(
+		`INSERT INTO settings(key,value) VALUES($1,$2)
+		 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
+		[SECURITY_MODE_KEY, JSON.stringify(value)]
+	);
+	securityModeCaches.set(pool, { value, readAt: now() });
+}
+
 export interface BuildAppOptions {
 	pgPool?: PgPoolLike;
 	pgReady?: boolean;
 	databaseUrl?: string;
 	safetyDir?: string;
+	authNow?: () => number;
+	authKeyPath?: string;
+	authRateWindowMs?: number;
+	authRateLadderBase?: number;
 }
 
 export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 	const app = Fastify();
 
 	app.register(fp);
+	app.register(cookie);
 	app.register(async (fastify) => {
+		const now = opts.authNow ?? (() => Date.now());
+
+		registerAuthGate(fastify, {
+			store: createAuthStore(opts.pgPool, now),
+			getSecurityMode: () => getSecurityMode(opts.pgPool, now),
+			resolveSessionToken: (request) => request.cookies?.[SESSION_COOKIE],
+			now
+		});
+
+		let authKey: Buffer | undefined;
+		fastify.decorate('getAuthKey', () => {
+			authKey ??= resolveAuthSecretKey({
+				envSecret: process.env.MAYON_AUTH_SECRET,
+				keyPath: opts.authKeyPath ?? path.join(path.dirname(SANDBOX_DB_PATH), 'auth-secret')
+			});
+			return authKey;
+		});
+
 		const caps: ServerCap[] = [...BASE_CAPS];
 		if (opts.pgReady === true) caps.push('pg');
 

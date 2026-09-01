@@ -1,0 +1,37 @@
+import type { CookieSerializeOptions } from '@fastify/cookie';
+import type { FastifyReply } from 'fastify';
+
+export const SESSION_COOKIE = 'mayon_session';
+export const ENROLL_COOKIE = 'mayon_enroll';
+
+const ENROLL_COOKIE_MAX_AGE_SECONDS = 900;
+
+export function setSessionCookie(reply: FastifyReply, token: string, expiresAt: number): void {
+	reply.setCookie(SESSION_COOKIE, token, cookieOptions(secondsUntil(expiresAt)));
+}
+
+export function clearSessionCookie(reply: FastifyReply): void {
+	reply.clearCookie(SESSION_COOKIE, cookieOptions(0));
+}
+
+export function setEnrollCookie(reply: FastifyReply, token: string): void {
+	reply.setCookie(ENROLL_COOKIE, token, cookieOptions(ENROLL_COOKIE_MAX_AGE_SECONDS));
+}
+
+export function clearEnrollCookie(reply: FastifyReply): void {
+	reply.clearCookie(ENROLL_COOKIE, cookieOptions(0));
+}
+
+function cookieOptions(maxAge: number): CookieSerializeOptions {
+	return {
+		httpOnly: true,
+		sameSite: 'lax',
+		path: '/',
+		secure: process.env.MAYON_COOKIE_SECURE !== 'false',
+		maxAge
+	};
+}
+
+function secondsUntil(expiresAt: number): number {
+	return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+}
