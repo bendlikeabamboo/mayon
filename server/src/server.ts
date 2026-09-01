@@ -6,6 +6,7 @@ import {
 	SCHEMA_VERSION,
 	LEGACY_VERSION,
 	SCHEMA_VERSION_SETTINGS_KEY,
+	AUTH_BOOTSTRAP_SQL,
 	type HealthResponse,
 	type ServerCap
 } from '@mayon/shared';
@@ -114,6 +115,16 @@ export async function start() {
 				} catch (err) {
 					const detail = err instanceof Error ? err.message : String(err);
 					console.error('pg: fts bootstrap failed —', detail);
+				}
+
+				try {
+					for (const sql of AUTH_BOOTSTRAP_SQL) {
+						await pool.query(sql);
+					}
+					console.log('pg: auth ready');
+				} catch (err) {
+					const detail = err instanceof Error ? err.message : String(err);
+					console.error('pg: auth bootstrap failed —', detail);
 				}
 
 				try {

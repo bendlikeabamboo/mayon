@@ -1,4 +1,5 @@
 export { FTS_BOOTSTRAP_SQL } from './fts';
+export { AUTH_BOOTSTRAP_SQL } from './auth-bootstrap';
 export {
 	SCHEMA_VERSION,
 	LEGACY_VERSION,
@@ -27,3 +28,30 @@ export type {
 	DbQueryResponse,
 	DbErrorResponse
 } from './protocol';
+export type {
+	AuthMode,
+	GateRole,
+	GateIdentityStatus,
+	LoginAttemptOutcome,
+	AuthIdentityDTO,
+	AuthSessionDTO,
+	AuthSessionResponse,
+	SetupRequest,
+	SetupResponse,
+	SetupConfirmRequest,
+	AuthSessionResult,
+	LoginRequest,
+	MfaEnrollmentRequired,
+	LoginResponse,
+	EnrollRequest,
+	ModeChangeRequest,
+	InviteDTO,
+	InviteCreateResponse,
+	InvitesResponse,
+	SessionDTO,
+	SessionsResponse,
+	AttemptDTO,
+	AttemptsResponse,
+	AuthErrorCode,
+	AuthErrorResponse
+} from './auth';
