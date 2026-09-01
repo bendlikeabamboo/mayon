@@ -11,37 +11,44 @@ describe('buildExpoundPrompt', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'powerhouse of the cell',
 			customInstructions: '',
-			toggles: []
+			formats: []
 		});
 		expect(p).toContain('"""\npowerhouse of the cell\n"""');
 	});
 
-	it('lists selected instruction names in input order', () => {
+	it('lists selected formats as imperative directives, in input order', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: 'go deep',
-			toggles: ['Code Examples', 'Diagrams (prompt diagrams)', 'Comparison Tables']
+			formats: [
+				{ name: 'Code Examples' },
+				{ name: 'Comparison Tables', description: 'Contrast options side by side' },
+				{ name: 'Diagrams (prompt diagrams)' }
+			]
 		});
-		expect(p).toContain(
-			'Adding [Code Examples, Diagrams (prompt diagrams), Comparison Tables] whenever possible.'
-		);
+		const lines = p.split('\n');
+		const start = lines.indexOf('Extra formats to include in this reply:');
+		expect(start).toBeGreaterThan(-1);
+		expect(lines[start + 1]).toBe('- Code Examples');
+		expect(lines[start + 2]).toBe('- Comparison Tables: Contrast options side by side');
+		expect(lines[start + 3]).toBe('- Diagrams (prompt diagrams)');
 	});
 
 	it('reads "no extra formats" when no toggles are selected', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: 'plain summary',
-			toggles: []
+			formats: []
 		});
-		expect(p).toContain('Adding no extra formats whenever possible.');
-		expect(p).not.toContain('[');
+		expect(p).toContain('Extra formats: none — reply in prose.');
+		expect(p).not.toContain('Extra formats to include in this reply:');
 	});
 
 	it('collapses empty/whitespace custom instructions to (none provided)', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: '   \n\t  ',
-			toggles: ['Code Examples']
+			formats: [{ name: 'Code Examples' }]
 		});
 		expect(p).toContain('With the following instructions:\n(none provided)');
 	});
@@ -50,7 +57,7 @@ describe('buildExpoundPrompt', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: '  focus on trade-offs  ',
-			toggles: []
+			formats: []
 		});
 		expect(p).toContain('focus on trade-offs');
 		expect(p).not.toContain('  focus on trade-offs');
@@ -60,16 +67,16 @@ describe('buildExpoundPrompt', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'x',
 			customInstructions: '',
-			toggles: ['Comparison Tables']
+			formats: [{ name: 'Comparison Tables' }]
 		});
-		expect(p).toContain('Adding [Comparison Tables] whenever possible.');
+		expect(p).toContain('Extra formats to include in this reply:\n- Comparison Tables');
 	});
 
 	it('omits summary line by default (provideSummary not set)', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'hello world',
 			customInstructions: '',
-			toggles: []
+			formats: []
 		});
 		expect(p).not.toContain('Summarize the current discussion.');
 		expect(p.startsWith('The user would like to expound on this excerpt:')).toBe(true);
@@ -79,7 +86,7 @@ describe('buildExpoundPrompt', () => {
 		const p = buildExpoundPrompt({
 			excerpt: 'hello world',
 			customInstructions: '',
-			toggles: [],
+			formats: [],
 			provideSummary: true
 		});
 		expect(p.startsWith('Summarize the current discussion.\n')).toBe(true);

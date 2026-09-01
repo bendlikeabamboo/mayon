@@ -62,7 +62,9 @@
 		onSubmit({
 			excerpt,
 			customInstructions,
-			toggles: options.filter((o) => toggles.has(o.name)).map((o) => o.name),
+			formats: options
+				.filter((o) => toggles.has(o.name))
+				.map(({ name, description }) => ({ name, description })),
 			provideSummary
 		});
 	}

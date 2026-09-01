@@ -4,7 +4,9 @@
  * Owns the instruction-list entity, the five built-in defaults, read-time
  * sanitization, draft validation, and the settings-key accessors. The list is
  * stored whole under the `expoundInstructions` settings key (replace-on-write);
- * only `name` ever flows into prompts and `branch_sources.add_formats`.
+ * `name` (plus `description`) flows into expound prompts so each selected
+ * format arrives as a concrete directive, while only `name` persists into
+ * `branch_sources.add_formats`.
  */
 
 export interface ExpoundInstruction {
@@ -21,7 +23,7 @@ export const DEFAULT_EXPOUND_INSTRUCTIONS: readonly ExpoundInstruction[] = Objec
 	{
 		id: 'mermaid-diagram',
 		name: 'Mermaid Diagram',
-		description: 'Render flows and relationships as Mermaid diagrams',
+		description: 'Render flows and relationships as fenced Mermaid code blocks',
 		builtin: true
 	},
 	{

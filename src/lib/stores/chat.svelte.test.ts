@@ -147,7 +147,10 @@ describe('chatStore.createExpoundBranch', () => {
 		const prompt = buildExpoundPrompt({
 			excerpt: 'powerhouse of the cell',
 			customInstructions: 'elaborate',
-			toggles: ['diagrams', 'code']
+			formats: [
+				{ name: 'diagrams' },
+				{ name: 'code', description: 'Show runnable code the learner can paste' }
+			]
 		});
 
 		const childId = await chatStore.createExpoundBranch(
@@ -259,7 +262,7 @@ describe('chatStore.createExpoundBranch', () => {
 		const prompt = buildExpoundPrompt({
 			excerpt: 'powerhouse of the cell',
 			customInstructions: '',
-			toggles: ['tables']
+			formats: [{ name: 'tables' }]
 		});
 
 		const childId = await chatStore.createExpoundBranch(
@@ -299,7 +302,10 @@ describe('chatStore.createExpoundBranch', () => {
 		const opts = {
 			excerpt: 'powerhouse of the cell',
 			customInstructions: 'use plain language',
-			toggles: ['Mermaid Diagram', 'Real-world Analogies']
+			formats: [
+				{ name: 'Mermaid Diagram', description: 'Render flows as fenced Mermaid code blocks' },
+				{ name: 'Real-world Analogies' }
+			]
 		};
 		const prompt = buildExpoundPrompt(opts);
 
@@ -327,9 +333,11 @@ describe('chatStore.createExpoundBranch', () => {
 
 		const msgs = await repos.messages.listByChat(childId);
 		const firstUser = msgs.find((m) => m.role === 'user');
+		expect(firstUser?.content).toContain('Extra formats to include in this reply:');
 		expect(firstUser?.content).toContain(
-			'Adding [Mermaid Diagram, Real-world Analogies] whenever possible.'
+			'- Mermaid Diagram: Render flows as fenced Mermaid code blocks'
 		);
+		expect(firstUser?.content).toContain('- Real-world Analogies');
 		expect(firstUser?.metadata).toContain('"hidden":true');
 	});
 });
