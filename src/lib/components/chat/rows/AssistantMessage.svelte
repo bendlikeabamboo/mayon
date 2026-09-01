@@ -42,6 +42,8 @@
 		 */
 		canRegenerate?: boolean;
 		onJumpToSection?: (msgId: string, index: number) => void;
+		/** Persisted strip preference (US3): false unmounts every strip. */
+		stripEnabled?: boolean;
 	} & SharedCallbacks;
 
 	type LiveProps = {
@@ -72,12 +74,14 @@
 
 	const sections = $derived(isDurable ? extractSections(visible) : []);
 	const stripCandidate = $derived(isDurable && isStripCandidate(sections));
-	let stripEligible = $state(false);
+	const stripPrefOn = $derived(isDurable && ((props as DurableProps).stripEnabled ?? true));
+	let stripMeasured = $state(false);
+	const stripEligible = $derived(stripPrefOn && stripMeasured);
 	let bodyEl = $state<HTMLDivElement | null>(null);
 
 	$effect(() => {
 		if (!stripCandidate) {
-			stripEligible = false;
+			stripMeasured = false;
 			return;
 		}
 		const el = bodyEl;
@@ -85,7 +89,7 @@
 		const scroller = el.closest<HTMLElement>('.overflow-y-auto');
 		if (!scroller) return;
 		const measure = () => {
-			stripEligible = el.offsetHeight > scroller.clientHeight;
+			stripMeasured = el.offsetHeight > scroller.clientHeight;
 		};
 		measure();
 		const ro = new ResizeObserver(measure);

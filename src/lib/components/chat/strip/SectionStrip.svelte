@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Section } from '$lib/markdown/sections';
+	import {
+		dwellTransition,
+		initialDwellState,
+		type DwellResult,
+		type DwellState
+	} from '$lib/chat/strip/dwell';
 	import { incRender } from '$lib/perf/mark';
 
 	let {
@@ -13,7 +19,60 @@
 		onJump: (index: number) => void;
 	} = $props();
 
+	const previewId = $derived(`section-strip-preview-${msgId}`);
+
 	let isTouch = $state(false);
+	let previewIndex = $state<number | null>(null);
+	let dwellState: DwellState = initialDwellState();
+	let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function clearDwellTimer() {
+		if (dwellTimer !== null) {
+			clearTimeout(dwellTimer);
+			dwellTimer = null;
+		}
+	}
+
+	function applyDwell(result: DwellResult) {
+		dwellState = result.state;
+		clearDwellTimer();
+		if (result.armTimerMs !== null && result.state.hoveredIndex !== null) {
+			const index = result.state.hoveredIndex;
+			dwellTimer = setTimeout(() => {
+				dwellTimer = null;
+				applyDwell(dwellTransition(dwellState, { kind: 'dwell-fire', index, now: Date.now() }));
+			}, result.armTimerMs);
+		}
+		if (result.closePreview) previewIndex = null;
+		if (result.openPreview !== null) previewIndex = result.openPreview;
+	}
+
+	function handleBarEnter(index: number) {
+		if (isTouch) return;
+		const kind =
+			dwellState.hoveredIndex !== null && dwellState.hoveredIndex !== index
+				? 'enter-other-bar'
+				: 'enter-bar';
+		applyDwell(dwellTransition(dwellState, { kind, index, now: Date.now() }));
+	}
+
+	function handleBarLeave(event: PointerEvent) {
+		if (isTouch) return;
+		const entered = event.relatedTarget;
+		if (entered instanceof Element && entered.closest('.section-strip-preview')) return;
+		applyDwell(dwellTransition(dwellState, { kind: 'leave-bar', now: Date.now() }));
+	}
+
+	function handleStripLeave() {
+		applyDwell(dwellTransition(dwellState, { kind: 'leave-strip', now: Date.now() }));
+	}
+
+	function jumpTo(index: number) {
+		clearDwellTimer();
+		dwellState = initialDwellState();
+		previewIndex = null;
+		onJump(index);
+	}
 
 	onMount(() => {
 		const mq = window.matchMedia('(hover: none), (pointer: coarse)');
@@ -22,7 +81,10 @@
 			isTouch = e.matches;
 		}
 		mq.addEventListener('change', onMatchChange);
-		return () => mq.removeEventListener('change', onMatchChange);
+		return () => {
+			mq.removeEventListener('change', onMatchChange);
+			clearDwellTimer();
+		};
 	});
 
 	incRender('SectionStrip');
@@ -35,6 +97,7 @@
 	class="section-strip pointer-events-none absolute inset-y-0 -right-2 z-10 flex w-4 flex-col items-end gap-px text-border {isTouch
 		? ''
 		: 'group/strip group-hover/strip:text-muted-foreground/40'}"
+	onpointerleave={handleStripLeave}
 >
 	{#each sections as section (section.index)}
 		<button
@@ -44,7 +107,10 @@
 				: 'group-hover/bar:text-ring'}"
 			style="flex-grow:{Math.max(section.length, 1)};flex-basis:0;"
 			aria-label={section.title || `Section ${section.index + 1}`}
-			onclick={() => onJump(section.index)}
+			aria-describedby={previewIndex === section.index ? previewId : undefined}
+			onpointerenter={() => handleBarEnter(section.index)}
+			onpointerleave={handleBarLeave}
+			onclick={() => jumpTo(section.index)}
 		>
 			<span
 				class="min-h-1 w-[2px] self-stretch rounded-full bg-current transition-[width,background-color] duration-150 motion-reduce:transition-none {isTouch
@@ -53,4 +119,26 @@
 			></span>
 		</button>
 	{/each}
+	{#if previewIndex !== null && sections[previewIndex]}
+		<div
+			id={previewId}
+			role="tooltip"
+			class="section-strip-preview pointer-events-auto absolute top-0 right-full z-10 mr-1 max-w-xs rounded-md border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md transition-opacity duration-150 motion-reduce:transition-none"
+		>
+			<button
+				type="button"
+				class="block w-full text-left"
+				onclick={() => {
+					if (previewIndex !== null) jumpTo(previewIndex);
+				}}
+			>
+				<span class="block truncate font-medium">
+					{sections[previewIndex].title || `Section ${previewIndex + 1}`}
+				</span>
+				{#if sections[previewIndex].excerpt}
+					<span class="mt-1 block text-muted-foreground">{sections[previewIndex].excerpt}</span>
+				{/if}
+			</button>
+		</div>
+	{/if}
 </div>

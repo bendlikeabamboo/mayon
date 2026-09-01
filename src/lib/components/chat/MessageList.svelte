@@ -34,6 +34,7 @@
 		onBranchWhole,
 		onRegenerate,
 		onJumpToSection,
+		stripEnabled = true,
 		header,
 		personaName = 'Mayon',
 		failedMessageId = null,
@@ -51,6 +52,7 @@
 		onBranchWhole: (messageId: string) => void | Promise<void>;
 		onRegenerate?: (messageId: string) => void | Promise<void>;
 		onJumpToSection?: (msgId: string, index: number) => void;
+		stripEnabled?: boolean;
 		header?: Snippet;
 		personaName?: string;
 		failedMessageId?: string | null;
@@ -174,6 +176,7 @@
 								{onBranchWhole}
 								{onRegenerate}
 								{onJumpToSection}
+								{stripEnabled}
 								{personaName}
 								failed={item.entry.id === failedMessageId}
 								canRegenerate={item.entry.id === lastAssistantId}

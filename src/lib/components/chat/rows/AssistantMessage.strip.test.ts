@@ -38,4 +38,11 @@ describe('US1: AssistantMessage strip integration contract', () => {
 		expect(list).toContain('onJumpToSection?:');
 		expect(list).toContain('{onJumpToSection}');
 	});
+
+	it('folds the optional stripEnabled preference into eligibility (default on)', () => {
+		expect(source).toMatch(/stripEnabled\?: boolean/);
+		expect(source).toContain('(props as DurableProps).stripEnabled ?? true');
+		expect(list).toContain('stripEnabled?:');
+		expect(list).toContain('{stripEnabled}');
+	});
 });

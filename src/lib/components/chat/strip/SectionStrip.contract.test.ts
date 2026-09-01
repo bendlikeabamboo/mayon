@@ -53,11 +53,28 @@ describe('US1: SectionStrip pointer-discipline, motion, and touch source contrac
 		expect(source).toContain("removeEventListener('change'");
 	});
 
-	it('touch taps jump directly; no dwell timer or preview machinery exists yet (US2 seam)', () => {
+	it('touch taps jump directly; dwell handlers are guarded against coarse pointers (FR-011)', () => {
 		expect(source).toContain('onJump(');
 		expect(source).toMatch(/isTouch\s*\?/);
-		expect(source).not.toContain('setTimeout');
-		expect(source).not.toContain('preview');
-		expect(source).not.toContain('dwell');
+		expect(source).toContain('if (isTouch) return');
+	});
+
+	it('drives the dwell preview through the pure transition module and a component-held timer', () => {
+		expect(source).toContain("from '$lib/chat/strip/dwell'");
+		expect(source).toContain('dwellTransition');
+		expect(source).toContain('setTimeout');
+		expect(source).toContain('clearTimeout');
+	});
+
+	it('opens dwell on bar pointerenter and dismisses on pointer leave', () => {
+		expect(source).toContain('onpointerenter');
+		expect(source).toContain('onpointerleave');
+	});
+
+	it('renders the preview card with the selection-excluded chrome class and tooltip semantics', () => {
+		expect(source).toContain('section-strip-preview');
+		expect(source).toContain('role="tooltip"');
+		expect(source).toContain('aria-describedby');
+		expect(source).toContain('pointer-events-auto');
 	});
 });

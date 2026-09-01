@@ -6,6 +6,7 @@
 	import LabPromptConfig from '$lib/components/labs/LabPromptConfig.svelte';
 	import QuizPromptConfig from '$lib/components/quizzes/QuizPromptConfig.svelte';
 	import LearnerProfileConfig from '$lib/components/chat/LearnerProfileConfig.svelte';
+	import ChatDisplayConfig from '$lib/components/settings/ChatDisplayConfig.svelte';
 	import ExpoundInstructionsConfig from '$lib/components/chat/ExpoundInstructionsConfig.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
 	import SandboxDbSection from '$lib/components/settings/SandboxDbSection.svelte';
@@ -173,6 +174,9 @@
 		{/snippet}
 		<div id="mcp" class="scroll-mt-4">
 			<McpServers />
+		</div>
+		<div id="chat" class="scroll-mt-4">
+			<ChatDisplayConfig />
 		</div>
 		<div id="learner-profile" class="scroll-mt-4">
 			<LearnerProfileConfig />

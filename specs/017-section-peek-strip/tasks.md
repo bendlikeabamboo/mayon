@@ -87,13 +87,13 @@ Single SvelteKit project: all paths under `src/`. Tests are colocated beside sou
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T013 [P] [US2] Write failing unit tests for the dwell state machine in src/lib/chat/strip/dwell.test.ts per contracts §3: `enter-bar` arms a 400 ms timer; `leave-bar`, `enter-other-bar`, and `leave-strip` each cancel the timer AND close any open preview (sweep immunity + prompt dismissal); re-entering re-arms; opening a preview for index N then `leave-strip` yields `openPreview: null`; no timers inside the module (pure transition function only)
-- [ ] T014 [P] [US2] Implement src/lib/chat/strip/dwell.ts to make T013 green: `DWELL_MS = 400`, `DwellState`/`DwellInput`/`dwellTransition` exactly per contracts §3 — no DOM, no timers (depends T013)
+- [x] T013 [P] [US2] Write failing unit tests for the dwell state machine in src/lib/chat/strip/dwell.test.ts per contracts §3: `enter-bar` arms a 400 ms timer; `leave-bar`, `enter-other-bar`, and `leave-strip` each cancel the timer AND close any open preview (sweep immunity + prompt dismissal); re-entering re-arms; opening a preview for index N then `leave-strip` yields `openPreview: null`; no timers inside the module (pure transition function only)
+- [x] T014 [P] [US2] Implement src/lib/chat/strip/dwell.ts to make T013 green: `DWELL_MS = 400`, `DwellState`/`DwellInput`/`dwellTransition` exactly per contracts §3 — no DOM, no timers (depends T013)
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Add the preview card to src/lib/components/chat/strip/SectionStrip.svelte: wire `dwellTransition` to real pointer events (timer id held in component `$state`, desktop pointers only — touch never arms a dwell per FR-011); card anchored `absolute right-full` of the strip, popover surface (`bg-popover text-popover-foreground border-border shadow-md rounded-md max-w-xs`), shows `section.title` + `section.excerpt` as plain text; click on card = `onJump(previewIndex)`; prompt dismissal on pointer leave of strip+preview region; class `section-strip-preview` on the card (already excluded in selection.ts from T004) (depends T014, T009)
-- [ ] T016 [US2] Manual smoke per quickstart Scenario 2: dwell opens preview; sweep immunity; prompt dismiss; preview click jumps; regenerate produces fresh preview text (never stale) (depends T015)
+- [x] T015 [US2] Add the preview card to src/lib/components/chat/strip/SectionStrip.svelte: wire `dwellTransition` to real pointer events (timer id held in component `$state`, desktop pointers only — touch never arms a dwell per FR-011); card anchored `absolute right-full` of the strip, popover surface (`bg-popover text-popover-foreground border-border shadow-md rounded-md max-w-xs`), shows `section.title` + `section.excerpt` as plain text; click on card = `onJump(previewIndex)`; prompt dismissal on pointer leave of strip+preview region; class `section-strip-preview` on the card (already excluded in selection.ts from T004) (depends T014, T009)
+- [x] T016 [US2] Manual smoke per quickstart Scenario 2: dwell opens preview; sweep immunity; prompt dismiss; preview click jumps; regenerate produces fresh preview text (never stale) (depends T015)
 
 **Checkpoint**: User Stories 1 AND 2 both work independently.
 
@@ -109,13 +109,13 @@ Single SvelteKit project: all paths under `src/`. Tests are colocated beside sou
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T017 [P] [US3] Write failing tests for the preference module in src/lib/chat/strip/pref.test.ts (pglite driver, pattern: src/lib/chat/uiState.test.ts): round-trip `setStripEnabled(false)` → `isStripEnabled() === false`; missing key ⇒ `true`; corrupt JSON ⇒ `true`; wrong type (string/number) ⇒ `true`; key is exactly `'sectionStripEnabled'`; values written through `repos.settings` (depends on nothing)
-- [ ] T018 [P] [US3] Implement src/lib/chat/strip/pref.ts to make T017 green per contracts §2: `STRIP_ENABLED_KEY = 'sectionStripEnabled'`, defensive `isStripEnabled()`, `setStripEnabled()` via `repos.settings` — the sole-writer module; no other file may touch this key (depends T017)
+- [x] T017 [P] [US3] Write failing tests for the preference module in src/lib/chat/strip/pref.test.ts (pglite driver, pattern: src/lib/chat/uiState.test.ts): round-trip `setStripEnabled(false)` → `isStripEnabled() === false`; missing key ⇒ `true`; corrupt JSON ⇒ `true`; wrong type (string/number) ⇒ `true`; key is exactly `'sectionStripEnabled'`; values written through `repos.settings` (depends on nothing)
+- [x] T018 [P] [US3] Implement src/lib/chat/strip/pref.ts to make T017 green per contracts §2: `STRIP_ENABLED_KEY = 'sectionStripEnabled'`, defensive `isStripEnabled()`, `setStripEnabled()` via `repos.settings` — the sole-writer module; no other file may touch this key (depends T017)
 
 ### Implementation for User Story 3
 
-- [ ] T019 [US3] Add the toggle to the settings UI and gate eligibility on it: in src/routes/settings/+page.svelte (or its section component under src/lib/components/settings/ — use the section registry src/lib/settings/sections.ts to pick placement; control = state-styled Button per the McpServers.svelte enable-toggle pattern, no Switch primitive exists), label "Section strip in long replies"; read/write ONLY via src/lib/chat/strip/pref.ts; then in src/routes/chat/[id]/+page.svelte load the preference once per mount and thread it (new prop through MessageList → AssistantMessage, or fold into eligibility at the AssistantMessage call site) so `false` unmounts/prevents every strip reactively (depends T018, T010)
-- [ ] T020 [US3] Manual smoke per quickstart Scenario 3: off removes all strips immediately; persists across reload (and `pnpm dev:down`/`pnpm dev` restart); on restores strips and jumps (depends T019)
+- [x] T019 [US3] Add the toggle to the settings UI and gate eligibility on it: in src/routes/settings/+page.svelte (or its section component under src/lib/components/settings/ — use the section registry src/lib/settings/sections.ts to pick placement; control = state-styled Button per the McpServers.svelte enable-toggle pattern, no Switch primitive exists), label "Section strip in long replies"; read/write ONLY via src/lib/chat/strip/pref.ts; then in src/routes/chat/[id]/+page.svelte load the preference once per mount and thread it (new prop through MessageList → AssistantMessage, or fold into eligibility at the AssistantMessage call site) so `false` unmounts/prevents every strip reactively (depends T018, T010)
+- [x] T020 [US3] Manual smoke per quickstart Scenario 3: off removes all strips immediately; persists across reload (and `pnpm dev:down`/`pnpm dev` restart); on restores strips and jumps (depends T019)
 
 **Checkpoint**: All three user stories independently functional.
 

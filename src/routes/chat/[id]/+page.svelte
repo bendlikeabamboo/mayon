@@ -33,6 +33,7 @@
 	import { parseAddFormats } from '$lib/chat/expound';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
+	import { isStripEnabled } from '$lib/chat/strip/pref';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
@@ -63,6 +64,11 @@
 	let briefExpandedWriteSeq = 0;
 	/** When true, the intake card on this chat is dismissed for the session. */
 	let intakeDismissed = $state(false);
+	/**
+	 * Persisted section-strip preference, loaded once per mount (settings→chat
+	 * navigation remounts this route, so a mount-time read is sufficient).
+	 */
+	let stripEnabled = $state(true);
 	let editingInferred = $state(false);
 	let rootChat = $state<Chat | null>(null);
 	let branchSource = $state<BranchSource | null>(null);
@@ -417,6 +423,7 @@
 		mq.addEventListener('change', onMatchChange);
 
 		(async () => {
+			void isStripEnabled().then((enabled) => (stripEnabled = enabled));
 			try {
 				const active = await getActiveSdkProvider();
 				activeModelId = active.config.defaultModel;
@@ -820,6 +827,7 @@
 							{onBranchWhole}
 							{onRegenerate}
 							onJumpToSection={handleSectionJump}
+							{stripEnabled}
 							{personaName}
 							{failedMessageId}
 							streaming={chatStore.streaming}
