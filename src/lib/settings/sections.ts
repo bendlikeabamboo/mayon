@@ -14,6 +14,12 @@ export const SETTINGS_SECTIONS: readonly SectionEntry[] = [
 	{ id: 'expound-instructions', label: 'Expound Instructions', aliases: [], cap: null },
 	{ id: 'lab-prompt', label: 'Lab generation prompt', aliases: [], cap: null },
 	{ id: 'quiz-prompt', label: 'Quiz generation prompt', aliases: [], cap: null },
+	{
+		id: 'security',
+		label: 'Security',
+		aliases: ['lock', 'login', 'password', 'auth', 'mfa', 'totp'],
+		cap: null
+	},
 	{ id: 'data', label: 'Data', aliases: ['backup', 'restore', 'export', 'import'], cap: null },
 	{ id: 'sandbox-db', label: 'Sandbox DB', aliases: ['sandbox', 'sqlite'], cap: 'sandbox-db' }
 ];

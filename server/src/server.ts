@@ -63,9 +63,9 @@ export async function getSecurityMode(
 	if (cached && now() - cached.readAt < SECURITY_MODE_TTL_MS) {
 		return cached.value;
 	}
-	let value: AuthMode = 'open';
 	try {
 		const res = await pool.query('SELECT value FROM settings WHERE key = $1', [SECURITY_MODE_KEY]);
+		let value: AuthMode = 'open';
 		const raw = res.rows[0]?.value;
 		if (typeof raw === 'string') {
 			const parsed: unknown = JSON.parse(raw);
@@ -73,11 +73,22 @@ export async function getSecurityMode(
 				value = parsed;
 			}
 		}
-	} catch {
-		value = 'open';
+		securityModeCaches.set(pool, { value, readAt: now() });
+		return value;
+	} catch (err) {
+		if (isMissingSettingsRelation(err)) {
+			return 'open';
+		}
+		return 'locked';
 	}
-	securityModeCaches.set(pool, { value, readAt: now() });
-	return value;
+}
+
+function isMissingSettingsRelation(err: unknown): boolean {
+	if ((err as { code?: string } | null)?.code === '42P01') {
+		return true;
+	}
+	const message = err instanceof Error ? err.message : String(err);
+	return /relation\s+"?settings"?\s+does not exist/i.test(message);
 }
 
 export async function setSecurityMode(

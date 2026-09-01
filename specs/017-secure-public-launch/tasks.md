@@ -70,11 +70,11 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 - [x] T015 [US1] Implement `POST /api/auth/session` (public status payload per contract) in `server/src/auth/index.ts` (new Fastify plugin registered alongside the others in `server/src/server.ts` route plugin)
 - [x] T016 [US1] Implement `POST /api/auth/setup` in `server/src/auth/index.ts`: validate label (1–64 chars)/password (8–1024), 409 if active owner exists, argon2id hash, otplib secret generate + GCM-wrap (pending), return otpauthUri (`otpauth://totp/mayon:<label>?…&issuer=mayon`)
 - [x] T017 [US1] Implement `POST /api/auth/setup/confirm` in `server/src/auth/index.ts`: verify ±1 step via otplib against decrypted secret, set `mfa_enrolled_at`, set `security.mode = locked` (settings upsert), issue session cookie, atomically close setup
-- [ ] T018 [P] [US1] Create `src/lib/components/AuthQr.svelte`: render an otpauth URI as a QR (qrcode lib, SVG) with the raw URI shown as fallback text
-- [ ] T019 [US1] Create `src/lib/auth/client.ts` (typed fetch wrappers for /api/auth/*) and `src/lib/auth/state.svelte.ts` (boot-time auth state: calls POST /api/auth/session, exposes mode/authenticated/setupRequired, refresh() after login/logout)
-- [ ] T020 [US1] Integrate boot ordering in `src/routes/+layout.svelte`: resolve auth state BEFORE `bootstrapDb()`; when locked+unauthenticated render the login branch (placeholder shell ok) and DO NOT bootstrap db; when setup offered (open, no owner, not dismissed) show setup prompt; remember dismissal in localStorage (`mayon_setup_dismissed`) so the prompt never re-nags (FR-022)
-- [ ] T021 [US1] Create `src/routes/login/+page.svelte` first-run setup mode: label + password form, AuthQr, confirm-code step, clear error states; shadcn-svelte vocabulary only
-- [ ] T022 [US1] Add Settings › Security entry (`src/routes/settings/`): mode badge + "Enable security" action (open mode only) launching the same setup flow (reuse T021 component) per FR-024
+- [x] T018 [P] [US1] Create `src/lib/components/AuthQr.svelte`: render an otpauth URI as a QR (qrcode lib, SVG) with the raw URI shown as fallback text
+- [x] T019 [US1] Create `src/lib/auth/client.ts` (typed fetch wrappers for /api/auth/*) and `src/lib/auth/state.svelte.ts` (boot-time auth state: calls POST /api/auth/session, exposes mode/authenticated/setupRequired, refresh() after login/logout)
+- [x] T020 [US1] Integrate boot ordering in `src/routes/+layout.svelte`: resolve auth state BEFORE `bootstrapDb()`; when locked+unauthenticated render the login branch (placeholder shell ok) and DO NOT bootstrap db; when setup offered (open, no owner, not dismissed) show setup prompt; remember dismissal in localStorage (`mayon_setup_dismissed`) so the prompt never re-nags (FR-022)
+- [x] T021 [US1] Create `src/routes/login/+page.svelte` first-run setup mode: label + password form, AuthQr, confirm-code step, clear error states; shadcn-svelte vocabulary only
+- [x] T022 [US1] Add Settings › Security entry (`src/routes/settings/`): mode badge + "Enable security" action (open mode only) launching the same setup flow (reuse T021 component) per FR-024
 - [ ] T023 [US1] Validate against quickstart.md steps 1–2 manually on `pnpm dev`; run `pnpm check && pnpm lint && pnpm test && pnpm --filter @mayon/server test`
 
 **Checkpoint**: US1 independently functional: skip = today; enable = locked; setup closed after completion.
@@ -89,13 +89,13 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 ### Tests for User Story 2 (write FIRST, must FAIL)
 
-- [ ] T024 [US2] Extend `server/src/auth-gate.test.ts` with the locked-mode sweep: enumerate every registered route from the built app (incl. GET /ws/mcp upgrade and POST /api/llm/proxy), assert `401 {"error":"unauthenticated"}` identical status+body shape on all non-allowlisted routes; assert the allowlist itself (health public; auth/session, auth/login, auth/setup, auth/setup/confirm, auth/enroll, auth/logout reachable) — SC-001/SC-002 invariant
-- [ ] T025 [US2] Add with-session pass-through cases to `server/src/auth-gate.test.ts`: mint a session row directly via store + valid cookie → `/api/db/query` reaches handler, `/api/llm/proxy` hijacked streaming still streams (assert chunked body passes), `/ws/mcp` upgrade accepted (existing mcp.test.ts pattern)
-- [ ] T026 [US2] Add restore-order test to `server/src/auth-gate.test.ts`: set restoring flag (`setRestoring(true)`) → no session ⇒ 401 (not 503); valid session ⇒ 503 `restore in progress`
+- [x] T024 [US2] Extend `server/src/auth-gate.test.ts` with the locked-mode sweep: enumerate every registered route from the built app (incl. GET /ws/mcp upgrade and POST /api/llm/proxy), assert `401 {"error":"unauthenticated"}` identical status+body shape on all non-allowlisted routes; assert the allowlist itself (health public; auth/session, auth/login, auth/setup, auth/setup/confirm, auth/enroll, auth/logout reachable) — SC-001/SC-002 invariant
+- [x] T025 [US2] Add with-session pass-through cases to `server/src/auth-gate.test.ts`: mint a session row directly via store + valid cookie → `/api/db/query` reaches handler, `/api/llm/proxy` hijacked streaming still streams (assert chunked body passes), `/ws/mcp` upgrade accepted (existing mcp.test.ts pattern)
+- [x] T026 [US2] Add restore-order test to `server/src/auth-gate.test.ts`: set restoring flag (`setRestoring(true)`) → no session ⇒ 401 (not 503); valid session ⇒ 503 `restore in progress`
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Make sweep green: fix any route that escapes the gate in `server/src/auth/gate.ts` allowlist/hook ordering (root hook BEFORE plugin registration; @fastify/websocket upgrade path included)
+- [x] T027 [US2] Make sweep green: fix any route that escapes the gate in `server/src/auth/gate.ts` allowlist/hook ordering (root hook BEFORE plugin registration; @fastify/websocket upgrade path included)
 - [ ] T028 [US2] Enforce no-data-before-auth in the SPA: `src/lib/auth/state.svelte.ts` gate flag consumed in `src/routes/+layout.svelte` so no `repos`/settings calls (which would 401) fire while locked+unauthenticated; BootGate-style locked branch shows the login route only
 - [ ] T029 [US2] Add mode visibility UI in `src/routes/settings/` security section: persistent **Open** badge + warning banner when open (FR-023 — open state must never look like a broken gate), **Locked** badge otherwise
 - [ ] T030 [US2] Validate quickstart.md steps 0 and 3 (sweep + curl wall checks); full quality gates
