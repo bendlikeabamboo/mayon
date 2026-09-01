@@ -23,7 +23,7 @@ describe('DEFAULT_EXPOUND_INSTRUCTIONS', () => {
 			{
 				id: 'mermaid-diagram',
 				name: 'Mermaid Diagram',
-				description: 'Render flows and relationships as Mermaid diagrams',
+				description: 'Render flows and relationships as fenced Mermaid code blocks',
 				builtin: true
 			},
 			{
