@@ -235,7 +235,7 @@
 						bind:value={loginCode}
 						required
 						inputmode="numeric"
-						pattern="\d{6}"
+						pattern={'[0-9]{6}'}
 						maxlength={6}
 						autocomplete="one-time-code"
 						class="{inputClass} text-center font-mono tracking-[0.3em]"
@@ -275,7 +275,7 @@
 						bind:value={enrollCode}
 						required
 						inputmode="numeric"
-						pattern="\d{6}"
+						pattern={'[0-9]{6}'}
 						maxlength={6}
 						autocomplete="one-time-code"
 						class="{inputClass} text-center font-mono tracking-[0.3em]"
@@ -375,7 +375,7 @@
 						bind:value={code}
 						required
 						inputmode="numeric"
-						pattern="\d{6}"
+						pattern={'[0-9]{6}'}
 						maxlength={6}
 						autocomplete="one-time-code"
 						class="{inputClass} text-center font-mono tracking-[0.3em]"
