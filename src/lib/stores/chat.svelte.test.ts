@@ -2,13 +2,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import type { ProviderConfig } from '$lib/ai/types';
-import { MissingKeyError } from '$lib/ai/types';
+import { MissingKeyError, ProviderHttpError } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '$lib/chat/expound';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import type { LearningBrief } from '$lib/chat/brief';
+import type { ComposerAttachment, ImagePart } from '$lib/chat/kinds';
+import { attachmentsOf } from '$lib/chat/kinds';
 
 if (typeof requestAnimationFrame === 'undefined') {
 	globalThis.requestAnimationFrame = (cb: FrameRequestCallback) =>
@@ -60,6 +62,12 @@ const { generateText, generateObject, streamText } = await import('ai');
 const mockedGenerateText = vi.mocked(generateText);
 const mockedGenerateObject = vi.mocked(generateObject);
 const mockedStreamText = vi.mocked(streamText);
+
+// Factory implementation of the mocked runAgentTurn, captured before any test
+// can clobber it. Some describes (UJ16) mockImplementation without restoring;
+// the attachments describe reinstalls this so its turns actually stream.
+const { runAgentTurn } = await import('$lib/agent/loop');
+const baseRunAgentTurnImpl = vi.mocked(runAgentTurn).getMockImplementation();
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
@@ -1481,5 +1489,355 @@ describe('chatStore interrupted row persistence (UJ16)', () => {
 		const msgs = await repos.messages.listByChat(root.id);
 		const assistantMsgs = msgs.filter((m) => m.role === 'assistant');
 		expect(assistantMsgs).toHaveLength(0);
+	});
+});
+
+describe('chatStore send with attachments (T010 — specs/018 User Story 1)', () => {
+	const IMAGE_A = 'data:image/png;base64,AAAA';
+	const IMAGE_B = 'data:image/jpeg;base64,BBBB';
+
+	function makeAttachment(dataUrl: string, name?: string): ComposerAttachment {
+		const part: ImagePart = {
+			type: 'image',
+			data: dataUrl,
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 3,
+			...(name ? { name } : {})
+		};
+		return { part, thumbnailDataUrl: dataUrl };
+	}
+
+	function mockStreamCapture(order: string[], reply = 'ok'): void {
+		mockedStreamText.mockImplementation(() => {
+			order.push('stream');
+			return {
+				textStream: (async function* () {
+					yield reply;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: reply };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: reply,
+				response: { id: 'test' }
+			} as never;
+		});
+	}
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('(a) send(text, { effort, attachments }) persists ONE user row with parts BEFORE the LLM call', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		const order: string[] = [];
+		mockStreamCapture(order);
+
+		const dbAppend = repos.messages.append;
+		const appendSpy = vi
+			.spyOn(repos.messages, 'append')
+			.mockImplementation(async (...args: Parameters<typeof dbAppend>) => {
+				order.push('append');
+				return dbAppend(...args);
+			});
+
+		const attachments = [makeAttachment(IMAGE_A, 'shot.png'), makeAttachment(IMAGE_B)];
+		await chatStore.load(root.id);
+		await chatStore.send('look at these', { effort: 'on', attachments });
+
+		// The user-row append (the first append of the turn) precedes streamText.
+		expect(order[0]).toBe('append');
+		expect(order.indexOf('append')).toBeLessThan(order.indexOf('stream'));
+
+		const firstCall = appendSpy.mock.calls[0]!;
+		expect(firstCall[0]).toBe(root.id);
+		expect(firstCall[1]).toBe('user');
+		expect(firstCall[2]).toBe('look at these');
+		expect(firstCall[3]?.parts).toEqual([
+			{ type: 'text', text: 'look at these' },
+			attachments[0]!.part,
+			attachments[1]!.part
+		]);
+
+		// Exactly ONE user row, persisted atomically with its parts.
+		const msgs = await repos.messages.listByChat(root.id);
+		const userRows = msgs.filter((m) => m.role === 'user');
+		expect(userRows).toHaveLength(1);
+		expect(userRows[0]!.content).toBe('look at these');
+		expect(JSON.parse(userRows[0]!.parts!)).toEqual([
+			{ type: 'text', text: 'look at these' },
+			attachments[0]!.part,
+			attachments[1]!.part
+		]);
+		expect(msgs.some((m) => m.role === 'assistant')).toBe(true);
+	});
+
+	it('(a′) image-less sends keep the row shape unchanged (parts stays NULL)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamCapture([]);
+
+		await chatStore.load(root.id);
+		await chatStore.send('plain text');
+
+		const userRow = (await repos.messages.listByChat(root.id)).find((m) => m.role === 'user');
+		expect(userRow).toBeDefined();
+		expect(userRow!.content).toBe('plain text');
+		expect(userRow!.parts).toBeNull();
+	});
+
+	it('(b) a failed send with attachments leaves no assistant row and arms the retry state', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockedGetActiveSdkProvider.mockRejectedValue(new Error('boom'));
+		await chatStore.load(root.id);
+
+		const attachments = [makeAttachment(IMAGE_A)];
+		await chatStore.send('look at this', { effort: 'on', attachments });
+
+		expect(chatStore.error).not.toBeNull();
+		expect(chatStore.lastFailedPrompt).toBe('look at this');
+		expect(chatStore.lastFailedAttachments).toEqual(attachments);
+
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs.filter((m) => m.role === 'assistant')).toHaveLength(0);
+		const userRow = msgs.find((m) => m.role === 'user');
+		expect(userRow).toBeDefined();
+		expect(JSON.parse(userRow!.parts!)).toEqual([
+			{ type: 'text', text: 'look at this' },
+			attachments[0]!.part
+		]);
+	});
+
+	it('(c) retry re-sends with text AND attachments restored, deleting the dangling user row first', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockedGetActiveSdkProvider.mockRejectedValue(new Error('boom'));
+		await chatStore.load(root.id);
+
+		const attachments = [makeAttachment(IMAGE_A, 'retry.png'), makeAttachment(IMAGE_B)];
+		await chatStore.send('look at this', { effort: 'on', attachments });
+
+		// Route onRetry: restore from the store's retry state, then delete the
+		// dangling user row, then send again with both restored.
+		const restoredText = chatStore.lastFailedPrompt;
+		const restoredAttachments = chatStore.lastFailedAttachments;
+		expect(restoredText).toBe('look at this');
+		expect(restoredAttachments).toEqual(attachments);
+
+		await chatStore.deleteLastDanglingUser();
+		expect(await repos.messages.listByChat(root.id)).toEqual([]);
+
+		mockDefaultProvider();
+		mockStreamCapture([]);
+		await chatStore.send(restoredText!, { effort: 'on', attachments: restoredAttachments! });
+
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
+		const userRow = msgs.find((m) => m.role === 'user')!;
+		expect(userRow.content).toBe('look at this');
+		expect(JSON.parse(userRow.parts!)).toEqual([
+			{ type: 'text', text: 'look at this' },
+			attachments[0]!.part,
+			attachments[1]!.part
+		]);
+		expect(chatStore.error).toBeNull();
+		expect(chatStore.lastFailedPrompt).toBeNull();
+		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+
+	it("(d) image-only send (empty text, 1 attachment) persists content='' with a single image part", async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamCapture([]);
+
+		await chatStore.load(root.id);
+		const attachment = makeAttachment(IMAGE_A);
+		await chatStore.send('', { effort: 'on', attachments: [attachment] });
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const userRow = msgs.find((m) => m.role === 'user');
+		expect(userRow).toBeDefined();
+		expect(userRow!.content).toBe('');
+		expect(JSON.parse(userRow!.parts!)).toEqual([attachment.part]);
+		expect(msgs.some((m) => m.role === 'assistant')).toBe(true);
+	});
+
+	it('(e) regenerate after an image turn re-sends text AND attachments from the prior user row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamCapture([]);
+
+		const attachments = [makeAttachment(IMAGE_A, 'regen.png'), makeAttachment(IMAGE_B)];
+		await chatStore.load(root.id);
+		await chatStore.send('look at this', { effort: 'on', attachments });
+
+		// Route onRegenerate: source the last user row's parts via partsOf,
+		// delete the interrupted assistant row, then re-send with both restored.
+		const msgs = await repos.messages.listByChat(root.id);
+		const userRow = msgs.find((m) => m.role === 'user')!;
+		const assistantRow = msgs.find((m) => m.role === 'assistant')!;
+
+		const restoredText = userRow.content;
+		const restoredAttachments = attachmentsOf(userRow);
+		expect(restoredText).toBe('look at this');
+		expect(restoredAttachments.map((a) => a.part)).toEqual(attachments.map((a) => a.part));
+
+		await repos.messages.delete(assistantRow.id);
+		chatStore.messages = chatStore.messages.filter((m) => m.id !== assistantRow.id);
+		await chatStore.send(restoredText, { effort: 'on', attachments: restoredAttachments });
+
+		const after = await repos.messages.listByChat(root.id);
+		const userRows = after.filter((m) => m.role === 'user');
+		expect(userRows).toHaveLength(2);
+		expect(JSON.parse(userRows[1]!.parts!)).toEqual([
+			{ type: 'text', text: 'look at this' },
+			attachments[0]!.part,
+			attachments[1]!.part
+		]);
+		expect(after.some((m) => m.role === 'assistant')).toBe(true);
+	});
+
+	it('(f) regenerate of an image-only turn re-sends with the image parts (empty text)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamCapture([]);
+
+		const attachment = makeAttachment(IMAGE_A);
+		await chatStore.load(root.id);
+		await chatStore.send('', { effort: 'on', attachments: [attachment] });
+
+		// Route onRegenerate against an image-only turn: text is '' but the
+		// restored attachments must still trigger the re-send.
+		const msgs = await repos.messages.listByChat(root.id);
+		const userRow = msgs.find((m) => m.role === 'user')!;
+		const assistantRow = msgs.find((m) => m.role === 'assistant')!;
+		const restoredAttachments = attachmentsOf(userRow);
+		expect(restoredAttachments.map((a) => a.part)).toEqual([attachment.part]);
+
+		await repos.messages.delete(assistantRow.id);
+		chatStore.messages = chatStore.messages.filter((m) => m.id !== assistantRow.id);
+		await chatStore.send(userRow.content, { effort: 'on', attachments: restoredAttachments });
+
+		const after = await repos.messages.listByChat(root.id);
+		const userRows = after.filter((m) => m.role === 'user');
+		expect(userRows).toHaveLength(2);
+		expect(JSON.parse(userRows[1]!.parts!)).toEqual([attachment.part]);
+		expect(after.some((m) => m.role === 'assistant')).toBe(true);
+	});
+});
+
+describe('chatStore image-unsupported error wiring (T021 — specs/018 User Story 2)', () => {
+	const IMAGE_A = 'data:image/png;base64,AAAA';
+
+	function makeAttachment(dataUrl: string): ComposerAttachment {
+		const part: ImagePart = {
+			type: 'image',
+			data: dataUrl,
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 3
+		};
+		return { part, thumbnailDataUrl: dataUrl };
+	}
+
+	function mockStreamReplyOk(): void {
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'ok';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'ok' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: 'ok',
+			response: { id: 'test' }
+		} as never);
+	}
+
+	function failTurnWithHttp400(): void {
+		vi.mocked(runAgentTurn).mockRejectedValueOnce(
+			new ProviderHttpError('Provider returned HTTP 400', 400, 'image input not accepted')
+		);
+	}
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('image-bearing send failing with ProviderHttpError 400 surfaces the dedicated "Images not supported" error', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		failTurnWithHttp400();
+		await chatStore.load(root.id);
+
+		const attachments = [makeAttachment(IMAGE_A)];
+		await chatStore.send('look at this', { effort: 'on', attachments });
+
+		expect(chatStore.error).toEqual({
+			title: 'Images not supported',
+			message: "stub-model doesn't accept images.",
+			hint: 'Remove the attachment or switch to a vision-capable model.'
+		});
+
+		// Retry still restores text + attachments alongside the dedicated error.
+		expect(chatStore.lastFailedPrompt).toBe('look at this');
+		expect(chatStore.lastFailedAttachments).toEqual(attachments);
+	});
+
+	it('retry after the image-unsupported failure restores attachments and clears the dedicated error', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		failTurnWithHttp400();
+		await chatStore.load(root.id);
+
+		const attachments = [makeAttachment(IMAGE_A)];
+		await chatStore.send('look at this', { effort: 'on', attachments });
+		expect(chatStore.error?.title).toBe('Images not supported');
+
+		// Route onRetry: restore from the store's retry state, delete the
+		// dangling user row, re-send with both restored.
+		const restoredText = chatStore.lastFailedPrompt!;
+		const restoredAttachments = chatStore.lastFailedAttachments!;
+		mockDefaultProvider();
+		mockStreamReplyOk();
+		await chatStore.deleteLastDanglingUser();
+		await chatStore.send(restoredText, { effort: 'on', attachments: restoredAttachments });
+
+		expect(chatStore.error).toBeNull();
+		expect(chatStore.lastFailedPrompt).toBeNull();
+		expect(chatStore.lastFailedAttachments).toBeNull();
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
+	});
+
+	it('non-image failures keep the existing pipeline (image-less 400 stays a generic provider error)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		failTurnWithHttp400();
+		await chatStore.load(root.id);
+
+		await chatStore.send('plain text');
+
+		expect(chatStore.error).toEqual({
+			title: 'Provider error (400)',
+			message: 'image input not accepted',
+			hint: undefined
+		});
+		expect(chatStore.lastFailedAttachments).toBeNull();
 	});
 });

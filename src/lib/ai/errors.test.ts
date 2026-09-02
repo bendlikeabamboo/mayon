@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatProviderError, SERVER_REQUIRED_HINT } from './errors';
+import {
+	asImageUnsupported,
+	formatProviderError,
+	httpStatusToError,
+	SERVER_REQUIRED_HINT
+} from './errors';
 import {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageUnsupportedError,
 	MissingKeyError,
 	NetworkError,
 	ProviderHttpError,
@@ -77,5 +83,79 @@ describe('formatProviderError', () => {
 
 		const outStr = formatProviderError('weird');
 		expect(outStr.message).toBe('weird');
+	});
+});
+
+describe('formatProviderError: ImageUnsupportedError', () => {
+	it('names the model and points at removing the attachment or switching models', () => {
+		const out = formatProviderError(new ImageUnsupportedError(undefined, 'deepseek-chat'));
+		expect(out.title).toBe('Images not supported');
+		expect(out.message).toMatch(/deepseek-chat doesn't accept images/);
+		expect(out.hint).toMatch(/Remove the attachment/);
+		expect(out.hint).toMatch(/vision-capable/);
+	});
+
+	it('falls back to a generic model mention when no modelId is set', () => {
+		const out = formatProviderError(new ImageUnsupportedError());
+		expect(out.title).toBe('Images not supported');
+		expect(out.message).toMatch(/model doesn't accept images/);
+		expect(out.hint).toMatch(/Remove the attachment/);
+	});
+});
+
+describe('asImageUnsupported', () => {
+	it('refines a provider 4xx into ImageUnsupportedError on an image-bearing request', () => {
+		const refined = asImageUnsupported(
+			new ProviderHttpError('image input rejected', 400, '{"error":"image not supported"}'),
+			'deepseek-chat',
+			'p1'
+		);
+		expect(refined).toBeInstanceOf(ImageUnsupportedError);
+		const typed = refined as ImageUnsupportedError;
+		expect(typed.modelId).toBe('deepseek-chat');
+		expect(typed.providerId).toBe('p1');
+
+		const out = formatProviderError(refined);
+		expect(out.title).toBe('Images not supported');
+		expect(out.message).toMatch(/deepseek-chat doesn't accept images/);
+		expect(out.hint).toMatch(/Remove the attachment/);
+	});
+
+	it('refines a 4xx without a modelId to the generic message', () => {
+		const refined = asImageUnsupported(new ProviderHttpError('bad', 422));
+		expect(refined).toBeInstanceOf(ImageUnsupportedError);
+		expect(formatProviderError(refined).message).toMatch(/model doesn't accept images/);
+	});
+
+	it('leaves 5xx, 429, and non-HTTP errors unchanged', () => {
+		const serverErr = new ProviderHttpError('boom', 503, 'unavailable');
+		expect(asImageUnsupported(serverErr)).toBe(serverErr);
+
+		const rateErr = new RateLimitError();
+		expect(asImageUnsupported(rateErr)).toBe(rateErr);
+
+		const netErr = new NetworkError('offline');
+		expect(asImageUnsupported(netErr)).toBe(netErr);
+	});
+
+	it('keeps an already-typed ImageUnsupportedError intact', () => {
+		const direct = new ImageUnsupportedError(undefined, 'kimi-k3');
+		const refined = asImageUnsupported(direct, 'gpt-4o');
+		expect(refined).toBe(direct);
+		expect((refined as ImageUnsupportedError).modelId).toBe('kimi-k3');
+	});
+
+	it('classifies provider 400 on an image-bearing request end-to-end: httpStatusToError → asImageUnsupported → formatProviderError', async () => {
+		const res = new Response('{"error":{"message":"image input not supported"}}', { status: 400 });
+		const mapped = await httpStatusToError(res);
+		expect(mapped).toBeInstanceOf(ProviderHttpError);
+
+		const refined = asImageUnsupported(mapped, 'gpt-3.5-turbo');
+		expect(refined).toBeInstanceOf(ImageUnsupportedError);
+
+		const out = formatProviderError(refined);
+		expect(out.title).toBe('Images not supported');
+		expect(out.message).toMatch(/gpt-3.5-turbo doesn't accept images/);
+		expect(out.hint).toMatch(/Remove the attachment/);
 	});
 });

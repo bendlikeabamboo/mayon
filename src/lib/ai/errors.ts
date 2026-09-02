@@ -11,6 +11,7 @@ import {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageUnsupportedError,
 	MissingKeyError,
 	NetworkError,
 	ProviderHttpError,
@@ -51,6 +52,15 @@ export function formatProviderError(err: unknown): FormattedProviderError {
 			title: 'No Copilot subscription',
 			message: err.message,
 			hint: 'The authorized GitHub account has no active Copilot subscription.'
+		};
+	}
+	if (err instanceof ImageUnsupportedError) {
+		return {
+			title: 'Images not supported',
+			message: err.modelId
+				? `${err.modelId} doesn't accept images.`
+				: "This model doesn't accept images.",
+			hint: 'Remove the attachment or switch to a vision-capable model.'
 		};
 	}
 	if (err instanceof RateLimitError) {
@@ -154,6 +164,27 @@ export async function httpStatusToError(res: Response): Promise<Error> {
 	);
 }
 
+/**
+ * Fallback classification for image-bearing requests: refine an already-mapped
+ * provider 4xx into `ImageUnsupportedError` (spec 018 D6 — a provider 4xx on a
+ * send that carried image parts is treated as image rejection ahead of opaque
+ * provider output). The caller (chat store) knows whether the failed request
+ * carried images; this stays pure and returns the input unchanged whenever the
+ * refinement doesn't apply. Errors already typed `ImageUnsupportedError` (the
+ * direct path from resolved capability) pass through untouched.
+ */
+export function asImageUnsupported(err: Error, modelId?: string, providerId?: string): Error {
+	if (err instanceof ImageUnsupportedError) return err;
+	if (err instanceof ProviderHttpError && err.status >= 400 && err.status < 500) {
+		return new ImageUnsupportedError(
+			modelId ? `${modelId} doesn't accept images.` : undefined,
+			modelId,
+			providerId
+		);
+	}
+	return err;
+}
+
 /** Parse a `Retry-After` header (delta-seconds or HTTP-date) into seconds. */
 function parseRetryAfter(value: string | null): number | undefined {
 	if (!value) return undefined;
@@ -173,6 +204,7 @@ export {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageUnsupportedError,
 	MissingKeyError,
 	NetworkError,
 	ProviderHttpError,

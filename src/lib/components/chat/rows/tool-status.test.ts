@@ -13,6 +13,7 @@ describe('deriveToolStatus', () => {
 		createdAt: 0,
 		tokens: null,
 		model: null,
+		parts: null,
 		kind: 'tool_call' as const,
 		ord: 0,
 		chatId: 'c-1'
@@ -27,6 +28,7 @@ describe('deriveToolStatus', () => {
 		createdAt: 0,
 		tokens: null,
 		model: null,
+		parts: null,
 		kind: 'tool_result' as const,
 		ord: 0,
 		chatId: 'c-1'

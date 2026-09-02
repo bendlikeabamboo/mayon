@@ -20,7 +20,7 @@ import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import type { ChatMessage } from '$lib/ai/types';
 import { buildBriefSystemNote, parseBrief } from '$lib/chat/brief';
-import { kindOf } from '$lib/chat/kinds';
+import { kindOf, type MessagePart } from '$lib/chat/kinds';
 import { projectEntries } from '$lib/chat/projection';
 
 const PROVIDER_EXCLUDED_KINDS = new Set([
@@ -40,6 +40,7 @@ interface AnchoredMessage {
 	toolName?: string | null;
 	metadata?: string | null;
 	kind?: string | null;
+	parts?: string | null;
 }
 
 /**
@@ -81,6 +82,8 @@ export async function assembleContext(targetChatId: string): Promise<ChatMessage
 		const msg: ChatMessage = { role: m.role, content: m.content };
 		if (m.toolCallId) msg.toolCallId = m.toolCallId;
 		if (m.toolName) msg.toolName = m.toolName;
+		const parts = storedParts(m);
+		if (parts) msg.parts = parts;
 		if (m.role === 'tool') {
 			msg.toolResult = m.metadata ?? m.content;
 		}
@@ -112,8 +115,26 @@ function pushAll(out: AnchoredMessage[], msgs: Message[], depth: number): void {
 			toolCallId: m.toolCallId,
 			toolName: m.toolName,
 			metadata: m.metadata,
-			kind: m.kind
+			kind: m.kind,
+			parts: m.parts
 		});
+	}
+}
+
+/**
+ * The parsed `MessagePart[]` when the row's parts column holds a non-empty JSON
+ * array — i.e. the row actually has parts; null otherwise (parts-less and
+ * malformed rows), so image-less conversations stay byte-identical. Matches
+ * `partsOf` for rows with stored parts; kept local because `partsOf` takes a
+ * full `Message` row.
+ */
+function storedParts(row: { parts?: string | null }): MessagePart[] | null {
+	if (!row.parts) return null;
+	try {
+		const parsed: unknown = JSON.parse(row.parts);
+		return Array.isArray(parsed) && parsed.length > 0 ? (parsed as MessagePart[]) : null;
+	} catch {
+		return null;
 	}
 }
 

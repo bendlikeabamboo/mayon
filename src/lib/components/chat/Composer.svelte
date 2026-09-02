@@ -7,6 +7,7 @@
 		Plug,
 		FileText,
 		MessageSquarePlus,
+		Paperclip,
 		X,
 		GitBranch,
 		ListChecks,
@@ -31,6 +32,8 @@
 		type MountedPromptInfo
 	} from '$lib/mcp/lifecycle';
 	import { renderPrompt } from '$lib/mcp/prompts';
+	import { assertCanAttach, intakeImage } from '$lib/chat/images';
+	import type { ComposerAttachment } from '$lib/chat/kinds';
 	import type { ReasoningEffort } from '$lib/ai/types';
 
 	/**
@@ -51,6 +54,7 @@
 	 */
 	let {
 		prompt = $bindable(''),
+		images = $bindable<ComposerAttachment[]>([]),
 		streaming = $bindable(false),
 		onSend,
 		onStop,
@@ -58,6 +62,7 @@
 		onQuiz,
 		onLab,
 		supportsDeep = true,
+		supportsVision = true,
 		providerName,
 		modelId,
 		chatId,
@@ -66,14 +71,22 @@
 		labBusy = false
 	}: {
 		prompt?: string;
+		/** Image attachments (paste/paperclip intake), restored by the route's Retry. */
+		images?: ComposerAttachment[];
 		streaming?: boolean;
-		onSend: (text: string, effort: ReasoningEffort) => void | Promise<void>;
+		onSend: (
+			text: string,
+			effort: ReasoningEffort,
+			attachments?: ComposerAttachment[]
+		) => void | Promise<void>;
 		onStop: () => void | Promise<void>;
 		/** Launcher outcomes are persisted artifacts wired by the route. */
 		onBranch: () => void | Promise<void>;
 		onQuiz: () => void | Promise<void>;
 		onLab: () => void | Promise<void>;
 		supportsDeep?: boolean;
+		/** Paperclip visibility (FR-006 gate). Paste-with-image stays permissive (FR-007). */
+		supportsVision?: boolean;
 		providerName?: string;
 		modelId?: string;
 		chatId?: string;
@@ -103,7 +116,7 @@
 		el.style.height = 'auto';
 		el.style.height = Math.min(el.scrollHeight, MAX_TEXTAREA_H) + 'px';
 	});
-	const canSend = $derived(prompt.trim().length > 0 && !streaming);
+	const canSend = $derived((prompt.trim().length > 0 || images.length > 0) && !streaming);
 
 	const artifactsBusy = $derived(quizBusy || labBusy);
 	const branchBlocked = $derived(streaming);
@@ -149,8 +162,10 @@
 	function send() {
 		if (!canSend) return;
 		const text = prompt.trim();
+		const sentImages = images;
 		prompt = '';
-		void onSend(text, effort);
+		images = [];
+		void onSend(text, effort, sentImages.length > 0 ? sentImages : undefined);
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -158,6 +173,50 @@
 			e.preventDefault();
 			send();
 		}
+	}
+
+	let fileInputEl = $state<HTMLInputElement | null>(null);
+
+	/** Intake pipeline per image; rejections surface via the inline toast (D9). */
+	async function addImageFiles(files: ReadonlyArray<File | Blob>): Promise<void> {
+		for (const file of files) {
+			try {
+				assertCanAttach(images.length);
+				const part = await intakeImage(file);
+				images = [...images, { part, thumbnailDataUrl: part.data }];
+			} catch (err) {
+				toastError(err instanceof Error ? err.message : 'Could not attach that image.');
+			}
+		}
+	}
+
+	function removeImage(index: number): void {
+		images = images.filter((_, i) => i !== index);
+	}
+
+	/** Only image clipboard items are captured; non-image pastes keep default behavior (D9). */
+	function onComposerPaste(e: ClipboardEvent) {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const files: File[] = [];
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i]!;
+			if (item.kind === 'file' && item.type.startsWith('image/')) {
+				const file = item.getAsFile();
+				if (file) files.push(file);
+			}
+		}
+		if (files.length === 0) return;
+		e.preventDefault();
+		void addImageFiles(files);
+	}
+
+	function onFileInputChange(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const files = [...(input.files ?? [])];
+		input.value = '';
+		if (files.length === 0) return;
+		void addImageFiles(files);
 	}
 
 	let mcpServers = $state<Array<{ id: string; name: string; toolCount: number; enabled: boolean }>>(
@@ -336,16 +395,58 @@
 				{/each}
 			</div>
 		{/if}
+		{#if images.length > 0}
+			<div class="flex flex-wrap gap-1.5 px-3 pt-2.5">
+				{#each images as att, i (att.part.data + ':' + i)}
+					<div class="relative">
+						<img
+							src={att.thumbnailDataUrl}
+							alt={att.part.name ?? 'Attached image'}
+							class="size-14 rounded-md border border-border object-cover"
+						/>
+						<button
+							type="button"
+							class="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							onclick={() => removeImage(i)}
+							aria-label="Remove image"
+						>
+							<X class="size-3" />
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
 		<textarea
 			bind:this={textareaEl}
 			bind:value={prompt}
 			onkeydown={onKeydown}
+			onpaste={onComposerPaste}
 			rows="2"
 			placeholder="Message the active provider…  (⌘/Ctrl+Enter to send)"
 			class="w-full min-w-0 flex-1 resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground/60"
 			disabled={streaming}></textarea>
 		<div class="flex flex-wrap items-center justify-between gap-2 px-2 pb-2">
 			<div class="flex items-center gap-0.5">
+				{#if supportsVision}
+					<input
+						bind:this={fileInputEl}
+						type="file"
+						accept="image/png,image/jpeg,image/webp,image/gif"
+						multiple
+						class="hidden"
+						onchange={onFileInputChange}
+					/>
+					<button
+						type="button"
+						class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+						title="Attach image"
+						aria-label="Attach image"
+						onclick={() => fileInputEl?.click()}
+						disabled={streaming}
+					>
+						<Paperclip class="size-3.5" />
+					</button>
+				{/if}
 				<button
 					type="button"
 					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"

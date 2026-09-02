@@ -20,7 +20,7 @@
 	import AskEntry from './rows/AskEntry.svelte';
 	import ChoicesOffer from './rows/ChoicesOffer.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { parseMetadata, type UserMessageMeta, type ChoicesMeta } from '$lib/chat/kinds';
+	import { parseMetadata, textOf, type UserMessageMeta, type ChoicesMeta } from '$lib/chat/kinds';
 	import type { LiveAskPayload } from '$lib/chat/entries';
 	import { chatStore } from '$lib/stores/chat.svelte';
 	import { summarizeToolCall } from '$lib/agent/tool-summary';
@@ -88,7 +88,7 @@
 				if (linkedChoice && isDurableEntry(linkedChoice)) {
 					const choiceMeta = parseMetadata<ChoicesMeta>(linkedChoice.entry.metadata);
 					const options = choiceMeta?.options ?? [];
-					const taken = item.entry.content.trim();
+					const taken = textOf(item.entry).trim();
 					if (options.includes(taken)) {
 						entries.push([meta.choicesEntryId, taken]);
 					}

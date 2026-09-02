@@ -86,6 +86,13 @@ export const messages = pgTable('messages', {
 	}),
 	role: text('role', { enum: ['system', 'user', 'assistant', 'tool'] }).notNull(),
 	content: text('content').notNull(),
+	/**
+	 * Optional multimodal parts, stored as a JSON string (`MessagePart[]` in
+	 * `src/lib/chat/kinds.ts`). `NULL` = legacy text-only row ⇒ readers derive
+	 * `[{type:'text',text:content}]`. Nullable + additive: old rows get `NULL`
+	 * and behave exactly as before.
+	 */
+	parts: text('parts'),
 	ord: integer('ord').notNull(),
 	model: text('model'),
 	tokens: integer('tokens'),

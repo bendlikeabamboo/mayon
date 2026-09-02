@@ -25,10 +25,15 @@ import {
 } from '$lib/chat/expound';
 import type { LearningBrief } from '$lib/chat/brief';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
+import type { ComposerAttachment } from '$lib/chat/kinds';
 import { getActiveSdkProvider } from '$lib/ai/client';
 import { resolveRequestSettings } from '$lib/ai/dialects';
 import { mapSdkError } from '$lib/ai/sdk-errors';
-import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
+import {
+	asImageUnsupported,
+	formatProviderError,
+	type FormattedProviderError
+} from '$lib/ai/errors';
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 import { CopilotAuthRequiredError } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
@@ -102,6 +107,12 @@ class ChatState {
 	reasoningBuffer = $state('');
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
+	/**
+	 * Attachments of the last failed send, carried alongside
+	 * `lastFailedPrompt` so Retry restores text + images
+	 * (contracts/message-parts.md §4). Null when the failed send had none.
+	 */
+	lastFailedAttachments = $state<ComposerAttachment[] | null>(null);
 	/**
 	 * Raw mapped error from the last failed turn. The formatted `error` above
 	 * drops the typed class; this keeps it (e.g. a `CopilotAuthRequiredError`
@@ -299,10 +310,17 @@ class ChatState {
 	/** Send a user prompt and stream the assistant reply, persisting on finish. */
 	async send(
 		text: string,
-		opts?: { effort?: ReasoningEffort; hidden?: boolean; choicesEntryId?: string }
+		opts?: {
+			effort?: ReasoningEffort;
+			hidden?: boolean;
+			choicesEntryId?: string;
+			attachments?: ComposerAttachment[];
+		}
 	): Promise<void> {
 		const prompt = text.trim();
-		if (!prompt || this.streaming || !this.chatId) return;
+		const attachments = opts?.attachments ?? [];
+		const hasImages = attachments.length > 0;
+		if ((!prompt && !hasImages) || this.streaming || !this.chatId) return;
 
 		this.error = null;
 		this.lastMappedError = null;
@@ -326,12 +344,22 @@ class ChatState {
 					? await repos.chats.getById(chat.rootId).then((r) => r?.brief ?? null)
 					: null;
 
-		// 1) Persist the user row immediately and reflect it in the UI.
+		// 1) Persist the user row immediately and reflect it in the UI — one
+		// atomic append carrying text + image parts (contracts/message-parts.md
+		// §4). Image-less sends write no parts column: the row is byte-identical
+		// to the pre-parts flow.
 		const userMeta: Record<string, unknown> = {};
 		if (hidden) userMeta.hidden = true;
 		if (choicesEntryId) userMeta.choicesEntryId = choicesEntryId;
+		const parts = hasImages
+			? [
+					...(prompt ? [{ type: 'text' as const, text: prompt }] : []),
+					...attachments.map((a) => a.part)
+				]
+			: undefined;
 		const userRow = await repos.messages.append(chatId, 'user', prompt, {
-			metadata: Object.keys(userMeta).length > 0 ? JSON.stringify(userMeta) : undefined
+			metadata: Object.keys(userMeta).length > 0 ? JSON.stringify(userMeta) : undefined,
+			...(parts ? { parts } : {})
 		});
 		this.messages = [...this.messages, userRow];
 		await repos.chats.touch(chatId);
@@ -558,9 +586,16 @@ class ChatState {
 		} catch (err) {
 			if (!isAbortError(err)) {
 				const mapped = mapSdkError(err);
-				this.error = formatProviderError(mapped);
+				// Image-bearing send rejected by the provider (spec 018 FR-007):
+				// refine a provider 4xx into the dedicated image-unsupported error
+				// ahead of opaque provider output. Other failures pass through
+				// unchanged. Active model = `config.defaultModel` (contract §4).
+				this.error = formatProviderError(
+					hasImages ? asImageUnsupported(mapped, config?.defaultModel) : mapped
+				);
 				this.lastMappedError = mapped;
 				this.lastFailedPrompt = prompt;
+				this.lastFailedAttachments = hasImages ? attachments : null;
 				builder.emit({
 					kind: 'error',
 					message: err instanceof Error ? `${err.name}: ${err.message}` : String(err)
@@ -619,7 +654,10 @@ class ChatState {
 			} catch {
 				/* best-effort; never surfaces to user */
 			}
-			if (!this.error) this.lastFailedPrompt = null;
+			if (!this.error) {
+				this.lastFailedPrompt = null;
+				this.lastFailedAttachments = null;
+			}
 		}
 	}
 
@@ -674,6 +712,7 @@ class ChatState {
 		this.streaming = false;
 		this.generativeStatus = null;
 		this.lastFailedPrompt = null;
+		this.lastFailedAttachments = null;
 	}
 
 	async deleteLastDanglingUser(): Promise<void> {

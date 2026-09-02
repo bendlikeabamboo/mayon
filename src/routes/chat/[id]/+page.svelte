@@ -35,10 +35,13 @@
 	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
 	import { isStripEnabled } from '$lib/chat/strip/pref';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
+	import type { ComposerAttachment } from '$lib/chat/kinds';
+	import { attachmentsOf } from '$lib/chat/kinds';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 	import { getActiveSdkProvider } from '$lib/ai/client';
 	import { describeDialect } from '$lib/ai/dialects';
+	import { supportsVision } from '$lib/ai/vision-capability';
 	import { DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
@@ -83,6 +86,13 @@
 		if (!activeConfig || !activeModelId) return true;
 		return describeDialect(activeConfig, activeModelId)?.effortLevels.includes('deep') ?? false;
 	});
+	// Advisory image gate (spec 018 FR-006): the paperclip renders iff the
+	// active provider/model is advertised as vision-capable. Permissive default
+	// when no provider is resolved — paste-with-image stays permissive either way.
+	const supportsVisionModel = $derived.by(() => {
+		if (!activeConfig || !activeModelId) return true;
+		return supportsVision(activeConfig, activeModelId);
+	});
 
 	let viewport = $state<HTMLDivElement | null>(null);
 	let topPane = $state<HTMLDivElement | null>(null);
@@ -98,6 +108,7 @@
 	let scrolledToHash = $state(false);
 
 	let composerPrompt = $state('');
+	let composerImages = $state<ComposerAttachment[]>([]);
 	let draftTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const FADE_CAP_PX = 80;
@@ -464,10 +475,10 @@
 		}
 	});
 
-	async function onSend(text: string, effort: ReasoningEffort) {
+	async function onSend(text: string, effort: ReasoningEffort, attachments?: ComposerAttachment[]) {
 		stickToBottom = true;
 		scrolledToHash = false;
-		await chatStore.send(text, { effort });
+		await chatStore.send(text, { effort, attachments });
 	}
 
 	async function onExpound(
@@ -509,15 +520,19 @@
 		const idx = msgs.findIndex((m) => m.id === interruptedId);
 		if (idx < 0) return;
 		let userText = '';
+		let attachments: ComposerAttachment[] = [];
 		for (let i = idx - 1; i >= 0; i--) {
 			if (msgs[i].role === 'user') {
 				userText = msgs[i].content;
+				// Re-send the same images (018 US1): parts of the preceding user row
+				// become attachments so the regenerated turn sees them again.
+				attachments = attachmentsOf(msgs[i]);
 				break;
 			}
 		}
 		await repos.messages.delete(interruptedId);
 		chatStore.messages = chatStore.messages.filter((m) => m.id !== interruptedId);
-		if (userText) void chatStore.send(userText);
+		if (userText || attachments.length > 0) void chatStore.send(userText, { attachments });
 	}
 
 	async function onGenerateLab() {
@@ -606,7 +621,9 @@
 		if (text == null) return;
 		await chatStore.deleteLastDanglingUser();
 		composerPrompt = text;
+		composerImages = chatStore.lastFailedAttachments ?? [];
 		chatStore.lastFailedPrompt = null;
+		chatStore.lastFailedAttachments = null;
 		chatStore.error = null;
 	}
 
@@ -954,12 +971,14 @@
 					<Composer
 						bind:streaming={chatStore.streaming}
 						bind:prompt={composerPrompt}
+						bind:images={composerImages}
 						{onSend}
 						onStop={chatStore.stop.bind(chatStore)}
 						onBranch={onLaunchBranch}
 						onQuiz={onLaunchQuiz}
 						onLab={onLaunchLab}
 						{supportsDeep}
+						supportsVision={supportsVisionModel}
 						providerName={activeProviderName}
 						modelId={activeModelId}
 						chatId={chatStore.chat.id}

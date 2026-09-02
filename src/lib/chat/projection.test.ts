@@ -112,6 +112,42 @@ describe('new-shape projection tests (T027)', () => {
 	});
 });
 
+describe('user parts projection (T013 — contracts/message-parts.md §5)', () => {
+	it('a user row with [text, image, image] parts projects to an ordered user parts array', () => {
+		resetOrd();
+		const imageA = 'data:image/png;base64,AAAA';
+		const imageB = 'data:image/jpeg;base64,BBBB';
+		const row = {
+			...makeRow({ role: 'user', content: 'look at these' }),
+			parts: JSON.stringify([
+				{ type: 'text', text: 'look at these' },
+				{ type: 'image', data: imageA },
+				{ type: 'image', data: imageB }
+			])
+		};
+		const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'look at these' },
+					{ type: 'image', image: imageA },
+					{ type: 'image', image: imageB }
+				]
+			}
+		] as ModelMessage[]);
+	});
+
+	it('a user row with parts=null projects exactly as today (text-only content)', () => {
+		resetOrd();
+		const row = { ...makeRow({ role: 'user', content: 'hello' }), parts: null };
+		const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{ role: 'user', content: [{ type: 'text', text: 'hello' }] }
+		] as ModelMessage[]);
+	});
+});
+
 describe('turn-scoped tool pairing (dangling tool call prevention)', () => {
 	interface ToolPart {
 		toolCallId: string;

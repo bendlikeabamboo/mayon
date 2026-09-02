@@ -8,6 +8,8 @@
  * retry on parse failure).
  */
 
+import type { MessagePart } from '$lib/chat/kinds';
+
 /** Provider kinds the registry can build adapters for. */
 export type ProviderKind =
 	| 'openai-compatible'
@@ -26,6 +28,11 @@ export interface ChatMessage {
 	toolArgs?: unknown;
 	/** For tool-result rows. */
 	toolResult?: string;
+	/**
+	 * Multimodal parts carried from the source row (text + images); set by
+	 * `assembleContext` only for rows that actually have parts.
+	 */
+	parts?: MessagePart[];
 }
 
 /** A streamed token. `delta` and `text` are aliases (kept for readability at call sites). */
@@ -118,6 +125,15 @@ export interface ProviderConfig {
 	 * (AG3) to decide whether tool definitions are sent.
 	 */
 	toolCapability?: 'auto' | 'on' | 'off';
+	/**
+	 * Per-provider vision flag. `'auto'`/undefined → resolved from a static
+	 * allowlist of vision-capable model-family prefixes (see
+	 * `src/lib/ai/vision-capability.ts`). `'on'`/`'off'` override. Advisory
+	 * only: gates the composer attachment affordance (FR-006) and
+	 * image-unsupported error classification (FR-007); it must never strip,
+	 * block, or rewrite message parts on the wire.
+	 */
+	vision?: 'auto' | 'on' | 'off';
 	requestDefaults?: SamplingRequestDefaults;
 	extraBody?: Record<string, JSONValue>;
 }
@@ -244,5 +260,20 @@ export class CopilotSubscriptionError extends Error {
 	constructor(message = 'This GitHub account does not have an active Copilot subscription.') {
 		super(message);
 		this.name = 'CopilotSubscriptionError';
+	}
+}
+
+/** The active model does not accept image input — either resolved up front
+ *  (advisory gate on a send that carried image parts) or classified as a
+ *  fallback from a provider 4xx on an image-bearing request (see
+ *  `asImageUnsupported`). */
+export class ImageUnsupportedError extends Error {
+	constructor(
+		message = "This model doesn't accept images.",
+		public readonly modelId?: string,
+		public readonly providerId?: string
+	) {
+		super(message);
+		this.name = 'ImageUnsupportedError';
 	}
 }

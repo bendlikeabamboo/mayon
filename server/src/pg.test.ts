@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { buildApp } from './server';
 import { pgQueryHandler } from './pg';
 import type { PgPoolLike, PgQueryResult } from './pg';
 
@@ -106,5 +107,41 @@ describe('pgQueryHandler', () => {
 			expect(query).toHaveBeenNthCalledWith(4, 'ROLLBACK');
 			expect(query).toHaveBeenCalledTimes(4);
 		});
+	});
+});
+
+describe('POST /api/db/query body limit', () => {
+	let app: ReturnType<typeof buildApp>;
+	let pool: ReturnType<typeof mockPool>;
+
+	beforeAll(async () => {
+		pool = mockPool();
+		app = buildApp(':memory:', { pgPool: pool.pool, pgReady: true });
+		await app.listen({ port: 0, host: '0.0.0.0' });
+	});
+
+	afterAll(async () => {
+		await app.close();
+	});
+
+	it('accepts a query whose params carry a >1 MiB base64 string (old default was 1 MiB)', async () => {
+		const bigBase64 = 'A'.repeat(1024 * 1024 + 64 * 1024);
+		// The auth gate reads security.mode from `settings` before every request;
+		// answer it first so the handler query still gets the queued result below.
+		pool.query
+			.mockResolvedValueOnce(
+				makeResult({ rows: [{ value: '"open"' }], fields: [{ name: 'value' }] })
+			)
+			.mockResolvedValueOnce(
+				makeResult({ rows: [{ blob: bigBase64 }], fields: [{ name: 'blob' }] })
+			);
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/db/query',
+			body: { op: 'query', sql: 'SELECT $1 AS blob', params: [bigBase64] }
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({ columns: ['blob'], rows: [[bigBase64]] });
+		expect(pool.query).toHaveBeenCalledWith('SELECT $1 AS blob', [bigBase64]);
 	});
 });
