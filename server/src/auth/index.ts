@@ -26,6 +26,7 @@ import {
 	wrapSecret
 } from './crypto';
 import type { AuthStore } from './store';
+import { createRateLimiter } from './ratelimit';
 
 const LABEL_MAX = 64;
 const PASSWORD_MIN = 8;
@@ -73,11 +74,21 @@ export interface RegisterAuthDeps {
 	resolveSessionToken: (request: FastifyRequest) => string | undefined;
 	resolveEnrollToken: (request: FastifyRequest) => string | undefined;
 	now: () => number;
+	authRateWindowMs?: number;
+	authRateLadderBase?: number;
+	authRateSleep?: (ms: number) => Promise<void>;
 }
 
 export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void {
 	let pending: PendingEnrollment | undefined;
 	const enrollPending = new Map<string, EnrollPending>();
+
+	const loginLimiter = createRateLimiter(deps.store, {
+		windowMs: deps.authRateWindowMs,
+		ladderBase: deps.authRateLadderBase,
+		now: deps.now,
+		sleep: deps.authRateSleep
+	});
 
 	function sweepEnrollPending(): void {
 		const ts = deps.now();
@@ -98,6 +109,25 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 
 	function refuseInvalidCredentials(reply: FastifyReply): FastifyReply {
 		return reply.code(401).send({ error: 'invalid credentials' });
+	}
+
+	async function recordFailureAndDelay(
+		reply: FastifyReply,
+		source: string,
+		identityLabel: string | null,
+		outcome: 'bad_password' | 'bad_code' | 'unknown_identity',
+		delayMs: number
+	): Promise<FastifyReply> {
+		await deps.store.recordAttempt({
+			identityLabel,
+			source,
+			outcome,
+			at: deps.now()
+		});
+		if (delayMs > 0) {
+			await loginLimiter.sleep(delayMs);
+		}
+		return refuseInvalidCredentials(reply);
 	}
 
 	function refuseForbidden(reply: FastifyReply): FastifyReply {
@@ -238,6 +268,13 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 	});
 
 	app.post<{ Body: LoginBody }>('/api/auth/login', async (request, reply) => {
+		const source = request.ip;
+		const limit = await loginLimiter.check(source);
+		if (!limit.ok) {
+			return reply
+				.code(429)
+				.send({ error: 'too many attempts', retryAfter: Math.ceil(limit.retryAfterMs / 1000) });
+		}
 		const body = request.body ?? {};
 		const label = typeof body.label === 'string' ? body.label.trim() : '';
 		let identity: AuthIdentity | null;
@@ -252,7 +289,13 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		}
 		const password = body.password;
 		if (!identity || identity.status === 'revoked' || typeof password !== 'string') {
-			return refuseInvalidCredentials(reply);
+			return recordFailureAndDelay(
+				reply,
+				source,
+				identity?.label ?? (label || null),
+				identity ? 'bad_password' : 'unknown_identity',
+				limit.delayMs
+			);
 		}
 		let passwordOk: boolean;
 		try {
@@ -261,7 +304,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			passwordOk = false;
 		}
 		if (!passwordOk) {
-			return refuseInvalidCredentials(reply);
+			return recordFailureAndDelay(reply, source, identity.label, 'bad_password', limit.delayMs);
 		}
 		if (identity.status === 'invited') {
 			const secret = generateSecret();
@@ -286,7 +329,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			};
 		}
 		if (identity.totpSecretEnc === null) {
-			return refuseInvalidCredentials(reply);
+			return recordFailureAndDelay(reply, source, identity.label, 'bad_code', limit.delayMs);
 		}
 		let secret: string;
 		try {
@@ -297,7 +340,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		const code = typeof body.code === 'string' ? body.code.trim() : '';
 		const totp = await verifyLiveTotp(secret, code, identity.totpLastStep);
 		if (!totp.ok) {
-			return refuseInvalidCredentials(reply);
+			return recordFailureAndDelay(reply, source, identity.label, 'bad_code', limit.delayMs);
 		}
 		await deps.store.setIdentityMfa(identity.id, {
 			totpSecretEnc: identity.totpSecretEnc,
@@ -314,6 +357,12 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			expiresAt
 		});
 		setSessionCookie(reply, token, expiresAt);
+		await deps.store.recordAttempt({
+			identityLabel: identity.label,
+			source,
+			outcome: 'success',
+			at: now
+		});
 		const dto: AuthIdentityDTO = { label: identity.label, role: identity.role };
 		return { authenticated: true, identity: dto, session: { expiresAt } };
 	});

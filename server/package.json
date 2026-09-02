@@ -5,7 +5,8 @@
 	"version": "0.5.0",
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
-		"build": "tsup src/server.ts --format esm --target node22 --out-dir dist",
+		"auth": "tsx src/auth/cli.ts",
+		"build": "tsup",
 		"start": "node dist/server.js",
 		"test": "vitest run"
 	},

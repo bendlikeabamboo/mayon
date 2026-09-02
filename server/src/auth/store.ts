@@ -101,13 +101,15 @@ export interface AuthStore {
 	createSession(input: CreateSessionInput): Promise<void>;
 	findValidSessionByTokenHash(tokenHash: string, nowMs: number): Promise<ValidSessionLookup | null>;
 	revokeSession(id: string, nowMs: number): Promise<void>;
-	revokeAllSessions(nowMs: number): Promise<void>;
+	revokeAllSessions(nowMs: number): Promise<number>;
+	revokeSessionsByIdentity(identityId: string, nowMs: number): Promise<number>;
 	deleteSessionsByIdentity(identityId: string): Promise<void>;
 	touchSession(id: string, nowMs: number): Promise<void>;
 	getSessionById(id: string): Promise<SessionRecordById | null>;
 	listSessions(nowMs: number): Promise<SessionListItem[]>;
 	recordAttempt(input: RecordAttemptInput): Promise<void>;
 	countRecentFailures(source: string, sinceMs: number): Promise<number>;
+	oldestRecentFailureAt(source: string, sinceMs: number): Promise<number | null>;
 	listRecentAttempts(limit: number): Promise<LoginAttemptListItem[]>;
 }
 
@@ -262,9 +264,19 @@ export function createAuthStore(
 		},
 
 		async revokeAllSessions(nowMs) {
-			await db().query('UPDATE auth_sessions SET revoked_at = $1 WHERE revoked_at IS NULL', [
-				nowMs
-			]);
+			const res = await db().query(
+				'UPDATE auth_sessions SET revoked_at = $1 WHERE revoked_at IS NULL RETURNING id',
+				[nowMs]
+			);
+			return res.rows.length;
+		},
+
+		async revokeSessionsByIdentity(identityId, nowMs) {
+			const res = await db().query(
+				'UPDATE auth_sessions SET revoked_at = $1 WHERE identity_id = $2 AND revoked_at IS NULL RETURNING id',
+				[nowMs, identityId]
+			);
+			return res.rows.length;
 		},
 
 		async deleteSessionsByIdentity(identityId) {
@@ -333,6 +345,16 @@ export function createAuthStore(
 				[source, sinceMs]
 			);
 			return Number((res.rows[0] as { count: number }).count);
+		},
+
+		async oldestRecentFailureAt(source, sinceMs) {
+			const res = await db().query(
+				`SELECT MIN(at) AS oldest FROM auth_login_attempts
+				 WHERE source = $1 AND at >= $2 AND outcome <> 'success'`,
+				[source, sinceMs]
+			);
+			const raw = (res.rows[0] as { oldest: string | number | null } | undefined)?.oldest;
+			return raw == null ? null : Number(raw);
 		},
 
 		async listRecentAttempts(limit) {

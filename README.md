@@ -242,6 +242,30 @@ and `.env` (only the base compose file is re-downloaded). To rotate the
 shared credential, set a new `MAYON_BASIC_AUTH_HASH` in `.env` and run
 `docker compose up -d` — it changes for everyone at once.
 
+### Security recovery (auth CLI)
+
+The server image ships a recovery CLI for the built-in security gate
+(**Settings → Security**). It is the only way back if the gate locks you out
+(lost password, lost authenticator, hostile lock, stale locked backup
+restore). Run it in the server container from the host running the stack:
+
+```bash
+cd ~/.mayon && docker compose exec server node dist/auth-cli.js <command>
+```
+
+| Command                          | Effect                                                                                                               |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `status`                         | Mode, identities, active sessions, key presence                                                                      |
+| `reset-password --label <label>` | Set a new password (hidden prompt ×2); revokes that identity's sessions; next login still requires a valid TOTP code |
+| `reenroll-mfa --label <label>`   | Discard the old TOTP secret and print a fresh `otpauth://` URI to scan                                               |
+| `wipe-sessions`                  | Revoke every session                                                                                                 |
+| `rotate-secret`                  | Re-wrap all TOTP secrets under a new key; aborts without writing if any secret fails to decrypt                      |
+| `set-mode --mode open\|locked`   | Set the security mode directly (escape hatch; revokes all sessions when leaving locked)                              |
+
+Exit codes: `0` success, `1` refused/usage, `2` database unreachable. No
+command creates an MFA-less login path. While developing:
+`pnpm --filter @mayon/server auth <command>`.
+
 ## Build from source
 
 **Prerequisites:** Node 22, pnpm 10, and Docker or Podman (the dev engine is

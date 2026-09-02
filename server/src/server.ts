@@ -116,6 +116,7 @@ export interface BuildAppOptions {
 	authKeyPath?: string;
 	authRateWindowMs?: number;
 	authRateLadderBase?: number;
+	authRateSleep?: (ms: number) => Promise<void>;
 }
 
 export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
@@ -141,7 +142,10 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 			getAuthKey: () => fastify.getAuthKey(),
 			resolveSessionToken: (request) => request.cookies?.[SESSION_COOKIE],
 			resolveEnrollToken: (request) => request.cookies?.[ENROLL_COOKIE],
-			now
+			now,
+			authRateWindowMs: opts.authRateWindowMs,
+			authRateLadderBase: opts.authRateLadderBase,
+			authRateSleep: opts.authRateSleep
 		});
 
 		let authKey: Buffer | undefined;

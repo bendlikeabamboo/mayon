@@ -154,13 +154,13 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 ### Tests for User Story 5 (write FIRST, must FAIL)
 
-- [ ] T041 [US5] Create `server/src/auth-ratelimit.test.ts` with injected clock/window: ladder timing assertions, 429 body `{"error":"too many attempts"}` + retry hint, window clears oldest-first, success path un-delayed, per-IP isolation (two sources don't lock each other)
+- [x] T041 [US5] Create `server/src/auth-ratelimit.test.ts` with injected clock/window: ladder timing assertions, 429 body `{"error":"too many attempts"}` + retry hint, window clears oldest-first, success path un-delayed, per-IP isolation (two sources don't lock each other)
 
 ### Implementation for User Story 5
 
-- [ ] T042 [US5] Create `server/src/auth/ratelimit.ts` implementing research R7 policy over `store.countRecentFailures` (window 10 min default, ladder `min(2^(failures−4), 60)`s delay, ≥10 ⇒ refuse until window clears); wire into the login endpoint (delay before response on 5–9; record EVERY attempt outcome incl. success via store; opportunistic 30-day prune on write)
-- [ ] T043 [US5] Surface owner visibility: `GET /api/auth/attempts` already exposes outcomes (T037) — verify rate-limited/refused attempts are recorded with outcome `bad_password`/`bad_code`/`unknown_identity` and appear in Settings recent activity
-- [ ] T044 [US5] Validate quickstart.md step 4; full quality gates (SC-004 demonstrated)
+- [x] T042 [US5] Create `server/src/auth/ratelimit.ts` implementing research R7 policy over `store.countRecentFailures` (window 10 min default, ladder `min(2^(failures−4), 60)`s delay, ≥10 ⇒ refuse until window clears); wire into the login endpoint (delay before response on 5–9; record EVERY attempt outcome incl. success via store; opportunistic 30-day prune on write)
+- [x] T043 [US5] Surface owner visibility: `GET /api/auth/attempts` already exposes outcomes (T037) — verify rate-limited/refused attempts are recorded with outcome `bad_password`/`bad_code`/`unknown_identity` and appear in Settings recent activity
+- [x] T044 [US5] Validate quickstart.md step 4; full quality gates (SC-004 demonstrated)
 
 **Checkpoint**: password half is no longer brute-forceable; SC-004 green.
 
@@ -187,9 +187,9 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 **Independent Test**: with no access to the enrolled authenticator: `reenroll-mfa` prints a fresh otpauth URI, `reset-password` sets a new password, next login = new password + new code; no MFA-less path created.
 
-- [ ] T049 [US7] Create `server/src/auth/cli.ts` (second tsup entry): commands `status`, `reset-password --label`, `reenroll-mfa --label`, `wipe-sessions`, `rotate-secret` (fail-closed re-wrap), `set-mode --mode open|locked` per contracts/auth-cli.md; hidden stdin prompt for passwords; exit codes 0/1/2; add `"auth"` script to `server/package.json` and the second entry to `server/tsup.config.ts` (outputs `dist/auth-cli.js`); confirm the prod `server/Dockerfile` ships it
-- [ ] T050 [US7] Create `server/src/auth-cli.test.ts`: reset-password → next login uses new password + valid code (never codeless); reenroll-mfa invalidates the old secret (old code refused, new accepted); wipe-sessions revokes all; rotate-secret refuses to write when any row fails to decrypt; revoked identity refused (exit 1)
-- [ ] T051 [US7] Validate SC-007 manually (timer the flow < 15 min) and add CLI usage lines to `README.md` security section; full quality gates
+- [x] T049 [US7] Create `server/src/auth/cli.ts` (second tsup entry): commands `status`, `reset-password --label`, `reenroll-mfa --label`, `wipe-sessions`, `rotate-secret` (fail-closed re-wrap), `set-mode --mode open|locked` per contracts/auth-cli.md; hidden stdin prompt for passwords; exit codes 0/1/2; add `"auth"` script to `server/package.json` and the second entry to `server/tsup.config.ts` (outputs `dist/auth-cli.js`); confirm the prod `server/Dockerfile` ships it
+- [x] T050 [US7] Create `server/src/auth-cli.test.ts`: reset-password → next login uses new password + valid code (never codeless); reenroll-mfa invalidates the old secret (old code refused, new accepted); wipe-sessions revokes all; rotate-secret refuses to write when any row fails to decrypt; revoked identity refused (exit 1)
+- [x] T051 [US7] Validate SC-007 manually (timer the flow < 15 min) and add CLI usage lines to `README.md` security section; full quality gates
 
 **Checkpoint**: recovery path real, MFA-bypass-free (FR-016/FR-017).
 
