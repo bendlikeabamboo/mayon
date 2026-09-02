@@ -1,0 +1,25 @@
+# Mayon stopgap public-launch floor — Caddyfile template.
+#
+# Copy this file into the install directory (e.g. ~/.mayon/) next to
+# docker-compose.override.yml.floor, which mounts it read-only into the
+# caddy container. Set MAYON_DOMAIN, MAYON_BASIC_AUTH_USER and
+# MAYON_BASIC_AUTH_HASH in .env first (generate the hash with
+# `docker compose run --rm caddy hash-password`). See README.md
+# "Launching publicly (stopgap floor)".
+
+# Site address: your public domain, taken from MAYON_DOMAIN in .env.
+# The fallback is only a placeholder — Caddy cannot obtain a TLS
+# certificate for it.
+{$MAYON_DOMAIN:mayon.example.com} {
+	# One shared credential (values come from the caddy container's
+	# environment, which the override fills from .env).
+	basic_auth {
+		{$MAYON_BASIC_AUTH_USER} {$MAYON_BASIC_AUTH_HASH}
+	}
+
+	# Proxy to the app container. flush_interval -1 disables response
+	# buffering so streamed AI chat tokens arrive as they are generated.
+	reverse_proxy web:8080 {
+		flush_interval -1
+	}
+}

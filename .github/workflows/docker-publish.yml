@@ -128,6 +128,12 @@ jobs:
           chmod +x out/install.sh
           grep -q "MAYON_INSTALLER_VERSION=\"${VERSION}\"" out/install.sh
           cp docker-compose.yml out/docker-compose.yml
+          cp docker-compose.override.yml.floor out/docker-compose.override.yml.floor
+          cp Caddyfile.floor out/Caddyfile.floor
+          grep -q 'ports: !override \[\]' out/docker-compose.override.yml.floor
+          grep -q 'MAYON_BASIC_AUTH_HASH' out/docker-compose.override.yml.floor
+          grep -q 'basic_auth' out/Caddyfile.floor
+          grep -q 'flush_interval -1' out/Caddyfile.floor
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ needs.classify.outputs.is_rc == 'true' && format('Mayon {0} (Release Candidate)', needs.verify-version.outputs.version) || format('Mayon {0}', needs.verify-version.outputs.version) }}
@@ -136,5 +142,7 @@ jobs:
           files: |
             out/install.sh
             out/docker-compose.yml
+            out/docker-compose.override.yml.floor
+            out/Caddyfile.floor
           generate_release_notes: true
           fail_on_unmatched_files: true

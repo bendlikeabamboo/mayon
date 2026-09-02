@@ -50,9 +50,15 @@ API keys are **never** stored in `settings`. They are stored in:
 
 - **Browser:** IndexedDB under the same origin as the app.
 
-The server never persists secrets. When the browser asks the server to spawn a stdio MCP server or proxy an LLM request, it resolves the secret locally and includes it in the same-origin request. Transit is same-origin over the internal docker network / localhost (no key regression vs. the browser-fetch path, which already holds the key in JS).
+The server persists no reusable provider secrets. When the browser asks the server to spawn a stdio MCP server or proxy an LLM request, it resolves the secret locally and includes it in the same-origin request. Transit is same-origin over the internal docker network / localhost (no key regression vs. the browser-fetch path, which already holds the key in JS).
+
+The one carve-out is credential verifiers for the auth gate (017 secure public launch): dedicated `auth_*` tables store argon2id password hashes and AES-256-GCM-wrapped TOTP secrets. The `settings` table remains secret-free. The wrapping key never touches Postgres — it resolves from `MAYON_AUTH_SECRET` or an auto-generated key file (0600) on the server-data volume.
 
 The `ProviderConfig` type in the codebase intentionally omits any key field. The settings UI stores a key, then immediately masks the input with a "Replace key" affordance. The key is never echoed back after save.
+
+## One gate hook at the server API seam
+
+Every server route sits behind a single `onRequest` hook (`server/src/auth/gate.ts`), registered in `buildApp()` before any route plugin — a route added later cannot escape it. When `security.mode` is `locked`, the hook requires a valid same-day session cookie and answers everything else with a uniform `401 {"error":"unauthenticated"}`; the public routes (`/api/health`, auth status/login/setup/enroll/logout) are spelled out in `PUBLIC_ALLOWLIST`. Mutating requests whose `Origin` header does not match the request host are refused with `403 {"error":"bad origin"}` before any other work. In `open` mode the hook is a no-op — behavior identical to pre-gate releases.
 
 ## Context projection is a pure function
 

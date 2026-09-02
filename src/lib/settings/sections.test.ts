@@ -11,6 +11,7 @@ describe('SETTINGS_SECTIONS registry', () => {
 			'expound-instructions',
 			'lab-prompt',
 			'quiz-prompt',
+			'security',
 			'data',
 			'sandbox-db'
 		]);
@@ -30,6 +31,7 @@ describe('SETTINGS_SECTIONS registry', () => {
 			'Expound Instructions',
 			'Lab generation prompt',
 			'Quiz generation prompt',
+			'Security',
 			'Data',
 			'Sandbox DB'
 		]);
@@ -66,6 +68,7 @@ describe('visibleSections', () => {
 			'expound-instructions',
 			'lab-prompt',
 			'quiz-prompt',
+			'security',
 			'data'
 		]);
 	});
@@ -80,6 +83,11 @@ describe('matchSections', () => {
 
 	it('matches the sandbox alias to sandbox-db', () => {
 		expect(matchSections('sandbox', SETTINGS_SECTIONS).map((s) => s.id)).toEqual(['sandbox-db']);
+	});
+
+	it('matches the security aliases to security', () => {
+		expect(matchSections('mfa', SETTINGS_SECTIONS).map((s) => s.id)).toEqual(['security']);
+		expect(matchSections('Lock', SETTINGS_SECTIONS).map((s) => s.id)).toEqual(['security']);
 	});
 
 	it('matches prompt to both prompt sections in registry order', () => {

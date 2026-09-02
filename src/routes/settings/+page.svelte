@@ -10,6 +10,7 @@
 	import ExpoundInstructionsConfig from '$lib/components/chat/ExpoundInstructionsConfig.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
 	import SandboxDbSection from '$lib/components/settings/SandboxDbSection.svelte';
+	import SecuritySection from '$lib/components/settings/SecuritySection.svelte';
 	import SettingsRail from '$lib/components/settings/SettingsRail.svelte';
 	import SettingsSearch from '$lib/components/settings/SettingsSearch.svelte';
 	import MobileSectionJump from '$lib/components/settings/MobileSectionJump.svelte';
@@ -189,6 +190,9 @@
 		</div>
 		<div id="quiz-prompt" class="scroll-mt-4">
 			<QuizPromptConfig />
+		</div>
+		<div id="security" class="scroll-mt-4">
+			<SecuritySection />
 		</div>
 		<div id="data" class="scroll-mt-4">
 			<DataSection />

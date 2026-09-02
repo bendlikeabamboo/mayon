@@ -10,7 +10,7 @@ function mockPool(): {
 	query: ReturnType<typeof vi.fn>;
 	end: ReturnType<typeof vi.fn>;
 } {
-	const query = vi.fn();
+	const query = vi.fn(async () => ({ rows: [], fields: [], rowCount: 0 }));
 	const end = vi.fn(async () => {});
 	return { pool: { query, end } as unknown as PgPoolLike, query, end };
 }
