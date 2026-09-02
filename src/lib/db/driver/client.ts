@@ -65,16 +65,15 @@ export function getDb(): Db {
 
 /**
  * Await the bootstrapped drizzle instance. Repository code should prefer this
- * over `getDb()` so that a repo call made during early boot (before the layout's
- * `onMount` resolves `bootstrapDb`) waits for boot instead of throwing a race.
- * Throws if boot failed or was never started.
+ * over `getDb()` so that a repo call made during early boot waits for boot
+ * instead of throwing a race. Universal route loads run before the layout
+ * component init starts boot, so `awaitDb` kicks `bootstrapDb()` off itself
+ * (idempotent — the layout's own call rejoins the same promise). Throws if
+ * boot failed.
  */
 export async function awaitDb(): Promise<Db> {
 	if (dbRef) return dbRef;
-	if (!driverPromise) {
-		throw new Error('Database not bootstrapped yet — call bootstrapDb() first.');
-	}
-	return driverPromise;
+	return driverPromise ?? bootstrapDb();
 }
 
 /** Resolved raw driver (used by the boot-time self-check). */

@@ -28,8 +28,13 @@ The suite onboards the provider with:
 
 - Runner: `@playwright/test` (root devDependency), browsers: Chromium (single project;
   multi-browser expansion later is out of scope)
-- `baseURL: http://localhost:5173`; the suite assumes the stack is up (`pnpm dev:up`)
-  and the mock is reachable from `server` — it never calls the mock itself
+- `baseURL`: `E2E_BASE_URL` env override, default `http://127.0.0.1:5173` (dev `web`
+  container; pinned to IPv4 — Node's DNS ordering can resolve `localhost` to `::1`);
+  the suite assumes the stack is up (`pnpm dev:up`) and the mock is reachable from
+  `server` — it never calls the mock itself
+- Local isolation: to run against this checkout without hijacking a `mayon-dev` stack
+  mounted from another checkout, use the `mayon-e2e` compose project
+  (`docker-compose.e2e.yml` override, web on host 5174) — see `docs/dev/building.qmd`
 - Boot discipline: tests wait for BootGate resolution before interacting (fresh
   browser context = zero providers, zero keys)
 - Shared test fixture: onboarding (add provider → edit base URL/model → save key →

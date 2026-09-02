@@ -8,3 +8,5 @@ export const HEADING_PROBE = 'The Kitchen-Sink Fixture';
 export const PROSE_PROBE = 'Automated assertions read this text verbatim';
 export const ALIGNED_SENTENCE =
 	'Alignment depends on stable plain sentences that render exactly as they are written.';
+export const ALIGNED_PARAGRAPH =
+	'Selection mapping needs prose that renders exactly as it is written. Alignment depends on stable plain sentences that render exactly as they are written. Every word here sits in one plain text node, with single spaces and no inline decoration.';

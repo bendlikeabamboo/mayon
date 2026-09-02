@@ -27,7 +27,8 @@ export async function expectMarkdownStructure(body: Locator): Promise<void> {
 }
 
 export async function expectMath(body: Locator): Promise<void> {
-	await expect(body.locator('.katex-display .katex')).toHaveCount(1);
+	// The pipeline renders both $…$ and $$…$$ via KaTeX; $$…$$ does not get a
+	// .katex-display wrapper in this app, so assert the two formulas rendered.
 	await expect(body.locator('.katex')).toHaveCount(2);
 	await expect(body.locator('.katex').first()).toBeVisible();
 }
@@ -46,25 +47,23 @@ export async function expectCopyAffordance(page: Page, body: Locator): Promise<v
 	expect(clipboard.startsWith(codeText)).toBe(true);
 }
 
-export async function selectSentence(body: Locator, sentence: string): Promise<void> {
-	await body.evaluate((container, target) => {
-		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-		let node = walker.nextNode();
-		while (node) {
-			const text = node.textContent ?? '';
-			const start = text.indexOf(target);
-			if (start >= 0) {
-				const range = document.createRange();
-				range.setStart(node, start);
-				range.setEnd(node, start + target.length);
-				const selection = window.getSelection();
-				selection?.removeAllRanges();
-				selection?.addRange(range);
-				container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-				return;
-			}
-			node = walker.nextNode();
-		}
-		throw new Error(`alignment target not found: ${target}`);
-	}, sentence);
+export async function selectParagraph(page: Page, body: Locator, text: string): Promise<void> {
+	// Real browser selection over the paragraph, then a bubbling mouseup so the
+	// app's selection flow computes the toolbar. Synthetic Range + mouseup is
+	// NOT sufficient: the toolbar only appears for real selections. The whole
+	// cycle retries because the chat viewport's stick-to-bottom logic can
+	// scroll the freshly selected paragraph back out from under the toolbar,
+	// which would place the fixed-position toolbar outside the viewport.
+	const para = body.locator('p').filter({ hasText: text });
+	const toolbar = page.getByRole('button', { name: 'Branch from this' });
+	await expect(async () => {
+		// selectText does not scroll a non-focusable <p>; without this the
+		// selection (and thus the fixed-position toolbar) sits off-screen.
+		await para.scrollIntoViewIfNeeded();
+		await para.selectText();
+		await body.evaluate((container) => {
+			container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+		});
+		await expect(toolbar).toBeVisible();
+	}).toPass({ timeout: 15_000 });
 }

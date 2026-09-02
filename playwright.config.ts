@@ -8,7 +8,9 @@ export default defineConfig({
 	reporter: [['list']],
 	timeout: 60_000,
 	use: {
-		baseURL: 'http://localhost:5173',
+		// 127.0.0.1, not localhost: Node's DNS ordering can resolve localhost to
+		// ::1, which the dev web container does not accept.
+		baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173',
 		trace: 'retain-on-failure'
 	},
 	projects: [{ name: 'chromium', use: { browserName: 'chromium' } }]

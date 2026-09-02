@@ -31,9 +31,7 @@ Structure is the cheapest rendering capability to assert, so it comes first.
 
 Inline math such as $e^{i\pi}+1=0$ must render as KaTeX output, never as literal dollar text. The display form below must render as a KaTeX display block.
 
-$$
-\int_0^1 x^2 \, dx = \frac{1}{3}
-$$
+$$\int_0^1 x^2 \, dx = \frac{1}{3}$$
 
 Both formulas travel through one math pipeline, so a regression there fails both assertions together.
 

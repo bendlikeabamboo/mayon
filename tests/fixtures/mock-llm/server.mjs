@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const PORT = Number(process.env.MOCK_LLM_PORT ?? 9999);
 const MODEL_ID = 'mock-sink';
-const CHUNK_INTERVAL_MS = 60;
+const CHUNK_INTERVAL_MS = 150;
 const BLOCKS_PER_CHUNK = 3;
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'kitchen-sink.md');
@@ -18,7 +18,11 @@ const blocks = doc
 	.filter(Boolean);
 const chunks = [];
 for (let i = 0; i < blocks.length; i += BLOCKS_PER_CHUNK) {
-	chunks.push(blocks.slice(i, i + BLOCKS_PER_CHUNK).join('\n\n'));
+	const group = blocks.slice(i, i + BLOCKS_PER_CHUNK).join('\n\n');
+	// Preserve the document's block separator across chunk boundaries — the
+	// consumer concatenates deltas verbatim, so a dropped separator here would
+	// silently corrupt the reply (blocks would run together).
+	chunks.push(i + BLOCKS_PER_CHUNK < blocks.length ? group + '\n\n' : group);
 }
 const plainProse = blocks.find((block) => !block.startsWith('#')) ?? doc;
 

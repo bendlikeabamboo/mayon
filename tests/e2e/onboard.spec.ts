@@ -1,5 +1,4 @@
-import { expect } from './fixtures/onboard';
-import { test } from './fixtures/onboard';
+import { expect, modelListFooter, settledModelFooter, test } from './fixtures/onboard';
 import {
 	EARLY_MARKER,
 	HEADING_PROBE,
@@ -35,6 +34,7 @@ test.describe('mock-llm onboarding and round trip', () => {
 		await page.goto('/settings#providers');
 		await expect(providerCard.getByLabel('Base URL')).toHaveValue(MOCK_BASE_URL);
 		await providerCard.getByRole('button', { name: 'Refresh model list' }).click();
+		await expect(modelListFooter(providerCard)).toHaveText(settledModelFooter(3));
 		await providerCard.locator('button[aria-haspopup="dialog"]').click();
 		await expect(page.getByRole('option', { name: MODEL_ID })).toBeVisible();
 		await page.keyboard.press('Escape');

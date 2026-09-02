@@ -1,0 +1,13 @@
+# Isolated E2E stack override: run the chat E2E suite against THIS checkout in
+# its own compose project, alongside (without disturbing) a developer's
+# `mayon-dev` stack. Volumes and the network are project-prefixed, so state is
+# disjoint; only the web host port moves.
+#
+#   docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml up -d
+#   E2E_BASE_URL=http://127.0.0.1:5174 pnpm test:e2e
+#
+# Teardown: docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml down
+services:
+  web:
+    ports: !override
+      - '5174:5173'
