@@ -61,3 +61,40 @@ pnpm test
 ```
 
 Tests cover the repository layer, provider adapters, context assembly, transport contracts, and key storage.
+
+## Browser E2E tests
+
+The chat experience has Playwright E2E coverage (`tests/e2e/`): provider onboarding through the real
+Settings UI, a full send → receive round trip, and rendering assertions against a deterministic
+kitchen-sink reply. The reply comes from a tests-owned mock LLM service (`mock-llm` in
+`docker-compose.dev.yml`) that speaks the OpenAI chat protocol — no real AI service, no API key, no
+external network. The suite runs automatically in the `e2e` CI job on every pull request.
+
+Prerequisites (fresh checkout):
+
+```bash
+pnpm install
+pnpm --filter @mayon/shared build
+pnpm exec playwright install --with-deps chromium
+```
+
+Run against a running dev stack:
+
+```bash
+pnpm dev:up
+pnpm test:e2e
+```
+
+The suite needs the stack up because the provider request path executes inside the `server`
+container; the mock is reachable only there. Failed runs leave traces in `test-results/` and a
+browser-runnable report in `playwright-report/` (open with `pnpm exec playwright show-report`).
+
+If your `mayon-dev` stack is busy serving a different checkout (the bind mounts follow whoever ran
+`pnpm dev:up` last), run the suite against an isolated stack for this checkout instead — the volumes
+and network are project-prefixed, so nothing collides:
+
+```bash
+docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml up -d
+E2E_BASE_URL=http://127.0.0.1:5174 pnpm test:e2e
+docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml down
+```

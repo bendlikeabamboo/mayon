@@ -300,7 +300,13 @@
 		scrolledToHash = false;
 		stickToBottom = true;
 		await chatStore.load(chatId);
-		composerPrompt = (await repos.settings.get<string>('draft:' + chatId)) ?? '';
+		// Restore the per-chat draft, but never clobber text the user typed while
+		// the chat was loading — the restore lands after awaits, so a fast typist
+		// (or an E2E driver) would otherwise have their prompt wiped here.
+		const draft = await repos.settings.get<string>('draft:' + chatId);
+		if (!composerPrompt) {
+			composerPrompt = draft ?? '';
+		}
 		if (chatStore.chat) {
 			await loadNav(chatStore.chat);
 			diagnosticsStore.load(chatId);

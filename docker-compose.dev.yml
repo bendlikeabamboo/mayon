@@ -67,6 +67,23 @@ services:
       retries: 20
       start_period: 10s
     restart: unless-stopped
+  mock-llm:
+    image: docker.io/library/node:22-alpine
+    working_dir: /fixture
+    command: node server.mjs
+    environment:
+      MOCK_LLM_PORT: '9999'
+    expose:
+      - '9999'
+    volumes:
+      - ./tests/fixtures/mock-llm:/fixture:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:9999/v1/models >/dev/null 2>&1 || exit 1']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
 volumes:
   server-data-dev:
   pg-data-dev:
