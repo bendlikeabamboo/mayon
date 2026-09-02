@@ -1,2 +1,0 @@
-is there a way to better organize settings? tabs maybe? or like side-tabs, like github? idk. its just sometimes its hard to browse the settings. i was looking for backup, had to scroll all the way down for it. the settings page is so long.
-so that's length plus the cognitive overload of finding.
