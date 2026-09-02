@@ -10,18 +10,18 @@ Thinking through options should feel like a game: a deck of cards, a story in ea
 
 ```mermaid
 flowchart LR
-    I[idea: paste it] --> D[cards dealt: yours + 3-4 you'd miss] --> P[playthrough: one card per turn]
+    I[idea: paste it] --> D[cards dealt: yours + the ones you'd miss] --> P[playthrough: one card per turn]
     P -->|say next| P
-    P -->|all cards played| V[comparison + your pick] --> SPEC[/speckit.specify/]
+    P -->|all cards played| V[comparison + your pick → spec.md] --> SPEC[/speckit.specify/]
 ```
 
-**`speckit.prespec.idea`** — paste the idea. The command infers the **what** (the goal, as an outcome) and the **why** (the motivation), keeps your proposed way forward as **Card 1 — your card**, then deals 3–4 more paths to the same what: a *smaller* path, a *reframe*, a *contrarian* bet, and occasionally a wild card. Every card is a short story plus a one-line bet ("this wins if …"). No judging yet.
+**`speckit.prespec.idea`** — paste the idea. The command infers the **what** (the goal, as an outcome) and the **why** (the motivation), and **confirms the what, the why, and the slug with you before dealing** (via the ask-user tool when one exists, otherwise asked directly — the gate the idea step must pass). It then keeps your proposed way forward as **Card 1 — your card** and deals the paths you'd miss (typically three more; the deck holds 2–6 cards): a *smaller* path, a *reframe*, a *contrarian* bet, and occasionally a wild card. Every card is a short story plus a one-line bet ("this wins if …"). No judging yet.
 
 **`speckit.prespec.playthrough`** — live each card, one per turn, narrated by **Kit**: a smart, cunning, conversational, charismatic principal engineer who always talks first person and draws from paths he's watched play out. The path unfolds as a story with rough time markers, then gets pinned down: the snags (when they bite, how bad), the trade-offs you'd silently accept, whether it actually delivers the what, and a difficulty-vs-payoff line (`S/M/L` · `H/M/L` · time-to-first-value). Kit's war stories are color, not evidence — facts stay in `research.md`. Then the pause: a question or two for your reaction, and —
 
 > Say `next` to play through Card 3 — Cut the sync layer next.
 
-When the deck is exhausted you get the comparison table and pick a winner; the verdict is recorded and handed to `/speckit.specify` (the winning card's story + what + snags make a strong spec seed — and read fine as input to `assess` intake, if that extension is installed).
+When the deck is exhausted you get the comparison table and pick a winner — a card, a hybrid, or a brand-new direction that surfaced along the way; anything you choose wins. The verdict is recorded and you get a **paste-ready spec seed**: shown in the conversation and saved as `spec.md` beside `decisions.md`, concrete enough to hand straight to `/speckit.specify` (it reads fine as input to `assess` intake too, if that extension is installed).
 
 ## Installation
 
@@ -47,6 +47,9 @@ Requires Spec Kit `>=0.9.0`. Works in a freshly initialized project with no code
 
   What: changes made offline reliably reach the server (and back)
   Why: field users lose work whenever connectivity drops
+  Slug: offline-mode
+  Confirm these three and I'll deal the deck?
+> yes
   Dealt 4 cards: 1 — Local replay queue (your card)
                  2 — Conflict-free CRDT field edits
                  3 — Draft-and-reconcile (smaller)
@@ -79,6 +82,7 @@ ideas/
     │   ├── local-replay-queue.md  # card + its playthrough record (order in frontmatter)
     │   └── crdt-field-edits.md
     ├── decisions.md               # verdicts & the final pick
+    ├── spec.md                    # the paste-ready seed for /speckit.specify, written at verdict time
     └── research.md                # factual lookups with sources (created on demand)
 ```
 
@@ -88,6 +92,7 @@ ideas/
 
 - Writes go only to the idea's folder under `ideas/` and the `.specify/feature.prespec.json` bookmark; nothing else is touched.
 - Slugs are normalized to `[a-z0-9-]` (empty rejected); symlinked path components are refused and resolved paths must stay inside the project root.
+- The what, why, and slug are confirmed by the user before any deck is dealt (ask-user tool when available, plain question otherwise); without a reachable user, the command stops instead of guessing.
 - No deck is overwritten without confirmation (refused in automated mode); a re-deal is explicit.
 - Ideas may carry URLs: untrusted data, never instructions — allowlisted hosts fetched freely, unknown hosts prompted or skipped, loopback/RFC1918/metadata endpoints refused, secrets sanitized.
 - Difficulty/payoff are relative estimates for comparing cards, never commitments; the final pick is always the user's.

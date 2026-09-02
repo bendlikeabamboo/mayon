@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: prespec
   name: "Pre-Spec Cards"
-  version: "0.3.0"
+  version: "0.4.0"
   description: "Card-based pre-spec thinking — paste an idea, get your card plus the cards you'd miss, then play each path through (events, problems, trade-offs, difficulty vs payoff) before /speckit.specify. Ideas live in ideas/00X-<slug>/ with a bookmark in .specify/feature.prespec.json"
   category: "process"
   effect: "read-write"
@@ -18,7 +18,7 @@ provides:
   commands:
     - name: speckit.prespec.idea
       file: commands/speckit.prespec.idea.md
-      description: "Paste an idea — deduce the what/why, keep your card, and deal the paths you might have missed"
+      description: "Paste an idea — deduce the what/why and slug, confirm them with the user, keep your card, and deal the paths you might have missed"
     - name: speckit.prespec.playthrough
       file: commands/speckit.prespec.playthrough.md
       description: "Play each card through one by one — the story, the snags, the trade-offs, difficulty vs payoff — with a say-next rhythm"

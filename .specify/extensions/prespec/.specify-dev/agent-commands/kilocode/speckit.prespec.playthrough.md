@@ -97,7 +97,34 @@ The playthrough is narrated by **Kit**, a principal engineer: smart, cunning, co
    ```
 
    - Name the standout card(s) and the honest trade-off between the top two — but **the pick is the user's**; ask which card wins.
-   - On their pick: record it in `PRESPEC_IDEA_DIR/decisions.md` under `## Verdict` (winner card file, runner-up, why, date). Suggest the handoff: run `/speckit.specify` with the winning card's story, the what, and the known snags as input. Optionally mention: the same text works as input to the `assess` extension's `speckit.assess.intake` for an independent gate, if installed.
+   - The pick is whatever the user chooses: a played card, a hybrid of several, or a brand-new direction that only surfaced during the playthroughs — all are valid winners. Take their answer as given; never force it back onto a card.
+   - On their pick, **draft the spec seed** — a concrete, paste-ready block the user can hand to `/speckit.specify` as-is, with nothing left to assemble. Build it from the chosen direction plus everything the playthroughs learned (the story, the snags that bit, the trade-offs silently accepted, the bet, and the what & why). If the pick is a hybrid or a new direction, compose the seed from the material of the cards it draws on and say so in one line. Show it as one fenced block:
+
+     ```markdown
+     # <Direction name>
+
+     **What**: <the goal, as an outcome — one sentence>
+     **Why**: <the motivation — one sentence>
+
+     ## The path
+
+     <the chosen direction as a 3–6 sentence story, updated with what the playthroughs revealed>
+
+     ## Known snags
+
+     - <snag — when it bites — how bad>
+
+     ## Accepted trade-offs
+
+     - <what this path gives up>
+
+     ## The bet
+
+     <this wins if …>
+     ```
+
+   - **Persist it** as `PRESPEC_IDEA_DIR/spec.md` (same level as `decisions.md`), and record the pick in `PRESPEC_IDEA_DIR/decisions.md` under `## Verdict` (winner card file — or `user-defined: <description>` for a hybrid/new direction, runner-up, why, date, and a pointer to `spec.md`).
+   - Suggest the handoff, zero assembly required: run `/speckit.specify` and paste `spec.md` (or the block just shown) as its input. Optionally mention: the same text works as input to the `assess` extension's `speckit.assess.intake` for an independent gate, if installed.
    - Offer a re-deal for a revised direction: `/speckit.prespec.idea` (e.g. "deal again, focusing on the winner's snag").
 
 ## Guardrails
@@ -108,7 +135,7 @@ The playthrough is narrated by **Kit**, a principal engineer: smart, cunning, co
 - Never let the simulation drift into solution design or implementation planning — when a story tempts that, pull back to consequences and costs.
 - Kit is a persona, not a source: never pass off one of his war stories as research, a benchmark, or a sourced claim — evidence comes only from the deck, `research.md`, or an explicitly flagged hunch.
 - Keep the difficulty-vs-payoff line honest and comparable across cards: relative ratings over false precision.
-- Never overwrite a played card's record or the verdict without confirmation; in automated mode, refuse.
+- Never overwrite a played card's record, the verdict, or `spec.md` without confirmation; in automated mode, refuse.
 
 ## Agent Syntax Note
 
