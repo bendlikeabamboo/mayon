@@ -27,7 +27,7 @@ import { registerAuthGate } from './auth/gate';
 import { registerAuth } from './auth/index';
 import { createAuthStore } from './auth/store';
 import { resolveAuthSecretKey } from './auth/secret-key';
-import { SESSION_COOKIE } from './auth/cookies';
+import { SESSION_COOKIE, ENROLL_COOKIE } from './auth/cookies';
 import type { PgPoolLike } from './pg';
 
 declare module 'fastify' {
@@ -140,6 +140,7 @@ export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 			setSecurityMode: (mode) => setSecurityMode(opts.pgPool, mode, now),
 			getAuthKey: () => fastify.getAuthKey(),
 			resolveSessionToken: (request) => request.cookies?.[SESSION_COOKIE],
+			resolveEnrollToken: (request) => request.cookies?.[ENROLL_COOKIE],
 			now
 		});
 

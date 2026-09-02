@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,10 +9,11 @@ import type { AddressInfo } from 'node:net';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import { generateSync } from 'otplib';
 import WebSocket from 'ws';
 import { buildApp, getSecurityMode, setSecurityMode } from './server';
 import { setRestoring } from './pg';
-import { randomToken, sha256Hex } from './auth/crypto';
+import { hashPassword, randomToken, sha256Hex } from './auth/crypto';
 import { PUBLIC_ALLOWLIST } from './auth/gate';
 import { createAuthStore, type AuthStore } from './auth/store';
 import type { AuthIdentityStatus } from '@mayon/schema';
@@ -63,7 +66,15 @@ const ALL_ROUTES: readonly RouteRef[] = [
 	{ method: 'POST', url: '/api/auth/setup' },
 	{ method: 'POST', url: '/api/auth/setup/confirm' },
 	{ method: 'POST', url: '/api/auth/login' },
+	{ method: 'POST', url: '/api/auth/enroll' },
 	{ method: 'POST', url: '/api/auth/logout' },
+	{ method: 'POST', url: '/api/auth/invites' },
+	{ method: 'GET', url: '/api/auth/invites' },
+	{ method: 'DELETE', url: '/api/auth/invites/:id' },
+	{ method: 'GET', url: '/api/auth/sessions' },
+	{ method: 'DELETE', url: '/api/auth/sessions/:id' },
+	{ method: 'POST', url: '/api/auth/sessions/revoke-all' },
+	{ method: 'GET', url: '/api/auth/attempts' },
 	{ method: 'GET', url: '/api/backup/db' },
 	{ method: 'PUT', url: '/api/backup/db' },
 	{ method: 'GET', url: '/api/backup/safety' },
@@ -79,24 +90,16 @@ const ALL_ROUTES: readonly RouteRef[] = [
 	{ method: 'POST', url: '/api/llm/proxy' }
 ];
 
-/**
- * Allowlisted per contracts/auth-api.md but not yet registered (arrives with
- * US4 invite enrollment). The gate must exempt it already; today it falls
- * through to Fastify's 404.
- */
-const PENDING_ALLOWLIST_ROUTES: ReadonlyArray<[SweepMethod, string]> = [
-	['POST', '/api/auth/enroll']
-];
-
 function normalizeRoutes(routes: readonly RouteRef[]): string[] {
 	return routes.map((r) => `${r.method} ${r.url}`).sort();
 }
 
 /**
  * Parses fastify's printRoutes({ commonPrefix: false }) tree. Top-level lines
- * carry full paths; deeper lines carry only the divergent suffix (e.g.
- * `/confirm` under `/api/auth/setup`), accumulated via an indent-level stack.
- * Auto-generated HEAD routes are dropped.
+ * carry full paths; deeper lines carry the divergent remainder, either as a
+ * segment (`/confirm` under `/api/auth/setup`) or a mid-segment suffix
+ * (`s` under `/api/auth/session` → `/api/auth/sessions`), accumulated via an
+ * indent-level stack. Auto-generated HEAD routes are dropped.
  */
 export function parseRouteTree(tree: string): RouteRef[] {
 	const routes: RouteRef[] = [];
@@ -109,21 +112,18 @@ export function parseRouteTree(tree: string): RouteRef[] {
 		const indent = line.match(/^[\s│├└─]*/)![0].length;
 		const level = Math.round(indent / 4);
 		const content = line.slice(indent);
-		if (!content.startsWith('/')) {
+		const match = /^(.*?)\s*\(([^()]*)\)$/.exec(content);
+		if (!match) {
 			continue;
 		}
-		const match = /^(.*?)\s*\(([^()]*)\)$/.exec(content);
-		const path = match ? match[1]! : content;
 		while (stack.length > 0 && stack[stack.length - 1]!.level >= level) {
 			stack.pop();
 		}
-		const full = (stack[stack.length - 1]?.path ?? '') + path;
-		if (match) {
-			for (const method of match[2]!.split(',')) {
-				const m = method.trim();
-				if (m !== 'HEAD') {
-					routes.push({ method: m as SweepMethod, url: full });
-				}
+		const full = (stack[stack.length - 1]?.path ?? '') + match[1]!;
+		for (const method of match[2]!.split(',')) {
+			const m = method.trim();
+			if (m !== 'HEAD') {
+				routes.push({ method: m as SweepMethod, url: full });
 			}
 		}
 		stack.push({ level, path: full });
@@ -387,13 +387,20 @@ describe('auth gate — locked mode (store-backed)', () => {
 
 describe('auth gate — locked mode sweep over every registered route (SC-001/SC-002)', () => {
 	let app: ReturnType<typeof buildApp>;
+	let pool: PgPoolLike;
+	let store: AuthStore;
 	let basePort = 0;
 	const clock = { now: 1_756_050_000_000 };
 
 	beforeAll(async () => {
-		const pool = await createPglitePool();
+		pool = await createPglitePool();
+		store = createAuthStore(pool, () => clock.now);
 		await setSecurityMode(pool, 'locked', () => clock.now);
-		app = buildApp(':memory:', { pgPool: pool, authNow: () => clock.now });
+		app = buildApp(':memory:', {
+			pgPool: pool,
+			authNow: () => clock.now,
+			authKeyPath: path.join(mkdtempSync(path.join(tmpdir(), 'mayon-auth-gate-')), 'auth-secret')
+		});
 		await app.listen({ port: 0, host: '0.0.0.0' });
 		const addr = app.server.address();
 		if (typeof addr === 'object' && addr) {
@@ -476,14 +483,57 @@ describe('auth gate — locked mode sweep over every registered route (SC-001/SC
 		expect(res.statusCode).toBe(204);
 	});
 
-	it.each(PENDING_ALLOWLIST_ROUTES)(
-		'gate-exempts allowlisted (not yet registered) $0 $1 — no 401/403',
-		async (method, url) => {
-			const res = await app.inject({ method, url, body: {} });
-			expect(res.statusCode).not.toBe(401);
-			expect(res.statusCode).not.toBe(403);
+	it('keeps allowlisted POST /api/auth/enroll public (handler outcome: 401 enrollment expired)', async () => {
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/auth/enroll',
+			body: { code: '123456' }
+		});
+		expect(res.statusCode).toBe(401);
+		expect(res.body).toBe('{"error":"enrollment expired"}');
+	});
+
+	it('keeps allowlisted POST /api/auth/enroll public with an enroll cookie (handler outcome: 400 invalid code)', async () => {
+		await store.createIdentity({
+			id: randomUUID(),
+			label: 'enroller',
+			role: 'invitee',
+			status: 'invited',
+			passwordHash: await hashPassword('password123')
+		});
+		const login = await app.inject({
+			method: 'POST',
+			url: '/api/auth/login',
+			body: { label: 'enroller', password: 'password123' }
+		});
+		expect(login.statusCode).toBe(200);
+		expect(login.json().status).toBe('mfa_enrollment_required');
+		const raw = login.headers['set-cookie'];
+		const list = raw == null ? [] : Array.isArray(raw) ? raw : [String(raw)];
+		const enrollCookie = list.find((c) => c.startsWith('mayon_enroll='));
+		expect(enrollCookie).toBeDefined();
+		const secret = new URL(login.json().otpauthUri as string).searchParams.get('secret');
+		expect(secret).toBeTruthy();
+		const windowCodes = new Set(
+			[-1, 0, 1].map((d) =>
+				generateSync({ secret: secret!, epoch: Math.floor((clock.now + d * 30_000) / 1000) })
+			)
+		);
+		let bad = '000000';
+		while (windowCodes.has(bad)) {
+			bad = String((Number(bad) + 1) % 1_000_000).padStart(6, '0');
 		}
-	);
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/auth/enroll',
+			headers: {
+				cookie: `mayon_enroll=${enrollCookie!.split(';')[0]!.split('=').slice(1).join('=')}`
+			},
+			body: { code: bad }
+		});
+		expect(res.statusCode).toBe(400);
+		expect(res.body).toBe('{"error":"invalid code"}');
+	});
 
 	it('rejects session-less websocket upgrades with 401 before dispatch', { timeout: 15000 }, () => {
 		return new Promise<void>((resolve, reject) => {

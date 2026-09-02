@@ -4,8 +4,22 @@
 	import { authState, logout } from '$lib/auth/state.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import InvitesPanel from '$lib/components/settings/InvitesPanel.svelte';
+	import SessionsPanel from '$lib/components/settings/SessionsPanel.svelte';
+	import ActivityPanel from '$lib/components/settings/ActivityPanel.svelte';
 
+	type Tab = 'invites' | 'sessions' | 'activity';
+
+	const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
+		{ id: 'invites', label: 'Invites' },
+		{ id: 'sessions', label: 'Sessions' },
+		{ id: 'activity', label: 'Activity' }
+	];
+
+	let tab = $state<Tab>('invites');
 	let signingOut = $state(false);
+
+	const isOwner = $derived(authState.identity?.role === 'owner');
 
 	async function signOut() {
 		signingOut = true;
@@ -60,5 +74,31 @@
 			{/if}
 			<Button variant="outline" size="sm" disabled={signingOut} onclick={signOut}>Log out</Button>
 		</div>
+
+		{#if isOwner}
+			<div class="flex gap-1 border-b border-border" role="tablist">
+				{#each TABS as entry (entry.id)}
+					<button
+						type="button"
+						role="tab"
+						aria-selected={tab === entry.id}
+						class="-mb-px border-b-2 px-3 py-1.5 text-xs font-medium transition-colors {tab ===
+						entry.id
+							? 'border-primary text-foreground'
+							: 'border-transparent text-muted-foreground hover:text-foreground'}"
+						onclick={() => (tab = entry.id)}
+					>
+						{entry.label}
+					</button>
+				{/each}
+			</div>
+			{#if tab === 'invites'}
+				<InvitesPanel />
+			{:else if tab === 'sessions'}
+				<SessionsPanel />
+			{:else}
+				<ActivityPanel />
+			{/if}
+		{/if}
 	{/if}
 </section>

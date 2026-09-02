@@ -72,17 +72,17 @@ export interface InvitesResponse {
 export interface SessionDTO {
 	id: string;
 	identityLabel: string;
-	label: string;
+	label: string | null;
 	createdAt: number;
 	expiresAt: number;
-	lastSeenAt: number;
+	lastSeenAt: number | null;
 	current: boolean;
 }
 export interface SessionsResponse {
 	sessions: SessionDTO[];
 }
 export interface AttemptDTO {
-	identityLabel: string;
+	identityLabel: string | null;
 	source: string;
 	outcome: LoginAttemptOutcome;
 	at: number;

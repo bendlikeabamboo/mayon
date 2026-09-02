@@ -1,9 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import type { AuthIdentity } from '@mayon/schema';
-import type { AuthIdentityDTO, AuthMode, AuthSessionResponse } from '@mayon/shared';
+import type {
+	AttemptsResponse,
+	AuthIdentityDTO,
+	AuthMode,
+	AuthSessionResponse,
+	InvitesResponse,
+	SessionsResponse
+} from '@mayon/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { generateSecret, generateURI, verify } from 'otplib';
-import { clearSessionCookie, nextLocalMidnight, setSessionCookie } from './cookies';
+import {
+	clearEnrollCookie,
+	clearSessionCookie,
+	nextLocalMidnight,
+	setEnrollCookie,
+	setSessionCookie
+} from './cookies';
 import {
 	hashPassword,
 	randomToken,
@@ -18,6 +31,8 @@ const LABEL_MAX = 64;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 1024;
 const TOTP_STEP_SECONDS = 30;
+const ENROLL_TTL_MS = 900_000;
+const ATTEMPTS_LIST_LIMIT = 50;
 
 interface SetupBody {
 	label?: unknown;
@@ -34,10 +49,20 @@ interface LoginBody {
 	code?: unknown;
 }
 
+interface InviteBody {
+	label?: unknown;
+}
+
 interface PendingEnrollment {
 	label: string;
 	passwordHash: string;
 	secretEnc: string;
+}
+
+interface EnrollPending {
+	identityId: string;
+	secretEnc: string;
+	expiresAt: number;
 }
 
 export interface RegisterAuthDeps {
@@ -46,11 +71,22 @@ export interface RegisterAuthDeps {
 	setSecurityMode: (mode: AuthMode) => Promise<void>;
 	getAuthKey: () => Buffer;
 	resolveSessionToken: (request: FastifyRequest) => string | undefined;
+	resolveEnrollToken: (request: FastifyRequest) => string | undefined;
 	now: () => number;
 }
 
 export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void {
 	let pending: PendingEnrollment | undefined;
+	const enrollPending = new Map<string, EnrollPending>();
+
+	function sweepEnrollPending(): void {
+		const ts = deps.now();
+		for (const [token, entry] of enrollPending) {
+			if (entry.expiresAt <= ts) {
+				enrollPending.delete(token);
+			}
+		}
+	}
 
 	const setupClosed = async (): Promise<boolean> =>
 		(await deps.getSecurityMode()) === 'locked' || (await deps.store.findActiveOwner()) !== null;
@@ -62,6 +98,14 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 
 	function refuseInvalidCredentials(reply: FastifyReply): FastifyReply {
 		return reply.code(401).send({ error: 'invalid credentials' });
+	}
+
+	function refuseForbidden(reply: FastifyReply): FastifyReply {
+		return reply.code(403).send({ error: 'forbidden' });
+	}
+
+	function isOwner(request: FastifyRequest): boolean {
+		return request.auth?.role === 'owner';
 	}
 
 	async function verifyLiveTotp(
@@ -207,12 +251,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			identity = candidates[0] ?? null;
 		}
 		const password = body.password;
-		if (
-			!identity ||
-			identity.status !== 'active' ||
-			identity.totpSecretEnc === null ||
-			typeof password !== 'string'
-		) {
+		if (!identity || identity.status === 'revoked' || typeof password !== 'string') {
 			return refuseInvalidCredentials(reply);
 		}
 		let passwordOk: boolean;
@@ -222,6 +261,31 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			passwordOk = false;
 		}
 		if (!passwordOk) {
+			return refuseInvalidCredentials(reply);
+		}
+		if (identity.status === 'invited') {
+			const secret = generateSecret();
+			let secretEnc: string;
+			try {
+				secretEnc = wrapSecret(secret, deps.getAuthKey());
+			} catch (err) {
+				return keyFailure(reply, err);
+			}
+			sweepEnrollPending();
+			const enrollToken = randomToken();
+			enrollPending.set(enrollToken, {
+				identityId: identity.id,
+				secretEnc,
+				expiresAt: deps.now() + ENROLL_TTL_MS
+			});
+			setEnrollCookie(reply, enrollToken);
+			return {
+				status: 'mfa_enrollment_required',
+				enrollToken,
+				otpauthUri: generateURI({ issuer: 'mayon', label: identity.label, secret })
+			};
+		}
+		if (identity.totpSecretEnc === null) {
 			return refuseInvalidCredentials(reply);
 		}
 		let secret: string;
@@ -254,6 +318,65 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		return { authenticated: true, identity: dto, session: { expiresAt } };
 	});
 
+	app.post<{ Body: ConfirmBody }>('/api/auth/enroll', async (request, reply) => {
+		sweepEnrollPending();
+		const token = deps.resolveEnrollToken(request);
+		const entry = token ? enrollPending.get(token) : undefined;
+		if (!entry || entry.expiresAt <= deps.now()) {
+			if (token) {
+				enrollPending.delete(token);
+			}
+			clearEnrollCookie(reply);
+			return reply.code(401).send({ error: 'enrollment expired' });
+		}
+		const code = typeof request.body?.code === 'string' ? request.body.code.trim() : '';
+		if (!/^\d{6}$/.test(code)) {
+			return reply.code(400).send({ error: 'invalid code' });
+		}
+		let secret: string;
+		try {
+			secret = unwrapSecret(entry.secretEnc, deps.getAuthKey());
+		} catch (err) {
+			return keyFailure(reply, err);
+		}
+		const totp = await verifyLiveTotp(secret, code, null);
+		if (!totp.ok) {
+			return reply.code(400).send({ error: 'invalid code' });
+		}
+		const identity = await deps.store.findIdentityById(entry.identityId);
+		if (!identity || identity.status !== 'invited') {
+			enrollPending.delete(token);
+			clearEnrollCookie(reply);
+			return reply.code(401).send({ error: 'enrollment expired' });
+		}
+		const now = deps.now();
+		await deps.store.setIdentityMfa(identity.id, {
+			totpSecretEnc: entry.secretEnc,
+			totpLastStep: totp.timeStep,
+			mfaEnrolledAt: now
+		});
+		await deps.store.setIdentityStatus(identity.id, 'active');
+		const sessionToken = randomToken();
+		const expiresAt = nextLocalMidnight(now);
+		await deps.store.createSession({
+			id: randomUUID(),
+			identityId: identity.id,
+			tokenHash: sha256Hex(sessionToken),
+			expiresAt
+		});
+		enrollPending.delete(token);
+		clearEnrollCookie(reply);
+		setSessionCookie(reply, sessionToken, expiresAt);
+		await deps.store.recordAttempt({
+			identityLabel: identity.label,
+			source: request.ip,
+			outcome: 'success',
+			at: now
+		});
+		const dto: AuthIdentityDTO = { label: identity.label, role: identity.role };
+		return { authenticated: true, identity: dto, session: { expiresAt } };
+	});
+
 	app.post('/api/auth/logout', async (request, reply) => {
 		const token = deps.resolveSessionToken(request);
 		if (token) {
@@ -264,5 +387,119 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		}
 		clearSessionCookie(reply);
 		return reply.code(204).send();
+	});
+
+	app.post<{ Body: InviteBody }>('/api/auth/invites', async (request, reply) => {
+		if (!isOwner(request)) {
+			return refuseForbidden(reply);
+		}
+		const label = typeof request.body?.label === 'string' ? request.body.label.trim() : '';
+		if (label.length < 1 || label.length > LABEL_MAX) {
+			return reply.code(400).send({ error: 'invalid label' });
+		}
+		const nonRevoked = await deps.store.listNonRevokedIdentities();
+		if (nonRevoked.some((identity) => identity.label === label)) {
+			return reply.code(400).send({ error: 'duplicate label' });
+		}
+		const oneTimePassword = randomToken();
+		const id = randomUUID();
+		await deps.store.createIdentity({
+			id,
+			label,
+			role: 'invitee',
+			status: 'invited',
+			passwordHash: await hashPassword(oneTimePassword)
+		});
+		return reply.code(201).send({ id, oneTimePassword });
+	});
+
+	app.get('/api/auth/invites', async (request, reply): Promise<InvitesResponse> => {
+		if (!isOwner(request)) {
+			return refuseForbidden(reply);
+		}
+		const invites = await deps.store.listInvites();
+		return {
+			invites: invites.map((invite) => ({
+				id: invite.id,
+				label: invite.label,
+				status: invite.status,
+				createdAt: invite.createdAt
+			}))
+		};
+	});
+
+	app.delete('/api/auth/invites/:id', async (request, reply) => {
+		if (!isOwner(request)) {
+			return refuseForbidden(reply);
+		}
+		const { id } = request.params as { id: string };
+		const identity = await deps.store.findIdentityById(id);
+		if (!identity || identity.role !== 'invitee') {
+			return reply.code(404).send({ error: 'unknown invite' });
+		}
+		await deps.store.setIdentityStatus(identity.id, 'revoked');
+		await deps.store.deleteSessionsByIdentity(identity.id);
+		return reply.code(204).send();
+	});
+
+	app.get('/api/auth/sessions', async (request, reply): Promise<SessionsResponse> => {
+		const auth = request.auth;
+		if (!auth) {
+			return refuseForbidden(reply);
+		}
+		const live = await deps.store.listSessions(deps.now());
+		const visible =
+			auth.role === 'invitee' ? live.filter((s) => s.identityId === auth.identityId) : live;
+		return {
+			sessions: visible.map((s) => ({
+				id: s.id,
+				identityLabel: s.identityLabel,
+				label: s.label,
+				createdAt: s.createdAt,
+				expiresAt: s.expiresAt,
+				lastSeenAt: s.lastSeenAt,
+				current: s.id === auth.sessionId
+			}))
+		};
+	});
+
+	app.delete('/api/auth/sessions/:id', async (request, reply) => {
+		const auth = request.auth;
+		if (!auth) {
+			return refuseForbidden(reply);
+		}
+		const { id } = request.params as { id: string };
+		const session = await deps.store.getSessionById(id);
+		if (!session) {
+			return reply.code(404).send({ error: 'unknown session' });
+		}
+		if (auth.role !== 'owner' && session.identityId !== auth.identityId) {
+			return refuseForbidden(reply);
+		}
+		await deps.store.revokeSession(session.id, deps.now());
+		return reply.code(204).send();
+	});
+
+	app.post('/api/auth/sessions/revoke-all', async (request, reply) => {
+		if (!isOwner(request)) {
+			return refuseForbidden(reply);
+		}
+		await deps.store.revokeAllSessions(deps.now());
+		return reply.code(204).send();
+	});
+
+	app.get('/api/auth/attempts', async (request, reply): Promise<AttemptsResponse> => {
+		if (!isOwner(request)) {
+			return refuseForbidden(reply);
+		}
+		const attempts = await deps.store.listRecentAttempts(ATTEMPTS_LIST_LIMIT);
+		return {
+			attempts: attempts.map((attempt) => ({
+				identityLabel: attempt.identityLabel,
+				source: attempt.source,
+				outcome: attempt.outcome,
+				at: attempt.at
+			}))
+		};
 	});
 }

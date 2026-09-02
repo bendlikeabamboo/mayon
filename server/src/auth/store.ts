@@ -58,11 +58,26 @@ export interface ValidSessionLookup {
 
 export interface SessionListItem {
 	id: string;
+	identityId: string;
 	identityLabel: string;
 	label: string | null;
 	createdAt: number;
 	expiresAt: number;
 	lastSeenAt: number | null;
+}
+
+export interface InviteListItem {
+	id: string;
+	label: string;
+	status: AuthIdentityStatus;
+	createdAt: number;
+}
+
+export interface SessionRecordById {
+	id: string;
+	identityId: string;
+	expiresAt: number;
+	revokedAt: number | null;
 }
 
 export interface LoginAttemptListItem {
@@ -75,9 +90,11 @@ export interface LoginAttemptListItem {
 export interface AuthStore {
 	createIdentity(input: CreateIdentityInput): Promise<void>;
 	findIdentityByLabel(label: string): Promise<AuthIdentity | null>;
+	findIdentityById(id: string): Promise<AuthIdentity | null>;
 	findActiveOwner(): Promise<AuthIdentity | null>;
 	listNonRevokedIdentities(): Promise<AuthIdentity[]>;
 	countNonRevokedIdentities(): Promise<number>;
+	listInvites(): Promise<InviteListItem[]>;
 	setIdentityMfa(id: string, input: SetIdentityMfaInput): Promise<void>;
 	setIdentityStatus(id: string, status: AuthIdentityStatus): Promise<void>;
 	setIdentityPasswordHash(id: string, passwordHash: string): Promise<void>;
@@ -87,6 +104,7 @@ export interface AuthStore {
 	revokeAllSessions(nowMs: number): Promise<void>;
 	deleteSessionsByIdentity(identityId: string): Promise<void>;
 	touchSession(id: string, nowMs: number): Promise<void>;
+	getSessionById(id: string): Promise<SessionRecordById | null>;
 	listSessions(nowMs: number): Promise<SessionListItem[]>;
 	recordAttempt(input: RecordAttemptInput): Promise<void>;
 	countRecentFailures(source: string, sinceMs: number): Promise<number>;
@@ -126,6 +144,27 @@ export function createAuthStore(
 		async findIdentityByLabel(label) {
 			const res = await db().query('SELECT * FROM auth_identities WHERE label = $1', [label]);
 			return res.rows[0] ? toIdentity(res.rows[0] as IdentityRow) : null;
+		},
+
+		async findIdentityById(id) {
+			const res = await db().query('SELECT * FROM auth_identities WHERE id = $1', [id]);
+			return res.rows[0] ? toIdentity(res.rows[0] as IdentityRow) : null;
+		},
+
+		async listInvites() {
+			const res = await db().query(
+				`SELECT id, label, status, created_at FROM auth_identities WHERE role = 'invitee'
+				 ORDER BY created_at, id`
+			);
+			return res.rows.map((raw) => {
+				const row = raw as InviteRow;
+				return {
+					id: row.id,
+					label: row.label,
+					status: row.status as AuthIdentityStatus,
+					createdAt: Number(row.created_at)
+				};
+			});
 		},
 
 		async findActiveOwner() {
@@ -236,9 +275,26 @@ export function createAuthStore(
 			await db().query('UPDATE auth_sessions SET last_seen_at = $1 WHERE id = $2', [nowMs, id]);
 		},
 
+		async getSessionById(id) {
+			const res = await db().query(
+				'SELECT id, identity_id, expires_at, revoked_at FROM auth_sessions WHERE id = $1',
+				[id]
+			);
+			const row = res.rows[0] as SessionIdRow | undefined;
+			if (!row) {
+				return null;
+			}
+			return {
+				id: row.id,
+				identityId: row.identity_id,
+				expiresAt: Number(row.expires_at),
+				revokedAt: row.revoked_at == null ? null : Number(row.revoked_at)
+			};
+		},
+
 		async listSessions(nowMs) {
 			const res = await db().query(
-				`SELECT s.id, s.created_at, s.expires_at, s.last_seen_at, s.label, i.label AS identity_label
+				`SELECT s.id, s.identity_id, s.created_at, s.expires_at, s.last_seen_at, s.label, i.label AS identity_label
 				 FROM auth_sessions s
 				 JOIN auth_identities i ON i.id = s.identity_id
 				 WHERE s.revoked_at IS NULL AND s.expires_at > $1
@@ -249,6 +305,7 @@ export function createAuthStore(
 				const row = raw as SessionListRow;
 				return {
 					id: row.id,
+					identityId: row.identity_id,
 					identityLabel: row.identity_label,
 					label: row.label,
 					createdAt: Number(row.created_at),
@@ -323,11 +380,26 @@ interface SessionJoinRow {
 
 interface SessionListRow {
 	id: string;
+	identity_id: string;
 	created_at: string | number;
 	expires_at: string | number;
 	last_seen_at: string | number | null;
 	label: string | null;
 	identity_label: string;
+}
+
+interface InviteRow {
+	id: string;
+	label: string;
+	status: string;
+	created_at: string | number;
+}
+
+interface SessionIdRow {
+	id: string;
+	identity_id: string;
+	expires_at: string | number;
+	revoked_at: string | number | null;
 }
 
 interface AttemptRow {

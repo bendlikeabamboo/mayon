@@ -133,14 +133,14 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 ### Tests for User Story 4 (write FIRST, must FAIL)
 
-- [ ] T036 [US4] Create `server/src/auth-invites.test.ts`: owner creates invite (one-time password returned exactly once, stored only as hash); invitee login → `mfa_enrollment_required` + enrollToken (no session); enroll with live code → active + session; owner revokes → invitee's live session 401s immediately, login refused; invitee calling owner-only endpoints → 403; revoked identity cannot be re-enrolled via CLI (contract) — asserted at service level
+- [x] T036 [US4] Create `server/src/auth-invites.test.ts`: owner creates invite (one-time password returned exactly once, stored only as hash); invitee login → `mfa_enrollment_required` + enrollToken (no session); enroll with live code → active + session; owner revokes → invitee's live session 401s immediately, login refused; invitee calling owner-only endpoints → 403; revoked identity cannot be re-enrolled via CLI (contract) — asserted at service level
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Implement invite + session-admin + visibility endpoints in `server/src/auth/index.ts` per contracts/auth-api.md: `POST/GET/DELETE /api/auth/invites`, `GET /api/auth/sessions`, `DELETE /api/auth/sessions/:id`, `POST /api/auth/sessions/revoke-all`, `GET /api/auth/attempts` — owner-only (403 otherwise), one-time password shown once
-- [ ] T038 [US4] Implement invitee enrollment path: `POST /api/auth/login` returns `{status:"mfa_enrollment_required", enrollToken, otpauthUri}` + 15-min `mayon_enroll` cookie when identity is invited; `POST /api/auth/enroll` confirms code → invited→active + full session (extend T032/T017 code paths)
-- [ ] T039 [US4] Build Settings › Security admin UI in `src/routes/settings/`: invites tab (create → show-one-time-password dialog, list, revoke), sessions tab (device list, revoke one / revoke all), recent login activity list (attempts) — shadcn-svelte patterns
-- [ ] T040 [US4] Validate quickstart.md step 5 (two-browser-profile invite flow); full quality gates
+- [x] T037 [US4] Implement invite + session-admin + visibility endpoints in `server/src/auth/index.ts` per contracts/auth-api.md: `POST/GET/DELETE /api/auth/invites`, `GET /api/auth/sessions`, `DELETE /api/auth/sessions/:id`, `POST /api/auth/sessions/revoke-all`, `GET /api/auth/attempts` — owner-only (403 otherwise), one-time password shown once
+- [x] T038 [US4] Implement invitee enrollment path: `POST /api/auth/login` returns `{status:"mfa_enrollment_required", enrollToken, otpauthUri}` + 15-min `mayon_enroll` cookie when identity is invited; `POST /api/auth/enroll` confirms code → invited→active + full session (extend T032/T017 code paths)
+- [x] T039 [US4] Build Settings › Security admin UI in `src/routes/settings/`: invites tab (create → show-one-time-password dialog, list, revoke), sessions tab (device list, revoke one / revoke all), recent login activity list (attempts) — shadcn-svelte patterns
+- [x] T040 [US4] Validate quickstart.md step 5 (two-browser-profile invite flow); full quality gates
 
 **Checkpoint**: SC-005 (revocation in seconds, zero infra changes) demonstrated.
 
