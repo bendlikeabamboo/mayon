@@ -33,6 +33,8 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+test-results/
+playwright-report/
 
 # Python cache (speckit scripts)
 __pycache__/

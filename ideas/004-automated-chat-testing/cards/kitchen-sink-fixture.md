@@ -10,7 +10,7 @@ played: yes
 
 ## Story
 
-No provider work at all: you ship a test-only route (or a seeded conversation) that renders one stored assistant message holding the kitchen-sink markdown document, and Playwright loads it directly. Within an afternoon, every rendering assertion — markdown structure, math, mermaid, code copy buttons, expound alignment, full-text search — becomes testable without touching the AI layer. What you give up: nothing about onboarding, sending, streaming, or the request path is exercised; the fixture starts *after* the reply already exists.
+No provider work at all: you ship a test-only route (or a seeded conversation) that renders one stored assistant message holding the kitchen-sink markdown document, and Playwright loads it directly. Within an afternoon, every rendering assertion — markdown structure, math, mermaid, code copy buttons, expound alignment, full-text search — becomes testable without touching the AI layer. What you give up: nothing about onboarding, sending, streaming, or the request path is exercised; the fixture starts _after_ the reply already exists.
 
 ## Playthrough (2026-09-02)
 
