@@ -313,6 +313,40 @@ describe('auth gate — locked mode (store-backed)', () => {
 		expect(res.json()).toEqual({ columns: ['one'], rows: [[1]] });
 	});
 
+	it('admits mutations whose origin matches x-forwarded-host when the proxy rewrote Host', async () => {
+		const { token } = await mintSession();
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/db/query',
+			headers: {
+				origin: 'http://localhost:5173',
+				host: 'server:4319',
+				'x-forwarded-host': 'localhost:5173',
+				cookie: `mayon_session=${token}`
+			},
+			body: { op: 'query', sql: 'SELECT 1 AS one' }
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({ columns: ['one'], rows: [[1]] });
+	});
+
+	it('keeps rejecting mismatched origins even with an unrelated x-forwarded-host', async () => {
+		const { token } = await mintSession();
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/db/query',
+			headers: {
+				origin: 'http://evil.example',
+				host: 'server:4319',
+				'x-forwarded-host': 'localhost:5173',
+				cookie: `mayon_session=${token}`
+			},
+			body: { op: 'query', sql: 'SELECT 1' }
+		});
+		expect(res.statusCode).toBe(403);
+		expect(res.json()).toEqual({ error: 'bad origin' });
+	});
+
 	it('passes valid sessions through to the handler', async () => {
 		const { token } = await mintSession();
 		const res = await app.inject({

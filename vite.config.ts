@@ -30,8 +30,20 @@ export default defineConfig(({ mode }) => {
 		server: {
 			host: true,
 			proxy: {
-				'/api': 'http://server:4319',
-				'/ws': { target: 'http://server:4319', ws: true }
+				'/api': {
+					target: 'http://server:4319',
+					changeOrigin: false,
+					// The bundled proxy rewrites Host to the target regardless of
+					// changeOrigin; forward the browser's host so the API gate's
+					// same-origin check can verify it.
+					configure: (proxy) => {
+						proxy.on('proxyReq', (proxyReq, req) => {
+							const host = req.headers['x-forwarded-host'] ?? req.headers.host;
+							if (host) proxyReq.setHeader('x-forwarded-host', String(host));
+						});
+					}
+				},
+				'/ws': { target: 'http://server:4319', ws: true, changeOrigin: false }
 			}
 		},
 		worker: { format: 'es' },
