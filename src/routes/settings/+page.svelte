@@ -6,9 +6,11 @@
 	import LabPromptConfig from '$lib/components/labs/LabPromptConfig.svelte';
 	import QuizPromptConfig from '$lib/components/quizzes/QuizPromptConfig.svelte';
 	import LearnerProfileConfig from '$lib/components/chat/LearnerProfileConfig.svelte';
+	import ChatDisplayConfig from '$lib/components/settings/ChatDisplayConfig.svelte';
 	import ExpoundInstructionsConfig from '$lib/components/chat/ExpoundInstructionsConfig.svelte';
 	import DataSection from '$lib/components/settings/DataSection.svelte';
 	import SandboxDbSection from '$lib/components/settings/SandboxDbSection.svelte';
+	import SecuritySection from '$lib/components/settings/SecuritySection.svelte';
 	import SettingsRail from '$lib/components/settings/SettingsRail.svelte';
 	import SettingsSearch from '$lib/components/settings/SettingsSearch.svelte';
 	import MobileSectionJump from '$lib/components/settings/MobileSectionJump.svelte';
@@ -174,6 +176,9 @@
 		<div id="mcp" class="scroll-mt-4">
 			<McpServers />
 		</div>
+		<div id="chat" class="scroll-mt-4">
+			<ChatDisplayConfig />
+		</div>
 		<div id="learner-profile" class="scroll-mt-4">
 			<LearnerProfileConfig />
 		</div>
@@ -185,6 +190,9 @@
 		</div>
 		<div id="quiz-prompt" class="scroll-mt-4">
 			<QuizPromptConfig />
+		</div>
+		<div id="security" class="scroll-mt-4">
+			<SecuritySection />
 		</div>
 		<div id="data" class="scroll-mt-4">
 			<DataSection />

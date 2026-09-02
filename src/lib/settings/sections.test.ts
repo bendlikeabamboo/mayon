@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { SETTINGS_SECTIONS, matchSections, visibleSections } from './sections';
 
 describe('SETTINGS_SECTIONS registry', () => {
-	it('holds the 8 sections in frozen page order', () => {
+	it('holds the 9 sections in frozen page order', () => {
 		expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
 			'providers',
 			'mcp',
+			'chat',
 			'learner-profile',
 			'expound-instructions',
 			'lab-prompt',
 			'quiz-prompt',
+			'security',
 			'data',
 			'sandbox-db'
 		]);
@@ -24,10 +26,12 @@ describe('SETTINGS_SECTIONS registry', () => {
 		expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual([
 			'Providers',
 			'MCP Servers',
+			'Chat',
 			'Learner profile',
 			'Expound Instructions',
 			'Lab generation prompt',
 			'Quiz generation prompt',
+			'Security',
 			'Data',
 			'Sandbox DB'
 		]);
@@ -59,10 +63,12 @@ describe('visibleSections', () => {
 		expect(visible.map((s) => s.id)).toEqual([
 			'providers',
 			'mcp',
+			'chat',
 			'learner-profile',
 			'expound-instructions',
 			'lab-prompt',
 			'quiz-prompt',
+			'security',
 			'data'
 		]);
 	});
@@ -77,6 +83,11 @@ describe('matchSections', () => {
 
 	it('matches the sandbox alias to sandbox-db', () => {
 		expect(matchSections('sandbox', SETTINGS_SECTIONS).map((s) => s.id)).toEqual(['sandbox-db']);
+	});
+
+	it('matches the security aliases to security', () => {
+		expect(matchSections('mfa', SETTINGS_SECTIONS).map((s) => s.id)).toEqual(['security']);
+		expect(matchSections('Lock', SETTINGS_SECTIONS).map((s) => s.id)).toEqual(['security']);
 	});
 
 	it('matches prompt to both prompt sections in registry order', () => {

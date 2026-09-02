@@ -15,6 +15,13 @@
       "when": 1787151003548,
       "tag": "0001_puzzling_nextwave",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788289055143,
+      "tag": "0002_amused_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

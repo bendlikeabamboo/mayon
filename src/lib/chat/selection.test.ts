@@ -234,3 +234,67 @@ describe('resolveSelection (mocked table)', () => {
 		}
 	});
 });
+
+describe('strip chrome exclusion (017)', () => {
+	function setupWithStrip(): { doc: Document; root: HTMLElement; sm: SourceMap; raw: string } {
+		const raw = '# Heading\n\nFirst paragraph here.\n\nIn the second paragraph here.';
+		const sm = buildSourceMap(raw);
+		const strip =
+			'<div class="section-strip" role="navigation"><button>Section 0</button><button>Section 1</button></div>';
+		const preview = '<div class="section-strip-preview">Section 0 preview text</div>';
+		const html = renderMarkdown(raw) + strip + preview;
+		const dom = new JSDOM(`<!DOCTYPE html><div id="root">${html}</div>`);
+		return { doc: dom.window.document, root: dom.window.document.getElementById('root')!, sm, raw };
+	}
+
+	it('aligns real reply text when strip and preview markup are present', () => {
+		const { root, sm } = setupWithStrip();
+		const table = alignDomToCanonical(root, sm);
+		expect(table.aligned).toBe(true);
+
+		const nonExcluded = table.entries.filter((e) => !e.excluded);
+		const domText = nonExcluded.map((e) => e.node.textContent ?? '').join('');
+		expect(domText).toBe(sm.canonical);
+
+		const excludedText = table.entries
+			.filter((e) => e.excluded)
+			.map((e) => e.node.textContent ?? '')
+			.join(' ');
+		expect(excludedText).toContain('Section 0');
+		expect(excludedText).toContain('preview text');
+	});
+
+	it('resolves a selection over genuine paragraph text as before', () => {
+		const { doc, root, sm, raw } = setupWithStrip();
+		const table = alignDomToCanonical(root, sm);
+		const paragraphs = root.querySelectorAll('p');
+		const node = paragraphs[paragraphs.length - 1]!.firstChild as Text;
+		const text = node.textContent ?? '';
+		const wordStart = text.indexOf('second');
+		expect(wordStart).toBeGreaterThanOrEqual(0);
+
+		const range = doc.createRange();
+		range.setStart(node, wordStart);
+		range.setEnd(node, wordStart + 6);
+		const result = resolveSelection(table, sm, range);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(raw.slice(result.startChar, result.endChar)).toBe('second');
+		}
+	});
+
+	it('fails safely with generated when a selection touches preview text', () => {
+		const { doc, root, sm } = setupWithStrip();
+		const table = alignDomToCanonical(root, sm);
+		const previewText = root.querySelector('.section-strip-preview')!.firstChild as Text;
+		const paragraphs = root.querySelectorAll('p');
+		const paragraphNode = paragraphs[paragraphs.length - 1]!.firstChild as Text;
+
+		const range = doc.createRange();
+		range.setStart(paragraphNode, 3);
+		range.setEnd(previewText, 8);
+		const result = resolveSelection(table, sm, range);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe('generated');
+	});
+});

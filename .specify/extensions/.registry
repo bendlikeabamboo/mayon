@@ -20,9 +20,9 @@
       "installed_at": "2026-08-27T17:31:10.619521+00:00"
     },
     "prespec": {
-      "version": "0.3.0",
+      "version": "0.4.0",
       "source": "local",
-      "manifest_hash": "sha256:0e482653038a69854afcbe35ec065bbb2010e1b1d677c01b99b540e1a9118cfc",
+      "manifest_hash": "sha256:4173ac205711e38cdcbbac46034be96388759e57a136c8e4d81f68c82ca30ff3",
       "enabled": true,
       "priority": 10,
       "registered_commands": {
@@ -32,7 +32,7 @@
         ]
       },
       "registered_skills": [],
-      "installed_at": "2026-08-27T18:50:23.508441+00:00"
+      "installed_at": "2026-09-02T04:32:28.401022+00:00"
     }
   }
 }

@@ -10,10 +10,17 @@ export interface SectionEntry {
 export const SETTINGS_SECTIONS: readonly SectionEntry[] = [
 	{ id: 'providers', label: 'Providers', aliases: [], cap: null },
 	{ id: 'mcp', label: 'MCP Servers', aliases: [], cap: null },
+	{ id: 'chat', label: 'Chat', aliases: ['strip', 'outline', 'display'], cap: null },
 	{ id: 'learner-profile', label: 'Learner profile', aliases: [], cap: null },
 	{ id: 'expound-instructions', label: 'Expound Instructions', aliases: [], cap: null },
 	{ id: 'lab-prompt', label: 'Lab generation prompt', aliases: [], cap: null },
 	{ id: 'quiz-prompt', label: 'Quiz generation prompt', aliases: [], cap: null },
+	{
+		id: 'security',
+		label: 'Security',
+		aliases: ['lock', 'login', 'password', 'auth', 'mfa', 'totp'],
+		cap: null
+	},
 	{ id: 'data', label: 'Data', aliases: ['backup', 'restore', 'export', 'import'], cap: null },
 	{ id: 'sandbox-db', label: 'Sandbox DB', aliases: ['sandbox', 'sqlite'], cap: 'sandbox-db' }
 ];

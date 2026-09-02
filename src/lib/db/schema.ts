@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { bigint, integer, pgTable, text, boolean, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import {
+	bigint,
+	integer,
+	pgTable,
+	text,
+	boolean,
+	uniqueIndex,
+	type AnyPgColumn
+} from 'drizzle-orm/pg-core';
 
 /**
  * Mayon data model — single source of truth.
@@ -212,6 +220,57 @@ export const settings = pgTable('settings', {
 	value: text('value').notNull()
 });
 
+// ───────────────────────── auth_identities ───────────────────────
+// Access principals: the owner and invited people (one shared dataset).
+export const authIdentities = pgTable(
+	'auth_identities',
+	{
+		id: text('id').primaryKey(),
+		label: text('label').notNull(),
+		role: text('role', { enum: ['owner', 'invitee'] }).notNull(),
+		status: text('status', { enum: ['invited', 'active', 'revoked'] }).notNull(),
+		passwordHash: text('password_hash').notNull(),
+		// AES-256-GCM envelope under the outside-DB auth key; NULL until enrolled.
+		totpSecretEnc: text('totp_secret_enc'),
+		totpLastStep: bigint('totp_last_step', { mode: 'number' }),
+		mfaEnrolledAt: bigint('mfa_enrolled_at', { mode: 'number' }),
+		createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+		updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+	},
+	(t) => [uniqueIndex('auth_identities_label_idx').on(t.label)]
+);
+
+// ───────────────────────── auth_sessions ─────────────────────────
+// Granted, bounded authorizations; the raw token is never stored.
+export const authSessions = pgTable(
+	'auth_sessions',
+	{
+		id: text('id').primaryKey(),
+		identityId: text('identity_id')
+			.notNull()
+			.references(() => authIdentities.id),
+		tokenHash: text('token_hash').notNull(),
+		createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+		expiresAt: bigint('expires_at', { mode: 'number' }).notNull(),
+		revokedAt: bigint('revoked_at', { mode: 'number' }),
+		label: text('label'),
+		lastSeenAt: bigint('last_seen_at', { mode: 'number' })
+	},
+	(t) => [uniqueIndex('auth_sessions_token_hash_idx').on(t.tokenHash)]
+);
+
+// ─────────────────────── auth_login_attempts ─────────────────────
+// Append-only attempt log feeding rate limiting and attack visibility.
+export const authLoginAttempts = pgTable('auth_login_attempts', {
+	id: text('id').primaryKey(),
+	identityLabel: text('identity_label'),
+	source: text('source').notNull(),
+	outcome: text('outcome', {
+		enum: ['success', 'bad_password', 'bad_code', 'unknown_identity']
+	}).notNull(),
+	at: bigint('at', { mode: 'number' }).notNull()
+});
+
 // ──────────────────────── inferred types ─────────────────────────
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
@@ -240,3 +299,13 @@ export type AgentTrace = typeof agentTraces.$inferSelect;
 export type NewAgentTrace = typeof agentTraces.$inferInsert;
 
 export type Setting = typeof settings.$inferSelect;
+
+export type AuthIdentity = typeof authIdentities.$inferSelect;
+export type NewAuthIdentity = typeof authIdentities.$inferInsert;
+export type AuthIdentityRole = AuthIdentity['role'];
+export type AuthIdentityStatus = AuthIdentity['status'];
+export type AuthSession = typeof authSessions.$inferSelect;
+export type NewAuthSession = typeof authSessions.$inferInsert;
+export type AuthLoginAttempt = typeof authLoginAttempts.$inferSelect;
+export type NewAuthLoginAttempt = typeof authLoginAttempts.$inferInsert;
+export type AuthLoginOutcome = AuthLoginAttempt['outcome'];

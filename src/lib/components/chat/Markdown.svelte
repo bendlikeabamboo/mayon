@@ -157,10 +157,13 @@
 	:global(.markdown-body h1),
 	:global(.markdown-body h2),
 	:global(.markdown-body h3),
-	:global(.markdown-body h4) {
+	:global(.markdown-body h4),
+	:global(.markdown-body h5),
+	:global(.markdown-body h6) {
 		font-weight: 600;
 		margin: 1em 0 0.4em;
 		line-height: 1.3;
+		scroll-margin-top: 1rem;
 	}
 	:global(.markdown-body h1) {
 		font-size: 1.4em;

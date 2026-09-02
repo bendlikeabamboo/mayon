@@ -30,6 +30,12 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 				}
 			});
 			await page.goto('/settings#providers');
+			// First-run security setup gate (skippable): boot does not start until
+			// dismissed, and dismissal is per-context (localStorage).
+			const skipSetup = page.getByRole('button', { name: 'Skip' });
+			if (await skipSetup.isVisible({ timeout: 5_000 }).catch(() => false)) {
+				await skipSetup.click();
+			}
 			const addProvider = page.getByRole('button', { name: 'Add provider' });
 			await expect(addProvider).toBeVisible();
 			await addProvider.click();
