@@ -30,9 +30,24 @@ class AuthState {
 export const authState = new AuthState();
 
 export async function refreshAuth(): Promise<AuthSessionResponse> {
-	const response = await fetchAuthSession();
-	authState.apply(response);
-	return response;
+	try {
+		const response = await fetchAuthSession();
+		authState.apply(response);
+		return response;
+	} catch (err) {
+		// Fail closed: when the gate is unknown (boot) or locked, an unreachable or
+		// erroring /api/auth/session must read as locked-out, never as an open boot.
+		// An established open state is kept — open mode is today's behavior.
+		if (!authState.loaded || authState.mode === 'locked') {
+			authState.mode = 'locked';
+			authState.setupRequired = false;
+			authState.authenticated = false;
+			authState.identity = null;
+			authState.session = null;
+			authState.loaded = true;
+		}
+		throw err;
+	}
 }
 
 export async function logout(): Promise<void> {

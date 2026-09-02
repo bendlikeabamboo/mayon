@@ -3,7 +3,7 @@
 	import '$lib/perf/probe';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Lock, ShieldCheck } from '@lucide/svelte';
+	import { RefreshCw, Lock, ShieldCheck } from '@lucide/svelte';
 	import { migrateLegacyKeys } from '$lib/ai/keystore/migrate';
 	import { authState, dismissSetup, isSetupDismissed, refreshAuth } from '$lib/auth/state.svelte';
 	import AppShell from '$lib/components/AppShell.svelte';
@@ -23,7 +23,7 @@
 	);
 
 	let setupDismissed = $state(isSetupDismissed());
-	let authFailed = $state(false);
+	let authChecking = $state(false);
 
 	const onLoginRoute = $derived(page.url.pathname === '/login');
 	const lockedOut = $derived(
@@ -55,14 +55,24 @@
 			});
 	}
 
+	async function retryAuth() {
+		authChecking = true;
+		try {
+			await refreshAuth();
+		} catch {
+			// AuthState already fail-closed; the locked card stays with Retry available.
+		} finally {
+			authChecking = false;
+		}
+	}
+
 	refreshAuth().catch(() => {
-		// Auth status unavailable (most likely no server): fall back to the plain
-		// boot — its waitForServerPg failure drives the existing unreachable gate.
-		authFailed = true;
+		// Failure is folded into authState (fail-closed to locked): the locked card
+		// below takes over instead of falling through to a data boot.
 	});
 
 	$effect(() => {
-		if (authFailed || (authState.loaded && !lockedOut && !setupOffered)) startBoot();
+		if (authState.loaded && !lockedOut && !setupOffered) startBoot();
 	});
 
 	function skipSetup() {
@@ -79,7 +89,13 @@
 			<p class="text-sm text-muted-foreground">
 				Sign in with your password and authenticator code to continue.
 			</p>
-			<Button variant="outline" class="mt-2" onclick={() => goto('/login')}>Go to login</Button>
+			<div class="mt-2 flex gap-2">
+				<Button variant="outline" onclick={() => goto('/login')}>Go to login</Button>
+				<Button variant="ghost" disabled={authChecking} onclick={retryAuth}>
+					<RefreshCw class="size-4" />
+					Retry
+				</Button>
+			</div>
 		</div>
 	</div>
 {:else if setupOffered && !onLoginRoute}

@@ -56,7 +56,7 @@ describe('refreshAuth', () => {
 		expect(authState.loaded).toBe(true);
 	});
 
-	it('rejects and leaves state unloaded when the server is unreachable', async () => {
+	it('fail-closes to locked when the first refresh fails at boot', async () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => {
@@ -65,7 +65,62 @@ describe('refreshAuth', () => {
 		);
 
 		await expect(refreshAuth()).rejects.toThrow();
-		expect(authState.loaded).toBe(false);
+
+		expect(authState.loaded).toBe(true);
+		expect(authState.mode).toBe('locked');
+		expect(authState.setupRequired).toBe(false);
+		expect(authState.authenticated).toBe(false);
+		expect(authState.identity).toBeNull();
+		expect(authState.session).toBeNull();
+	});
+
+	it('fail-closes when a refresh fails while previously locked', async () => {
+		stubSession({
+			mode: 'locked',
+			setupRequired: false,
+			authenticated: true,
+			identity: { label: 'owner', role: 'owner' },
+			session: { expiresAt: 1756740000000 }
+		});
+		await refreshAuth();
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('network down');
+			})
+		);
+
+		await expect(refreshAuth()).rejects.toThrow();
+
+		expect(authState.loaded).toBe(true);
+		expect(authState.mode).toBe('locked');
+		expect(authState.authenticated).toBe(false);
+		expect(authState.identity).toBeNull();
+		expect(authState.session).toBeNull();
+	});
+
+	it('keeps an established open state open when a later refresh fails', async () => {
+		stubSession({
+			mode: 'open',
+			setupRequired: false,
+			authenticated: false,
+			identity: null,
+			session: null
+		});
+		await refreshAuth();
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('network down');
+			})
+		);
+
+		await expect(refreshAuth()).rejects.toThrow();
+
+		expect(authState.loaded).toBe(true);
+		expect(authState.mode).toBe('open');
 	});
 });
 

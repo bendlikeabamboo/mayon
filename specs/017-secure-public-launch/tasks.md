@@ -96,9 +96,9 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 ### Implementation for User Story 2
 
 - [x] T027 [US2] Make sweep green: fix any route that escapes the gate in `server/src/auth/gate.ts` allowlist/hook ordering (root hook BEFORE plugin registration; @fastify/websocket upgrade path included)
-- [ ] T028 [US2] Enforce no-data-before-auth in the SPA: `src/lib/auth/state.svelte.ts` gate flag consumed in `src/routes/+layout.svelte` so no `repos`/settings calls (which would 401) fire while locked+unauthenticated; BootGate-style locked branch shows the login route only
-- [ ] T029 [US2] Add mode visibility UI in `src/routes/settings/` security section: persistent **Open** badge + warning banner when open (FR-023 — open state must never look like a broken gate), **Locked** badge otherwise
-- [ ] T030 [US2] Validate quickstart.md steps 0 and 3 (sweep + curl wall checks); full quality gates
+- [x] T028 [US2] Enforce no-data-before-auth in the SPA: `src/lib/auth/state.svelte.ts` gate flag consumed in `src/routes/+layout.svelte` so no `repos`/settings calls (which would 401) fire while locked+unauthenticated; BootGate-style locked branch shows the login route only
+- [x] T029 [US2] Add mode visibility UI in `src/routes/settings/` security section: persistent **Open** badge + warning banner when open (FR-023 — open state must never look like a broken gate), **Locked** badge otherwise
+- [x] T030 [US2] Validate quickstart.md steps 0 and 3 (sweep + curl wall checks); full quality gates
 
 **Checkpoint**: SC-001/SC-002 proven in CI; open/locked visibly distinct in-app.
 
