@@ -60,6 +60,7 @@ New job `e2e` (sibling of `web`, `ubuntu-latest`, Docker available):
 Guarantees: no secrets configured; no traffic leaves the runner (only image pulls);
 zero per-run LLM cost; existing `web` job remains the merge gate unchanged (`pnpm
 check`/`lint`/`test`/build/docker builds) — the `e2e` job is additive.
+Validated: CI run 33667386655 on PR #21 — `e2e` pass in 2m52s.
 
 ## Out of scope (recorded boundaries)
 

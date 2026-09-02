@@ -92,7 +92,7 @@ modified** (SC-005). No file anywhere may use a leading `+` in its name (constit
 
 - [x] T013 [US3] Add the `e2e` job to `.github/workflows/ci.yml` per contracts/e2e-stack.md: `ubuntu-latest`, same checkout/pnpm/Node-22 setup as the `web` job, `pnpm install --frozen-lockfile`, `pnpm --filter @mayon/shared build`, `pnpm exec playwright install --with-deps chromium`, `pnpm dev:up`, wait for readiness (web :5173 + `mock-llm` healthcheck green), `pnpm test:e2e`, upload `playwright-report/` and `test-results/` as artifacts on failure. Keep the existing `web` job unchanged.
 - [x] T014 [US3] Determinism validation: run `pnpm test:e2e` twice consecutively locally and record identical outcomes in the PR description; if any run differs on identical code, treat it as a bug and fix the test/mock (SC-002) — do not add retries.
-- [ ] T015 [US3] Validate the CI run on the PR: `e2e` job green, no secrets present in the workflow or environment, total job wall time under 10 minutes (SC-001/SC-003), and only image pulls leave the runner.
+- [x] T015 [US3] Validate the CI run on the PR: `e2e` job green, no secrets present in the workflow or environment, total job wall time under 10 minutes (SC-001/SC-003), and only image pulls leave the runner.
 
 **Checkpoint**: All three user stories independently functional — full E2E chat coverage on every PR at zero marginal cost.
 
@@ -195,5 +195,4 @@ Task: "Implement server.mjs in tests/fixtures/mock-llm/server.mjs"
   multi-line `$$ … $$` display-math and desynchronizes expound alignment after the
   math block. The fixture uses single-line `$$ … $$` (renders identically);
   fixing the sourcemap deserves its own spec'd change.
-- T015 is validated by pushing this branch (CI `e2e` job) — ticked in the follow-up
-  commit once observed green.
+- T015 validated: CI run 33667386655 on PR #21 — `e2e` pass (2m52s), `web` pass.
