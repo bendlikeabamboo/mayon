@@ -19,3 +19,46 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - uses: ./.github/actions/ci
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @mayon/shared build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm dev:up
+      - name: Wait for web
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "web did not become ready on :5173" >&2
+          exit 1
+      - name: Wait for mock-llm
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose -p mayon-dev exec -T server wget -qO- http://mock-llm:9999/v1/models >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "mock-llm did not become reachable from the server container" >&2
+          exit 1
+      - run: pnpm test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
