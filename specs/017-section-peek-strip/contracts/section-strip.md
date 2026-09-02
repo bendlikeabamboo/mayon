@@ -56,9 +56,16 @@ function setStripEnabled(value: boolean): Promise<void>;    // repos.settings.se
 ```ts
 const DWELL_MS = 400;                                       // tuning constant, 300–500 range
 
-interface DwellInput { kind: 'enter-bar' | 'leave-bar' | 'enter-other-bar' | 'leave-strip'; now: number }
+interface DwellState { hoveredIndex: number | null; previewIndex: number | null }
 
-// Pure transition function over (state, input) → { openPreview: number | null; armTimerMs: number | null }
+type DwellInput =
+	| { kind: 'enter-bar'; index: number }
+	| { kind: 'leave-bar' }
+	| { kind: 'enter-other-bar'; index: number }
+	| { kind: 'leave-strip' }
+	| { kind: 'dwell-fire'; index: number };   // the armed timer expiring; stale fires are ignored
+
+// Pure transition function over (state, input) → { state; armTimerMs; openPreview; closePreview }
 function dwellTransition(state: DwellState, input: DwellInput): DwellResult;
 ```
 
@@ -124,9 +131,9 @@ Implements `handleSectionJump(msgId, index)` — the 015 §5 contract, verbatim:
 
 | Concern | Contract |
 |---|---|
-| Anchor | nth `h1–h6` element under `#msg-<msgId>`'s `.markdown-body`; **rAF retry ≤5** until it exists (`LazyMount unmountFar` mounts on approach; precedent `handleHashScroll`/`landOn`). Duplicates resolve positionally by `index`, never by text. |
+| Anchor | nth `h1–h6` element under `#msg-<msgId>`'s `.markdown-body` — filtered to headings NOT inside `blockquote, .callout` so the DOM list matches `extractSections`' exclusions 1:1; **rAF retry ≤5** until it exists (`LazyMount unmountFar` mounts on approach; precedent `handleHashScroll`/`landOn`). Duplicates resolve positionally by `index`, never by text. |
 | Scroll | `scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })`; headings in the reply carry `scroll-mt` for landing offset. |
-| Stick | Sets the page's stick-suppression flag (role of `scrolledToHash`) before scrolling so streaming flushes cannot yank the viewport; released on the next user turn (existing flag lifecycle). |
+| Stick | Sets the page's stick-suppression flag (role of `scrolledToHash`) before scrolling so streaming flushes cannot yank the viewport; released on the next user turn (`onSend` clears it, matching the flag's hash-jump lifecycle). |
 | Emphasis | `.section-flash` on the landing heading (~1600 ms; existing `app.css` keyframes, reduced-motion-zeroed) — class-only mutation, invisible to Highlighter's MutationObserver. |
 | Idempotence | Repeated/overlapping clicks always end at the correct section top; no queued jumps, no side-effect stacking. |
 | URL/history | No writes of any kind; chat's `#m=&b=` grammar untouched. |

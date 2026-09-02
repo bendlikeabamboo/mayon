@@ -23,6 +23,9 @@
 
 	let isTouch = $state(false);
 	let previewIndex = $state<number | null>(null);
+	let previewTop = $state(0);
+	let stripEl: HTMLElement | null = null;
+	let hoveredBarTop = 0;
 	let dwellState: DwellState = initialDwellState();
 	let dwellTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -40,31 +43,36 @@
 			const index = result.state.hoveredIndex;
 			dwellTimer = setTimeout(() => {
 				dwellTimer = null;
-				applyDwell(dwellTransition(dwellState, { kind: 'dwell-fire', index, now: Date.now() }));
+				applyDwell(dwellTransition(dwellState, { kind: 'dwell-fire', index }));
 			}, result.armTimerMs);
 		}
 		if (result.closePreview) previewIndex = null;
-		if (result.openPreview !== null) previewIndex = result.openPreview;
+		if (result.openPreview !== null) {
+			const wrapH = stripEl?.clientHeight ?? 0;
+			previewTop = Math.max(0, Math.min(hoveredBarTop - 6, Math.max(0, wrapH - 150)));
+			previewIndex = result.openPreview;
+		}
 	}
 
-	function handleBarEnter(index: number) {
+	function handleBarEnter(index: number, el: HTMLElement) {
 		if (isTouch) return;
+		hoveredBarTop = el.offsetTop;
 		const kind =
 			dwellState.hoveredIndex !== null && dwellState.hoveredIndex !== index
 				? 'enter-other-bar'
 				: 'enter-bar';
-		applyDwell(dwellTransition(dwellState, { kind, index, now: Date.now() }));
+		applyDwell(dwellTransition(dwellState, { kind, index }));
 	}
 
 	function handleBarLeave(event: PointerEvent) {
 		if (isTouch) return;
 		const entered = event.relatedTarget;
 		if (entered instanceof Element && entered.closest('.section-strip-preview')) return;
-		applyDwell(dwellTransition(dwellState, { kind: 'leave-bar', now: Date.now() }));
+		applyDwell(dwellTransition(dwellState, { kind: 'leave-bar' }));
 	}
 
 	function handleStripLeave() {
-		applyDwell(dwellTransition(dwellState, { kind: 'leave-strip', now: Date.now() }));
+		applyDwell(dwellTransition(dwellState, { kind: 'leave-strip' }));
 	}
 
 	function jumpTo(index: number) {
@@ -91,10 +99,10 @@
 </script>
 
 <div
+	bind:this={stripEl}
 	role="navigation"
 	aria-label="Reply sections"
-	data-msg-id={msgId}
-	class="section-strip pointer-events-none absolute inset-y-0 -right-2 z-10 flex w-4 flex-col items-end gap-px text-border {isTouch
+	class="section-strip pointer-events-none absolute top-0 bottom-8 -right-2 z-10 flex w-4 flex-col items-end gap-px text-border {isTouch
 		? ''
 		: 'group/strip group-hover/strip:text-muted-foreground/40'}"
 	onpointerleave={handleStripLeave}
@@ -108,7 +116,7 @@
 			style="flex-grow:{Math.max(section.length, 1)};flex-basis:0;"
 			aria-label={section.title || `Section ${section.index + 1}`}
 			aria-describedby={previewIndex === section.index ? previewId : undefined}
-			onpointerenter={() => handleBarEnter(section.index)}
+			onpointerenter={(e) => handleBarEnter(section.index, e.currentTarget as HTMLElement)}
 			onpointerleave={handleBarLeave}
 			onclick={() => jumpTo(section.index)}
 		>
@@ -123,7 +131,8 @@
 		<div
 			id={previewId}
 			role="tooltip"
-			class="section-strip-preview pointer-events-auto absolute top-0 right-full z-10 mr-1 max-w-xs rounded-md border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md transition-opacity duration-150 motion-reduce:transition-none"
+			class="section-strip-preview pointer-events-auto absolute right-full z-10 mr-1 max-w-xs rounded-md border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md transition-opacity duration-150 motion-reduce:transition-none"
+			style="top:{previewTop}px"
 		>
 			<button
 				type="button"

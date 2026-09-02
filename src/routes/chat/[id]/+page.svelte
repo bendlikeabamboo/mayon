@@ -393,7 +393,10 @@
 		function attemptJump(): boolean {
 			const body = document.getElementById(`msg-${msgId}`)?.querySelector('.markdown-body');
 			if (!body) return false;
-			const anchor = body.querySelectorAll('h1, h2, h3, h4, h5, h6')[index] ?? null;
+			const anchors = [...body.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter(
+				(h) => !h.closest('blockquote, .callout')
+			);
+			const anchor = anchors[index] ?? null;
 			if (!anchor) return false;
 			anchor.scrollIntoView({
 				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
@@ -439,7 +442,10 @@
 			if (initial) await loadAll(initial).then(() => handleHashScroll());
 		})();
 
-		return () => mq.removeEventListener('change', onMatchChange);
+		return () => {
+			mq.removeEventListener('change', onMatchChange);
+			if (sectionFlashTimer) clearTimeout(sectionFlashTimer);
+		};
 	});
 
 	// Reload when navigating between chats ([id] changes).
@@ -454,6 +460,7 @@
 
 	async function onSend(text: string, effort: ReasoningEffort) {
 		stickToBottom = true;
+		scrolledToHash = false;
 		await chatStore.send(text, { effort });
 	}
 

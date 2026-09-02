@@ -6,11 +6,11 @@ export interface DwellState {
 }
 
 export type DwellInput =
-	| { kind: 'enter-bar'; index: number; now: number }
-	| { kind: 'leave-bar'; now: number }
-	| { kind: 'enter-other-bar'; index: number; now: number }
-	| { kind: 'leave-strip'; now: number }
-	| { kind: 'dwell-fire'; index: number; now: number };
+	| { kind: 'enter-bar'; index: number }
+	| { kind: 'leave-bar' }
+	| { kind: 'enter-other-bar'; index: number }
+	| { kind: 'leave-strip' }
+	| { kind: 'dwell-fire'; index: number };
 
 export interface DwellResult {
 	state: DwellState;
