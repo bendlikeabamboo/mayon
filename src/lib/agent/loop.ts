@@ -88,6 +88,14 @@ function buildSdkTools(enabled: boolean, disabledToolIds?: string[]): ToolSet {
 
 function extractPartContent(p: Record<string, unknown>): string {
 	if (p.type === 'text') return String(p.text ?? '');
+	if (p.type === 'image') {
+		// Short placeholder only — never the image payload (no base64 in traces).
+		// AI SDK user image parts are { type:'image', image } (no dimensions);
+		// stored MessagePart shapes carry width/height, so use them when present.
+		const w = p.width;
+		const h = p.height;
+		return typeof w === 'number' && typeof h === 'number' ? `[image ${w}x${h}]` : '[image]';
+	}
 	if (p.type === 'tool-call') return JSON.stringify(p.input ?? {});
 	if (p.type === 'tool-result') {
 		const out = p.output as Record<string, unknown> | undefined;

@@ -2,7 +2,12 @@ import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import { messages, type Message, type MessageRole } from '$lib/db/schema';
 import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
-import { deriveKindFromColumns, type EntryKind } from '$lib/chat/kinds';
+import {
+	deriveKindFromColumns,
+	type EntryKind,
+	type MessagePart,
+	type TextPart
+} from '$lib/chat/kinds';
 
 async function insertMessage(input: typeof messages.$inferInsert): Promise<Message> {
 	const [row] = await (await awaitDb()).insert(messages).values(input).returning();
@@ -23,8 +28,25 @@ export const messagesRepo = {
 			toolName?: string;
 			metadata?: string;
 			kind?: EntryKind;
+			parts?: MessagePart[];
 		}
 	): Promise<Message> {
+		if (opts?.parts) {
+			if (opts.parts.length === 0) {
+				throw new Error('parts must contain at least one part');
+			}
+			const imageCount = opts.parts.filter((p) => p.type === 'image').length;
+			if (imageCount > 8) {
+				throw new Error('parts must contain at most 8 image parts');
+			}
+			const text = opts.parts
+				.filter((p): p is TextPart => p.type === 'text')
+				.map((p) => p.text)
+				.join('');
+			if (text !== content) {
+				throw new Error('parts text parts must concatenate to content');
+			}
+		}
 		const db = await awaitDb();
 		const last = await db
 			.select({ ord: messages.ord })
@@ -40,7 +62,7 @@ export const messagesRepo = {
 				toolCallId: opts?.toolCallId ?? null,
 				toolName: opts?.toolName ?? null
 			});
-		return insertMessage({
+		const input: typeof messages.$inferInsert = {
 			id: uuid(),
 			chatId,
 			role,
@@ -53,7 +75,9 @@ export const messagesRepo = {
 			toolName: opts?.toolName ?? null,
 			metadata: opts?.metadata ?? null,
 			createdAt: now()
-		});
+		};
+		if (opts?.parts) input.parts = JSON.stringify(opts.parts);
+		return insertMessage(input);
 	},
 
 	async appendToolResult(

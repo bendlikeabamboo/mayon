@@ -8,6 +8,19 @@ beforeAll(() => testDb.setup());
 beforeEach(() => testDb.reset());
 afterAll(() => testDb.teardown());
 
+const IMAGE_BASE64_NOISE = 'zzQmFzZTY0Tm9pc2V6ejk5';
+
+function imagePart(mime = 'image/jpeg') {
+	return {
+		type: 'image' as const,
+		data: `data:${mime};base64,${IMAGE_BASE64_NOISE}`,
+		mimeType: mime,
+		width: 32,
+		height: 32,
+		bytes: 24
+	};
+}
+
 describe('search repository (P-pg-4 PG FTS)', () => {
 	it('searchAvailable() returns true', async () => {
 		expect(await repos.search.searchAvailable()).toBe(true);
@@ -156,6 +169,75 @@ describe('search repository (P-pg-4 PG FTS)', () => {
 		const msgHits = hits.filter((h) => h.kind === 'message');
 		expect(msgHits.length).toBe(1);
 		expect(msgHits[0].refId).toBe(userMsg.id);
+	});
+
+	describe('parts-bearing messages (018 FR-010 search invariant, real search_vec)', () => {
+		it('finds a parts-bearing message by its text-part word with a ts_headline snippet', async () => {
+			const chat = await repos.chats.createRoot({
+				title: 'PartsChat',
+				provider: 'openai',
+				model: 'gpt-4o'
+			});
+			const text = 'quokka husbandry manual';
+			const msg = await repos.messages.append(chat.id, 'user', text, {
+				parts: [{ type: 'text', text }, imagePart(), { type: 'voice-memo' }]
+			});
+
+			const hits = await repos.search.search('quokka');
+			const msgHit = hits.find((h) => h.kind === 'message' && h.refId === msg.id);
+			expect(msgHit).toBeDefined();
+			expect(msgHit!.chatId).toBe(chat.id);
+
+			const segs = renderSnippet(msgHit!.snippetBody);
+			const markedSeg = segs.find((s) => s.mark && s.text.includes('quokka'));
+			expect(markedSeg).toBeDefined();
+		});
+
+		it('never matches image/base64 data from the parts JSON (control: text still matches)', async () => {
+			const chat = await repos.chats.createRoot({
+				title: 'PartsNoiseChat',
+				provider: 'openai',
+				model: 'gpt-4o'
+			});
+			const text = 'quokka husbandry manual';
+			const msg = await repos.messages.append(chat.id, 'user', text, {
+				parts: [{ type: 'text', text }, imagePart()]
+			});
+
+			const control = await repos.search.search('quokka');
+			expect(control.some((h) => h.kind === 'message' && h.refId === msg.id)).toBe(true);
+
+			for (const noise of [IMAGE_BASE64_NOISE, 'data:image']) {
+				const hits = await repos.search.search(noise);
+				expect(hits.filter((h) => h.kind === 'message' && h.refId === msg.id)).toEqual([]);
+			}
+		});
+
+		it('appends an image-only message (content empty) that stays unsearchable while siblings match', async () => {
+			const chat = await repos.chats.createRoot({
+				title: 'ImageOnlyChat',
+				provider: 'openai',
+				model: 'gpt-4o'
+			});
+			const imgOnly = await repos.messages.append(chat.id, 'user', '', {
+				parts: [imagePart('image/png')]
+			});
+			expect(imgOnly.content).toBe('');
+
+			for (const noise of [IMAGE_BASE64_NOISE, 'data:image/png']) {
+				const hits = await repos.search.search(noise);
+				expect(hits.filter((h) => h.kind === 'message')).toEqual([]);
+			}
+
+			const sibling = await repos.messages.append(
+				chat.id,
+				'assistant',
+				'platypus sibling still findable'
+			);
+			const hits = await repos.search.search('platypus');
+			const siblingHit = hits.find((h) => h.kind === 'message' && h.refId === sibling.id);
+			expect(siblingHit).toBeDefined();
+		});
 	});
 
 	it('rebuildIndex() is a no-op', async () => {

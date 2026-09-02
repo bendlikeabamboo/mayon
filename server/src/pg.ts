@@ -118,6 +118,7 @@ export function registerPgDb(app: FastifyInstance, pool: PgPoolLike | undefined)
 	app.post(
 		'/api/db/query',
 		{
+			bodyLimit: 16 * 1024 * 1024,
 			schema: {
 				body: {
 					type: 'object',

@@ -588,6 +588,24 @@
 							</select>
 						</label>
 
+						<label class="space-y-1 text-xs text-muted-foreground">
+							<span>Images (vision)</span>
+							<select
+								class={inputClass}
+								value={p.vision ?? 'auto'}
+								onchange={(e) => {
+									updateField(p.id, {
+										vision: e.currentTarget.value as 'auto' | 'on' | 'off'
+									});
+									commit(p.id);
+								}}
+							>
+								<option value="auto">Auto (detect from model)</option>
+								<option value="on">On</option>
+								<option value="off">Off</option>
+							</select>
+						</label>
+
 						{#if !p.discoverable}
 							<label class="space-y-1 text-xs text-muted-foreground">
 								<span>Models (comma-separated)</span>

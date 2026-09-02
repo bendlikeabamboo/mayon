@@ -3,6 +3,7 @@ import {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageUnsupportedError,
 	RateLimitError,
 	ProviderHttpError,
 	NetworkError,
@@ -22,7 +23,8 @@ export function mapSdkError(err: unknown): Error {
 		err instanceof NetworkError ||
 		err instanceof MissingKeyError ||
 		err instanceof CopilotAuthRequiredError ||
-		err instanceof CopilotSubscriptionError
+		err instanceof CopilotSubscriptionError ||
+		err instanceof ImageUnsupportedError
 	) {
 		return err;
 	}

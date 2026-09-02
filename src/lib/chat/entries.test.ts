@@ -20,6 +20,7 @@ function msg(overrides: Partial<Message> & { id: string; role: Message['role'] }
 		toolName: null,
 		metadata: null,
 		createdAt: Date.now(),
+		parts: null,
 		kind: null,
 		...overrides
 	};

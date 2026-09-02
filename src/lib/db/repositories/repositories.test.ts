@@ -3,11 +3,21 @@ import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
 import { DEFAULT_PROFILE } from '$lib/chat/brief';
 import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
+import { partsOf, textOf, type ImagePart } from '$lib/chat/kinds';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
 beforeEach(() => testDb.reset());
 afterAll(() => testDb.teardown());
+
+const testImage: ImagePart = {
+	type: 'image',
+	data: 'data:image/jpeg;base64,AAAA',
+	mimeType: 'image/jpeg',
+	width: 10,
+	height: 10,
+	bytes: 3
+};
 
 describe('chats repository', () => {
 	it('creates a root chat with self root_id and depth 0', async () => {
@@ -156,6 +166,86 @@ describe('messages repository', () => {
 		expect(cutoff).toHaveLength(2);
 		const all = await repos.messages.listUpToOrd(chat.id, null);
 		expect(all).toHaveLength(3);
+	});
+
+	it('append stores parts JSON in the same row, content kept equal to text parts', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const parts = [{ type: 'text', text: 'look: ' }, testImage];
+		const msg = await repos.messages.append(chat.id, 'user', 'look: ', {
+			parts
+		});
+		expect(msg.parts).toBe(JSON.stringify(parts));
+		expect(textOf(msg)).toBe(msg.content);
+	});
+
+	it('append round-trips an image plus an unknown-kind part: preserved by partsOf, ignored by textOf (FR-014)', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const parts = [
+			{ type: 'text', text: 'listen: ' },
+			testImage,
+			{ type: 'audio', url: 'audio.mp3' }
+		];
+		await repos.messages.append(chat.id, 'user', 'listen: ', { parts });
+
+		const row = (await repos.messages.listByChat(chat.id))[0]!;
+		expect(partsOf(row)).toEqual(parts);
+		expect(partsOf(row)[2]!.type).toBe('audio');
+		expect(textOf(row)).toBe(row.content);
+		expect(textOf(row)).toBe('listen: ');
+	});
+
+	it('append round-trips multi-image parts with order preserved', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const imgA: ImagePart = {
+			...testImage,
+			data: 'data:image/png;base64,AAAA',
+			mimeType: 'image/png'
+		};
+		const imgB: ImagePart = { ...testImage, data: 'data:image/jpeg;base64,BBBB' };
+		const imgC: ImagePart = {
+			...testImage,
+			data: 'data:image/webp;base64,CCCC',
+			mimeType: 'image/webp'
+		};
+		const parts = [{ type: 'text', text: 'three: ' }, imgA, imgB, imgC];
+		await repos.messages.append(chat.id, 'user', 'three: ', { parts });
+
+		const row = (await repos.messages.listByChat(chat.id))[0]!;
+		const stored = partsOf(row);
+		expect(stored).toEqual(parts);
+		expect(stored.filter((p): p is ImagePart => p.type === 'image').map((p) => p.data)).toEqual([
+			imgA.data,
+			imgB.data,
+			imgC.data
+		]);
+		expect(textOf(row)).toBe('three: ');
+	});
+
+	it('append without parts leaves parts NULL (legacy shape)', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+		const msg = await repos.messages.append(chat.id, 'user', 'plain');
+		expect(msg.parts).toBeNull();
+	});
+
+	it('append rejects empty parts, more than 8 image parts, and text/content mismatch', async () => {
+		const chat = await repos.chats.createRoot({ title: 'C' });
+
+		await expect(repos.messages.append(chat.id, 'user', 'x', { parts: [] })).rejects.toThrow(
+			'at least one part'
+		);
+
+		const nineImages = Array.from({ length: 9 }, () => testImage);
+		await expect(repos.messages.append(chat.id, 'user', '', { parts: nineImages })).rejects.toThrow(
+			'at most 8 image parts'
+		);
+
+		await expect(
+			repos.messages.append(chat.id, 'user', 'content', {
+				parts: [{ type: 'text', text: 'different' }]
+			})
+		).rejects.toThrow('concatenate');
+
+		expect(await repos.messages.listByChat(chat.id)).toHaveLength(0);
 	});
 });
 

@@ -48,6 +48,7 @@ describe('presentationKeyFor', () => {
 				toolName: null,
 				metadata: null,
 				createdAt: 0,
+				parts: null,
 				kind: null
 			},
 			kind: 'user_message',
@@ -72,6 +73,7 @@ describe('presentationKeyFor', () => {
 				toolName: 'bash',
 				metadata: null,
 				createdAt: 0,
+				parts: null,
 				kind: null
 			},
 			result: {
@@ -86,6 +88,7 @@ describe('presentationKeyFor', () => {
 				toolName: 'bash',
 				metadata: null,
 				createdAt: 0,
+				parts: null,
 				kind: null
 			}
 		};
@@ -108,6 +111,7 @@ describe('presentationKeyFor', () => {
 				toolName: 'bash',
 				metadata: null,
 				createdAt: 0,
+				parts: null,
 				kind: null
 			},
 			result: null
@@ -141,6 +145,7 @@ describe('presentationKeyFor', () => {
 				toolName: 'bash',
 				metadata: null,
 				createdAt: 0,
+				parts: null,
 				kind: null
 			}
 		};

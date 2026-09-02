@@ -174,4 +174,35 @@ describe('POST /api/llm/proxy', () => {
 
 		expect(res.headers['x-accel-buffering']).toBe('no');
 	});
+
+	it('passes an opaque body larger than the old 1 MiB default through to upstream', async () => {
+		const bigBody = JSON.stringify({
+			messages: [{ role: 'user', content: 'x'.repeat(1024 * 1024 + 64 * 1024) }]
+		});
+		expect(bigBody.length).toBeGreaterThan(1024 * 1024);
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response('streamed-ok', { headers: { 'content-type': 'text/event-stream' } })
+			);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/llm/proxy',
+			payload: {
+				url: 'https://api.example.test/v1/chat',
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: bigBody
+			}
+		});
+
+		expect(res.statusCode).toBe(200);
+		expect(res.body).toBe('streamed-ok');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(upstreamUrl).toBe('https://api.example.test/v1/chat');
+		expect(upstreamInit.body).toBe(bigBody);
+	});
 });

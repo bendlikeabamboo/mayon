@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { deriveKindFromColumns, kindOf, laneOf, ALL_KINDS, type EntryKind } from './kinds';
+import type { Message } from '$lib/db/schema';
+import {
+	deriveKindFromColumns,
+	kindOf,
+	laneOf,
+	ALL_KINDS,
+	partsOf,
+	textOf,
+	type EntryKind
+} from './kinds';
+
+function makeMessage(overrides: Partial<Message>): Message {
+	return {
+		id: 'm1',
+		chatId: 'c1',
+		kind: 'user_message',
+		role: 'user',
+		content: 'hello',
+		parts: null,
+		ord: 0,
+		model: null,
+		tokens: null,
+		toolCallId: null,
+		toolName: null,
+		metadata: null,
+		createdAt: 0,
+		...overrides
+	};
+}
 
 describe('deriveKindFromColumns — D10 case table', () => {
 	it('rule 1: role=user → user_message', () => {
@@ -104,4 +132,113 @@ describe('laneOf', () => {
 			expect(laneOf(kind)).toBe(expected[kind]);
 		});
 	}
+});
+
+describe('partsOf', () => {
+	it('derives a single text part when parts is null (legacy row)', () => {
+		expect(partsOf(makeMessage({ content: 'hello', parts: null }))).toEqual([
+			{ type: 'text', text: 'hello' }
+		]);
+	});
+
+	it('derives a single text part when parts is blank', () => {
+		expect(partsOf(makeMessage({ content: 'hello', parts: '' }))).toEqual([
+			{ type: 'text', text: 'hello' }
+		]);
+		expect(partsOf(makeMessage({ content: 'hello', parts: '   ' }))).toEqual([
+			{ type: 'text', text: 'hello' }
+		]);
+	});
+
+	it('derives a single text part when parts is malformed JSON', () => {
+		expect(partsOf(makeMessage({ content: 'hello', parts: 'not-json' }))).toEqual([
+			{ type: 'text', text: 'hello' }
+		]);
+	});
+
+	it('derives a single text part when parts is not an array or is empty', () => {
+		expect(partsOf(makeMessage({ content: 'hello', parts: '{"type":"text"}' }))).toEqual([
+			{ type: 'text', text: 'hello' }
+		]);
+		expect(partsOf(makeMessage({ content: 'hello', parts: '[]' }))).toEqual([
+			{ type: 'text', text: 'hello' }
+		]);
+	});
+
+	it('parses a stored text+image parts array', () => {
+		const parts = [
+			{ type: 'text', text: 'why does this crash?' },
+			{
+				type: 'image',
+				data: 'data:image/jpeg;base64,/9j/4AA',
+				mimeType: 'image/jpeg',
+				width: 1568,
+				height: 940,
+				bytes: 412345,
+				name: 'Screenshot 2026-09-02 at 15.41.03'
+			}
+		];
+		const msg = makeMessage({
+			content: 'why does this crash?',
+			parts: JSON.stringify(parts)
+		});
+		expect(partsOf(msg)).toEqual(parts);
+	});
+
+	it('preserves unknown part kinds (FR-014)', () => {
+		const msg = makeMessage({
+			content: 'hi',
+			parts: JSON.stringify([
+				{ type: 'text', text: 'hi' },
+				{ type: 'voice', url: 'audio.mp3' }
+			])
+		});
+		const parts = partsOf(msg);
+		expect(parts).toHaveLength(2);
+		expect(parts[1]!.type).toBe('voice');
+	});
+});
+
+describe('textOf', () => {
+	it('concatenates text-part texts in order', () => {
+		const msg = makeMessage({
+			content: 'look at this: and this:',
+			parts: JSON.stringify([
+				{ type: 'text', text: 'look at this: ' },
+				{
+					type: 'image',
+					data: 'data:image/png;base64,AA',
+					mimeType: 'image/png',
+					width: 1,
+					height: 1,
+					bytes: 2
+				},
+				{ type: 'text', text: 'and this:' }
+			])
+		});
+		expect(textOf(msg)).toBe('look at this: and this:');
+	});
+
+	it('ignores image and unknown parts', () => {
+		const msg = makeMessage({
+			content: 'hi',
+			parts: JSON.stringify([
+				{
+					type: 'image',
+					data: 'data:image/png;base64,AA',
+					mimeType: 'image/png',
+					width: 1,
+					height: 1,
+					bytes: 2
+				},
+				{ type: 'text', text: 'hi' },
+				{ type: 'voice', url: 'audio.mp3' }
+			])
+		});
+		expect(textOf(msg)).toBe('hi');
+	});
+
+	it('equals content for legacy rows', () => {
+		expect(textOf(makeMessage({ content: 'hello', parts: null }))).toBe('hello');
+	});
 });

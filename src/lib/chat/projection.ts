@@ -1,5 +1,11 @@
 import type { ModelMessage } from 'ai';
-import { kindOf, type EntryKind } from '$lib/chat/kinds';
+import {
+	kindOf,
+	type EntryKind,
+	type ImagePart,
+	type MessagePart,
+	type TextPart
+} from '$lib/chat/kinds';
 
 const EXCLUDED_KINDS = new Set<EntryKind>([
 	'reasoning',
@@ -32,6 +38,33 @@ export interface ProjectableRow {
 	toolName?: string | null;
 	metadata?: string | null;
 	kind?: string | null;
+	/** Raw `messages.parts` JSON (stored rows) or already-parsed parts (ChatMessage). */
+	parts?: string | MessagePart[] | null;
+}
+
+/**
+ * The row's parts when it actually carries parts: a non-empty array, either
+ * already parsed (ChatMessage) or parsed from the stored JSON string. Null for
+ * parts-less and malformed rows so image-less conversations stay byte-identical.
+ */
+function rowParts(row: ProjectableRow): MessagePart[] | null {
+	const raw = row.parts;
+	if (!raw) return null;
+	if (Array.isArray(raw)) return raw.length > 0 ? raw : null;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		return Array.isArray(parsed) && parsed.length > 0 ? (parsed as MessagePart[]) : null;
+	} catch {
+		return null;
+	}
+}
+
+function isTextPart(p: MessagePart): p is TextPart {
+	return p.type === 'text';
+}
+
+function isImagePart(p: MessagePart): p is ImagePart {
+	return p.type === 'image';
 }
 
 /**
@@ -145,10 +178,30 @@ export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] 
 		}
 
 		if (k === 'user_message') {
-			raw.push({
-				role: 'user' as const,
-				content: [{ type: 'text', text: r.content }]
-			} as unknown as ModelMessage);
+			const parts = rowParts(r);
+			if (!parts) {
+				raw.push({
+					role: 'user' as const,
+					content: [{ type: 'text', text: r.content }]
+				} as unknown as ModelMessage);
+				continue;
+			}
+			// contracts/message-parts.md §5: ordered parts — text part(s) first
+			// (omitted when empty, i.e. image-only), then one image part per
+			// stored image in order. The AI SDK user image part takes the
+			// stored data-URL string directly.
+			const content: unknown[] = [];
+			for (const p of parts) {
+				if (isTextPart(p)) {
+					if (p.text) content.push({ type: 'text', text: p.text });
+				} else if (isImagePart(p)) {
+					content.push({ type: 'image', image: p.data });
+				}
+			}
+			if (content.length === 0) {
+				content.push({ type: 'text', text: r.content });
+			}
+			raw.push({ role: 'user' as const, content } as unknown as ModelMessage);
 			continue;
 		}
 

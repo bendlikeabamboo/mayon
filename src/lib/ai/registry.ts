@@ -38,6 +38,13 @@ export interface ProviderTemplate {
 	 * `'auto'` lets the resolver decide per kind/baseUrl.
 	 */
 	toolCapability?: 'auto' | 'on' | 'off';
+	/**
+	 * Default vision seed for new providers from this template, mirroring
+	 * `toolCapability`. `'auto'` (or absent) defers to the per-model allowlist
+	 * in `vision-capability.ts`; templates omit it unless the default model
+	 * clearly needs an override.
+	 */
+	vision?: 'auto' | 'on' | 'off';
 }
 
 /**

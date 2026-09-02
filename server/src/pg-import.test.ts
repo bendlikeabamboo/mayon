@@ -47,7 +47,21 @@ function mockChild(opts: { exitCode?: number; stdoutData?: Buffer } = {}) {
 	return child;
 }
 
-function createSqliteFixture(): Buffer {
+const PARTS_IMAGE_BASE64 = 'zzQmFzZTY0Tm9pc2V6ejk5';
+
+const PARTS_JSON = JSON.stringify([
+	{ type: 'text', text: 'quokka import manual' },
+	{
+		type: 'image',
+		data: `data:image/jpeg;base64,${PARTS_IMAGE_BASE64}`,
+		mimeType: 'image/jpeg',
+		width: 32,
+		height: 32,
+		bytes: 24
+	}
+]);
+
+function createSqliteFixture(opts: { withParts?: boolean } = {}): Buffer {
 	const db = new Database(':memory:');
 
 	db.exec(`CREATE TABLE chats (
@@ -56,7 +70,8 @@ function createSqliteFixture(): Buffer {
 	)`);
 	db.exec(`CREATE TABLE messages (
 		id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, role TEXT NOT NULL,
-		content TEXT NOT NULL, ord INTEGER NOT NULL, created_at BIGINT NOT NULL
+		content TEXT NOT NULL,${opts.withParts ? ' parts TEXT,' : ''}
+		ord INTEGER NOT NULL, created_at BIGINT NOT NULL
 	)`);
 	db.exec(`CREATE TABLE branch_sources (
 		id TEXT PRIMARY KEY, source_message_id TEXT NOT NULL, start_char INTEGER NOT NULL,
@@ -106,6 +121,12 @@ function createSqliteFixture(): Buffer {
 	db.prepare(
 		`INSERT INTO messages (id, chat_id, role, content, ord, created_at) VALUES (?,?,?,?,?,?)`
 	).run(msgId, chatId, 'user', 'Hello world', 0, 1000000);
+
+	if (opts.withParts) {
+		db.prepare(
+			`INSERT INTO messages (id, chat_id, role, content, parts, ord, created_at) VALUES (?,?,?,?,?,?,?)`
+		).run('m2', chatId, 'user', 'quokka import manual', PARTS_JSON, 1, 1000000);
+	}
 
 	db.prepare(
 		`INSERT INTO branch_sources (id, source_message_id, start_char, end_char, excerpt, branch_chat_id, created_at) VALUES (?,?,?,?,?,?,?)`
@@ -164,6 +185,7 @@ function createNoMayonSqlite(): Buffer {
 }
 
 const SQLITE_FIXTURE = createSqliteFixture();
+const PARTS_FIXTURE = createSqliteFixture({ withParts: true });
 const NO_MAYON_FIXTURE = createNoMayonSqlite();
 const SAFETY_BYTES = Buffer.from('safety-dump-bytes');
 
@@ -285,6 +307,40 @@ describe('pg-import', () => {
 
 			const settings = await client.query("SELECT * FROM settings WHERE key = 'theme'");
 			expect(settings.rows.length).toBe(1);
+		} finally {
+			client.release();
+		}
+	});
+
+	it('post-import: parts-bearing message keeps parts intact with FTS over text content', async () => {
+		const res = await app.inject({
+			method: 'PUT',
+			url: '/api/import/sqlite',
+			payload: PARTS_FIXTURE,
+			headers: { 'content-type': 'application/octet-stream' }
+		});
+		expect(res.statusCode).toBe(200);
+		const summary = JSON.parse(res.headers['x-import-summary'] as string);
+		expect(summary.messages).toBe(2);
+
+		const client = await pool.connect();
+		try {
+			const row = await client.query("SELECT parts FROM messages WHERE id = 'm2'");
+			expect(row.rows[0]?.parts).toBe(PARTS_JSON);
+
+			const parsed = JSON.parse(row.rows[0]?.parts as string) as Array<{
+				type: string;
+				data?: string;
+			}>;
+			const imagePart = parsed.find((p) => p.type === 'image');
+			expect(imagePart?.data).toMatch(/^data:image\/jpeg;base64,/);
+			expect(imagePart?.data).toContain(PARTS_IMAGE_BASE64);
+
+			const fts = await client.query(
+				'SELECT search_vec IS NOT NULL AS has_fts FROM messages WHERE content = $1',
+				['quokka import manual']
+			);
+			expect(fts.rows[0]?.has_fts).toBe(true);
 		} finally {
 			client.release();
 		}

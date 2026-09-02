@@ -33,6 +33,7 @@ import {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageUnsupportedError,
 	RateLimitError,
 	ProviderHttpError,
 	NetworkError,
@@ -135,6 +136,13 @@ describe('mapSdkError', () => {
 	it('passes through CopilotSubscriptionError unchanged', () => {
 		const err = new CopilotSubscriptionError();
 		expect(mapSdkError(err)).toBe(err);
+	});
+
+	it('passes through ImageUnsupportedError unchanged (image-bearing classification survives the SDK boundary)', () => {
+		const err = new ImageUnsupportedError(undefined, 'deepseek-chat');
+		const result = mapSdkError(err);
+		expect(result).toBe(err);
+		expect((result as ImageUnsupportedError).modelId).toBe('deepseek-chat');
 	});
 
 	it('maps generic Error to NetworkError', () => {

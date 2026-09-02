@@ -1,3 +1,5 @@
+import type { Message } from '$lib/db/schema';
+
 export type EntryKind =
 	| 'user_message'
 	| 'assistant_message'
@@ -136,4 +138,57 @@ export function parseMetadata<T = SharedMetadata>(raw: string | null): T | null 
 	} catch {
 		return null;
 	}
+}
+
+export interface TextPart {
+	type: 'text';
+	text: string;
+}
+
+export interface ImagePart {
+	type: 'image';
+	data: string;
+	mimeType: string;
+	width: number;
+	height: number;
+	bytes: number;
+	name?: string;
+}
+
+export type MessagePart = TextPart | ImagePart | { type: string };
+
+export interface ComposerAttachment {
+	part: ImagePart;
+	thumbnailDataUrl: string;
+}
+
+export function partsOf(message: Message): MessagePart[] {
+	let parsed: unknown;
+	try {
+		parsed = message.parts ? JSON.parse(message.parts) : null;
+	} catch {
+		parsed = null;
+	}
+	if (!Array.isArray(parsed) || parsed.length === 0) {
+		return [{ type: 'text', text: message.content }];
+	}
+	return parsed as MessagePart[];
+}
+
+export function textOf(message: Message): string {
+	return partsOf(message)
+		.filter((p): p is TextPart => p.type === 'text')
+		.map((p) => p.text)
+		.join('');
+}
+
+/**
+ * Rebuild composer attachments from a stored row's image parts (018 US1: the
+ * regenerate path re-sends the preceding user turn's images). The thumbnail
+ * falls back to the full data URL — the composer only uses it for preview.
+ */
+export function attachmentsOf(message: Message): ComposerAttachment[] {
+	return partsOf(message)
+		.filter((p): p is ImagePart => p.type === 'image')
+		.map((part) => ({ part, thumbnailDataUrl: part.data }));
 }

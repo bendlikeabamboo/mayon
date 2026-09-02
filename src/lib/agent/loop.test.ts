@@ -1335,6 +1335,60 @@ describe('(v) request trace mirrors wire payload (FR-008)', () => {
 		const tracedRoles = msgs.map((m) => m.role);
 		expect(tracedRoles).toEqual(projectedRoles);
 	});
+
+	it('image parts trace as [image WxH] / [image] placeholders; text unchanged; no base64; unknown shapes tolerated (T031)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'prose' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const projectedMessages = [
+			{
+				// AI SDK user image part: { type:'image', image } — no dimensions.
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'What is this?' },
+					{ type: 'image', image: 'data:image/png;base64,AAAA' }
+				]
+			},
+			{
+				// Stored MessagePart shape flowing through: carries width/height.
+				role: 'user',
+				content: [{ type: 'image', image: 'data:image/png;base64,BBBB', width: 32, height: 16 }]
+			},
+			{
+				// Unknown shape must stay tolerated (empty contribution, no crash).
+				role: 'user',
+				content: [{ type: 'mystery-part', payload: { deep: true } }]
+			}
+		];
+		mockedProjectEntries.mockReturnValue(projectedMessages as never);
+
+		const captured: Array<{
+			messages: Array<{ role: string; content: string }>;
+		}> = [];
+		const deps = makeDeps({
+			onTrace: (e) => {
+				if (e.kind === 'request') {
+					captured.push(e as unknown as (typeof captured)[number]);
+				}
+			}
+		});
+		await runAgentTurn(deps);
+
+		expect(captured).toHaveLength(1);
+		const msgs = captured[0].messages;
+		expect(msgs).toHaveLength(3);
+		expect(msgs[0].content).toBe('What is this?\n[image]');
+		expect(msgs[1].content).toBe('[image 32x16]');
+		expect(msgs[2].content).toBe('');
+
+		// No image payload (base64) ever reaches the trace.
+		expect(JSON.stringify(captured[0])).not.toContain('AAAA');
+		expect(JSON.stringify(captured[0])).not.toContain('BBBB');
+	});
 });
 
 function mockedAppendAssistantTextContent(deps: AgentTurnDeps): string {

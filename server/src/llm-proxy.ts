@@ -11,7 +11,7 @@ const HOP_BY_HOP = new Set([
 ]);
 
 export function registerLlmProxy(app: FastifyInstance): void {
-	app.post('/api/llm/proxy', async (req, reply) => {
+	app.post('/api/llm/proxy', { bodyLimit: 16 * 1024 * 1024 }, async (req, reply) => {
 		let body: LlmProxyRequest;
 		try {
 			body = req.body as LlmProxyRequest;
