@@ -75,7 +75,7 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 - [x] T020 [US1] Integrate boot ordering in `src/routes/+layout.svelte`: resolve auth state BEFORE `bootstrapDb()`; when locked+unauthenticated render the login branch (placeholder shell ok) and DO NOT bootstrap db; when setup offered (open, no owner, not dismissed) show setup prompt; remember dismissal in localStorage (`mayon_setup_dismissed`) so the prompt never re-nags (FR-022)
 - [x] T021 [US1] Create `src/routes/login/+page.svelte` first-run setup mode: label + password form, AuthQr, confirm-code step, clear error states; shadcn-svelte vocabulary only
 - [x] T022 [US1] Add Settings › Security entry (`src/routes/settings/`): mode badge + "Enable security" action (open mode only) launching the same setup flow (reuse T021 component) per FR-024
-- [ ] T023 [US1] Validate against quickstart.md steps 1–2 manually on `pnpm dev`; run `pnpm check && pnpm lint && pnpm test && pnpm --filter @mayon/server test`
+- [x] T023 [US1] Validate against quickstart.md steps 1–2 manually on `pnpm dev`; run `pnpm check && pnpm lint && pnpm test && pnpm --filter @mayon/server test`
 
 **Checkpoint**: US1 independently functional: skip = today; enable = locked; setup closed after completion.
 
@@ -199,9 +199,9 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 **Purpose**: Constitution-required docs, hardening, end-to-end validation.
 
-- [ ] T052 [P] Amend `docs/dev/seams.qmd` (secret-boundary rule: credential VERIFIERS now live in dedicated `auth_*` tables; TOTP secrets GCM-wrapped under a key outside Postgres; settings stays secret-free) and `docs/dev/architecture.qmd` (non-goals update: owner + invited identities behind one gate, no multi-user isolation; add the three auth tables to the catalog) — constitution-required doc amendment
-- [ ] T053 Security hardening pass: audit every mutation endpoint for the Origin check, verify uniform-401/no-oracle messaging everywhere (`rg` for divergent error bodies in `server/src/auth/`), confirm timing-safe token comparison (`crypto.timingSafeEqual`) in session lookup, confirm cookie flags on both cookies in a live dev run
-- [ ] T054 Run the FULL `quickstart.md` top-to-bottom on `pnpm dev` (steps 0–8) and record results; run all merge gates: `pnpm check && pnpm lint && pnpm test && pnpm --filter @mayon/server test`
+- [x] T052 [P] Amend `docs/dev/seams.qmd` (secret-boundary rule: credential VERIFIERS now live in dedicated `auth_*` tables; TOTP secrets GCM-wrapped under a key outside Postgres; settings stays secret-free) and `docs/dev/architecture.qmd` (non-goals update: owner + invited identities behind one gate, no multi-user isolation; add the three auth tables to the catalog) — constitution-required doc amendment
+- [x] T053 Security hardening pass: audit every mutation endpoint for the Origin check, verify uniform-401/no-oracle messaging everywhere (`rg` for divergent error bodies in `server/src/auth/`), confirm timing-safe token comparison (`crypto.timingSafeEqual`) in session lookup, confirm cookie flags on both cookies in a live dev run
+- [x] T054 Run the FULL `quickstart.md` top-to-bottom on `pnpm dev` (steps 0–8) and record results; run all merge gates: `pnpm check && pnpm lint && pnpm test && pnpm --filter @mayon/server test`
 
 ---
 

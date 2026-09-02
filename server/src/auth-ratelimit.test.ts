@@ -339,6 +339,60 @@ describe('per-source isolation', () => {
 	});
 });
 
+describe('forwarded client IPs (trustProxy: 1)', () => {
+	let ctx: TestApp;
+
+	beforeAll(async () => {
+		ctx = await startApp();
+		await enrollOwner(ctx);
+	});
+	afterAll(async () => {
+		await ctx.close();
+	});
+
+	it('locks the forwarded address while other clients on the same socket stay unaffected', async () => {
+		for (let i = 0; i < 10; i++) {
+			const res = await ctx.app.inject({
+				method: 'POST',
+				url: '/api/auth/login',
+				body: { password: 'not-the-password' },
+				remoteAddress: '10.0.0.5',
+				headers: { 'x-forwarded-for': '203.0.113.9' }
+			});
+			if (i < 9) {
+				expect(res.statusCode).toBe(401);
+			} else {
+				expect(res.statusCode).toBe(429);
+				expect(res.body).toBe('{"error":"too many attempts","retryAfter":600}');
+			}
+		}
+
+		const otherForwarded = await ctx.app.inject({
+			method: 'POST',
+			url: '/api/auth/login',
+			body: { password: 'not-the-password' },
+			remoteAddress: '10.0.0.5',
+			headers: { 'x-forwarded-for': '203.0.113.8' }
+		});
+		expect(otherForwarded.statusCode).toBe(401);
+		expect(otherForwarded.body).toBe('{"error":"invalid credentials"}');
+
+		const noForwarded = await ctx.app.inject({
+			method: 'POST',
+			url: '/api/auth/login',
+			body: { password: 'not-the-password' },
+			remoteAddress: '10.0.0.5'
+		});
+		expect(noForwarded.statusCode).toBe(401);
+
+		const rows = await ctx.store.listRecentAttempts(50);
+		const countFrom = (source: string) => rows.filter((r) => r.source === source).length;
+		expect(countFrom('203.0.113.9')).toBe(9);
+		expect(countFrom('203.0.113.8')).toBe(1);
+		expect(countFrom('10.0.0.5')).toBe(1);
+	});
+});
+
 describe('successes are never delayed and add no failure weight', () => {
 	let ctx: TestApp;
 	let secret: string;

@@ -216,6 +216,18 @@ Key/value store (JSON values).
 
 Provider configs live here. API keys are **not** stored in `settings` — they live in IndexedDB (the browser `KeyStore`); `settings` holds only non-secret handle fields.
 
+#### auth_identities
+
+Gate identities (a single owner plus owner-invited guests): unique `label`, `role`/`status`, argon2id `password_hash`, AES-256-GCM-wrapped TOTP secret with a replay-guard step — verifiers only, under a wrapping key held outside Postgres (`MAYON_AUTH_SECRET` or a key file on the server-data volume).
+
+#### auth_sessions
+
+Same-day login sessions: sha256 hash of a 256-bit random token, `expires_at` at the next local midnight, immediate revocation.
+
+#### auth_login_attempts
+
+Per-source login-attempt audit feeding the brute-force rate limiter; pruned after 30 days.
+
 ### Reference-based context assembly
 
 A child inherits "excerpt + full history up to the fork point" by **reading** ancestor messages — never copying. `branch_point_message_id` on a node points to a message in its **parent** and defines how many of the parent's own messages the child sees.
@@ -354,6 +366,7 @@ which the browser progressively enables via `detectServer()` at boot:
 - **Backup/restore** — PG-native `pg_dump -Fc` / `pg_restore` for the app DB (in-place, no server restart); the sandbox has its own snapshot/restore.
 - **Search/FTS** — native Postgres `tsvector`/`GIN`/`ts_headline` with `GENERATED ALWAYS AS` columns; noise stripped from Mermaid and math blocks.
 - **LLM CORS proxy** — `POST /api/llm/proxy` routes CORS-blocked providers (e.g. Anthropic) through the server when the `llm-proxy` cap is present.
+- **Auth gate** — one `onRequest` hook in front of every server route; when `security.mode` is `locked`, all routes require a same-day session (password + TOTP MFA) except a small public allowlist, while `open` mode is today's behavior. `/api/auth/*` serves status, login, invited enrollment, invite/session administration, and the login-attempt audit (owner-only). An optional Caddy basic-auth front door (floor templates attached to each release) is a deployment-level stopgap, not an app subsystem.
 
 > The phased build history behind these subsystems (acceptance gates P2–P5 and the
 > P-pg-2 … P-pg-7 Postgres migration epic) is archived under
@@ -367,6 +380,6 @@ which the browser progressively enables via `detectServer()` at boot:
 
 ## Non-goals
 
-- Multi-user / accounts / sharing (personal, single-user).
+- Multi-user isolation (one shared dataset behind one auth gate: a single owner plus owner-invited identities; no registration, no per-user data separation; gate administration is owner-only).
 - Server-side hosting of the primary experience (local-first).
 - Server-side rendering.

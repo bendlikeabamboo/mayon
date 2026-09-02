@@ -296,6 +296,22 @@ describe('auth gate — locked mode (store-backed)', () => {
 		expect(res.json()).toEqual({ error: 'bad origin' });
 	});
 
+	it('admits same-origin mutations when the proxy preserves the client Host', async () => {
+		const { token } = await mintSession();
+		const res = await app.inject({
+			method: 'POST',
+			url: '/api/db/query',
+			headers: {
+				origin: 'http://localhost:8080',
+				host: 'localhost:8080',
+				cookie: `mayon_session=${token}`
+			},
+			body: { op: 'query', sql: 'SELECT 1 AS one' }
+		});
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual({ columns: ['one'], rows: [[1]] });
+	});
+
 	it('passes valid sessions through to the handler', async () => {
 		const { token } = await mintSession();
 		const res = await app.inject({

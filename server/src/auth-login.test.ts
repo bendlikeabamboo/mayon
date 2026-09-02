@@ -10,6 +10,7 @@ import { migrate } from 'drizzle-orm/pglite/migrator';
 import { generateSync } from 'otplib';
 import { buildApp } from './server';
 import { nextLocalMidnight } from './auth/cookies';
+import { hashPassword } from './auth/crypto';
 import { createAuthStore, type AuthStore } from './auth/store';
 import type { PgPoolLike } from './pg';
 
@@ -54,6 +55,12 @@ function sessionCookieHeader(res: { headers: Record<string, unknown> }): string 
 	const raw = res.headers['set-cookie'];
 	const list = raw == null ? [] : Array.isArray(raw) ? raw : [String(raw)];
 	return list.find((c) => c.startsWith('mayon_session='));
+}
+
+function findCookie(res: { headers: Record<string, unknown> }, name: string): string | undefined {
+	const raw = res.headers['set-cookie'];
+	const list = raw == null ? [] : Array.isArray(raw) ? raw : [String(raw)];
+	return list.find((c) => c.startsWith(`${name}=`));
 }
 
 function cookieToken(header: string): string {
@@ -368,6 +375,55 @@ describe('auth logout', () => {
 	it('answers 204 and clears the cookie even without a session', async () => {
 		const out = await ctx.app.inject({ method: 'POST', url: '/api/auth/logout' });
 		expect(out.statusCode).toBe(204);
+	});
+});
+
+describe('auth cookies — flags and the Secure escape hatch', () => {
+	let ctx: TestApp;
+	beforeAll(async () => {
+		ctx = await startApp();
+	});
+	afterAll(async () => {
+		await ctx.close();
+	});
+
+	it('omits Secure on the session cookie when MAYON_COOKIE_SECURE=false, keeping the other flags', async () => {
+		process.env.MAYON_COOKIE_SECURE = 'false';
+		try {
+			const secret = await enrollOwner(ctx);
+			ctx.clock.now += STEP_MS;
+			const res = await loginPost(ctx, {
+				password: PASSWORD,
+				code: codeFor(secret, ctx.clock.now)
+			});
+			expect(res.statusCode).toBe(200);
+			const cookie = sessionCookieHeader(res);
+			expect(cookie).toContain('HttpOnly');
+			expect(cookie).toContain('SameSite=Lax');
+			expect(cookie).toContain('Path=/');
+			expect(cookie).not.toContain('Secure');
+		} finally {
+			delete process.env.MAYON_COOKIE_SECURE;
+		}
+	});
+
+	it('marks the enrollment cookie HttpOnly/SameSite=Lax/Path=/ Secure by default', async () => {
+		await ctx.store.createIdentity({
+			id: randomUUID(),
+			label: 'cookie-guest',
+			role: 'invitee',
+			status: 'invited',
+			passwordHash: await hashPassword(PASSWORD)
+		});
+		const res = await loginPost(ctx, { label: 'cookie-guest', password: PASSWORD });
+		expect(res.statusCode).toBe(200);
+		expect(res.json().status).toBe('mfa_enrollment_required');
+		const cookie = findCookie(res, 'mayon_enroll');
+		expect(cookie).toBeDefined();
+		expect(cookie).toContain('HttpOnly');
+		expect(cookie).toContain('SameSite=Lax');
+		expect(cookie).toContain('Path=/');
+		expect(cookie).toContain('Secure');
 	});
 });
 

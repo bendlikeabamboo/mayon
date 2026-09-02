@@ -242,6 +242,10 @@ and `.env` (only the base compose file is re-downloaded). To rotate the
 shared credential, set a new `MAYON_BASIC_AUTH_HASH` in `.env` and run
 `docker compose up -d` — it changes for everyone at once.
 
+While the floor is active, login-attempt sources shown under
+**Settings → Security** record the Caddy container's address rather than
+each visitor's IP — the app's rate limiter trusts exactly one proxy hop.
+
 ### Security recovery (auth CLI)
 
 The server image ships a recovery CLI for the built-in security gate

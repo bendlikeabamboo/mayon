@@ -120,7 +120,7 @@ export interface BuildAppOptions {
 }
 
 export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
-	const app = Fastify();
+	const app = Fastify({ trustProxy: 1 });
 
 	app.register(fp);
 	app.register(cookie);
