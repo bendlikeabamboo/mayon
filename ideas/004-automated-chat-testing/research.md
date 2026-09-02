@@ -1,0 +1,6 @@
+# Research: 004-automated-chat-testing
+
+- 2026-09-02 — The provider seam is a closed switch over 5 real kinds (`openai-compatible`, `anthropic`, `gemini`, `ollama`, `github-copilot`); there is no mock branch. Source: `src/lib/ai/sdk-factory.ts` (`buildSdkModel`), verified by repo grep.
+- 2026-09-02 — Per-kind behavior tables live outside the factory too: extra-body allowlists, reasoning-effort levels, sampling locks, and provider→template mapping all switch on kind in `src/lib/ai/dialects.ts` (e.g. `Exclude<ProviderKind, 'openai-compatible'>`, `EXTRA_BODY_ALLOWLISTS`). A new kind must be threaded through these or excluded explicitly. Source: repo grep, 2026-09-02.
+- 2026-09-02 — API keys are resolved at model-build time via `hasProviderKey` (IndexedDB-backed) in `src/lib/ai/client.ts:112`; a keyless mock kind would skip this path by construction. Source: repo grep, 2026-09-02.
+- 2026-09-02 — CI today is a single `web` job on `ubuntu-latest` (Docker available): pnpm install/lint/check/test, SPA build, two docker builds — no Playwright job exists yet (`.github/workflows/ci.yml` + `.github/actions/ci/action.yml`). A tests-owned stub-server precedent already exists: `tests/fixtures/stub-mcp-server.mjs`. Source: repo read, 2026-09-02.
