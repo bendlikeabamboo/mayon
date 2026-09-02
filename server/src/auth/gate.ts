@@ -93,9 +93,23 @@ function originMatches(request: FastifyRequest): boolean {
 	if (origin === undefined) {
 		return true;
 	}
+	let originHost: string;
 	try {
-		return new URL(origin).host === request.host;
+		originHost = new URL(origin).host;
 	} catch {
 		return false;
 	}
+	if (originHost === request.host) {
+		return true;
+	}
+	// Behind an extra proxy that rewrites Host (e.g. Caddy floor), the
+	// original host surfaces in X-Forwarded-Host — browsers cannot forge it
+	// cross-site, so accepting a match there keeps the CSRF guarantee.
+	// With trustProxy: 1 the rightmost entry is the one our own proxy saw.
+	const forwardedHost = request.headers['x-forwarded-host'];
+	if (typeof forwardedHost === 'string' && forwardedHost.length > 0) {
+		const entries = forwardedHost.split(',').map((value) => value.trim());
+		return originHost === entries[entries.length - 1];
+	}
+	return false;
 }
