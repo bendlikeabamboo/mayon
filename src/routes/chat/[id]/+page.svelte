@@ -33,6 +33,7 @@
 	import { parseAddFormats } from '$lib/chat/expound';
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
+	import { isStripEnabled } from '$lib/chat/strip/pref';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
@@ -47,7 +48,7 @@
 	import ChatRail from '$lib/components/chat/ChatRail.svelte';
 	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
 	import { mark } from '$lib/perf/mark';
-	import { entry } from '$lib/motion/stagger';
+	import { entry, prefersReducedMotion } from '$lib/motion/stagger';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 
 	let breadcrumb = $state<Chat[]>([]);
@@ -63,6 +64,11 @@
 	let briefExpandedWriteSeq = 0;
 	/** When true, the intake card on this chat is dismissed for the session. */
 	let intakeDismissed = $state(false);
+	/**
+	 * Persisted section-strip preference, loaded once per mount (settings→chat
+	 * navigation remounts this route, so a mount-time read is sufficient).
+	 */
+	let stripEnabled = $state(true);
 	let editingInferred = $state(false);
 	let rootChat = $state<Chat | null>(null);
 	let branchSource = $state<BranchSource | null>(null);
@@ -365,6 +371,52 @@
 		requestAnimationFrame(retry);
 	}
 
+	let sectionFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function flashSectionHeading(anchor: Element) {
+		if (sectionFlashTimer) clearTimeout(sectionFlashTimer);
+		sectionFlashTimer = null;
+		viewport
+			?.querySelectorAll('.section-flash')
+			.forEach((el) => el.classList.remove('section-flash'));
+		anchor.classList.add('section-flash');
+		sectionFlashTimer = setTimeout(() => {
+			anchor.classList.remove('section-flash');
+			sectionFlashTimer = null;
+		}, 1600);
+	}
+
+	function handleSectionJump(msgId: string, index: number) {
+		if (!viewport) return;
+		scrolledToHash = true;
+
+		function attemptJump(): boolean {
+			const body = document.getElementById(`msg-${msgId}`)?.querySelector('.markdown-body');
+			if (!body) return false;
+			const anchors = [...body.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter(
+				(h) => !h.closest('blockquote, .callout')
+			);
+			const anchor = anchors[index] ?? null;
+			if (!anchor) return false;
+			anchor.scrollIntoView({
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				block: 'start'
+			});
+			flashSectionHeading(anchor);
+			return true;
+		}
+
+		if (attemptJump()) return;
+		let tries = 0;
+		const maxTries = 5;
+		function retry() {
+			tries++;
+			if (tries >= maxTries || attemptJump()) return;
+			requestAnimationFrame(retry);
+		}
+		requestAnimationFrame(retry);
+	}
+
 	onMount(() => {
 		const mq = window.matchMedia('(min-width: 1024px)');
 		lg = mq.matches;
@@ -374,6 +426,7 @@
 		mq.addEventListener('change', onMatchChange);
 
 		(async () => {
+			void isStripEnabled().then((enabled) => (stripEnabled = enabled));
 			try {
 				const active = await getActiveSdkProvider();
 				activeModelId = active.config.defaultModel;
@@ -389,7 +442,10 @@
 			if (initial) await loadAll(initial).then(() => handleHashScroll());
 		})();
 
-		return () => mq.removeEventListener('change', onMatchChange);
+		return () => {
+			mq.removeEventListener('change', onMatchChange);
+			if (sectionFlashTimer) clearTimeout(sectionFlashTimer);
+		};
 	});
 
 	// Reload when navigating between chats ([id] changes).
@@ -404,6 +460,7 @@
 
 	async function onSend(text: string, effort: ReasoningEffort) {
 		stickToBottom = true;
+		scrolledToHash = false;
 		await chatStore.send(text, { effort });
 	}
 
@@ -776,6 +833,8 @@
 							{onCopy}
 							{onBranchWhole}
 							{onRegenerate}
+							onJumpToSection={handleSectionJump}
+							{stripEnabled}
 							{personaName}
 							{failedMessageId}
 							streaming={chatStore.streaming}

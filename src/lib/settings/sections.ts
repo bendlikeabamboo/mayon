@@ -10,6 +10,7 @@ export interface SectionEntry {
 export const SETTINGS_SECTIONS: readonly SectionEntry[] = [
 	{ id: 'providers', label: 'Providers', aliases: [], cap: null },
 	{ id: 'mcp', label: 'MCP Servers', aliases: [], cap: null },
+	{ id: 'chat', label: 'Chat', aliases: ['strip', 'outline', 'display'], cap: null },
 	{ id: 'learner-profile', label: 'Learner profile', aliases: [], cap: null },
 	{ id: 'expound-instructions', label: 'Expound Instructions', aliases: [], cap: null },
 	{ id: 'lab-prompt', label: 'Lab generation prompt', aliases: [], cap: null },

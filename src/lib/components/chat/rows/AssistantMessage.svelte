@@ -6,9 +6,11 @@
 	import Reasoning from '../Reasoning.svelte';
 	import Highlighter from '../Highlighter.svelte';
 	import Spinner from '../Spinner.svelte';
+	import SectionStrip from '../strip/SectionStrip.svelte';
 	import type { DurableEntry } from '$lib/chat/entries';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
+	import { extractSections, isStripCandidate } from '$lib/markdown/sections';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import { parseMetadata } from '$lib/chat/kinds';
 	import type { AssistantMessageMeta } from '$lib/chat/kinds';
@@ -39,6 +41,9 @@
 		 * even though the prop contract itself is unchanged.
 		 */
 		canRegenerate?: boolean;
+		onJumpToSection?: (msgId: string, index: number) => void;
+		/** Persisted strip preference (US3): false unmounts every strip. */
+		stripEnabled?: boolean;
 	} & SharedCallbacks;
 
 	type LiveProps = {
@@ -67,10 +72,35 @@
 
 	let reasoningOpen = $state(false);
 
+	const sections = $derived(isDurable ? extractSections(visible) : []);
+	const stripCandidate = $derived(isDurable && isStripCandidate(sections));
+	const stripPrefOn = $derived(isDurable && ((props as DurableProps).stripEnabled ?? true));
+	let stripMeasured = $state(false);
+	const stripEligible = $derived(stripPrefOn && stripMeasured);
+	let bodyEl = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		if (!stripCandidate) {
+			stripMeasured = false;
+			return;
+		}
+		const el = bodyEl;
+		if (!el) return;
+		const scroller = el.closest<HTMLElement>('.overflow-y-auto');
+		if (!scroller) return;
+		const measure = () => {
+			stripMeasured = el.offsetHeight > scroller.clientHeight;
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
 	onMount(() => incRender('TimelineRow'));
 </script>
 
-<div class="group/message flex flex-col gap-1 items-start">
+<div class="group/message relative flex flex-col gap-1 items-start">
 	<div class="flex w-full items-center justify-between">
 		<div class="flex items-center">
 			<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -92,6 +122,7 @@
 		</div>
 	{/if}
 	<div
+		bind:this={bodyEl}
 		class="min-w-0 max-w-full rounded-lg px-4 py-2.5 border border-border bg-background text-foreground {isDurable &&
 		(props as DurableProps).failed
 			? 'border-l-2 border-red-500/60'
@@ -115,6 +146,13 @@
 			<Markdown raw={visible} live={true} />
 		{/if}
 	</div>
+	{#if isDurable && stripEligible}
+		<SectionStrip
+			msgId={entry!.id}
+			{sections}
+			onJump={(index) => (props as DurableProps).onJumpToSection?.(entry!.id, index)}
+		/>
+	{/if}
 	{#if isDurable}
 		<!-- us5-actions: hover/focus-revealed row. Reserved h-6 keeps the strip in
 		     flow at constant size, so reveal/hide never shifts message layout.
