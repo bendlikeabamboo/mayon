@@ -76,6 +76,7 @@ export interface AuthStore {
 	createIdentity(input: CreateIdentityInput): Promise<void>;
 	findIdentityByLabel(label: string): Promise<AuthIdentity | null>;
 	findActiveOwner(): Promise<AuthIdentity | null>;
+	listNonRevokedIdentities(): Promise<AuthIdentity[]>;
 	countNonRevokedIdentities(): Promise<number>;
 	setIdentityMfa(id: string, input: SetIdentityMfaInput): Promise<void>;
 	setIdentityStatus(id: string, status: AuthIdentityStatus): Promise<void>;
@@ -133,6 +134,13 @@ export function createAuthStore(
 				 ORDER BY created_at LIMIT 1`
 			);
 			return res.rows[0] ? toIdentity(res.rows[0] as IdentityRow) : null;
+		},
+
+		async listNonRevokedIdentities() {
+			const res = await db().query(
+				"SELECT * FROM auth_identities WHERE status <> 'revoked' ORDER BY created_at, id"
+			);
+			return res.rows.map((row) => toIdentity(row as IdentityRow));
 		},
 
 		async countNonRevokedIdentities() {

@@ -1,0 +1,32 @@
+# Stopgap public-launch floor — compose override for the base docker-compose.yml.
+#
+# What it does:
+#   1. Un-publishes the web service's host port (`!override` requires Docker
+#      Compose v2.24+), so the app is reachable ONLY through the caddy front
+#      door below.
+#   2. Adds a caddy service that terminates TLS for your domain and gates the
+#      app behind one shared basic-auth credential.
+#
+# Usage: copy this file and Caddyfile.floor into the install directory
+# (e.g. ~/.mayon/), set MAYON_DOMAIN, MAYON_BASIC_AUTH_USER and
+# MAYON_BASIC_AUTH_HASH in .env (single-quote the hash — it contains `$`),
+# then RENAME this file to docker-compose.override.yml (the .floor suffix
+# keeps it inert) and run `docker compose up -d`. See README.md "Launching
+# publicly (stopgap floor)". Delete the renamed file to restore the base
+# stack unchanged.
+services:
+  web:
+    ports: !override []
+  caddy:
+    image: docker.io/library/caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      MAYON_BASIC_AUTH_USER: ${MAYON_BASIC_AUTH_USER:?set in .env}
+      MAYON_BASIC_AUTH_HASH: ${MAYON_BASIC_AUTH_HASH:?set in .env}
+    volumes:
+      - ./Caddyfile.floor:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [web]
+    restart: unless-stopped
+volumes:
+  caddy-data:

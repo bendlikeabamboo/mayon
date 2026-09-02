@@ -39,9 +39,9 @@ mayon.example.com {
 ## Activation flow (user, one evening)
 
 1. `curl -fsSL …/install.sh | bash` as today (installs base stack, `~/.mayon/`).
-2. Copy both templates into `~/.mayon/` (override auto-merges on every `compose` call — installer uses no `-f` flags).
-3. `docker compose exec caddy caddy hash-password` (once caddy is up) or `caddy hash-password` locally → put user + bcrypt hash into `~/.mayon/.env` as `MAYON_BASIC_AUTH_USER` / `MAYON_BASIC_AUTH_HASH`.
-4. Set the real domain in `Caddyfile.floor`; `docker compose up -d` — Caddy obtains TLS automatically (HTTP-01; ports 80/443 must reach the host).
+2. Activate the override — compose auto-merges only the exact name `docker-compose.override.yml`, so `mv docker-compose.override.yml.floor docker-compose.override.yml` in `~/.mayon/` (keep `Caddyfile.floor` named as-is; it is bind-mounted by name).
+3. `docker compose run --rm caddy caddy hash-password` (after the caddy image is pulled) → put user + bcrypt hash into `~/.mayon/.env` as `MAYON_BASIC_AUTH_USER` / `MAYON_BASIC_AUTH_HASH` — **single-quote the hash** (`MAYON_BASIC_AUTH_HASH='…'`): compose `$`-interpolation corrupts unquoted bcrypt hashes at the third `$`.
+4. Set the real domain in `Caddyfile.floor` (or via `MAYON_DOMAIN` in `.env` — the template reads `{$MAYON_DOMAIN}`); `docker compose up -d` — Caddy obtains TLS automatically (HTTP-01; ports 80/443 must reach the host).
 
 ## Single-entrance verification (FR-019; run BEFORE exposing publicly)
 

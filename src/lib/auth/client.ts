@@ -1,6 +1,8 @@
 import type {
 	AuthSessionResponse,
 	AuthSessionResult,
+	LoginRequest,
+	LoginResponse,
 	SetupRequest,
 	SetupResponse
 } from '@mayon/shared';
@@ -47,6 +49,10 @@ export function startSetup(request: SetupRequest): Promise<SetupResponse> {
 
 export function confirmSetup(code: string): Promise<AuthSessionResult> {
 	return postJson<AuthSessionResult>('/api/auth/setup/confirm', { code });
+}
+
+export function login(request: LoginRequest): Promise<LoginResponse> {
+	return postJson<LoginResponse>('/api/auth/login', request);
 }
 
 export function logoutRequest(): Promise<void> {

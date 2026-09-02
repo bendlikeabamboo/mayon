@@ -152,6 +152,96 @@ Under Podman: `podman compose pull && podman compose up -d`.
 To roll back, repeat with the previous version tag. If something goes wrong,
 restore from a backup taken before the upgrade.
 
+### Launching publicly (stopgap floor)
+
+By default the web port (`8080`) publishes straight to the host with no
+authentication — fine on a private machine, not on the open internet.
+Until you have enabled and proven Mayon's built-in security gate
+(**Settings → Security**), you can put a password + HTTPS front door in
+front of the stack using two template files attached to every release:
+
+- `docker-compose.override.yml.floor` — a compose override that
+  **un-publishes the web port** (via the compose `!override` tag) and adds
+  a `caddy` service publishing `80`/`443` with automatic TLS.
+- `Caddyfile.floor` — the Caddy config: one shared basic-auth credential
+  and a reverse proxy to the app.
+
+> **Important:** this floor is a **stopgap**. Its single shared credential
+> has no per-user identity, no MFA, and no logout. It exists so you can
+> launch publicly today; enable the in-app gate and remove the floor once
+> the gate is proven in daily use.
+
+**Prerequisites**
+
+- A domain name pointing at the host, with ports `80` and `443` reachable
+  (the TLS certificate is obtained automatically).
+- Docker Engine with `docker compose` **v2.24+** (`docker compose version`
+  to check) — the `!override` tag needs it. Docker Engine is recommended:
+  podman-compose's override merging is less faithful. On an older engine,
+  edit the downloaded `docker-compose.yml` directly instead (delete the
+  `ports:` block from the `web` service).
+
+**Activate** (after a normal install; substitute `podman` for `docker` in
+the commands if installed under Podman):
+
+1. Download both templates from the release assets into `~/.mayon/`.
+2. Activate the override by renaming it — compose auto-merges every
+   `docker-compose.override.yml` sitting next to the base file (no `-f`
+   flags needed); the `.floor` suffix keeps the template inert until then:
+
+   ```bash
+   mv ~/.mayon/docker-compose.override.yml.floor ~/.mayon/docker-compose.override.yml
+   ```
+
+3. Generate a bcrypt hash for your shared credential (the command prompts
+   for the password and prints the hash):
+
+   ```bash
+   cd ~/.mayon && docker compose run --rm caddy caddy hash-password
+   ```
+
+4. Add the credential and your domain to `~/.mayon/.env` — **single-quote
+   the hash**: it contains `$`, which compose would otherwise read as a
+   variable reference:
+
+   ```
+   MAYON_DOMAIN=mayon.example.com
+   MAYON_BASIC_AUTH_USER=owner
+   MAYON_BASIC_AUTH_HASH='$2a$14$<hash from step 3>'
+   ```
+
+5. `docker compose up -d` — Caddy obtains a certificate automatically and
+   serves the app behind the credential.
+
+**Verify the single entrance BEFORE sharing the URL** (ideally from an
+external network):
+
+```bash
+cd ~/.mayon
+docker compose port web 8080     # must error — the app's own port is unpublished
+docker compose ps                # only caddy lists host ports (80/443); web lists none
+curl -I http://<host-ip>:8080    # connection refused
+curl -I https://<domain>         # 401 without credentials; loads with them
+```
+
+Then run **one streaming chat** in a browser through the domain before you
+trust the floor: tokens must appear progressively, not in one burst at the
+end (the Caddyfile disables response buffering for exactly this). Repeat
+this check after any Caddy/config change.
+
+**Remove the floor** once the in-app gate (**Settings → Security**) is
+enabled and proven:
+
+```bash
+rm ~/.mayon/docker-compose.override.yml ~/.mayon/Caddyfile.floor
+cd ~/.mayon && docker compose up -d
+```
+
+The base compose applies again unchanged. Upgrades preserve the override
+and `.env` (only the base compose file is re-downloaded). To rotate the
+shared credential, set a new `MAYON_BASIC_AUTH_HASH` in `.env` and run
+`docker compose up -d` — it changes for everyone at once.
+
 ## Build from source
 
 **Prerequisites:** Node 22, pnpm 10, and Docker or Podman (the dev engine is

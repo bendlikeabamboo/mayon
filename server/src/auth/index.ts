@@ -1,9 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import type { AuthIdentity } from '@mayon/schema';
 import type { AuthIdentityDTO, AuthMode, AuthSessionResponse } from '@mayon/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { generateSecret, generateURI, verify } from 'otplib';
-import { nextLocalMidnight, setSessionCookie } from './cookies';
-import { hashPassword, randomToken, sha256Hex, unwrapSecret, wrapSecret } from './crypto';
+import { clearSessionCookie, nextLocalMidnight, setSessionCookie } from './cookies';
+import {
+	hashPassword,
+	randomToken,
+	sha256Hex,
+	unwrapSecret,
+	verifyPassword,
+	wrapSecret
+} from './crypto';
 import type { AuthStore } from './store';
 
 const LABEL_MAX = 64;
@@ -17,6 +25,12 @@ interface SetupBody {
 }
 
 interface ConfirmBody {
+	code?: unknown;
+}
+
+interface LoginBody {
+	label?: unknown;
+	password?: unknown;
 	code?: unknown;
 }
 
@@ -44,6 +58,33 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 	function keyFailure(reply: FastifyReply, err: unknown): FastifyReply {
 		console.error('auth: auth key unavailable —', err instanceof Error ? err.message : err);
 		return reply.code(500).send({ error: 'auth key unavailable' });
+	}
+
+	function refuseInvalidCredentials(reply: FastifyReply): FastifyReply {
+		return reply.code(401).send({ error: 'invalid credentials' });
+	}
+
+	async function verifyLiveTotp(
+		secret: string,
+		code: string,
+		lastStep: number | null
+	): Promise<{ ok: true; timeStep: number } | { ok: false }> {
+		if (!/^\d{6}$/.test(code)) {
+			return { ok: false };
+		}
+		const result = await verify({
+			secret,
+			token: code,
+			epochTolerance: TOTP_STEP_SECONDS,
+			epoch: Math.floor(deps.now() / 1000)
+		}).catch(() => null);
+		if (!result?.valid) {
+			return { ok: false };
+		}
+		if (lastStep !== null && result.timeStep <= lastStep) {
+			return { ok: false };
+		}
+		return { ok: true, timeStep: result.timeStep };
 	}
 
 	app.post('/api/auth/session', async (request): Promise<AuthSessionResponse> => {
@@ -150,5 +191,78 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		setSessionCookie(reply, token, expiresAt);
 		const identity: AuthIdentityDTO = { label, role: 'owner' };
 		return { authenticated: true, identity, session: { expiresAt } };
+	});
+
+	app.post<{ Body: LoginBody }>('/api/auth/login', async (request, reply) => {
+		const body = request.body ?? {};
+		const label = typeof body.label === 'string' ? body.label.trim() : '';
+		let identity: AuthIdentity | null;
+		if (label !== '') {
+			identity = await deps.store.findIdentityByLabel(label);
+		} else {
+			const candidates = await deps.store.listNonRevokedIdentities();
+			if (candidates.length > 1) {
+				return reply.code(400).send({ error: 'label required' });
+			}
+			identity = candidates[0] ?? null;
+		}
+		const password = body.password;
+		if (
+			!identity ||
+			identity.status !== 'active' ||
+			identity.totpSecretEnc === null ||
+			typeof password !== 'string'
+		) {
+			return refuseInvalidCredentials(reply);
+		}
+		let passwordOk: boolean;
+		try {
+			passwordOk = await verifyPassword(identity.passwordHash, password);
+		} catch {
+			passwordOk = false;
+		}
+		if (!passwordOk) {
+			return refuseInvalidCredentials(reply);
+		}
+		let secret: string;
+		try {
+			secret = unwrapSecret(identity.totpSecretEnc, deps.getAuthKey());
+		} catch (err) {
+			return keyFailure(reply, err);
+		}
+		const code = typeof body.code === 'string' ? body.code.trim() : '';
+		const totp = await verifyLiveTotp(secret, code, identity.totpLastStep);
+		if (!totp.ok) {
+			return refuseInvalidCredentials(reply);
+		}
+		await deps.store.setIdentityMfa(identity.id, {
+			totpSecretEnc: identity.totpSecretEnc,
+			totpLastStep: totp.timeStep,
+			mfaEnrolledAt: identity.mfaEnrolledAt
+		});
+		const now = deps.now();
+		const token = randomToken();
+		const expiresAt = nextLocalMidnight(now);
+		await deps.store.createSession({
+			id: randomUUID(),
+			identityId: identity.id,
+			tokenHash: sha256Hex(token),
+			expiresAt
+		});
+		setSessionCookie(reply, token, expiresAt);
+		const dto: AuthIdentityDTO = { label: identity.label, role: identity.role };
+		return { authenticated: true, identity: dto, session: { expiresAt } };
+	});
+
+	app.post('/api/auth/logout', async (request, reply) => {
+		const token = deps.resolveSessionToken(request);
+		if (token) {
+			const found = await deps.store.findValidSessionByTokenHash(sha256Hex(token), deps.now());
+			if (found) {
+				await deps.store.revokeSession(found.session.id, deps.now());
+			}
+		}
+		clearSessionCookie(reply);
+		return reply.code(204).send();
 	});
 }

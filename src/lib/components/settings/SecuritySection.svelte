@@ -1,8 +1,20 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { authState } from '$lib/auth/state.svelte';
+	import { authState, logout } from '$lib/auth/state.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+
+	let signingOut = $state(false);
+
+	async function signOut() {
+		signingOut = true;
+		try {
+			await logout();
+			await goto('/login');
+		} finally {
+			signingOut = false;
+		}
+	}
 </script>
 
 <section class="space-y-3">
@@ -26,6 +38,10 @@
 			<Button variant="outline" size="sm" onclick={() => goto('/login?mode=setup')}>
 				Enable security
 			</Button>
+		</div>
+	{:else if authState.authenticated}
+		<div class="flex gap-2">
+			<Button variant="outline" size="sm" disabled={signingOut} onclick={signOut}>Log out</Button>
 		</div>
 	{/if}
 </section>

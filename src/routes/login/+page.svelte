@@ -1,14 +1,30 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { Loader2 } from '@lucide/svelte';
-	import { AuthApiError, confirmSetup, startSetup } from '$lib/auth/client';
+	import { AuthApiError, confirmSetup, login, startSetup } from '$lib/auth/client';
 	import { authState, refreshAuth } from '$lib/auth/state.svelte';
 	import AuthQr from '$lib/components/AuthQr.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 
-	// This page serves the one-time setup flow (US1). The daily credentials
-	// login mode arrives with US3 and will slot in as a sibling of `step`.
-	let step = $state<'credentials' | 'confirm'>('credentials');
+	type View = 'login' | 'setup-credentials' | 'setup-confirm';
+
+	let forcedView = $state<View | null>(
+		page.url.searchParams.get('mode') === 'setup' ? 'setup-credentials' : null
+	);
+	const view = $derived(
+		forcedView ??
+			(authState.loaded && authState.mode === 'open' && authState.setupRequired
+				? 'setup-credentials'
+				: 'login')
+	);
+
+	let loginLabel = $state('');
+	let loginPassword = $state('');
+	let loginCode = $state('');
+	let loginBusy = $state(false);
+	let loginError = $state<string | null>(null);
+
 	let label = $state('');
 	let password = $state('');
 	let passwordConfirm = $state('');
@@ -26,6 +42,16 @@
 		'min-w-0 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 	const labelClass = 'block text-xs font-medium text-muted-foreground';
 
+	function describeLoginError(err: unknown): string {
+		if (err instanceof AuthApiError) {
+			if (err.status === 401) return 'Invalid credentials.';
+			if (err.code === 'label required')
+				return 'This app has multiple accounts — enter your label.';
+			if (err.status === 429) return 'Too many attempts — wait a moment and try again.';
+		}
+		return err instanceof Error ? err.message : String(err);
+	}
+
 	function describeSetupError(err: unknown): string {
 		if (err instanceof AuthApiError) {
 			if (err.code === 'invalid label') return 'Use a name between 1 and 64 characters.';
@@ -35,6 +61,25 @@
 			if (err.code === 'setup closed') return 'Security setup is already closed.';
 		}
 		return err instanceof Error ? err.message : String(err);
+	}
+
+	async function submitLogin(event: SubmitEvent) {
+		event.preventDefault();
+		loginError = null;
+		loginBusy = true;
+		try {
+			await login({
+				label: loginLabel.trim() || undefined,
+				password: loginPassword,
+				code: loginCode.trim()
+			});
+			await refreshAuth();
+			void goto('/');
+		} catch (err) {
+			loginError = describeLoginError(err);
+		} finally {
+			loginBusy = false;
+		}
 	}
 
 	async function submitCredentials(event: SubmitEvent) {
@@ -58,7 +103,7 @@
 			const res = await startSetup({ label: name, password });
 			otpauthUri = res.otpauthUri;
 			code = '';
-			step = 'confirm';
+			forcedView = 'setup-confirm';
 		} catch (err) {
 			if (err instanceof AuthApiError && err.status === 409) setupClosed = true;
 			else error = describeSetupError(err);
@@ -84,7 +129,7 @@
 	}
 
 	function backToCredentials() {
-		step = 'credentials';
+		forcedView = 'setup-credentials';
 		otpauthUri = null;
 		error = null;
 	}
@@ -97,6 +142,65 @@
 				<Loader2 class="size-4 animate-spin" />
 				Checking security status…
 			</div>
+		{:else if view === 'login'}
+			<div class="space-y-1 text-center">
+				<h1 class="text-lg font-semibold">Sign in to Mayon</h1>
+				<p class="text-sm text-muted-foreground">
+					Enter your password and the current six-digit code from your authenticator.
+				</p>
+			</div>
+			<form class="space-y-3" onsubmit={submitLogin}>
+				<div class="space-y-1">
+					<label class={labelClass} for="login-label">Label</label>
+					<input
+						id="login-label"
+						bind:value={loginLabel}
+						placeholder="Leave blank if you're the only user"
+						autocomplete="username"
+						class={inputClass}
+					/>
+				</div>
+				<div class="space-y-1">
+					<label class={labelClass} for="login-password">Password</label>
+					<input
+						id="login-password"
+						type="password"
+						bind:value={loginPassword}
+						required
+						autocomplete="current-password"
+						class={inputClass}
+					/>
+				</div>
+				<div class="space-y-1">
+					<label class={labelClass} for="login-code">Six-digit code</label>
+					<input
+						id="login-code"
+						bind:value={loginCode}
+						required
+						inputmode="numeric"
+						pattern="\d{6}"
+						maxlength={6}
+						autocomplete="one-time-code"
+						class="{inputClass} text-center font-mono tracking-[0.3em]"
+					/>
+				</div>
+				{#if loginError}
+					<p class="text-xs text-destructive" role="alert">{loginError}</p>
+				{/if}
+				<Button
+					type="submit"
+					class="w-full"
+					disabled={loginBusy || loginPassword.length === 0 || loginCode.trim().length !== 6}
+				>
+					{#if loginBusy}<Loader2 class="size-4" />{/if}
+					Sign in
+				</Button>
+			</form>
+			{#if setupAvailable}
+				<Button variant="ghost" class="w-full" onclick={() => (forcedView = 'setup-credentials')}>
+					Set up security instead
+				</Button>
+			{/if}
 		{:else if !setupAvailable || setupClosed}
 			<div class="space-y-3 text-center">
 				<h1 class="text-lg font-semibold">Security setup is not available.</h1>
@@ -107,9 +211,11 @@
 						This app already runs with security configured.
 					{/if}
 				</p>
-				<Button variant="outline" size="sm" onclick={() => goto('/')}>Go home</Button>
+				<Button variant="outline" size="sm" onclick={() => (forcedView = 'login')}>
+					Go to sign-in
+				</Button>
 			</div>
-		{:else if step === 'credentials'}
+		{:else if view === 'setup-credentials'}
 			<div class="space-y-1 text-center">
 				<h1 class="text-lg font-semibold">Set up security</h1>
 				<p class="text-sm text-muted-foreground">

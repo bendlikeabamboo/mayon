@@ -1,6 +1,12 @@
+import { authState } from '$lib/auth/state.svelte';
+
 export class ServerClient {
-	http(path: string, init?: RequestInit) {
-		return fetch(path, init);
+	async http(path: string, init?: RequestInit): Promise<Response> {
+		const res = await fetch(path, init);
+		if (res.status === 401 && !path.startsWith('/api/auth/')) {
+			authState.resetSession();
+		}
+		return res;
 	}
 
 	ws(): WebSocket {

@@ -112,14 +112,14 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 ### Tests for User Story 3 (write FIRST, must FAIL)
 
-- [ ] T031 [US3] Create `server/src/auth-login.test.ts`: happy login (session cookie flags per contract, expiresAt = next local midnight); wrong password / wrong code / unknown label → identical `401 {"error":"invalid credentials"}`; replayed timestep refused; logout clears; expired session (clock +1 day) rejected by gate
+- [x] T031 [US3] Create `server/src/auth-login.test.ts`: happy login (session cookie flags per contract, expiresAt = next local midnight); wrong password / wrong code / unknown label → identical `401 {"error":"invalid credentials"}`; replayed timestep refused; logout clears; expired session (clock +1 day) rejected by gate
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implement `POST /api/auth/login` + `POST /api/auth/logout` in `server/src/auth/index.ts`: label optional iff exactly one non-revoked identity; argon2 verify; TOTP verify ±1 with `totp_last_step` replay guard; uniform 401 for every failure mode (never reveal which half); session issue via store + cookies helper
-- [ ] T033 [US3] Add login mode to `src/routes/login/+page.svelte`: label (shown only when >1 active identity — fetch hint from POST /api/auth/session), password, code; generic error display; on success refresh auth state and continue into the app
-- [ ] T034 [US3] Wire session lifecycle in `src/lib/auth/` : logout action (POST logout → state reset), 401-anywhere handler routes to login, `expiresAt` countdown no-op (day sessions — no renewal logic, per FR-006)
-- [ ] T035 [US3] Validate quickstart.md steps 2–4 and 6 (login, wall with session, day rollover via tests for the clock part); full quality gates
+- [x] T032 [US3] Implement `POST /api/auth/login` + `POST /api/auth/logout` in `server/src/auth/index.ts`: label optional iff exactly one non-revoked identity; argon2 verify; TOTP verify ±1 with `totp_last_step` replay guard; uniform 401 for every failure mode (never reveal which half); session issue via store + cookies helper
+- [x] T033 [US3] Add login mode to `src/routes/login/+page.svelte`: label (shown only when >1 active identity — fetch hint from POST /api/auth/session), password, code; generic error display; on success refresh auth state and continue into the app
+- [x] T034 [US3] Wire session lifecycle in `src/lib/auth/` : logout action (POST logout → state reset), 401-anywhere handler routes to login, `expiresAt` countdown no-op (day sessions — no renewal logic, per FR-006)
+- [x] T035 [US3] Validate quickstart.md steps 2–4 and 6 (login, wall with session, day rollover via tests for the clock part); full quality gates
 
 **Checkpoint**: US1+US3 together = usable daily gate (MVP).
 
@@ -172,10 +172,10 @@ This is the existing mayon workspace (web SPA + API server + shared types):
 
 **Independent Test**: deployment-level per contracts/deployment-floor.md — without proxy credentials nothing loads; app's own port unpublished (`docker compose port web 8080` errors); streaming chat verified through the proxy; deleting the override restores base compose.
 
-- [ ] T045 [US6] Create `docker-compose.override.yml.floor` and `Caddyfile.floor` at repo root exactly per contracts/deployment-floor.md (`!override` empty ports on web; caddy:2 publishing 80/443; basic_auth env-interpolated from `.env`; `flush_interval -1`)
-- [ ] T046 [US6] Extend the release-assets job in `.github/workflows/docker-publish.yml` to attach both floor templates to every release (assert file presence alongside the existing install.sh/compose asserts)
-- [ ] T047 [P] [US6] Document the floor in `README.md` (section "Launching publicly (stopgap floor)"): activation steps, single-entrance checks, streaming check, removal, caveats (compose ≥ v2.24 for `!override`; docker engine recommended) per contract
-- [ ] T048 [US6] Validate the floor locally on a throwaway compose project: confirm `!override` un-publishes web's port, browser-level basic-auth prompt appears, `/api/llm/proxy` streaming passes through unbuffered (plain-HTTP local Caddyfile variant; document results in the PR)
+- [x] T045 [US6] Create `docker-compose.override.yml.floor` and `Caddyfile.floor` at repo root exactly per contracts/deployment-floor.md (`!override` empty ports on web; caddy:2 publishing 80/443; basic_auth env-interpolated from `.env`; `flush_interval -1`)
+- [x] T046 [US6] Extend the release-assets job in `.github/workflows/docker-publish.yml` to attach both floor templates to every release (assert file presence alongside the existing install.sh/compose asserts)
+- [x] T047 [P] [US6] Document the floor in `README.md` (section "Launching publicly (stopgap floor)"): activation steps, single-entrance checks, streaming check, removal, caveats (compose ≥ v2.24 for `!override`; docker engine recommended) per contract
+- [x] T048 [US6] Validate the floor locally on a throwaway compose project: confirm `!override` un-publishes web's port, browser-level basic-auth prompt appears, `/api/llm/proxy` streaming passes through unbuffered (plain-HTTP local Caddyfile variant; document results in the PR)
 
 **Checkpoint**: floor deployable in one evening; removal path documented; base stack unaffected when the override is absent.
 

@@ -62,6 +62,8 @@ const ALL_ROUTES: readonly RouteRef[] = [
 	{ method: 'POST', url: '/api/auth/session' },
 	{ method: 'POST', url: '/api/auth/setup' },
 	{ method: 'POST', url: '/api/auth/setup/confirm' },
+	{ method: 'POST', url: '/api/auth/login' },
+	{ method: 'POST', url: '/api/auth/logout' },
 	{ method: 'GET', url: '/api/backup/db' },
 	{ method: 'PUT', url: '/api/backup/db' },
 	{ method: 'GET', url: '/api/backup/safety' },
@@ -78,14 +80,12 @@ const ALL_ROUTES: readonly RouteRef[] = [
 ];
 
 /**
- * Allowlisted per contracts/auth-api.md but not yet registered (arrive with
- * US3/US4 login/logout/invite work). The gate must exempt them already;
- * today they fall through to Fastify's 404.
+ * Allowlisted per contracts/auth-api.md but not yet registered (arrives with
+ * US4 invite enrollment). The gate must exempt it already; today it falls
+ * through to Fastify's 404.
  */
 const PENDING_ALLOWLIST_ROUTES: ReadonlyArray<[SweepMethod, string]> = [
-	['POST', '/api/auth/login'],
-	['POST', '/api/auth/enroll'],
-	['POST', '/api/auth/logout']
+	['POST', '/api/auth/enroll']
 ];
 
 function normalizeRoutes(routes: readonly RouteRef[]): string[] {
@@ -463,6 +463,17 @@ describe('auth gate — locked mode sweep over every registered route (SC-001/SC
 		const res = await app.inject({ method: 'POST', url: '/api/auth/setup/confirm', body: {} });
 		expect(res.statusCode).toBe(409);
 		expect(res.body).toBe('{"error":"setup closed"}');
+	});
+
+	it('keeps allowlisted POST /api/auth/login public (handler outcome: 401 invalid credentials)', async () => {
+		const res = await app.inject({ method: 'POST', url: '/api/auth/login', body: {} });
+		expect(res.statusCode).toBe(401);
+		expect(res.body).toBe('{"error":"invalid credentials"}');
+	});
+
+	it('keeps allowlisted POST /api/auth/logout public (handler outcome: 204)', async () => {
+		const res = await app.inject({ method: 'POST', url: '/api/auth/logout' });
+		expect(res.statusCode).toBe(204);
 	});
 
 	it.each(PENDING_ALLOWLIST_ROUTES)(
