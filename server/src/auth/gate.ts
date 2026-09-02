@@ -38,6 +38,7 @@ export interface AuthGateDeps {
 
 export function registerAuthGate(app: FastifyInstance, deps: AuthGateDeps): void {
 	const lastSeenTouch = new Map<string, number>();
+	const LAST_SEEN_MAP_CAP = 5_000;
 
 	app.addHook('onRequest', async (request, reply) => {
 		if ((await deps.getSecurityMode()) === 'open') {
@@ -73,6 +74,9 @@ export function registerAuthGate(app: FastifyInstance, deps: AuthGateDeps): void
 		};
 
 		const ts = deps.now();
+		if (lastSeenTouch.size > LAST_SEEN_MAP_CAP) {
+			lastSeenTouch.clear();
+		}
 		if (ts - (lastSeenTouch.get(found.session.id) ?? 0) >= LAST_SEEN_THROTTLE_MS) {
 			lastSeenTouch.set(found.session.id, ts);
 			void deps.store.touchSession(found.session.id, ts).catch(() => {});

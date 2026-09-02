@@ -68,6 +68,7 @@ const ALL_ROUTES: readonly RouteRef[] = [
 	{ method: 'POST', url: '/api/auth/login' },
 	{ method: 'POST', url: '/api/auth/enroll' },
 	{ method: 'POST', url: '/api/auth/logout' },
+	{ method: 'POST', url: '/api/auth/mode' },
 	{ method: 'POST', url: '/api/auth/invites' },
 	{ method: 'GET', url: '/api/auth/invites' },
 	{ method: 'DELETE', url: '/api/auth/invites/:id' },

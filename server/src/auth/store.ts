@@ -96,6 +96,7 @@ export interface AuthStore {
 	countNonRevokedIdentities(): Promise<number>;
 	listInvites(): Promise<InviteListItem[]>;
 	setIdentityMfa(id: string, input: SetIdentityMfaInput): Promise<void>;
+	advanceTotpStep(id: string, timeStep: number): Promise<boolean>;
 	setIdentityStatus(id: string, status: AuthIdentityStatus): Promise<void>;
 	setIdentityPasswordHash(id: string, passwordHash: string): Promise<void>;
 	createSession(input: CreateSessionInput): Promise<void>;
@@ -198,6 +199,16 @@ export function createAuthStore(
 				 WHERE id = $5`,
 				[input.totpSecretEnc, input.totpLastStep ?? null, input.mfaEnrolledAt ?? null, now(), id]
 			);
+		},
+
+		async advanceTotpStep(id, timeStep) {
+			const res = await db().query(
+				`UPDATE auth_identities
+				 SET totp_last_step = $1, updated_at = $2
+				 WHERE id = $3 AND (totp_last_step IS NULL OR totp_last_step < $1)`,
+				[timeStep, now(), id]
+			);
+			return (res.rowCount ?? 0) > 0;
 		},
 
 		async setIdentityStatus(id, status) {

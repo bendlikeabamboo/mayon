@@ -67,6 +67,10 @@ export function login(request: LoginRequest): Promise<LoginResponse> {
 	return postJson<LoginResponse>('/api/auth/login', request);
 }
 
+export function enroll(code: string): Promise<AuthSessionResult> {
+	return postJson<AuthSessionResult>('/api/auth/enroll', { code });
+}
+
 export function logoutRequest(): Promise<void> {
 	return postJson<void>('/api/auth/logout');
 }

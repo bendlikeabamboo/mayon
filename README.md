@@ -245,6 +245,10 @@ shared credential, set a new `MAYON_BASIC_AUTH_HASH` in `.env` and run
 While the floor is active, login-attempt sources shown under
 **Settings → Security** record the Caddy container's address rather than
 each visitor's IP — the app's rate limiter trusts exactly one proxy hop.
+The floor override sets `MAYON_TRUST_PROXY_HOPS=2` on the server so
+per-visitor attribution and lockouts stay per-IP through both proxies
+(rate-limit buckets remain per visitor; the caveat above applies only to
+the label shown in the activity list).
 
 ### Security recovery (auth CLI)
 

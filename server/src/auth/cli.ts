@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { generateSecret, generateURI } from 'otplib';
 import type { AuthMode } from '@mayon/shared';
 import { createPgPool, probePg } from '../pg';
-import type { PgPoolLike } from '../pg';
+import type { PgPoolClient, PgPoolLike } from '../pg';
 import { hashPassword, unwrapSecret, wrapSecret } from './crypto';
 import { resolveAuthSecretKey } from './secret-key';
 import { createAuthStore, type AuthStore } from './store';
@@ -39,6 +39,7 @@ export class CliError extends Error {
 export interface CliContext {
 	store: AuthStore;
 	query: PgPoolLike['query'];
+	connect: () => Promise<PgPoolClient>;
 	key: () => Buffer;
 	now: () => number;
 	prompt: (query: string) => Promise<string>;
@@ -210,18 +211,23 @@ async function cmdRotateSecret(ctx: CliContext): Promise<number> {
 	) {
 		return 1;
 	}
-	await ctx.query('BEGIN', []);
+	const client = await ctx.connect();
 	try {
-		for (const row of rewrapped) {
-			await ctx.query('UPDATE auth_identities SET totp_secret_enc = $1 WHERE id = $2', [
-				row.secretEnc,
-				row.id
-			]);
+		await client.query('BEGIN', []);
+		try {
+			for (const row of rewrapped) {
+				await client.query('UPDATE auth_identities SET totp_secret_enc = $1 WHERE id = $2', [
+					row.secretEnc,
+					row.id
+				]);
+			}
+			await client.query('COMMIT', []);
+		} catch (err) {
+			await client.query('ROLLBACK', []).catch(() => undefined);
+			throw err;
 		}
-		await ctx.query('COMMIT', []);
-	} catch (err) {
-		await ctx.query('ROLLBACK', []).catch(() => undefined);
-		throw err;
+	} finally {
+		client.release();
 	}
 	if (ctx.writeKey) {
 		try {
@@ -424,6 +430,7 @@ export async function main(argv: string[]): Promise<number> {
 		const ctx: CliContext = {
 			store: createAuthStore(pool),
 			query: (text, params) => pool.query(text, params),
+			connect: () => pool.connect(),
 			key: memoizeKey(envSecret, keyPath),
 			now: () => Date.now(),
 			prompt: promptHidden,

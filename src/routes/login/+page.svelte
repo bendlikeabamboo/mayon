@@ -2,12 +2,12 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Loader2 } from '@lucide/svelte';
-	import { AuthApiError, confirmSetup, login, startSetup } from '$lib/auth/client';
+	import { AuthApiError, confirmSetup, enroll, login, startSetup } from '$lib/auth/client';
 	import { authState, refreshAuth } from '$lib/auth/state.svelte';
 	import AuthQr from '$lib/components/AuthQr.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 
-	type View = 'login' | 'setup-credentials' | 'setup-confirm';
+	type View = 'login' | 'setup-credentials' | 'setup-confirm' | 'enroll';
 
 	let forcedView = $state<View | null>(
 		page.url.searchParams.get('mode') === 'setup' ? 'setup-credentials' : null
@@ -33,6 +33,12 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let setupClosed = $state(false);
+
+	let enrollOtpauthUri = $state<string | null>(null);
+	let enrollIdentityLabel = $state('');
+	let enrollCode = $state('');
+	let enrollBusy = $state(false);
+	let enrollError = $state<string | null>(null);
 
 	const setupAvailable = $derived(
 		authState.loaded && authState.mode === 'open' && authState.setupRequired
@@ -63,22 +69,73 @@
 		return err instanceof Error ? err.message : String(err);
 	}
 
+	function describeEnrollError(err: unknown): string {
+		if (err instanceof AuthApiError && err.code === 'invalid code') {
+			return "That code didn't verify. Wait for the next code and try again.";
+		}
+		return err instanceof Error ? err.message : String(err);
+	}
+
+	// The login response for an invitee without MFA carries no identity — recover
+	// the label the user typed, else parse it from the otpauth URI (mayon:<label>).
+	function labelFromOtpauth(uri: string): string | null {
+		try {
+			const path = decodeURIComponent(new URL(uri).pathname.replace(/^\//, ''));
+			const idx = path.indexOf(':');
+			const name = idx >= 0 ? path.slice(idx + 1) : path;
+			return name || null;
+		} catch {
+			return null;
+		}
+	}
+
 	async function submitLogin(event: SubmitEvent) {
 		event.preventDefault();
 		loginError = null;
 		loginBusy = true;
 		try {
-			await login({
+			const res = await login({
 				label: loginLabel.trim() || undefined,
 				password: loginPassword,
 				code: loginCode.trim()
 			});
+			if ('status' in res && res.status === 'mfa_enrollment_required') {
+				enrollOtpauthUri = res.otpauthUri;
+				enrollIdentityLabel =
+					loginLabel.trim() || labelFromOtpauth(res.otpauthUri) || 'your account';
+				enrollCode = '';
+				enrollError = null;
+				forcedView = 'enroll';
+				return;
+			}
 			await refreshAuth();
 			void goto('/');
 		} catch (err) {
 			loginError = describeLoginError(err);
 		} finally {
 			loginBusy = false;
+		}
+	}
+
+	async function submitEnroll(event: SubmitEvent) {
+		event.preventDefault();
+		enrollError = null;
+		enrollBusy = true;
+		try {
+			await enroll(enrollCode.trim());
+			await refreshAuth();
+			void goto('/');
+		} catch (err) {
+			if (err instanceof AuthApiError && err.status === 401) {
+				forcedView = 'login';
+				enrollOtpauthUri = null;
+				enrollCode = '';
+				loginError = 'Enrollment session expired — log in again.';
+			} else {
+				enrollError = describeEnrollError(err);
+			}
+		} finally {
+			enrollBusy = false;
 		}
 	}
 
@@ -201,6 +258,41 @@
 					Set up security instead
 				</Button>
 			{/if}
+		{:else if view === 'enroll' && enrollOtpauthUri}
+			<div class="space-y-1 text-center">
+				<h1 class="text-lg font-semibold">Enrolling authenticator for {enrollIdentityLabel}</h1>
+				<p class="text-sm text-muted-foreground">
+					Scan the code with your authenticator app, then enter the current six-digit code to finish
+					setting up your account.
+				</p>
+			</div>
+			<AuthQr uri={enrollOtpauthUri} />
+			<form class="space-y-3" onsubmit={submitEnroll}>
+				<div class="space-y-1">
+					<label class={labelClass} for="enroll-code">Six-digit code</label>
+					<input
+						id="enroll-code"
+						bind:value={enrollCode}
+						required
+						inputmode="numeric"
+						pattern="\d{6}"
+						maxlength={6}
+						autocomplete="one-time-code"
+						class="{inputClass} text-center font-mono tracking-[0.3em]"
+					/>
+				</div>
+				{#if enrollError}
+					<p class="text-xs text-destructive" role="alert">{enrollError}</p>
+				{/if}
+				<Button
+					type="submit"
+					class="w-full"
+					disabled={enrollBusy || enrollCode.trim().length !== 6}
+				>
+					{#if enrollBusy}<Loader2 class="size-4" />{/if}
+					Verify and finish
+				</Button>
+			</form>
 		{:else if !setupAvailable || setupClosed}
 			<div class="space-y-3 text-center">
 				<h1 class="text-lg font-semibold">Security setup is not available.</h1>

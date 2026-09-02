@@ -54,8 +54,8 @@ Errors (ALL map to `401 {"error":"invalid credentials"}` — never reveal which 
 ### `POST /api/auth/enroll` (public; requires `mayon_enroll` cookie)
 
 Request: `{ "code": "123456" }`.
-Behavior: confirms the invitee's MFA enrollment → identity `invited → active`, enroll cookie cleared, full session issued.
-Errors: `401 {"error":"enrollment expired"}` (no/old cookie), `400 {"error":"invalid code"}` (retryable while the enroll cookie lives).
+Behavior: confirms the invitee's MFA enrollment → identity `invited → active`, enroll cookie cleared, full session issued. Brute-force cap: 5 failed codes consume the enrollment — the entry is deleted and the response is `401 {"error":"enrollment expired"}` (same body as expiry — no new oracle).
+Errors: `401 {"error":"enrollment expired"}` (no/old cookie, consumed entry, or revoked identity), `400 {"error":"invalid code"}` (retryable while attempts remain).
 
 ### `POST /api/auth/logout` (session optional)
 
@@ -65,8 +65,8 @@ Revokes the caller's session, clears the cookie. Always `204`.
 
 Request: `{ "mode": "open", "password": string }` — disabling requires password re-entry.
 Behavior: sets `security.mode = "open"`, revokes ALL sessions (no session survives a mode change). Re-enabling later runs `/api/auth/setup` only if no active owner exists; otherwise the settings toggle locks directly via:
-`{ "mode": "locked" }` → `security.mode = "locked"` (existing identities/credentials reused).
-Errors: `403` non-owner, `401` session/bad password, `409` invalid transition (e.g. lock with no active owner → must run setup).
+`{ "mode": "locked" }` → `security.mode = "locked"` with NO revocation (owner stays signed in; any open-mode sessions were gate-inert anyway).
+Responses: `200 { "mode": "open" | "locked" }`; locking without an active owner → `409 {"error":"setup closed"}` (the required action is to run setup). Password failures on disable return `401 {"error":"invalid credentials"}` and burn a dummy argon2 verify (no oracle).
 
 ### Invites (session; owner only; 403 for invitees)
 

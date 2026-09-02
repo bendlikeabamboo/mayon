@@ -21,18 +21,20 @@ async function createPglitePool(): Promise<PgPoolLike> {
 	const client = new PGlite();
 	let closed = false;
 	await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_DIR });
+	const runQuery = async (text: string, params?: unknown[]) => {
+		const res = await client.query(text, params as unknown[]);
+		return {
+			rows: res.rows as Record<string, unknown>[],
+			fields: res.fields as { name: string }[],
+			rowCount: res.affectedRows ?? res.rows.length
+		};
+	};
 	return {
-		query: async (text, params) => {
-			const res = await client.query(text, params as unknown[]);
-			return {
-				rows: res.rows as Record<string, unknown>[],
-				fields: res.fields as { name: string }[],
-				rowCount: res.affectedRows ?? res.rows.length
-			};
-		},
-		connect: async () => {
-			throw new Error('pglite test pool does not support connect()');
-		},
+		query: runQuery,
+		connect: async () => ({
+			query: runQuery,
+			release: () => undefined
+		}),
 		end: async () => {
 			if (closed) {
 				return;
@@ -118,6 +120,7 @@ function makeCliContext(
 	const ctx: CliContext = {
 		store: createAuthStore(testApp.pool, () => testApp.clock.now),
 		query: (text, params) => testApp.pool.query(text, params),
+		connect: () => testApp.pool.connect(),
 		key: opts.key ?? keyFromFile(testApp.keyFile),
 		now: () => testApp.clock.now,
 		prompt: async () => {
@@ -412,6 +415,84 @@ describe('auth-cli rotate-secret', () => {
 			[]
 		);
 		expect(after.rows[0]?.totp_secret_enc).toBe(victimEnvelope);
+	});
+
+	it('runs BEGIN, the re-wraps, and COMMIT on one checked-out client', async () => {
+		const cli = makeCliContext(testApp);
+		const key = keyFromFile(testApp.keyFile)();
+		const liveRow = {
+			id: randomUUID(),
+			label: 'single-client',
+			totp_secret_enc: wrapSecret('single-client-secret', key)
+		};
+		cli.ctx.query = async (text) => {
+			if (text.startsWith('SELECT id, label, totp_secret_enc')) {
+				return { rows: [liveRow], fields: [], rowCount: 1 };
+			}
+			throw new Error(`unexpected pool query: ${text}`);
+		};
+		const queries: string[] = [];
+		let released = false;
+		cli.ctx.connect = async () => ({
+			query: async (text) => {
+				queries.push(text);
+				return { rows: [], fields: [], rowCount: text.startsWith('UPDATE') ? 1 : 0 };
+			},
+			release: () => {
+				released = true;
+			}
+		});
+
+		expect(await runCommand('rotate-secret', [], cli.ctx)).toBe(0);
+		expect(queries[0]).toBe('BEGIN');
+		expect(queries[queries.length - 1]).toBe('COMMIT');
+		expect(queries.filter((q) => q.startsWith('UPDATE'))).toHaveLength(1);
+		expect(queries).not.toContain('ROLLBACK');
+		expect(released).toBe(true);
+	});
+
+	it('rolls back on the same client when an update fails and still releases it', async () => {
+		const cli = makeCliContext(testApp);
+		const key = keyFromFile(testApp.keyFile)();
+		cli.ctx.query = async (text) => {
+			if (text.startsWith('SELECT id, label, totp_secret_enc')) {
+				return {
+					rows: [
+						{
+							id: randomUUID(),
+							label: 'rollback-victim',
+							totp_secret_enc: wrapSecret('rollback-secret', key)
+						}
+					],
+					fields: [],
+					rowCount: 1
+				};
+			}
+			throw new Error(`unexpected pool query: ${text}`);
+		};
+		const queries: string[] = [];
+		let released = false;
+		cli.ctx.connect = async () => ({
+			query: async (text) => {
+				queries.push(text);
+				if (text.startsWith('UPDATE')) {
+					throw new Error('connection reset mid-transaction');
+				}
+				return { rows: [], fields: [], rowCount: 0 };
+			},
+			release: () => {
+				released = true;
+			}
+		});
+
+		await expect(runCommand('rotate-secret', [], cli.ctx)).rejects.toThrow(
+			/connection reset mid-transaction/
+		);
+		expect(queries[0]).toBe('BEGIN');
+		expect(queries).toContain('ROLLBACK');
+		expect(queries).not.toContain('COMMIT');
+		expect(released).toBe(true);
+		expect(cli.keyWrites).toHaveLength(0);
 	});
 });
 

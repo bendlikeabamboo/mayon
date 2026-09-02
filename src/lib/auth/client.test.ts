@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuthApiError, confirmSetup, fetchAuthSession, logoutRequest, startSetup } from './client';
+import {
+	AuthApiError,
+	confirmSetup,
+	enroll,
+	fetchAuthSession,
+	logoutRequest,
+	startSetup
+} from './client';
 
 function stubFetch(handler: (path: string, init?: RequestInit) => Promise<Response>) {
 	const mock = vi.fn(handler);
@@ -73,5 +80,40 @@ describe('auth client', () => {
 
 		await expect(logoutRequest()).resolves.toBeUndefined();
 		expect(mock).toHaveBeenCalledWith('/api/auth/logout', expect.anything());
+	});
+
+	it('enroll posts the code and parses the session result', async () => {
+		const payload = {
+			authenticated: true,
+			identity: { label: 'alice', role: 'invitee' },
+			session: { expiresAt: 1756828800000 }
+		};
+		const mock = stubFetch(async () => jsonResponse(payload));
+
+		await expect(enroll('123456')).resolves.toEqual(payload);
+		expect(mock).toHaveBeenCalledWith('/api/auth/enroll', expect.anything());
+		const init = mock.mock.calls[0][1] as RequestInit;
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body as string)).toEqual({ code: '123456' });
+	});
+
+	it('enroll maps a 400 {error} body to a retryable AuthApiError', async () => {
+		stubFetch(async () => jsonResponse({ error: 'invalid code' }, 400));
+
+		const err = await enroll('000000').catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(AuthApiError);
+		const authErr = err as AuthApiError;
+		expect(authErr.status).toBe(400);
+		expect(authErr.code).toBe('invalid code');
+	});
+
+	it('enroll maps a 401 {error} body to the expired error', async () => {
+		stubFetch(async () => jsonResponse({ error: 'enrollment expired' }, 401));
+
+		const err = await enroll('123456').catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(AuthApiError);
+		const authErr = err as AuthApiError;
+		expect(authErr.status).toBe(401);
+		expect(authErr.code).toBe('enrollment expired');
 	});
 });

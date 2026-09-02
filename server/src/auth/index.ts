@@ -33,7 +33,9 @@ const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 1024;
 const TOTP_STEP_SECONDS = 30;
 const ENROLL_TTL_MS = 900_000;
+const ENROLL_MAX_FAILS = 5;
 const ATTEMPTS_LIST_LIMIT = 50;
+const ATTEMPTS_LIST_LIMIT_MAX = 200;
 
 interface SetupBody {
 	label?: unknown;
@@ -54,6 +56,11 @@ interface InviteBody {
 	label?: unknown;
 }
 
+interface ModeBody {
+	mode?: unknown;
+	password?: unknown;
+}
+
 interface PendingEnrollment {
 	label: string;
 	passwordHash: string;
@@ -64,6 +71,7 @@ interface EnrollPending {
 	identityId: string;
 	secretEnc: string;
 	expiresAt: number;
+	fails: number;
 }
 
 export interface RegisterAuthDeps {
@@ -83,6 +91,15 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 	let pending: PendingEnrollment | undefined;
 	const enrollPending = new Map<string, EnrollPending>();
 
+	let dummyHash: Promise<string> | undefined;
+	async function equalizePasswordTiming(password: unknown): Promise<void> {
+		if (typeof password !== 'string') {
+			return;
+		}
+		dummyHash ??= hashPassword(randomToken());
+		await verifyPassword(await dummyHash, password).catch(() => undefined);
+	}
+
 	const loginLimiter = createRateLimiter(deps.store, {
 		windowMs: deps.authRateWindowMs,
 		ladderBase: deps.authRateLadderBase,
@@ -97,6 +114,22 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 				enrollPending.delete(token);
 			}
 		}
+	}
+
+	function registerEnrollFailure(
+		reply: FastifyReply,
+		token: string | undefined,
+		entry: EnrollPending
+	): FastifyReply {
+		entry.fails += 1;
+		if (entry.fails >= ENROLL_MAX_FAILS) {
+			if (token) {
+				enrollPending.delete(token);
+			}
+			clearEnrollCookie(reply);
+			return reply.code(401).send({ error: 'enrollment expired' });
+		}
+		return reply.code(400).send({ error: 'invalid code' });
 	}
 
 	const setupClosed = async (): Promise<boolean> =>
@@ -136,6 +169,11 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 
 	function isOwner(request: FastifyRequest): boolean {
 		return request.auth?.role === 'owner';
+	}
+
+	function deviceLabel(request: FastifyRequest): string | undefined {
+		const ua = request.headers['user-agent'];
+		return typeof ua === 'string' && ua.length > 0 ? ua.slice(0, 64) : undefined;
 	}
 
 	async function verifyLiveTotp(
@@ -214,17 +252,21 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		if (await setupClosed()) {
 			return reply.code(409).send({ error: 'setup closed' });
 		}
-		if (!pending) {
+		const claimed = pending;
+		pending = undefined;
+		if (!claimed) {
 			return reply.code(409).send({ error: 'setup closed' });
 		}
 		const code = typeof request.body?.code === 'string' ? request.body.code.trim() : '';
 		if (!/^\d{6}$/.test(code)) {
+			pending ??= claimed;
 			return reply.code(400).send({ error: 'invalid code' });
 		}
 		let secret: string;
 		try {
-			secret = unwrapSecret(pending.secretEnc, deps.getAuthKey());
+			secret = unwrapSecret(claimed.secretEnc, deps.getAuthKey());
 		} catch (err) {
+			pending ??= claimed;
 			return keyFailure(reply, err);
 		}
 		const result = await verify({
@@ -234,10 +276,11 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			epoch: Math.floor(deps.now() / 1000)
 		}).catch(() => null);
 		if (!result?.valid) {
+			pending ??= claimed;
 			return reply.code(400).send({ error: 'invalid code' });
 		}
 		const now = deps.now();
-		const { label, passwordHash, secretEnc } = pending;
+		const { label, passwordHash, secretEnc } = claimed;
 		const identityId = randomUUID();
 		await deps.store.createIdentity({
 			id: identityId,
@@ -259,10 +302,10 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			id: randomUUID(),
 			identityId,
 			tokenHash: sha256Hex(token),
-			expiresAt
+			expiresAt,
+			label: deviceLabel(request)
 		});
-		pending = undefined;
-		setSessionCookie(reply, token, expiresAt);
+		setSessionCookie(reply, token, expiresAt, now);
 		const identity: AuthIdentityDTO = { label, role: 'owner' };
 		return { authenticated: true, identity, session: { expiresAt } };
 	});
@@ -289,6 +332,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		}
 		const password = body.password;
 		if (!identity || identity.status === 'revoked' || typeof password !== 'string') {
+			await equalizePasswordTiming(password);
 			return recordFailureAndDelay(
 				reply,
 				source,
@@ -319,7 +363,8 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			enrollPending.set(enrollToken, {
 				identityId: identity.id,
 				secretEnc,
-				expiresAt: deps.now() + ENROLL_TTL_MS
+				expiresAt: deps.now() + ENROLL_TTL_MS,
+				fails: 0
 			});
 			setEnrollCookie(reply, enrollToken);
 			return {
@@ -329,6 +374,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			};
 		}
 		if (identity.totpSecretEnc === null) {
+			await equalizePasswordTiming(password);
 			return recordFailureAndDelay(reply, source, identity.label, 'bad_code', limit.delayMs);
 		}
 		let secret: string;
@@ -342,11 +388,9 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		if (!totp.ok) {
 			return recordFailureAndDelay(reply, source, identity.label, 'bad_code', limit.delayMs);
 		}
-		await deps.store.setIdentityMfa(identity.id, {
-			totpSecretEnc: identity.totpSecretEnc,
-			totpLastStep: totp.timeStep,
-			mfaEnrolledAt: identity.mfaEnrolledAt
-		});
+		if (!(await deps.store.advanceTotpStep(identity.id, totp.timeStep))) {
+			return recordFailureAndDelay(reply, source, identity.label, 'bad_code', limit.delayMs);
+		}
 		const now = deps.now();
 		const token = randomToken();
 		const expiresAt = nextLocalMidnight(now);
@@ -354,9 +398,10 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			id: randomUUID(),
 			identityId: identity.id,
 			tokenHash: sha256Hex(token),
-			expiresAt
+			expiresAt,
+			label: deviceLabel(request)
 		});
-		setSessionCookie(reply, token, expiresAt);
+		setSessionCookie(reply, token, expiresAt, now);
 		await deps.store.recordAttempt({
 			identityLabel: identity.label,
 			source,
@@ -380,7 +425,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		}
 		const code = typeof request.body?.code === 'string' ? request.body.code.trim() : '';
 		if (!/^\d{6}$/.test(code)) {
-			return reply.code(400).send({ error: 'invalid code' });
+			return registerEnrollFailure(reply, token, entry);
 		}
 		let secret: string;
 		try {
@@ -390,7 +435,7 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		}
 		const totp = await verifyLiveTotp(secret, code, null);
 		if (!totp.ok) {
-			return reply.code(400).send({ error: 'invalid code' });
+			return registerEnrollFailure(reply, token, entry);
 		}
 		const identity = await deps.store.findIdentityById(entry.identityId);
 		if (!identity || identity.status !== 'invited') {
@@ -411,11 +456,12 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 			id: randomUUID(),
 			identityId: identity.id,
 			tokenHash: sha256Hex(sessionToken),
-			expiresAt
+			expiresAt,
+			label: deviceLabel(request)
 		});
 		enrollPending.delete(token);
 		clearEnrollCookie(reply);
-		setSessionCookie(reply, sessionToken, expiresAt);
+		setSessionCookie(reply, sessionToken, expiresAt, now);
 		await deps.store.recordAttempt({
 			identityLabel: identity.label,
 			source: request.ip,
@@ -436,6 +482,49 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		}
 		clearSessionCookie(reply);
 		return reply.code(204).send();
+	});
+
+	app.post<{ Body: ModeBody }>('/api/auth/mode', async (request, reply) => {
+		const token = deps.resolveSessionToken(request);
+		const found = token
+			? await deps.store.findValidSessionByTokenHash(sha256Hex(token), deps.now())
+			: null;
+		if (!found) {
+			return reply.code(401).send({ error: 'unauthenticated' });
+		}
+		if (found.identity.role !== 'owner') {
+			return refuseForbidden(reply);
+		}
+		const mode = request.body?.mode;
+		if (mode !== 'open' && mode !== 'locked') {
+			return reply.code(400).send({ error: 'invalid mode' });
+		}
+		if (mode === 'open') {
+			const password = request.body?.password;
+			if (typeof password !== 'string') {
+				return refuseInvalidCredentials(reply);
+			}
+			const identity = await deps.store.findIdentityById(found.identity.id);
+			let passwordOk = false;
+			if (identity && identity.status === 'active') {
+				try {
+					passwordOk = await verifyPassword(identity.passwordHash, password);
+				} catch {
+					passwordOk = false;
+				}
+			}
+			if (!passwordOk) {
+				return refuseInvalidCredentials(reply);
+			}
+			await deps.setSecurityMode('open');
+			await deps.store.revokeAllSessions(deps.now());
+			return { mode: 'open' };
+		}
+		if ((await deps.store.findActiveOwner()) === null) {
+			return reply.code(409).send({ error: 'setup closed' });
+		}
+		await deps.setSecurityMode('locked');
+		return { mode: 'locked' };
 	});
 
 	app.post<{ Body: InviteBody }>('/api/auth/invites', async (request, reply) => {
@@ -541,7 +630,13 @@ export function registerAuth(app: FastifyInstance, deps: RegisterAuthDeps): void
 		if (!isOwner(request)) {
 			return refuseForbidden(reply);
 		}
-		const attempts = await deps.store.listRecentAttempts(ATTEMPTS_LIST_LIMIT);
+		const rawLimit = (request.query as { limit?: unknown } | undefined)?.limit;
+		const parsed = typeof rawLimit === 'string' ? Number.parseInt(rawLimit, 10) : Number.NaN;
+		const limit =
+			Number.isFinite(parsed) && parsed >= 1
+				? Math.min(parsed, ATTEMPTS_LIST_LIMIT_MAX)
+				: ATTEMPTS_LIST_LIMIT;
+		const attempts = await deps.store.listRecentAttempts(limit);
 		return {
 			attempts: attempts.map((attempt) => ({
 				identityLabel: attempt.identityLabel,

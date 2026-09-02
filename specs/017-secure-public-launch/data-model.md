@@ -83,7 +83,7 @@ Index: `(source, at)` — created out-of-band in the FTS-bootstrap-style idempot
    REVOKED ── terminal (no un-revoke; issue a fresh invite instead)
 ```
 
-Setup atomicity: the pending enrollment state (encrypted secret, not yet `mfa_enrolled_at`) lives only on the would-be owner/invitee row; a wrong confirming code leaves `status` unchanged (`invited`/row-absent) and never issues a session.
+Setup atomicity: pending enrollment state (label, hashed password, wrapped secret) lives in server MEMORY only until confirm; the database transitions in one confirm pass from "zero rows" to "enrolled owner + locked + session". A wrong confirming code leaves `status` unchanged (`invited`/row-absent) and never issues a session. The same memory-only pattern covers invitee enrollment (enroll token → pending secret, 15-minute TTL, 5-failure cap).
 
 ### Session
 

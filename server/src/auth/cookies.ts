@@ -6,8 +6,13 @@ export const ENROLL_COOKIE = 'mayon_enroll';
 
 const ENROLL_COOKIE_MAX_AGE_SECONDS = 900;
 
-export function setSessionCookie(reply: FastifyReply, token: string, expiresAt: number): void {
-	reply.setCookie(SESSION_COOKIE, token, cookieOptions(secondsUntil(expiresAt)));
+export function setSessionCookie(
+	reply: FastifyReply,
+	token: string,
+	expiresAt: number,
+	nowMs: number = Date.now()
+): void {
+	reply.setCookie(SESSION_COOKIE, token, cookieOptions(secondsUntil(expiresAt, nowMs)));
 }
 
 export function clearSessionCookie(reply: FastifyReply): void {
@@ -38,6 +43,6 @@ function cookieOptions(maxAge: number): CookieSerializeOptions {
 	};
 }
 
-function secondsUntil(expiresAt: number): number {
-	return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+function secondsUntil(expiresAt: number, nowMs: number): number {
+	return Math.max(0, Math.ceil((expiresAt - nowMs) / 1000));
 }
