@@ -1,5 +1,7 @@
 ---
 title: "Quizzes"
+aliases:
+  - /guide/quizzes.html
 ---
 
 # Quizzes

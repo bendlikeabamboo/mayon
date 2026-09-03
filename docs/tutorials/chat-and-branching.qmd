@@ -1,5 +1,6 @@
 ---
 title: "Chat and Branching"
+aliases: [/guide/chat-and-branching.html]
 ---
 
 # Chat and Branching

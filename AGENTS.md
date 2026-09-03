@@ -4,8 +4,8 @@ Operating guide for AI agents (and humans) working in this repo. This file
 covers **how to operate** inside the codebase: stack, commands, release flow,
 topology, and the invariants you must respect when editing.
 
-- **Authoritative design (system _as it is today_):** `docs/dev/architecture.qmd` + `docs/dev/seams.qmd` (rendered in the Quarto docs site).
-- **Development history / phase acceptance notes:** `docs/developer_notes/` — read these to recall why a subsystem is shaped the way it is or to avoid a past mistake. Not a spec.
+- **Authoritative design (system _as it is today_):** `docs/explanation/architecture.qmd` + `docs/reference/seams.qmd` (rendered in the Quarto docs website).
+- **Development history / phase acceptance notes:** `docs/dev-notes/` — read these to recall why a subsystem is shaped the way it is or to avoid a past mistake. Not a spec.
 - **Active implementation plans:** `.kilo/plans/`.
 
 ## Stack
@@ -127,7 +127,7 @@ are disjoint (`pg-data` vs `pg-data-dev`, `server-data` vs `server-data-dev`).
 ## Invariants & operating conventions
 
 Invariants to respect when editing. The architecture doc explains the _why_;
-`docs/dev/seams.qmd` has the full boundary rules.
+`docs/reference/seams.qmd` has the full boundary rules.
 
 - **App code calls repositories only.** Components/stores/routes never import
   `db` directly — it is private to `src/lib/db/` (exposed via `getDb()` / `repos`).
@@ -174,9 +174,9 @@ summary output. The probe imports at `+layout.svelte:6` but is inert without the
 
 ## Where to look
 
-- **As-is design / architecture:** `docs/dev/architecture.qmd`, `docs/dev/seams.qmd`.
-- **Build & test commands (user-facing):** `docs/dev/building.qmd`, `CONTRIBUTING.md`.
-- **Phase-by-phase build history & past decisions:** `docs/developer_notes/`.
+- **As-is design / architecture:** `docs/explanation/architecture.qmd`, `docs/reference/seams.qmd`.
+- **Build & test commands (user-facing):** `docs/how-to/building.qmd`, `CONTRIBUTING.md`.
+- **Phase-by-phase build history & past decisions:** `docs/dev-notes/`.
 - **Feature decision history (what/why/reversals/learnings per shipped feature):**
   `docs/history/index.qmd` — narrative record; consult it for rationale recall, while
   `architecture.qmd`/`seams.qmd` remain the authority on how the system works today.

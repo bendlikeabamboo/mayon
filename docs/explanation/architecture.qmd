@@ -1,5 +1,7 @@
 ---
 title: "Architecture"
+aliases:
+  - /dev/architecture.html
 ---
 
 # Architecture
@@ -319,7 +321,7 @@ Message search (`src/lib/db/repositories/search.ts`) filters to `kind IN ('user_
 - **Key handling:** IndexedDB under the same origin as the app.
 - **Generation helpers** use provider structured-output to produce typed lab/quiz payloads.
 - **Grading:** MCQ/flashcard auto-scored; short-answer AI-graded against the stored rubric.
-- **Request-settings resolution:** every call path (chat loop + critic, lab, quiz, title) resolves its wire parameters through `resolveRequestSettings` (`src/lib/ai/dialects.ts`) — a static dialect catalog plus a pure layered resolver (**kind baseline → endpoint dialect matched on base URL → model overlay matched on the model id → `requestDefaults` → validated `extraBody`**) producing `callSettings` (top-level sampling) and `providerOptions` (namespaced body additions), with an omit-empty wire contract. `extraBody` passes validation (JSON object, ≤ 16 KiB, no secret-like or prototype-pollution keys) and per-kind allowlists; keys a kind cannot forward come back as `droppedExtraKeys`, surfaced as a Settings warning — never a silent drop. This shipped two behavior fixes over the pre-feature path: the `openai-compatible` `providerOptions` namespace key now mirrors the SDK rule (`name.split('.')[0].trim()` — reasoning parameters were previously silently dropped for template-named providers), and Gemini `thinkingConfig` is emitted at the `google` namespace root instead of nested under `generationConfig` (where the SDK stripped it). Design: preserved as the 009 request-settings-resolution and dialect-catalog appendices under `docs/history/appendices/` (decision history: [009](history/index.qmd#sec-009)).
+- **Request-settings resolution:** every call path (chat loop + critic, lab, quiz, title) resolves its wire parameters through `resolveRequestSettings` (`src/lib/ai/dialects.ts`) — a static dialect catalog plus a pure layered resolver (**kind baseline → endpoint dialect matched on base URL → model overlay matched on the model id → `requestDefaults` → validated `extraBody`**) producing `callSettings` (top-level sampling) and `providerOptions` (namespaced body additions), with an omit-empty wire contract. `extraBody` passes validation (JSON object, ≤ 16 KiB, no secret-like or prototype-pollution keys) and per-kind allowlists; keys a kind cannot forward come back as `droppedExtraKeys`, surfaced as a Settings warning — never a silent drop. This shipped two behavior fixes over the pre-feature path: the `openai-compatible` `providerOptions` namespace key now mirrors the SDK rule (`name.split('.')[0].trim()` — reasoning parameters were previously silently dropped for template-named providers), and Gemini `thinkingConfig` is emitted at the `google` namespace root instead of nested under `generationConfig` (where the SDK stripped it). Design: preserved as the 009 request-settings-resolution and dialect-catalog appendices under `docs/history/appendices/` (decision history: [009](../history/index.qmd#sec-009)).
 
 ## Labs and quizzes
 
@@ -370,7 +372,7 @@ which the browser progressively enables via `detectServer()` at boot:
 
 > The phased build history behind these subsystems (acceptance gates P2–P5 and the
 > P-pg-2 … P-pg-7 Postgres migration epic) is archived under
-> [Development Notes](../developer_notes/index.qmd).
+> [Development Notes](../dev-notes/index.qmd).
 
 ## Future seams (out of scope)
 

@@ -5,7 +5,7 @@
 
 # Contract: Tool Activity Presentation (`ToolActivity`)
 
-**Seam**: `src/lib/components/chat/rows/ToolActivity.svelte`. Inputs: `ToolGroup | OrphanToolResult` (with the derived status fields from [timeline-assembly.md](./timeline-assembly.md)). Classification source: `$lib/agent/registry` only — no UI-side tool-name lists (constitution III / FR-003).
+**Seam**: `src/lib/components/chat/rows/ToolActivity.svelte`. Inputs: `ToolGroup | OrphanToolResult` (with the derived status fields from `timeline-assembly.md`, preserved at `specs/004-internal-area-unification/contracts/timeline-assembly.md`). Classification source: `$lib/agent/registry` only — no UI-side tool-name lists (constitution III / FR-003).
 
 ## Status presentation table (FR-002 / FR-003)
 

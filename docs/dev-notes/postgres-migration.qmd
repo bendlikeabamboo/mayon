@@ -1,5 +1,7 @@
 ---
 title: "Postgres Migration Epic (P-pg-2 … P-pg-7)"
+aliases:
+  - /developer_notes/postgres-migration.html
 ---
 
 # Postgres Migration Epic (P-pg-2 … P-pg-7)

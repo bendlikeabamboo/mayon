@@ -1,5 +1,7 @@
 ---
 title: "Providers"
+aliases:
+  - /guide/providers.html
 ---
 
 # Providers

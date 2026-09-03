@@ -5,7 +5,7 @@
 
 # Contract: Tool Result Body Shapes (`ToolActivity` / `ToolResultBody` / `result-shape.ts`)
 
-**Seam**: expanded body of tool-result rows in the chat timeline. Extends the 004 contract [tool-activity-status.md](../../004-internal-area-unification/contracts/tool-activity-status.md) — its status table, collapsed rendering, and verbose rule are unchanged; this contract replaces its "Result body (FR-004/FR-005)" expander section. Classification source: **result shape only** — never tool name, server identity, or registry state (constitution III / FR-002). The classifier is the single shape authority.
+**Seam**: expanded body of tool-result rows in the chat timeline. Extends the 004 contract [tool-activity-status.md](004-tool-activity-status.md) — its status table, collapsed rendering, and verbose rule are unchanged; this contract replaces its "Result body (FR-004/FR-005)" expander section. Classification source: **result shape only** — never tool name, server identity, or registry state (constitution III / FR-002). The classifier is the single shape authority.
 
 ## Classifier contract
 

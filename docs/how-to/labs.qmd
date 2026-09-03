@@ -1,5 +1,7 @@
 ---
 title: "Labs"
+aliases:
+  - /guide/labs.html
 ---
 
 # Labs

@@ -1,5 +1,6 @@
 ---
 title: "Getting Started"
+aliases: [/getting-started.html]
 ---
 
 # Getting Started
@@ -38,3 +39,7 @@ When you open Mayon for the first time the server boots, connects to Postgres, a
 2. **Theme toggle** — click the sun/moon icon in the header to switch between light and dark mode. Reload the tab. The theme persists, proving that storage is working correctly.
 
 If the server is unreachable, a full-screen error is shown with a `docker compose up` hint and a Retry button.
+
+## Start your first conversation
+
+Open the app, start a new topic, and send a message — the assistant replies right in the chat, and your topic is saved automatically. When you're ready to go deeper, the [chat and branching tutorial](chat-and-branching.qmd) shows how to branch a conversation and explore alternative replies.

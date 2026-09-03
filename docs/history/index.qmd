@@ -8,8 +8,8 @@ Every feature this project has shipped through its specification process, conden
 one story: what each set out to achieve, why it mattered, where later decisions undid or
 refined an earlier one, and what we learned along the way. It favors judgment over
 procedure — for step-by-step acceptance gates from before this process existed, read the
-[development notes](developer_notes/index.qmd); for the design of the system *as it stands
-today*, read [architecture](dev/architecture.qmd) and [seams](dev/seams.qmd).
+[development notes](../dev-notes/index.qmd); for the design of the system *as it stands
+today*, read [architecture](../explanation/architecture.qmd) and [seams](../reference/seams.qmd).
 
 The twelve features fall into three arcs: the agent surface taking shape, the AI plumbing
 industrializing, and platform polish. Within each arc the entries flow chronologically;
@@ -23,7 +23,7 @@ appears. A web-search integration produced a flood of raw tool rows; typed timel
 entries made that flood legible; live use exposed what fixtures could not catch; and a
 contract pass converged every assistant-initiated interaction into one governed place.
 
-## 001 — Brave Search MCP service
+## 001 — Brave Search MCP service {#sec-001}
 
 > **Status:** standing (its credential/topology design was revised twice within the
 > feature itself, before release)
@@ -74,7 +74,7 @@ second per-session spawn while enabled.
 - One consistent secret home for all MCP servers beat a leaner deployment with split
   custody.
 
-## 002 — Chat timeline kind model
+## 002 — Chat timeline kind model {#sec-002}
 
 > **Status:** core standing; presentation rules partly superseded by
 > [#004](#sec-004) (live-item placement and stream-buffer retirement only)
@@ -126,7 +126,7 @@ asks to their durable row's chronological position.
 One day of live use against the new registry surfaced four defects no fixture caught —
 the agenda for the next feature.
 
-## 003 — Timeline UX fixes
+## 003 — Timeline UX fixes {#sec-003}
 
 > **Status:** standing
 
@@ -170,7 +170,7 @@ without touching stored data. Later features extended this work:
 With kinds, ordering, and pairing sound, the first real MCP server — whose risky calls
 need human approval — exposed honesty gaps that only a contract-level pass could close.
 
-## 004 — Internal area unification
+## 004 — Internal area unification {#sec-004}
 
 > **Status:** contracts standing; result-body presentation section superseded by
 > [#005](#sec-005)
@@ -230,7 +230,7 @@ adopted community patterns, provider onboarding turned into catalog data, reques
 behavior centralized into one resolution seam, and study controls opened up without
 touching fragile geometry.
 
-## 005 — Shape-driven tool result rendering
+## 005 — Shape-driven tool result rendering {#sec-005}
 
 > **Status:** standing
 
@@ -270,7 +270,7 @@ endorsement. Nothing later overturns it.
 - Read actual storage shape before designing APIs: a spec'd nested-field read would have
   silently seen nothing for every real row.
 
-## 006 — AI elements adoption
+## 006 — AI elements adoption {#sec-006}
 
 > **Status:** standing
 
@@ -311,7 +311,7 @@ extended the picker's list rather than replacing it.
 With the interaction surface settled, the same industrializing instinct turned to the
 provider side of the wire — where manual endpoint entry had become the bottleneck.
 
-## 007 — First-class inference provider templates
+## 007 — First-class inference provider templates {#sec-007}
 
 > **Status:** standing
 
@@ -348,7 +348,7 @@ Standing: feature [#008](#sec-008) appends downstream in the same array and
 - Frame verification questions so either answer ships: the DashScope probe had both
   outcomes pre-specified, requiring no re-planning.
 
-## 008 — First-class inference router templates
+## 008 — First-class inference router templates {#sec-008}
 
 > **Status:** standing
 
@@ -391,7 +391,7 @@ through last-segment matching instead of adding router dialect rows.
 Direct providers and routers could now be added without code — but the parameters each
 request carried were still hard-coded and, for newer models, broken.
 
-## 009 — Provider request settings
+## 009 — Provider request settings {#sec-009}
 
 > **Status:** standing (today's single request-settings seam, confirmed by current
 > architecture docs)
@@ -440,7 +440,7 @@ Study controls were the last feature-boundary piece still decided unilaterally b
 opening them up safely meant working next to some of the most fragile geometry in the
 codebase.
 
-## 010 — Customizable expound instructions
+## 010 — Customizable expound instructions {#sec-010}
 
 > **Status:** standing
 
@@ -493,7 +493,7 @@ The closing arc widened who can install Mayon and made the product legible at a 
 and both features carry decision reversals handled the way we now consider standard:
 built, evidenced, reviewed, and calmly revised.
 
-## 011 — Podman compatibility
+## 011 — Podman compatibility {#sec-011}
 
 > **Status:** standing (one scope reversal inside the feature, same session)
 
@@ -528,7 +528,7 @@ packaging remain Docker-only permanently. Runtime code and app behavior were unt
 - Non-interactive invocations invalidate interactive conveniences; selection logic must
   inspect real binaries.
 
-## 012 — UI visual articulation pass
+## 012 — UI visual articulation pass {#sec-012}
 
 > **Status:** standing — three mid-flight owner reversals, all landed before merge
 

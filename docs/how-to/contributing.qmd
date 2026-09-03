@@ -1,5 +1,7 @@
 ---
 title: "Contributing"
+aliases:
+  - /contributing.html
 ---
 
 # Contributing

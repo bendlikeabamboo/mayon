@@ -1,5 +1,12 @@
 <!--
 Sync Impact Report
+- Version change: 1.0.0 -> 1.0.1
+- Modified principles: none (PATCH clarification: documentation path references updated after the Diátaxis docs restructure)
+- Added sections: none
+- Removed sections: none
+- Follow-up TODOs: none
+
+Sync Impact Report
 - Version change: (unresolved template scaffold) -> 1.0.0
 - Modified principles: none (initial ratification; no prior principles existed)
 - Added sections: Core Principles I-IV, Quality Gates, Development Workflow & Compliance,
@@ -85,8 +92,8 @@ Sync Impact Report
 - This constitution governs principles; `AGENTS.md` governs day-to-day mechanics
   (commands, topology, release steps). On conflict, this document wins for governance
   questions and `AGENTS.md` wins for mechanical detail.
-- The authoritative as-is design lives in `docs/dev/architecture.qmd` and
-  `docs/dev/seams.qmd`. Deviating from a documented seam requires a constitution
+- The authoritative as-is design lives in `docs/explanation/architecture.qmd` and
+  `docs/reference/seams.qmd`. Deviating from a documented seam requires a constitution
   amendment first.
 - Reviewers MUST verify constitution compliance as part of every code review; complexity
   beyond documented seams MUST be justified in the PR description.
@@ -103,4 +110,4 @@ Sync Impact Report
 - The ratification date records original adoption; the last-amended date updates with
   every accepted amendment. Both use ISO `YYYY-MM-DD`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-18 | **Last Amended**: 2026-08-18
+**Version**: 1.0.1 | **Ratified**: 2026-08-18 | **Last Amended**: 2026-09-03
