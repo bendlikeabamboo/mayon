@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-03
+
+### Added
+
+- **Secure public launch — in-app authentication** — the server sits behind a
+  central auth gate (on-request hook, argon2 credentials, cookie sessions) and
+  the SPA boots fail-closed: nothing renders until the session is known.
+  First-run security setup is prompted once and is skippable — never forced.
+  Sessions last the day: no re-login within the same day, re-login after more
+  than a day. Settings gain Sessions, Invites, and Activity panels — live
+  session listing with remote logout, invited access with revocation, and
+  login-attempt history. Second-factor TOTP pairs via QR code, brute-force
+  resistance throttles credential stuffing, and a recovery CLI
+  (`pnpm --filter @mayon/server auth`) rescues locked-out owners. Caddy
+  basic-auth floor templates ship for the reverse-proxy on-ramp, alongside
+  trustProxy hardening and nginx forwarding headers.
+- **Floating reply outline** — long replies with section headings get a
+  floating outline panel: headings appear exactly once in document order with
+  nesting that mirrors their levels, one click lands the chosen heading at the
+  top of the viewport (briefly emphasized), the highlight tracks reading
+  position while scrolling, and entries stay correct as replies finish
+  streaming or are regenerated. Duplicate heading texts resolve to the exact
+  occurrence clicked.
+- **Section peek strip** — a hairline tick strip along the reply edge: bars
+  fatten on hover, dwelling reveals a preview of that section, and clicking
+  jumps the transcript there via callout-safe anchors. The strip toggle is
+  persisted in a new chat settings section.
+- **Image-first chat** — messages are parts-based: images paste or attach in
+  the composer and travel as typed content parts to vision-capable models.
+- **GitHub Copilot provider** — GitHub Copilot joins the provider roster.
+- **Browsable settings navigation** — the settings page gains an anchor rail,
+  Cmd-K section search, hash-synced deep links with scroll spy, and a mobile
+  section jump.
+- **Mock-LLM chat E2E suite** — a Playwright suite drives the real app against
+  a deterministic mock provider — onboarding round trip, catalog discovery
+  through the proxy, kitchen-sink markdown/math/mermaid rendering with copy
+  affordances, and expound selection mapping — wired as a CI job.
+
+### Fixed
+
+- **Proxy-origin 403s** — same-origin requests behind host-rewriting proxies
+  no longer fail the bad-origin check.
+- **TOTP code input** — the 6-digit code field no longer rejects valid codes.
+- **Expound formats reach the prompt** — selected expound formats are passed
+  through as concrete directives instead of being dropped.
+- **Backup completeness** — `pg_dump` downloads wait for the stream to flush
+  before resolving.
+
 ## [0.5.0] - 2026-08-27
 
 ### Added

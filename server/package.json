@@ -2,7 +2,7 @@
 	"name": "@mayon/server",
 	"private": true,
 	"type": "module",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
 		"auth": "tsx src/auth/cli.ts",
