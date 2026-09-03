@@ -1,53 +1,62 @@
 project:
-  type: book
+  type: website
   output-dir: ../build/docs
 
-title: 'Mayon Docs'
-favicon: favicon.png
-site-url: https://bendlikeabamboo.github.io/mayon
-repo-url: https://github.com/bendlikeabamboo/mayon
-
-book:
-  title: 'Mayon Docs'
-  page-navigation: true
-  chapters:
-    - index.qmd
-    - part: 'User Guide'
-      chapters:
-        - getting-started.qmd
-        - guide/chat-and-branching.qmd
-        - guide/labs.qmd
-        - guide/quizzes.qmd
-        - guide/providers.qmd
-        - guide/data-and-privacy.qmd
-    - part: 'Developer'
-      chapters:
-        - dev/architecture.qmd
-        - dev/building.qmd
-        - dev/seams.qmd
-    - part: 'Development Notes'
-      chapters:
-        - developer_notes/index.qmd
-        - developer_notes/foundation-phases.qmd
-        - developer_notes/postgres-migration.qmd
-    - part: 'Decision History'
-      chapters:
-        - history/index.qmd
-    - contributing.qmd
-
 website:
+  title: 'Mayon Docs'
+  favicon: favicon.png
+  site-url: https://bendlikeabamboo.github.io/mayon
+  repo-url: https://github.com/bendlikeabamboo/mayon
+  bread-crumbs: true
   navbar:
     left:
       - href: index.qmd
         text: Home
-      - href: getting-started.qmd
-        text: Getting Started
+      - text: Sections
+        menu:
+          - href: tutorials/getting-started.qmd
+            text: Tutorials
+          - href: how-to/providers.qmd
+            text: How-to guides
+          - href: reference/seams.qmd
+            text: Reference
+          - href: explanation/architecture.qmd
+            text: Explanation
+          - href: dev-notes/index.qmd
+            text: Development notes
+          - href: history/index.qmd
+            text: Decision history
     right:
       - icon: github
         href: https://github.com/bendlikeabamboo/mayon
   sidebar:
     style: floating
-    collapse-level: 2
     search: true
-  page-navigation: true
-  bread-crumbs: true
+    collapse-level: 2
+    contents:
+      - section: 'Tutorials'
+        contents:
+          - tutorials/getting-started.qmd
+          - tutorials/chat-and-branching.qmd
+      - section: 'How-to guides'
+        contents:
+          - how-to/providers.qmd
+          - how-to/data-and-privacy.qmd
+          - how-to/labs.qmd
+          - how-to/quizzes.qmd
+          - how-to/building.qmd
+          - how-to/contributing.qmd
+      - section: 'Reference'
+        contents:
+          - reference/seams.qmd
+      - section: 'Explanation'
+        contents:
+          - explanation/architecture.qmd
+      - section: 'Development notes'
+        contents:
+          - dev-notes/index.qmd
+          - dev-notes/foundation-phases.qmd
+          - dev-notes/postgres-migration.qmd
+      - section: 'Decision history'
+        contents:
+          - history/index.qmd

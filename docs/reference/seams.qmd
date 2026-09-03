@@ -1,5 +1,7 @@
 ---
 title: "Architecture Boundaries"
+aliases:
+  - /dev/seams.html
 ---
 
 # Architecture Boundaries

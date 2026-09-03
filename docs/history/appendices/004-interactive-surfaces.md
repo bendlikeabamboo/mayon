@@ -31,7 +31,7 @@ State machine (inputs: `streaming`, `findGateFromMessages(messages)`, linked tak
 
 ## Asks (approval / sampling / elicitation)
 
-- Placement: internal lane, at the ask row's **chronological** position — via the live-merge rule in [timeline-assembly.md](./timeline-assembly.md) R2 (live card replaces its durable row while pending; durable row with outcome chip renders otherwise).
+- Placement: internal lane, at the ask row's **chronological** position — via the live-merge rule in `timeline-assembly.md` (preserved at `specs/004-internal-area-unification/contracts/timeline-assembly.md`) R2 (live card replaces its durable row while pending; durable row with outcome chip renders otherwise).
 - Exactly one surface per pending ask; never the compose area, never a modal outside the timeline.
 - Interactive affordances (Approve/Decline, sampling approve, elicitation form) exist **only** on the live card; durable rows are records (outcome chip + details), not controls.
 - Undecided durable rows (reload mid-wait) render clearly undecided — no interactive control, no claimed outcome (002 US2 rule).

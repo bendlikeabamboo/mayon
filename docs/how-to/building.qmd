@@ -1,5 +1,7 @@
 ---
 title: "Building from Source"
+aliases:
+  - /dev/building.html
 ---
 
 # Building from Source

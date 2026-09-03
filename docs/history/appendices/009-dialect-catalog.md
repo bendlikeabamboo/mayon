@@ -10,7 +10,7 @@
 
 Static, declarative tables in `src/lib/ai/dialects.ts`. Every entry carries
 `source` + `checked: '2026-08-22'` so staleness is auditable (spec FR-007).
-Fragments are merged per [request-settings-resolution.md](./request-settings-resolution.md).
+Fragments are merged per [request-settings-resolution.md](009-request-settings-resolution.md).
 `∅` = emit nothing for that effort. Model matching is against the last path segment of
 the effective model id, lower-cased; `null` value = explicitly remove a key set by an
 earlier layer.

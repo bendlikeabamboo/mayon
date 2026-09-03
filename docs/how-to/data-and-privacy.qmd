@@ -1,5 +1,7 @@
 ---
 title: "Data and Privacy"
+aliases:
+  - /guide/data-and-privacy.html
 ---
 
 # Data and Privacy

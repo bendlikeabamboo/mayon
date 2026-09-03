@@ -27,6 +27,10 @@ jobs:
           node-version: '22'
       - uses: quarto-dev/quarto-actions/setup@v2
       - run: quarto render docs/
+      - name: Link check (internal)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress build/docs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/docs

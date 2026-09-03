@@ -2,21 +2,13 @@
 title: "Overview"
 ---
 
-# Mayon
+Welcome to the documentation for **Mayon**, a personal learning app built around a branchable chat graph. These docs are organized by intent: use the table below to pick the section that matches what you are trying to do.
 
-Mayon is a personal learning app built around a **branchable chat graph**. Chat with an AI about any topic, highlight a dense response, and branch a new conversation from that exact excerpt. Every branch is a node in a navigable tree with breadcrumb navigation and cross-links between separate chats.
-
-From any chat you can generate AI-powered **labs** (hands-on step-by-step guides with interactive checklists) and **quizzes** (multiple-choice, flashcards, and short-answer with AI grading). Both are leaf artifacts tied to a single chat.
-
-Mayon is a **SvelteKit SPA** that connects to a **Mayon server** container running alongside a **Postgres** database. Everything runs locally via Docker Compose — your data stays on your machine.
-
-## Local-first promise
-
-All data stays on your machine. There is no account and no telemetry. Your chats, branches, labs, quizzes, and provider keys live in a local Postgres database inside a Docker volume. The app requires the server to be running; it connects over the local network.
-
-Schema and migrations are managed by **drizzle-kit**. The application logic and repository layer are shared — only the storage driver at the bottom changes.
-
-## Links
-
-- Source code: <https://github.com/bendlikeabamboo/mayon>
-- Releases: <https://github.com/bendlikeabamboo/mayon/releases>
+| Section | Intent |
+| ------- | ------ |
+| [Tutorials](tutorials/getting-started.qmd) (learning-oriented) | Guided lessons — start here if you're new to Mayon |
+| [How-to guides](how-to/providers.qmd) (task-oriented) | Step-by-step recipes for a specific goal |
+| [Reference](reference/seams.qmd) (information-oriented) | Technical truth, scannable — contracts, rules, keys |
+| [Explanation](explanation/architecture.qmd) (understanding-oriented) | Why Mayon is shaped the way it is |
+| [Development notes](dev-notes/index.qmd) | Phase-by-phase build history from development (non-Diátaxis shelf) |
+| [Decision history](history/index.qmd) | The narrative record of feature decisions and reversals (non-Diátaxis shelf) |

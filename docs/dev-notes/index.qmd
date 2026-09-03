@@ -1,5 +1,7 @@
 ---
 title: "Development Notes"
+aliases:
+  - /developer_notes/index.html
 ---
 
 # Development Notes
@@ -10,7 +12,7 @@ they landed. Read this when you want to recall *why* something is the way it is,
 reconstruct the reasoning behind a decision, or avoid repeating a past mistake.
 
 The authoritative description of the system **as it is today** lives in
-[Architecture](../dev/architecture.qmd) and [Architecture Boundaries](../dev/seams.qmd).
+[Architecture](../explanation/architecture.qmd) and [Architecture Boundaries](../reference/seams.qmd).
 `AGENTS.md` holds the operating conventions (commands, releases, invariants) an
 agent needs to work in the repo. What remains here is the historical trail:
 
