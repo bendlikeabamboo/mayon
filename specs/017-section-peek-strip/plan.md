@@ -7,16 +7,28 @@
 ## Summary
 
 Add a per-reply navigation strip to long, header-structured assistant messages: one
-hairline bar per markdown section along the reply's edge, sized proportionally to
-section length, near-invisible at rest. Hovering fattens the bars; a deliberate
-~400 ms dwell pops a plain-text preview card (heading + opening lines); clicking a
-bar or preview smooth-scrolls the transcript to that section (LazyMount-aware,
-stick-to-bottom-safe, reduced-motion-respecting). A persisted settings toggle turns
-the feature off entirely. All outline data derives from the reply's markdown via the
-existing remark parse (no source mutation); strip/preview selectors join the expound
+thin horizontal tick per markdown section, in a slim gutter **outside the chat
+area** — immediately right of the transcript's scrollbar (chat → scrollbar →
+ticks), left-aligned at the chat border, width proportional to section length,
+near-invisible at rest and **scroll-synced** so ticks stay beside their sections.
+Hovering brightens the ticks and extends the hovered one a bit rightward; a
+deliberate ~400 ms dwell pops a **floating preview window anchored outside the chat
+area** (heading + opening lines); clicking a tick or preview smooth-scrolls the
+transcript to that section (LazyMount-aware, stick-to-bottom-safe,
+reduced-motion-respecting). A persisted settings toggle turns the feature off
+entirely — releasing the gutter reservation, so layout returns to pre-feature
+geometry. All outline data derives from the reply's markdown via the existing
+remark parse (no source mutation); strip/preview selectors join the expound
 exclusion list so text selection and highlight alignment stay correct. This feature
-builds the shared extraction + jump + flash primitives that the 015 floating outline
-(panel) will later consume, but ships only the strip chrome.
+builds the shared extraction + jump + flash primitives that the 015 floating
+outline (panel) will later consume, but ships only the strip chrome.
+
+> **2026-09-02 owner refinement (post-first-cut)**: the strip moved from inside the
+> message wrapper to the outside-the-scroll-container gutter described above, bars
+> became thin horizontal ticks with extend-on-hover, and the preview became a
+> floating window outside the chat area. Contracts §4–§7 and the tasks' Phase 7
+> carry the delta; the first-cut in-message `SectionStrip.svelte` is replaced by
+> the page-level `SectionStripGutter.svelte`.
 
 ## Technical Context
 
@@ -43,16 +55,18 @@ pure-logic tests (`src/lib/settings/scroll-spy.test.ts`), jsdom DOM tests
 (tap-to-jump); light and dark themes; static SPA served behind the Mayon server
 container.
 
-**Performance Goals**: Strip presence and hover states cause no layout shift and no
-scroll-tied work; extraction is memoized and sub-millisecond for reply-length inputs;
-no new scroll listeners (strip is pointer-only in this cut — the where-am-I marker is
-deferred). Perf probe marks: `mark('strip:extract', …)`, `incRender('SectionStrip')`.
+**Performance Goals**: Strip presence and hover states cause no layout shift; the
+gutter's scroll sync is a single passive, rAF-throttled listener updating one
+transform (no per-frame layout reads; anchor measurement only at invalidation
+time); extraction is memoized and sub-millisecond for reply-length inputs. Perf
+probe marks: `mark('strip:extract', …)`, `incRender('SectionStripGutter')`.
 
 **Constraints**: Must not regress expound/highlight alignment (`selection.ts`
 exclusions + `selection.test.ts`); must not fight `LazyMount unmountFar`
 (jump = rAF retry ≤5) or the stick-to-bottom effects (jump sets the stick-suppression
-flag); must respect `prefers-reduced-motion`; bars need generous hit targets while the
-strip must not steal wheel/touch scroll from the transcript.
+flag); must respect `prefers-reduced-motion`; ticks need generous hit targets while
+the gutter must not steal wheel/touch scroll from the transcript; the scroll-sync
+listener is the feature's ONLY scroll listener (amended invariant, contracts §10.2).
 
 **Scale/Scope**: Per assistant message; strips only on qualifying replies (≥3
 sections, finished streaming, taller than one transcript viewport). One settings
@@ -75,13 +89,16 @@ toggle. No server changes.
 | Quality gates | Gate order: `pnpm check` → `pnpm lint` → `pnpm test` | ✅ PASS | Recorded in quickstart; tasks must run gates before merge. |
 | Seams | Deviating from a documented seam requires amendment | ✅ PASS | Storage via existing settings KV + repository; scroll access via `scroll-bus.ts`/`closest('.overflow-y-auto')`; jump orchestration stays in the chat page (014 split: components pure / page orchestrates) — all documented seams. |
 
-**Post-design re-evaluation (after Phase 1)**: Re-checked with the contracts in
-`contracts/section-strip.md`. One deliberate, spec-mandated deviation from 015's
-contract §6.1 is enumerated and safe: 015 placed its chrome *outside* the message
-container and therefore left `EXCLUDED_CHROME_SELECTORS` untouched; 017's strip and
-preview *are* text-bearing chrome inside the message container, so they register
-their selectors there and extend `selection.test.ts` — exactly the future case 015
-§6.1 anticipated. No gate violations. Complexity Tracking stays empty.
+**Post-design re-evaluation (after Phase 1, amended 2026-09-02)**: Re-checked with
+the contracts in `contracts/section-strip.md`. The enumerated deviation from 015's
+contract §6.1 remains and is safe: 015 placed its chrome *outside* the message
+container and therefore left `EXCLUDED_CHROME_SELECTORS` untouched; 017 registers
+its strip/preview selectors there (first cut: chrome inside the message container;
+refinement: the gutter moved outside the message containers too, but the selectors
+stay registered and tested as belt-and-braces for any text-bearing strip chrome) —
+exactly the future case 015 §6.1 anticipated. The refinement's one invariant change
+(the single scroll-sync listener) is recorded in contracts §10.2. No gate
+violations. Complexity Tracking stays empty.
 
 ## Project Structure
 
@@ -104,37 +121,41 @@ specs/017-section-peek-strip/
 src/
 ├── lib/
 │   ├── markdown/
-│   │   ├── sections.ts            # NEW: pure section extraction (mdast walk, memoized)
-│   │   └── sections.test.ts       # NEW: unit tests (exclusions, offsets, excerpts, threshold)
+│   │   ├── sections.ts            # pure section extraction (mdast walk, memoized)
+│   │   └── sections.test.ts       # unit tests (exclusions, offsets, excerpts, threshold)
 │   ├── chat/
-│   │   ├── selection.ts           # EDIT: EXCLUDED_CHROME_SELECTORS += strip/preview selectors
-│   │   ├── selection.test.ts      # EDIT: fixtures proving alignment ignores strip/preview text
+│   │   ├── selection.ts           # EXCLUDED_CHROME_SELECTORS += strip/preview selectors
+│   │   ├── selection.test.ts      # fixtures proving alignment ignores strip/preview text
 │   │   └── strip/
-│   │       ├── pref.ts            # NEW: settings sole-writer for the strip toggle
-│   │       ├── pref.test.ts       # NEW: defensive reads, persistence round-trip (pglite)
-│   │       ├── dwell.ts           # NEW: pure hover-intent / dwell-decision helpers
-│   │       └── dwell.test.ts      # NEW: sweep immunity, prompt dismissal, timing edges
+│   │       ├── pref.ts            # settings sole-writer for the strip toggle
+│   │       ├── pref.test.ts       # defensive reads, persistence round-trip (pglite)
+│   │       ├── dwell.ts           # pure hover-intent / dwell-decision helpers
+│   │       ├── dwell.test.ts      # sweep immunity, prompt dismissal, timing edges
+│   │       ├── registry.ts        # NEW (refinement): context registry of StripAnchors
+│   │       └── registry.test.ts   # NEW (refinement): upsert/bump/unregister reactivity
 │   └── components/
 │       ├── chat/
-│       │   ├── strip/
-│       │   │   └── SectionStrip.svelte   # NEW: bars + dwell preview (presentation-only)
-│       │   └── rows/
-│       │       └── AssistantMessage.svelte  # EDIT: eligibility, strip mount, onJump plumbing
-│       └── settings/                     # EDIT: toggle control in an existing section
+│       │   └── strip/
+│       │       └── SectionStripGutter.svelte  # NEW (refinement): gutter ticks + scroll
+│       │                                      # sync + floating preview (replaces the
+│       │                                      # first-cut in-message SectionStrip.svelte)
+│       └── settings/                      # toggle control in an existing section
 └── routes/
     └── chat/[id]/
-        └── +page.svelte           # EDIT: section-jump orchestration + stick suppression
+        └── +page.svelte           # gutter mount + viewport inset + jump orchestration
 ```
 
-Tests are colocated beside each source file. `MessageList.svelte` gains only a
-prop-plumbing pass-through for `onJumpToSection` if needed.
+The refinement removes the first-cut `SectionStrip.svelte`, the
+`onJumpToSection`/`stripEnabled` prop threading through
+`MessageList`/`AssistantMessage` (replaced by context), and the in-message strip
+mount; `AssistantMessage` registers eligible replies into the registry instead.
 
 **Structure Decision**: Single-project SvelteKit layout, unchanged. The feature is a
-chat-UI vertical slice: pure logic in `src/lib/markdown` + `src/lib/chat/strip`,
-one presentation component under `src/lib/components/chat/strip/`, orchestration in
-the chat page (owner of the scroll container, stick flag, and hash grammar), and a
-settings toggle in the existing `/settings` page. No new routes, no server code, no
-schema/migration.
+chat-UI vertical slice: pure logic in `src/lib/markdown` + `src/lib/chat/strip`, one
+page-level gutter component under `src/lib/components/chat/strip/`, orchestration in
+the chat page (owner of the scroll container, stick flag, gutter reservation, and
+hash grammar), and a settings toggle in the existing `/settings` page. No new
+routes, no server code, no schema/migration.
 
 ## Complexity Tracking
 

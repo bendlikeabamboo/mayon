@@ -6,11 +6,11 @@
 	import Reasoning from '../Reasoning.svelte';
 	import Highlighter from '../Highlighter.svelte';
 	import Spinner from '../Spinner.svelte';
-	import SectionStrip from '../strip/SectionStrip.svelte';
 	import type { DurableEntry } from '$lib/chat/entries';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
 	import { extractSections, isStripCandidate } from '$lib/markdown/sections';
+	import { getStripContext, getStripRegistry } from '$lib/chat/strip/registry.svelte';
 	import { stripGateFence } from '$lib/ai/generate/generate-gate';
 	import { parseMetadata } from '$lib/chat/kinds';
 	import type { AssistantMessageMeta } from '$lib/chat/kinds';
@@ -41,9 +41,6 @@
 		 * even though the prop contract itself is unchanged.
 		 */
 		canRegenerate?: boolean;
-		onJumpToSection?: (msgId: string, index: number) => void;
-		/** Persisted strip preference (US3): false unmounts every strip. */
-		stripEnabled?: boolean;
 	} & SharedCallbacks;
 
 	type LiveProps = {
@@ -74,7 +71,11 @@
 
 	const sections = $derived(isDurable ? extractSections(visible) : []);
 	const stripCandidate = $derived(isDurable && isStripCandidate(sections));
-	const stripPrefOn = $derived(isDurable && ((props as DurableProps).stripEnabled ?? true));
+	// Context reads are init-only in Svelte 5: capture the value once, then read
+	// its getter-backed flag here so toggling the preference re-runs this row.
+	const stripRegistry = getStripRegistry();
+	const stripContext = getStripContext();
+	const stripPrefOn = $derived(isDurable && stripContext !== null && stripContext.stripEnabled);
 	let stripMeasured = $state(false);
 	const stripEligible = $derived(stripPrefOn && stripMeasured);
 	let bodyEl = $state<HTMLDivElement | null>(null);
@@ -90,11 +91,25 @@
 		if (!scroller) return;
 		const measure = () => {
 			stripMeasured = el.offsetHeight > scroller.clientHeight;
+			stripRegistry?.bump(entry!.id);
 		};
 		measure();
 		const ro = new ResizeObserver(measure);
 		ro.observe(el);
 		return () => ro.disconnect();
+	});
+
+	$effect(() => {
+		const reg = stripRegistry;
+		if (!reg) return;
+		if (isDurable && stripEligible && entry && bodyEl) {
+			reg.register({ msgId: entry.id, el: bodyEl, sections });
+		} else if (entry) {
+			reg.unregister(entry.id);
+		}
+		return () => {
+			if (entry) reg.unregister(entry.id);
+		};
 	});
 
 	onMount(() => incRender('TimelineRow'));
@@ -146,13 +161,6 @@
 			<Markdown raw={visible} live={true} />
 		{/if}
 	</div>
-	{#if isDurable && stripEligible}
-		<SectionStrip
-			msgId={entry!.id}
-			{sections}
-			onJump={(index) => (props as DurableProps).onJumpToSection?.(entry!.id, index)}
-		/>
-	{/if}
 	{#if isDurable}
 		<!-- us5-actions: hover/focus-revealed row. Reserved h-6 keeps the strip in
 		     flow at constant size, so reveal/hide never shifts message layout.

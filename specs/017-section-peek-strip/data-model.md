@@ -40,19 +40,35 @@ guaranteed by the mdast node types themselves; tests pin this.
 
 ## 2. `StripEligibility` (derived predicate, not stored)
 
-A reply shows a strip iff **all** hold (spec FR-001, FR-010, R2, R3):
+A reply shows a strip iff **all** hold (spec FR-001, FR-011, FR-015):
 
 | Condition | Source of truth |
 |---|---|
 | entry is durable and `chatStore.streaming === false` | timeline assembly (`MessageList` props), store flag |
 | `sections.length >= 3` | `extractSections(content)` |
 | reply body `offsetHeight` > transcript viewport `clientHeight` | one-shot mount measurement + `ResizeObserver` on the message body (not scroll-tied) |
-| strip preference enabled | `SectionStripPreference` below |
+| strip preference enabled (from context, not a prop) | `SectionStripPreference` below |
 
-Evaluated at mount/completion and on container resize; a drop to ineligible unmounts
-the strip with no other side effects.
+Evaluated at mount/completion and on container resize; a drop to ineligible
+unregisters the reply's ticks with no other side effects.
 
-## 3. `SectionStripPreference` (persisted scalar)
+## 3. `StripAnchor` (transient registry entry, 2026-09-02 refinement)
+
+What an eligible reply contributes to the page-level gutter (contracts §4). Never
+stored; lives in the context-provided `StripRegistry`.
+
+| Field | Type | Meaning / invariants |
+|---|---|---|
+| `msgId` | `string` | registry key; upsert-idempotent |
+| `el` | `HTMLElement` | the reply body element; the gutter measures `docTop`/`height` from it at invalidation time only |
+| `sections` | `Section[]` | eligibility-filtered; drives tick rows, widths, and preview text |
+
+**Lifecycle**: registered when eligibility turns true, `bump`ed on body resize,
+unregistered on ineligibility/unmount (LazyMount included). The gutter recomputes
+all anchor positions on any membership/bump/viewport-resize event — never per
+scroll frame (scroll only translates, FR-004).
+
+## 4. `SectionStripPreference` (persisted scalar)
 
 The user's on/off choice for the feature (spec FR-014).
 
@@ -65,26 +81,29 @@ The user's on/off choice for the feature (spec FR-014).
 | Access | sole-writer module `src/lib/chat/strip/pref.ts` (`isStripEnabled` / `setStripEnabled`) via `repos.settings` — components never touch the repository (Constitution I) |
 | Reads/writes | read once per chat page mount (cached in a rune store for reactive toggling); written on toggle in `/settings` |
 
-**State transitions**: `on ⇄ off` via the settings toggle. `off` unmounts every strip
-immediately (no hover affordances, no previews); `on` restores strips on currently
-qualifying replies. Survives reload (server-persisted KV).
+**State transitions**: `on ⇄ off` via the settings toggle. `off` unregisters every
+strip immediately (no ticks, hover affordances, or previews) and releases the
+viewport's gutter inset; `on` restores ticks on currently qualifying replies.
+Survives reload (server-persisted KV).
 
-## 4. `StripUiState` (transient component state)
+## 5. `StripUiState` (transient gutter state)
 
-Per-mounted-strip interaction state inside `SectionStrip.svelte` — never persisted,
-never lifted.
+Interaction state inside `SectionStripGutter.svelte` — never persisted, never
+lifted. One instance for the whole gutter (at most one preview open across all
+reply columns).
 
 | Field | Type | Meaning / transitions |
 |---|---|---|
-| `hoveredIndex` | `number \| null` | bar under the pointer; `null` at rest (hairline) → set on pointerenter (fattened) → cleared on strip pointerleave |
-| `dwellTimer` | `timer id` | one per interaction; armed on bar pointerenter (desktop only), cancelled on bar leave / other-bar enter / strip leave |
-| `previewIndex` | `number \| null` | section whose preview card is open; set when dwell timer fires (~400 ms), cleared immediately on pointer leave of strip+preview region (FR-006) |
-| `isTouch` | `boolean` | matchMedia `(hover: none), (pointer: coarse)`; when true, dwell timers are never armed and tap jumps directly (FR-011) |
+| `hoveredIndex` | `number \| null` | tick under the pointer (within the hovered column); `null` at rest (hairlines) → set on pointerenter (tick extends rightward) → cleared on gutter pointerleave |
+| `dwellTimer` | `timer id` | one per interaction; armed on tick pointerenter (desktop only), cancelled on tick leave / other-tick enter / gutter leave |
+| `previewIndex` | `number \| null` | section whose floating preview window is open; set when dwell timer fires (~400 ms), cleared immediately on pointer leave of gutter+preview region (FR-007) |
+| `isTouch` | `boolean` | matchMedia `(hover: none), (pointer: coarse)`; when true, dwell timers are never armed and tap jumps directly (FR-012) |
 
-**Invariants**: at most one preview open per strip; no preview during streaming
-(strip is unmounted then); all transitions are pointer-driven — no scroll-tied state.
+**Invariants**: at most one preview open per gutter; no preview during streaming
+(ticks are unregistered then); all transitions are pointer-driven — the scroll
+listener only translates the tick layer, it never touches this state.
 
-## 5. Jump result (page-orchestrated side effect)
+## 6. Jump result (page-orchestrated side effect)
 
 Not an entity; recorded here because it has observable state effects on existing
 chat-page state:
@@ -98,11 +117,12 @@ chat-page state:
 
 No history/URL writes; the chat `#m=&b=` grammar is untouched.
 
-## 6. Entity relationships
+## 7. Entity relationships
 
 ```text
-messages.content ──extractSections──▶ Section[] ──▶ StripEligibility ──▶ SectionStrip (DOM)
-settings[sectionStripEnabled] ────────────────────────────────▶ (gates eligibility)
+messages.content ──extractSections──▶ Section[] ──▶ StripEligibility ──▶ StripAnchor (registry)
+settings[sectionStripEnabled] ────────────────────────────────▶ (gates eligibility + gutter reservation)
+StripAnchor[msgId].el ──docTop/height at invalidation time──▶ SectionStripGutter ──translateY(-scrollTop)──▶ on-screen ticks
 Section[index] ──nth h1–h6 under #msg-<id> .markdown-body──▶ page jump ──▶ viewport scroll + flash
-Section.title/excerpt ──▶ preview card content (transient StripUiState)
+Section.title/excerpt ──▶ floating preview window content (transient StripUiState)
 ```

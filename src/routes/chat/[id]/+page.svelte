@@ -34,6 +34,8 @@
 	import BriefCard from '$lib/components/chat/BriefCard.svelte';
 	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
 	import { isStripEnabled } from '$lib/chat/strip/pref';
+	import { setStripContext, StripRegistry } from '$lib/chat/strip/registry.svelte';
+	import SectionStripGutter from '$lib/components/chat/strip/SectionStripGutter.svelte';
 	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
 	import type { ExpoundOptions } from '$lib/chat/expound';
@@ -69,6 +71,20 @@
 	 * navigation remounts this route, so a mount-time read is sufficient).
 	 */
 	let stripEnabled = $state(true);
+	/**
+	 * Strip context (017 refinement §4): one registry per page instance plus a
+	 * getter-backed flag so rows read the live preference reactively. The
+	 * gutter's measure sweep drops rows whose elements unmounted, covering
+	 * stale anchors across chat switches (this component is reused on id
+	 * change — loadAll reloads data without remounting).
+	 */
+	const stripRegistry = new StripRegistry();
+	setStripContext({
+		registry: stripRegistry,
+		get stripEnabled() {
+			return stripEnabled;
+		}
+	});
 	let editingInferred = $state(false);
 	let rootChat = $state<Chat | null>(null);
 	let branchSource = $state<BranchSource | null>(null);
@@ -830,7 +846,11 @@
 					bind:this={middleWrapper}
 					style="--fade-top:{fadeTop}px; --fade-bottom:{fadeBottom}px;"
 				>
-					<div bind:this={viewport} class="h-full overflow-y-auto overflow-x-hidden p-4">
+					<div
+						bind:this={viewport}
+						class="h-full overflow-y-auto overflow-x-hidden p-4"
+						class:mr-4={stripEnabled}
+					>
 						<div bind:this={topSentinel} class="h-0 -mt-4"></div>
 						<MessageList
 							messages={chatStore.messages}
@@ -839,8 +859,6 @@
 							{onCopy}
 							{onBranchWhole}
 							{onRegenerate}
-							onJumpToSection={handleSectionJump}
-							{stripEnabled}
 							{personaName}
 							{failedMessageId}
 							streaming={chatStore.streaming}
@@ -862,6 +880,9 @@
 						</MessageList>
 						<div bind:this={bottomSentinel} class="h-0"></div>
 					</div>
+					{#if stripEnabled && viewport}
+						<SectionStripGutter viewportEl={viewport} onJump={handleSectionJump} />
+					{/if}
 					<div
 						class="pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-200 motion-reduce:transition-none {topVisible
 							? 'opacity-100'

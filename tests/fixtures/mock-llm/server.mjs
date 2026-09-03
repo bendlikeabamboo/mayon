@@ -9,22 +9,50 @@ const MODEL_ID = 'mock-sink';
 const CHUNK_INTERVAL_MS = 150;
 const BLOCKS_PER_CHUNK = 3;
 
-const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'kitchen-sink.md');
-const doc = readFileSync(fixturePath, 'utf8');
+const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
+const kitchenSinkPath = path.join(fixtureDir, 'kitchen-sink.md');
+const outlineDocPath = path.join(fixtureDir, 'outline-doc.md');
 
-const blocks = doc
-	.split(/\n\n+/)
-	.map((block) => block.trim())
-	.filter(Boolean);
-const chunks = [];
-for (let i = 0; i < blocks.length; i += BLOCKS_PER_CHUNK) {
-	const group = blocks.slice(i, i + BLOCKS_PER_CHUNK).join('\n\n');
-	// Preserve the document's block separator across chunk boundaries — the
-	// consumer concatenates deltas verbatim, so a dropped separator here would
-	// silently corrupt the reply (blocks would run together).
-	chunks.push(i + BLOCKS_PER_CHUNK < blocks.length ? group + '\n\n' : group);
+function buildChunks(doc) {
+	const blocks = doc
+		.split(/\n\n+/)
+		.map((block) => block.trim())
+		.filter(Boolean);
+	const chunks = [];
+	for (let i = 0; i < blocks.length; i += BLOCKS_PER_CHUNK) {
+		const group = blocks.slice(i, i + BLOCKS_PER_CHUNK).join('\n\n');
+		// Preserve the document's block separator across chunk boundaries — the
+		// consumer concatenates deltas verbatim, so a dropped separator here would
+		// silently corrupt the reply (blocks would run together).
+		chunks.push(i + BLOCKS_PER_CHUNK < blocks.length ? group + '\n\n' : group);
+	}
+	return { chunks, plainProse: blocks.find((block) => !block.startsWith('#')) ?? doc };
 }
-const plainProse = blocks.find((block) => !block.startsWith('#')) ?? doc;
+
+const kitchenSink = buildChunks(readFileSync(kitchenSinkPath, 'utf8'));
+// A long, uneven, multi-header reply for section-strip validation. Served when
+// the user's message mentions "outline"; the kitchen sink stays the default so
+// existing e2e assertions are untouched.
+const outlineDoc = buildChunks(readFileSync(outlineDocPath, 'utf8'));
+
+function pickDoc(body) {
+	const messages = Array.isArray(body?.messages) ? body.messages : [];
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const message = messages[i];
+		if (message?.role !== 'user') continue;
+		const content =
+			typeof message.content === 'string'
+				? message.content
+				: Array.isArray(message.content)
+					? message.content
+						.map((part) => (typeof part?.text === 'string' ? part.text : ''))
+						.join(' ')
+					: '';
+		if (/outline/i.test(content)) return outlineDoc;
+		return kitchenSink;
+	}
+	return kitchenSink;
+}
 
 let counter = 0;
 const nextId = () => `mock-${++counter}`;
@@ -49,7 +77,7 @@ function sseFrame(payload) {
 	return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-function streamReply(res, id, model) {
+function streamReply(res, id, model, doc) {
 	res.writeHead(200, {
 		'content-type': 'text/event-stream',
 		'cache-control': 'no-cache',
@@ -58,7 +86,7 @@ function streamReply(res, id, model) {
 	res.on('error', () => {});
 	const frames = [
 		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
-		...chunks.map(
+		...doc.chunks.map(
 			(content) => sseFrame({ id, model, choices: [{ delta: { content }, finish_reason: null }] })
 		)
 	];
@@ -105,14 +133,15 @@ const server = createServer(async (req, res) => {
 		const id = nextId();
 		const model =
 			typeof body.model === 'string' && body.model.length > 0 ? body.model : MODEL_ID;
+		const doc = pickDoc(body);
 		if (body.stream === true) {
-			streamReply(res, id, model);
+			streamReply(res, id, model, doc);
 			return;
 		}
 		sendJson(res, 200, {
 			id,
 			model,
-			choices: [{ message: { role: 'assistant', content: plainProse }, finish_reason: 'stop' }],
+			choices: [{ message: { role: 'assistant', content: doc.plainProse }, finish_reason: 'stop' }],
 			usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
 		});
 		return;

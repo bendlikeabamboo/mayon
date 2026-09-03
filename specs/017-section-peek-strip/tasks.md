@@ -169,6 +169,9 @@ Single SvelteKit project: all paths under `src/`. Tests are colocated beside sou
 | 3 | T013–T016 | US2 complete |
 | 4 | T017–T020 | US3 complete |
 | 5 | T021–T022 | Polish + final gates |
+| 6 | T023, T026 | Refinement: registry (RED→GREEN) |
+| 7 | T024, T025, T027, T028 | Refinement: gutter contract/integration tests + component (RED→GREEN) |
+| 8 | T029–T031 | Refinement: smoke, perf, final gates |
 
 Each wave ends at a checkpoint; do not start the next wave with red gates.
 
@@ -189,6 +192,32 @@ Each wave ends at a checkpoint; do not start the next wave with red gates.
 ### Parallel Team Strategy
 
 With capacity: after Wave 1, one agent takes US1 (Wave 2) while another pre-builds the pure dwell module (T013–T014); US3's pref module (T017–T018) is likewise pre-buildable in parallel — only its wiring (T019) waits on T010.
+
+---
+
+## Phase 7: Refinement — Outside-the-Chat Tick Gutter (2026-09-02 owner ruling)
+
+**Purpose**: Relocate and restyle the shipped strip per the owner's refinement: thin
+horizontal ticks in a gutter **outside the chat area** (chat → scrollbar → ticks),
+left-aligned at the chat border, extend-right-on-hover, scroll-synced so ticks stay
+beside their sections, floating preview window outside the chat area, and releasing
+the gutter reservation when the setting is off. Supersedes the first-cut in-message
+`SectionStrip.svelte` (deleted). Contracts §4–§7, spec FR-002–FR-017.
+
+- [x] T023 [P] Write failing unit tests for the strip registry in src/lib/chat/strip/registry.test.ts per contracts §4: `register` upserts idempotently per `msgId`; `unregister` removes; `bump` keeps the entry and notifies subscribers (recompute signal); insertion order preserved; `getStripRegistry()` returns null outside the chat page context; entries are reactive (Svelte 5 `$state`, consumed via `$derived`)
+- [x] T024 [P] Write failing source-contract tests in src/lib/components/chat/strip/SectionStripGutter.contract.test.ts asserting the SectionStripGutter.svelte source: the ONLY scroll listener is passive + rAF-throttled on the viewport element and its handler performs a transform-only update; no `scrollIntoView`/`scrollTop` writes/history/location in source; exactly one wheel listener — the relay to the viewport (`preventDefault` + `scrollBy`, no `stopPropagation`, no other wheel/touch handlers; added during verification: native wheel chaining cannot cross the sibling boundary, contracts §5/§10.2); `pointer-events-none` layer with `pointer-events-auto` ticks/preview; `motion-reduce:transition-none` on transitions; `incRender('SectionStripGutter')` present; tick = thin horizontal hairline left-aligned at the gutter origin with proportional width and extend-on-hover width transition; floating preview anchored outside the chat area extending leftward with class `section-strip-preview`; touch handling via `matchMedia('(hover: none), (pointer: coarse)')` with listener cleanup
+- [x] T025 [P] Update src/lib/components/chat/rows/AssistantMessage.strip.test.ts: AssistantMessage no longer imports/renders SectionStrip and has no `onJumpToSection`/`stripEnabled` props; it registers `{ msgId, el, sections }` into the context registry when eligible, `bump`s on body resize, and unregisters on ineligibility/unmount; eligibility measurement unchanged (durable-only, ≥3 sections, height-vs-viewport via ResizeObserver)
+- [x] T026 Implement src/lib/chat/strip/registry.ts to make T023 green: `StripAnchor`, `StripRegistry` (`register`/`unregister`/`bump`/reactive `entries`), context key + `getStripRegistry()`/`getStripPrefFromContext()` helpers — no DOM beyond holding element refs (depends T023)
+
+**Checkpoint**: Registry + contract scaffolding red→green; component work can begin.
+
+- [x] T027 Implement src/lib/components/chat/strip/SectionStripGutter.svelte (makes T024 green) and delete src/lib/components/chat/strip/SectionStrip.svelte: page-level layer `absolute inset-y-0 right-0` (gutter ~16px, `overflow-hidden`, `pointer-events-none`, above fade overlays); inner container translated by `−scrollTop` via one passive rAF-throttled scroll listener on the `viewportEl` prop; anchor measurement (`docTop`/`height` per registry entry) recomputed on membership change / `bump` / viewport resize (one RO), never per scroll frame; per-reply tick columns: one `<button>` per section, rows tile by flex-grow ∝ `section.length` with min row height (≥24px effective target), tick = `h-[2px]` horizontal hairline left-aligned at the gutter origin, width ∝ section share clamped to `[4px, gutter width]`, rest `--border` → gutter hover `--muted-foreground` → tick hover extends a few px right (width transition); reuses `dwellTransition` for the ~400 ms dwell; preview = floating window inside the gutter layer anchored at the hovered tick extending leftward (popover surface, `title` + `excerpt` plain text, click = `onJump(msgId, index)`, prompt dismissal, one open at a time); wheel relay on the gutter root: `preventDefault` + `viewportEl.scrollBy(0, deltaY)` (the only wheel handler — FR-013 across the sibling boundary, contracts §5/§10.2); `role="navigation"` + `aria-label="Reply sections"` per column; `aria-label` per tick from `section.title` (fallback "Section N"); coarse-pointer tap = direct jump (depends T024, T026)
+- [x] T028 Integrate the gutter: src/lib/components/chat/rows/AssistantMessage.svelte swaps the SectionStrip mount for registry register/bump/unregister (flag + registry from context; makes T025 green); src/lib/components/chat/MessageList.svelte drops the `onJumpToSection`/`stripEnabled` props; src/routes/chat/[id]/+page.svelte provides the registry + `stripEnabled` via context, renders `SectionStripGutter` with `viewportEl` + `onJump={handleSectionJump}` inside the relative wrapper, and applies the viewport's right inset only while `stripEnabled` is true (released when off — FR-015/FR-003) (depends T027)
+- [x] T029 Manual smoke on `pnpm dev` per quickstart Scenarios 1–5 (refined wording): gutter sits right of the scrollbar; scroll-sync keeps ticks glued to sections (including after content above grows and across two long replies); hover brightens + extends-right with no layout shift; dwell opens the floating preview outside the chat area; toggle off releases the reservation; touch tap-to-jump; wheel over the gutter scrolls the transcript (depends T028)
+- [x] T030 Performance validation per quickstart "Performance validation": scroll + hover/dwell scenarios with `window.__MAYON_PERF__ = 1`; confirm no longtask spikes, no layout-shift accumulation from the sync (transform-only), `strip:extract` + gutter marks present (depends T029)
+- [x] T031 Final validation: run `pnpm check && pnpm lint && pnpm test`; confirm all Phase 7 checklist items complete and quickstart walks clean end-to-end (depends T030)
+
+**Checkpoint**: The strip is the refined outside-the-chat tick gutter; gates green.
 
 ---
 
