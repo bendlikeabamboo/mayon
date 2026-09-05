@@ -1,7 +1,7 @@
 {
   "integration": "kilocode",
   "version": "1.0.1",
-  "installed_at": "2026-08-27T17:26:38.692401+00:00",
+  "installed_at": "2026-09-05T12:23:26.046463+00:00",
   "files": {
     ".kilo/commands/speckit.analyze.md": "99e0da347e2c2d6ae80bce68805fa632b9de759ec77501490b9ee843102c5c41",
     ".kilo/commands/speckit.clarify.md": "353bd5c6742181f7bd3dff7b1ce9246e52418f58b7d58998b7c6c1a249687ccd",
