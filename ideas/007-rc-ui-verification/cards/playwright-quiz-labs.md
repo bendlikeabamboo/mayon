@@ -1,0 +1,23 @@
+---
+card: 001
+name: playwright-quiz-labs
+origin: user
+bet: Wins if the 017 mock-llm seam can answer quiz/lab generation prompts and the flows are stable enough to assert
+played: yes
+---
+
+# Card 001 — Playwright quiz & labs specs (your card)
+
+## Story
+
+You tag `vX.Y.Z-rcN`, run the e2e suite, and watch the mock provider onboard through the real settings UI, drive a chat to the deterministic kitchen-sink reply, then generate a quiz from that chat and answer every question type, and generate a lab and step through it to completion — minutes later you have a green run and ship the RC without opening the app by hand. The mocked LLM keeps every reply byte-stable, so a red run means a real regression, not model drift. Quiz/lab generation requests flow through the same proxy hop and placeholder-key path as today's chat specs, so nothing about how the data is intercepted changes.
+
+## Playthrough (2026-09-05)
+
+- **What & why**: RC releases get verified by automated UI regression runs instead of a manual quiz-and-labs pass — because every manual RC pass is a repeatable chore that grows and gets skipped.
+- **How it goes**: Day one feels like 80% done — the 017 harness (onboard fixture, mock-llm service, chat round trip) is already green, so you reuse it and have a chat on screen in an hour. The first real snag arrives when you click "generate quiz": the mock is a parrot, not a role-player, and answers the quiz-generation request with the same kitchen-sink chat markdown. The quiz parser throws or yields junk — because `generateQuiz`, `generateLab`, and `gradeShortAnswer` are separate provider calls with their own prompts and output contracts, and the mock has exactly one reply. The card's real work turns out to be fixture work in the mock: telling request shapes apart and serving a deterministic reply per shape (quiz questions, lab steps, a graded answer), all inside `tests/fixtures/mock-llm/` so the product diff stays empty per 017's rule. Week one closes with the full loop green; RC day becomes "run the suite, read the ticks, ship."
+- **Snags**: (1) The mock's single-reply limitation — bites on day one, blocks everything until fixed; it is the bulk of the work, not an edge case. (2) Quiz/lab prompts are user-editable in settings — if the mock tells requests apart by sniffing prompt text, an edited prompt silently breaks the sniff; the discrimination mechanism needs to be robust, and that is where this card gets interesting. (3) `gradeShortAnswer` depends on the answer sent — a static mock can only ever grade one way per run, bounding what the suite can assert. (4) The interception trap — the moment a spec flakes, the shortcut whispers "just `page.route`-stub the proxy call"; take it a few times and the suite tests the mocks, not the app. Everything must keep flowing through the real server-container hop and the real placeholder-key path.
+- **Trade-offs**: you now maintain a fixture library that mirrors real LLM output shapes and drifts when prompts evolve; green e2e proves the mock-path works, not that real providers work (accepted in 017, now it grows); role/label locators couple the suite to UI copy.
+- **Delivers the what?**: fully — this is the direct delivery of "RC verified automatically, deterministically, at the UI level."
+- **Difficulty vs payoff**: difficulty M · payoff H · time-to-first-value days
+- **Your take**: User refinements if this card wins: (1) lock the format/contract section of the quiz/lab generation prompts as read-only — users may attach custom instructions and view the full prompt via a button in settings, but never edit the formatting part; (2) give the mock a deterministic grading lever — the test answer text selects the outcome ("should be correct" grades correct, "should be wrong" grades wrong), making both grading paths assertable. Kit's assessment: (1) de-fangs the prompt-drift snag and is good product hygiene (the format section is the parser's contract), but it is a product change and pulls against 017's zero-product-change spirit — needs a scope call (in-card vs spun out); (2) is the standard content-triggered-fixture pattern and breaks the one-outcome bound, with two caveats: every new outcome bucket is another fixture branch to maintain, and trigger strings must survive whatever the app does to the answer text before it reaches the request. Scope call (2026-09-05): the read-only prompt contract rides inside this card if chosen, not spun out. PICKED (2026-09-05): wins as a hybrid with card 004 (logic tests as complement), refinements included; spec seed persisted at `spec.md` in the idea folder.
