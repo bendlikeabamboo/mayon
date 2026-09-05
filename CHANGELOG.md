@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through as concrete directives instead of being dropped.
 - **Backup completeness** — `pg_dump` downloads wait for the stream to flush
   before resolving.
+- **Diátaxis docs website** — the docs restructure from a single book into a
+  website with intent-based quadrants (tutorials, how-to guides, reference,
+  explanation) plus dev-notes and history sections, an intent-based landing
+  page, and refreshed navigation.
 
 ## [0.5.0] - 2026-08-27
 
