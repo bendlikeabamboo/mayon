@@ -1,0 +1,5 @@
+Push protection and secret scanning are both switched ON in this repo's settings, but they demonstrably do nothing. Across four test pushes on 2026-09-03 and 2026-09-05, a synthetic AWS access-key pair was never blocked at push time, and secret scanning raised zero alerts even ~10 minutes after landing — well past the "within minutes" expectation for a repo this small. The AWS docs example pair being allowed is expected (allowlisted); the random pair failing both the block and the alert means AWS partner-pattern detection is not engaging on this repo at all.
+
+Full evidence and re-test protocol: `specs/019-security-posture-detection/validation-log.md`, Scenario 4.
+
+I want working pre-landing secret blocking here, or a conscious decision that we live without it. Candidate directions: repeat the test in an org-owned scratch repo to isolate the personal-account factor; take the log to GitHub support; add a compensating CI-side scanner (gitleaks/trufflehog) that catches secrets at PR time instead of push time; or accept the gap and move on. Note spec 019 deliberately ships report-only detection, so today nothing fails on secrets anywhere.

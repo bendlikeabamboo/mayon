@@ -20,6 +20,50 @@ jobs:
           cache: 'pnpm'
       - uses: ./.github/actions/ci
 
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - name: Audit dependencies (report-only)
+        shell: bash
+        run: |
+          ws="$PWD"
+          mkdir -p audit-reports
+          {
+            echo "## Dependency audit (report-only)"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          for dir in . server packages/shared; do
+            name="${dir//\//-}"
+            report="$ws/audit-reports/${name}.json"
+            if (cd "$dir" && pnpm audit --json > "$report" 2>/dev/null); then
+              result="clean — no known vulnerabilities found"
+            elif [ -s "$report" ]; then
+              result=":warning: FINDINGS — known vulnerabilities reported; details in the JSON artifact"
+            else
+              result=":x: AUDIT FAILED — no report produced; this root was NOT assessed"
+            fi
+            {
+              echo "### \`$dir\`"
+              echo ""
+              echo "$result"
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-reports
+          path: audit-reports/*.json
+          retention-days: 30
+          if-no-files-found: ignore
+
   e2e:
     runs-on: ubuntu-latest
     steps:
