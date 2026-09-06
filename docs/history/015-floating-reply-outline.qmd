@@ -21,8 +21,8 @@ expound, or copy.
 run for screens, and hunting through them in the UI is slow. It was fully specced on
 August 29 — before the idea stage ran — mirroring the interaction conventions
 [014](014-settings-navigation.qmd) had just proven (section-top landing, flash,
-scroll-spy band, reduced motion, mobile sheet). Days later the
-[ideas/003-chat-outline](../../ideas/003-chat-outline/decisions.md) deck re-ran the
+scroll-spy band, reduced motion, mobile sheet). Days later the `ideas/003-chat-outline`
+deck re-ran the
 choice with six cards, and the panel — Card 001 — lost to the hover-peek strip on the
 distraction concern, with the verdict calling it the stronger ambient where-am-I answer
 and the natural later upgrade.
