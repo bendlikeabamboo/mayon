@@ -8,7 +8,7 @@
  * retry on parse failure).
  */
 
-import type { MessagePart } from '$lib/chat/kinds';
+import type { EntryKind, MessagePart } from '$lib/chat/kinds';
 
 /** Provider kinds the registry can build adapters for. */
 export type ProviderKind =
@@ -33,6 +33,23 @@ export interface ChatMessage {
 	 * `assembleContext` only for rows that actually have parts.
 	 */
 	parts?: MessagePart[];
+	/**
+	 * Row insertion time (epoch-ms); set by `assembleContext` so the
+	 * `branch_artifact` projection can frame the artifact with its timestamp.
+	 */
+	createdAt?: number;
+	/**
+	 * Durable entry kind carried from the source row; set by `assembleContext`
+	 * so `projectEntries` can key on the real kind (e.g. `branch_artifact`)
+	 * instead of re-deriving it from the wire role.
+	 */
+	kind?: EntryKind;
+	/**
+	 * Raw metadata JSON carried from the source row; set by `assembleContext`
+	 * so the `branch_artifact` projection can frame the artifact from its
+	 * metadata. (Tool rows already expose the same value as `toolResult`.)
+	 */
+	metadata?: string | null;
 }
 
 /** A streamed token. `delta` and `text` are aliases (kept for readability at call sites). */

@@ -102,16 +102,16 @@ A node in the conversation tree.
 
 #### messages
 
-Content of a single chat. Each row carries exactly one durable `kind` from a closed 10-value enumeration (`src/lib/chat/kinds.ts`). The `role` column is retained as the authoring-side field (D3) and is **not** used for presentation or projection after migration — `kind` is the authoritative classification everywhere.
+Content of a single chat. Each row carries exactly one durable `kind` from a closed 11-value enumeration (`src/lib/chat/kinds.ts`). The `role` column is retained as the authoring-side field (D3) and is **not** used for presentation or projection after migration — `kind` is the authoritative classification everywhere.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | TEXT PK | |
 | chat_id | TEXT → chats.id | |
-| kind | TEXT | Entry kind: `user_message`, `assistant_message`, `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`. Added nullable by drizzle DDL; `SET NOT NULL` enforced by the v1→v2 data migration after backfill proves completeness. |
+| kind | TEXT | Entry kind: `user_message`, `assistant_message`, `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`, `branch_artifact` (020). Added nullable by drizzle DDL; `SET NOT NULL` enforced by the v1→v2 data migration after backfill proves completeness. |
 | role | TEXT | system, user, assistant, or tool — authoring side only; not used for presentation or projection |
 | content | TEXT | markdown |
-| ord | INTEGER | ordering within the chat |
+| ord | DOUBLE PRECISION | ordering within the chat; fractional since 020 so anchored `branch_artifact` inserts can take midpoints |
 | model | TEXT | nullable |
 | tokens | INTEGER | nullable |
 | tool_call_id | TEXT | nullable |
@@ -253,24 +253,31 @@ The fork's **excerpt** is injected as a branching seed (a system note) so the ch
 
 The ancestor-gathering walk is implemented in `src/lib/chat/context.ts` (`assembleContext`). Per-row conversion to provider-visible `ModelMessage[]` is delegated to the pure projection module `src/lib/chat/projection.ts` — see [Context projection](#context-projection).
 
+### Branch back-propagation
+
+A branch chat can hand its outcome back to its **immediate parent** as a `branch_artifact` message row (020). The write is **purely additive**: a single row inserted at the branch point via a fractional `ord` midpoint — existing rows are never rewritten, and no rebalancing path exists. The payload is either the **raw delta** (every branch-only turn plus the anchored excerpt, verbatim) or an optional **model-written summary** — one extra model round-trip, inserted only after generation succeeds, regenerable and deletable in place.
+
+The artifact steers future compositions of the **parent only**. Pre-existing sibling branches are cutoff-isolated: their ancestor walk stops at their own fork cutoff, which sits below the artifact's anchored `ord`. Branches created below the anchor afterward include it naturally (the cutoff walk is `ord <= cutoff`, inclusive).
+
 ## Entry kind model
 
 Every timeline event is classified by a single durable `kind` column (`EntryKind` union, `src/lib/chat/kinds.ts`). Lane and all presentation attributes are pure functions of kind — never stored per row.
 
 ### Kinds, lanes, and classification
 
-The 10 kinds fall into three lanes derived by `laneOf()`:
+The 11 kinds fall into three lanes derived by `laneOf()`:
 
 - **user** lane: `user_message` — the user's text.
 - **external** lane: `assistant_message` — assistant text rendered for the user.
-- **internal** lane: `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected` — not authored by the user; collapsed by default.
+- **internal** lane: `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`, `branch_artifact` — not authored by the user; collapsed by default.
 
 Internal kinds subdivide into:
 - **decoration** (audit-only, never provider-visible): `reasoning`, `approval`, `sampling`, `elicitation`, `self_corrected`.
 - **transient** (provider-visible during the turn, persisted as internal): `tool_call`, `tool_result`.
 - **synthetic** (provider-visible pair synthesized at projection time): `choices`.
+- **back-propagated** (provider-visible, persisted internal, written on demand outside any turn): `branch_artifact`.
 
-The `role` column records the authoring side only (`user_message → 'user'`; `assistant_message`, `reasoning`, `tool_call`, `choices`, `self_corrected`, `approval`, `sampling`, `elicitation → 'assistant'`; `tool_result → 'tool'`) and is not used for presentation or projection.
+The `role` column records the authoring side only (`user_message`, `branch_artifact → 'user'`; `assistant_message`, `reasoning`, `tool_call`, `choices`, `self_corrected`, `approval`, `sampling`, `elicitation → 'assistant'`; `tool_result → 'tool'`) and is not used for presentation or projection.
 
 ### Per-kind semantics
 
@@ -281,6 +288,7 @@ The `role` column records the authoring side only (`user_message → 'user'`; `a
 - **`approval` / `sampling` / `elicitation`** — permission and elicitation asks. Persisted when shown (`outcome: null`), resolved in place on the same row via `updateOutcome`. Outcomes: approved/declined/undecided (swept on abort), allowed/denied/undecided, accepted/declined/undecided. Never provider-visible.
 - **`choices`** — single-entry pacing-gate offers (`metadata.nextUnit`, `metadata.options`, `metadata.progress`). No separate tool-call/tool-result rows are written for new turns. The tapped chip is a linked `user_message`. Provider-visible: projection synthesizes a `tool-call` + `tool-result` pair matching the legacy shape.
 - **`self_corrected`** — critic phase record (`metadata.issues`, `metadata.attempts`, `metadata.succeeded`). Written only when a correction ran. Never provider-visible.
+- **`branch_artifact`** — a branch chat's outcome back-propagated into its immediate parent (020): raw delta or model summary, anchored mid-thread at the branch point. See [Branch back-propagation](#branch-back-propagation).
 
 ### Presentation registry
 
@@ -303,6 +311,7 @@ Per-kind visibility rules:
 | `tool_call` | `assistant` `tool-call` part (`input: {}` — see quirks below) |
 | `tool_result` | `tool` `tool-result` part (`output` from `metadata.detail`) |
 | `choices` | synthesized `tool-call` + `tool-result` pair (byte-identical to legacy `present_choices` replay) |
+| `branch_artifact` | `user` text: framing header from metadata + payload content (020) |
 | `reasoning`, `approval`, `sampling`, `elicitation`, `self_corrected` | **excluded** |
 
 Adjacent same-role messages merge their parts (carried over from `toCoreMessages`). Golden test fixtures in `src/lib/chat/golden/` lock this behavior byte-for-byte against pre-rewrite output.
@@ -311,7 +320,7 @@ Adjacent same-role messages merge their parts (carried over from `toCoreMessages
 
 ### Search behavior
 
-Message search (`src/lib/db/repositories/search.ts`) filters to `kind IN ('user_message','assistant_message')` at query level. Internal kinds (reasoning, tool summaries, asks, etc.) are no longer searchable. The `search_vec` generated columns are untouched — the kind filter is applied at query time, not at index time. Hidden user prompts (`metadata.hidden = true`) remain searchable.
+Message search (`src/lib/db/repositories/search.ts`) filters to `kind IN ('user_message','assistant_message','branch_artifact')` at query level. Internal kinds (reasoning, tool summaries, asks, etc.) are not searchable. The `search_vec` generated columns are untouched — the kind filter is applied at query time, not at index time. Hidden user prompts (`metadata.hidden = true`) remain searchable.
 
 ## Provider / AI layer
 

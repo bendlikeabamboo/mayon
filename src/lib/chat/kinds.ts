@@ -10,13 +10,15 @@ export type EntryKind =
 	| 'sampling'
 	| 'elicitation'
 	| 'choices'
-	| 'self_corrected';
+	| 'self_corrected'
+	| 'branch_artifact';
 
 export type Lane = 'user' | 'internal' | 'external';
 
 export function laneOf(kind: EntryKind): Lane {
 	if (kind === 'user_message') return 'user';
 	if (kind === 'assistant_message') return 'external';
+	if (kind === 'branch_artifact') return 'internal';
 	return 'internal';
 }
 
@@ -30,7 +32,8 @@ const ALL_KINDS: EntryKind[] = [
 	'sampling',
 	'elicitation',
 	'choices',
-	'self_corrected'
+	'self_corrected',
+	'branch_artifact'
 ];
 
 export { ALL_KINDS };
@@ -129,6 +132,22 @@ export interface SelfCorrectedMeta extends SharedMetadata {
 	issues?: { type: string; message: string }[];
 	attempts?: number;
 	succeeded?: boolean;
+}
+
+/**
+ * Metadata of a `branch_artifact` row (020): the back-propagated outcome of a
+ * branch chat, anchored into its parent at the branch point. Stored as a JSON
+ * string in `messages.metadata`. `sourceChatId` is informational (not a FK) so
+ * deleting the source branch never cascades into the parent's history.
+ */
+export interface BranchArtifactMetadata {
+	mode: 'raw' | 'summary';
+	sourceChatId: string;
+	sourceChatTitle: string;
+	branchPointMessageId: string | null;
+	anchor: 'recorded' | 'derived';
+	summaryTraceId: string | null;
+	regeneratedAt: string | null;
 }
 
 export function parseMetadata<T = SharedMetadata>(raw: string | null): T | null {

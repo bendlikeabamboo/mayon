@@ -20,7 +20,7 @@ import { repos } from '$lib/db';
 import type { Chat, Message } from '$lib/db/schema';
 import type { ChatMessage } from '$lib/ai/types';
 import { buildBriefSystemNote, parseBrief } from '$lib/chat/brief';
-import { kindOf, type MessagePart } from '$lib/chat/kinds';
+import { kindOf, type EntryKind, type MessagePart } from '$lib/chat/kinds';
 import { projectEntries } from '$lib/chat/projection';
 
 const PROVIDER_EXCLUDED_KINDS = new Set([
@@ -39,8 +39,9 @@ interface AnchoredMessage {
 	toolCallId?: string | null;
 	toolName?: string | null;
 	metadata?: string | null;
-	kind?: string | null;
+	kind?: EntryKind | null;
 	parts?: string | null;
+	createdAt?: number | null;
 }
 
 /**
@@ -84,6 +85,9 @@ export async function assembleContext(targetChatId: string): Promise<ChatMessage
 		if (m.toolName) msg.toolName = m.toolName;
 		const parts = storedParts(m);
 		if (parts) msg.parts = parts;
+		if (m.createdAt != null) msg.createdAt = m.createdAt;
+		if (m.kind != null) msg.kind = m.kind;
+		if (m.metadata != null) msg.metadata = m.metadata;
 		if (m.role === 'tool') {
 			msg.toolResult = m.metadata ?? m.content;
 		}
@@ -116,7 +120,8 @@ function pushAll(out: AnchoredMessage[], msgs: Message[], depth: number): void {
 			toolName: m.toolName,
 			metadata: m.metadata,
 			kind: m.kind,
-			parts: m.parts
+			parts: m.parts,
+			createdAt: m.createdAt
 		});
 	}
 }

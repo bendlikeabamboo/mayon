@@ -4,6 +4,7 @@ import { awaitDb } from '$lib/db/driver/client';
 import { now, uuid } from '$lib/db/ids';
 import {
 	deriveKindFromColumns,
+	type BranchArtifactMetadata,
 	type EntryKind,
 	type MessagePart,
 	type TextPart
@@ -142,6 +143,83 @@ export const messagesRepo = {
 			.update(messages)
 			.set({ metadata: JSON.stringify(meta) })
 			.where(eq(messages.id, id))
+			.returning();
+		return updated ?? null;
+	},
+
+	/**
+	 * Anchored insert (020): place a row at a fractional `ord` between two
+	 * neighbors without touching any existing row.
+	 * `'start'` → minOrd − 1 (0 on an empty chat); `beforeOrd: null` →
+	 * afterOrd + 1; otherwise the midpoint `(afterOrd + beforeOrd) / 2`.
+	 */
+	async insertAnchored(
+		chatId: string,
+		entry: {
+			role: MessageRole;
+			content: string;
+			kind: EntryKind;
+			metadata?: string;
+		},
+		placement: { afterOrd: number; beforeOrd: number | null } | 'start'
+	): Promise<Message> {
+		const db = await awaitDb();
+		let ord: number;
+		if (placement === 'start') {
+			const [first] = await db
+				.select({ ord: messages.ord })
+				.from(messages)
+				.where(eq(messages.chatId, chatId))
+				.orderBy(asc(messages.ord))
+				.limit(1);
+			ord = first ? first.ord - 1 : 0;
+		} else if (placement.beforeOrd != null) {
+			ord = (placement.afterOrd + placement.beforeOrd) / 2;
+		} else {
+			ord = placement.afterOrd + 1;
+		}
+		return insertMessage({
+			id: uuid(),
+			chatId,
+			role: entry.role,
+			content: entry.content,
+			ord,
+			kind: entry.kind,
+			model: null,
+			tokens: null,
+			toolCallId: null,
+			toolName: null,
+			metadata: entry.metadata ?? null,
+			createdAt: now()
+		});
+	},
+
+	/**
+	 * Kind-guarded artifact update (020): only `branch_artifact` rows may be
+	 * rewritten — content plus a metadata JSON patch merged over the existing
+	 * metadata. Returns the updated row, or null when the id is missing or the
+	 * row is not an artifact.
+	 */
+	async updateArtifactContent(
+		id: string,
+		content: string,
+		metadataPatch: Partial<BranchArtifactMetadata>
+	): Promise<Message | null> {
+		const db = await awaitDb();
+		const [existing] = await db.select().from(messages).where(eq(messages.id, id));
+		if (!existing || existing.kind !== 'branch_artifact') return null;
+		let meta: Record<string, unknown> = {};
+		if (existing.metadata) {
+			try {
+				meta = JSON.parse(existing.metadata);
+			} catch {
+				/* corrupt → default empty */
+			}
+		}
+		const [updated] = await db
+			.update(messages)
+			.set({ content, metadata: JSON.stringify({ ...meta, ...metadataPatch }) })
+			.where(and(eq(messages.id, id), eq(messages.kind, 'branch_artifact')))
 			.returning();
 		return updated ?? null;
 	},

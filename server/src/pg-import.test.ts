@@ -61,7 +61,9 @@ const PARTS_JSON = JSON.stringify([
 	}
 ]);
 
-function createSqliteFixture(opts: { withParts?: boolean } = {}): Buffer {
+function createSqliteFixture(
+	opts: { withParts?: boolean; withBranchArtifact?: boolean } = {}
+): Buffer {
 	const db = new Database(':memory:');
 
 	db.exec(`CREATE TABLE chats (
@@ -70,7 +72,9 @@ function createSqliteFixture(opts: { withParts?: boolean } = {}): Buffer {
 	)`);
 	db.exec(`CREATE TABLE messages (
 		id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, role TEXT NOT NULL,
-		content TEXT NOT NULL,${opts.withParts ? ' parts TEXT,' : ''}
+		content TEXT NOT NULL,${opts.withParts ? ' parts TEXT,' : ''}${
+			opts.withBranchArtifact ? ' kind TEXT, metadata TEXT,' : ''
+		}
 		ord INTEGER NOT NULL, created_at BIGINT NOT NULL
 	)`);
 	db.exec(`CREATE TABLE branch_sources (
@@ -126,6 +130,24 @@ function createSqliteFixture(opts: { withParts?: boolean } = {}): Buffer {
 		db.prepare(
 			`INSERT INTO messages (id, chat_id, role, content, parts, ord, created_at) VALUES (?,?,?,?,?,?,?)`
 		).run('m2', chatId, 'user', 'quokka import manual', PARTS_JSON, 1, 1000000);
+	}
+
+	if (opts.withBranchArtifact) {
+		db.prepare(
+			`INSERT INTO messages (id, chat_id, role, content, kind, metadata, ord, created_at) VALUES (?,?,?,?,?,?,?,?)`
+		).run(
+			'ba1',
+			chatId,
+			'user',
+			BRANCH_ARTIFACT_CONTENT,
+			'branch_artifact',
+			BRANCH_META_JSON,
+			0.5,
+			1000000
+		);
+		db.prepare(
+			`INSERT INTO messages (id, chat_id, role, content, ord, created_at) VALUES (?,?,?,?,?,?)`
+		).run('m3', chatId, 'assistant', 'parent turn after the artifact', 1, 1000000);
 	}
 
 	db.prepare(
@@ -188,6 +210,19 @@ const SQLITE_FIXTURE = createSqliteFixture();
 const PARTS_FIXTURE = createSqliteFixture({ withParts: true });
 const NO_MAYON_FIXTURE = createNoMayonSqlite();
 const SAFETY_BYTES = Buffer.from('safety-dump-bytes');
+
+const BRANCH_META: Record<string, unknown> = {
+	mode: 'raw',
+	sourceChatId: 'c-branch',
+	sourceChatTitle: 'Branch Chat',
+	branchPointMessageId: null,
+	anchor: 'derived',
+	summaryTraceId: null,
+	regeneratedAt: null
+};
+const BRANCH_META_JSON = JSON.stringify(BRANCH_META);
+const BRANCH_ARTIFACT_CONTENT = 'uniqueartifacttoken raw delta payload';
+const BRANCH_ARTIFACT_FIXTURE = createSqliteFixture({ withBranchArtifact: true });
 
 async function setupPglitePool() {
 	const pg = new PGlite();
@@ -341,6 +376,49 @@ describe('pg-import', () => {
 				['quokka import manual']
 			);
 			expect(fts.rows[0]?.has_fts).toBe(true);
+		} finally {
+			client.release();
+		}
+	});
+
+	it('restore round-trip: branch_artifact row survives truncate + data-only restore with fractional ord, metadata, and recomputed FTS', async () => {
+		const res = await app.inject({
+			method: 'PUT',
+			url: '/api/import/sqlite',
+			payload: BRANCH_ARTIFACT_FIXTURE,
+			headers: { 'content-type': 'application/octet-stream' }
+		});
+		expect(res.statusCode).toBe(200);
+		const summary = JSON.parse(res.headers['x-import-summary'] as string);
+		expect(summary.chats).toBe(1);
+		expect(summary.messages).toBe(3);
+
+		const client = await pool.connect();
+		try {
+			const row = await client.query(
+				`SELECT id, kind, role, content, parts, tool_call_id, tool_name, ord, metadata,
+						search_vec IS NOT NULL AS has_fts
+				   FROM messages WHERE id = 'ba1'`
+			);
+			expect(row.rows.length).toBe(1);
+			const r = row.rows[0] as Record<string, unknown>;
+			expect(r.kind).toBe('branch_artifact');
+			expect(r.role).toBe('user');
+			expect(r.content).toBe(BRANCH_ARTIFACT_CONTENT);
+			expect(r.parts).toBeNull();
+			expect(r.tool_call_id).toBeNull();
+			expect(r.tool_name).toBeNull();
+			// fractional ord survives the double precision column round-trip
+			expect(Number(r.ord)).toBe(0.5);
+			expect(JSON.parse(r.metadata as string)).toEqual(BRANCH_META);
+
+			// GENERATED ALWAYS search_vec recomputes on re-INSERT after the truncate
+			expect(r.has_fts).toBe(true);
+			const fts = await client.query(
+				`SELECT count(*) AS c FROM messages
+				  WHERE id = 'ba1' AND search_vec @@ websearch_to_tsquery('simple', 'uniqueartifacttoken')`
+			);
+			expect(Number(fts.rows[0]?.c)).toBe(1);
 		} finally {
 			client.release();
 		}

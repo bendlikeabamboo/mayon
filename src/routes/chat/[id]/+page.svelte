@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		ChevronDown,
+		CornerLeftUp,
 		FlaskConical,
 		ListChecks,
 		LoaderCircle,
@@ -16,7 +17,14 @@
 		Target
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		DropdownMenu,
+		DropdownMenuTrigger,
+		DropdownMenuContent,
+		DropdownMenuItem
+	} from '$lib/components/ui/dropdown-menu/index.js';
 	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
+	import { toastState } from '$lib/stores/toasts.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
 	import { quizzesStore } from '$lib/stores/quizzes.svelte';
 	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
@@ -75,6 +83,8 @@
 	let editingInferred = $state(false);
 	let rootChat = $state<Chat | null>(null);
 	let branchSource = $state<BranchSource | null>(null);
+	/** Open state of the back-propagate mode chooser (020 US1). */
+	let propagateOpen = $state(false);
 	let railOpen = $state(false);
 	let railCollapsed = $state(localStorage.getItem('mayon:ui:rail') === '1');
 	let lg = $state(false);
@@ -276,6 +286,42 @@
 		const last = msgs[msgs.length - 1];
 		return last.role === 'user' ? last.id : null;
 	});
+
+	/**
+	 * Back-propagation gates (020 FR-010): the control exists only on branch
+	 * chats with at least one own message — hidden entirely on roots. The
+	 * immediate parent is named from the breadcrumb when that entry really is
+	 * this chat's parent (guards against stale breadcrumb during navigation).
+	 */
+	const canPropagate = $derived(
+		chatStore.chat !== null && chatStore.chat.parentId !== null && chatStore.messages.length > 0
+	);
+	const parentChat = $derived.by(() => {
+		const chat = chatStore.chat;
+		if (!chat || chat.parentId === null) return null;
+		const prev = breadcrumb[breadcrumb.length - 2];
+		return prev && prev.id === chat.parentId ? prev : null;
+	});
+
+	/**
+	 * Run one propagation mode and confirm on success (020 US1). The store
+	 * latches `lastPropagation` only when the artifact actually landed, so the
+	 * toast never lies; errors surface via `propagationStatus`/`propagationError`.
+	 */
+	async function runPropagation(mode: 'raw' | 'summary') {
+		if (chatStore.propagationStatus === 'running') return;
+		await chatStore.propagateToParent(mode);
+		const done = chatStore.lastPropagation;
+		if (done) {
+			toastState.push({
+				title: 'Back-propagated to parent',
+				description: `Landed in "${parentChat?.title ?? 'the parent chat'}" as ${
+					done.mode === 'raw' ? 'a raw delta' : 'a summary'
+				}.`,
+				action: { label: 'Open parent chat', href: `/chat/${done.parentChatId}` }
+			});
+		}
+	}
 
 	async function loadNav(chat: Chat) {
 		const subtree = await repos.chats.listSubtree(chat.rootId);
@@ -702,6 +748,60 @@
 							<Breadcrumb chain={breadcrumb} />
 						</div>
 						<div class="flex shrink-0 items-center gap-1">
+							{#if canPropagate}
+								<DropdownMenu bind:open={propagateOpen}>
+									<DropdownMenuTrigger>
+										<Button
+											variant="ghost"
+											size="sm"
+											class="shrink-0 relative gap-1 px-2.5 tip"
+											data-tip="Back-propagate to parent"
+											aria-label={parentChat
+												? `Back-propagate to parent "${parentChat.title}"`
+												: 'Back-propagate to parent'}
+											disabled={chatStore.propagationStatus === 'running'}
+										>
+											{#if chatStore.propagationStatus === 'running'}
+												<LoaderCircle class="size-3.5 animate-spin" />
+											{:else}
+												<CornerLeftUp class="size-3.5" />
+											{/if}
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent side="bottom" align="end" class="w-72">
+										<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+											Back-propagate to parent{parentChat ? ` — ${parentChat.title}` : ''}
+										</div>
+										<DropdownMenuItem
+											onclick={() => void runPropagation('raw')}
+											disabled={chatStore.propagationStatus === 'running'}
+										>
+											<div class="flex flex-col">
+												<span>Raw delta</span>
+												<span class="text-xs text-muted-foreground">
+													Branch-only turns + anchored excerpt, verbatim
+												</span>
+											</div>
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											onclick={() => void runPropagation('summary')}
+											disabled={chatStore.propagationStatus === 'running'}
+										>
+											<div class="flex flex-col">
+												<span>Summary</span>
+												<span class="text-xs text-muted-foreground">
+													Model-written summary of the branch
+												</span>
+											</div>
+										</DropdownMenuItem>
+										{#if chatStore.propagationStatus === 'error' && chatStore.propagationError}
+											<div class="px-2 py-1.5 text-xs text-red-700 dark:text-red-400" role="alert">
+												{chatStore.propagationError}
+											</div>
+										{/if}
+									</DropdownMenuContent>
+								</DropdownMenu>
+							{/if}
 							<Button
 								variant="ghost"
 								size="sm"
@@ -945,6 +1045,21 @@
 							{/if}
 							<Button variant="outline" size="sm" class="mt-2" onclick={onGenerateQuiz}
 								>Regenerate</Button
+							>
+						</div>
+					{/if}
+
+					{#if chatStore.propagationStatus === 'error' && chatStore.propagationAction === 'propagate'}
+						<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
+							<p class="font-medium text-red-700 dark:text-red-400">Back-propagation failed</p>
+							<p class="mt-0.5 text-red-700/90 dark:text-red-400/90">
+								{chatStore.propagationError}
+							</p>
+							<Button
+								variant="outline"
+								size="sm"
+								class="mt-2"
+								onclick={() => (propagateOpen = true)}>Retry</Button
 							>
 						</div>
 					{/if}

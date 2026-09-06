@@ -347,3 +347,121 @@ describe('turn-scoped tool pairing (dangling tool call prevention)', () => {
 		expect(results).toEqual([{ toolCallId: 'pc_1', toolName: 'present_choices' }]);
 	});
 });
+
+describe('branch_artifact projection (020 US2 / T015)', () => {
+	function artifactRow(overrides: Partial<LegacyRow> = {}): LegacyRow {
+		return {
+			...makeRow({ role: 'user', content: 'the fix, verbatim', kind: 'branch_artifact' }),
+			createdAt: 1757127046972, // 2025-09-06T02:50:46.972Z
+			metadata: JSON.stringify({
+				mode: 'raw',
+				sourceChatId: 'chat-src',
+				sourceChatTitle: 'Fix the adder',
+				branchPointMessageId: 'msg-1',
+				anchor: 'recorded',
+				summaryTraceId: null,
+				regeneratedAt: null
+			}),
+			...overrides
+		};
+	}
+
+	it('maps an artifact row to ONE user message: framing header + blank line + content', () => {
+		resetOrd();
+		const result = projectEntries([artifactRow()] as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: '[Back-propagated from "Fix the adder" · raw · 2025-09-06T02:50:46.972Z]\n\nthe fix, verbatim'
+					}
+				]
+			}
+		] as ModelMessage[]);
+	});
+
+	it('summary-mode metadata renders the mode verbatim in the header', () => {
+		resetOrd();
+		const row = artifactRow({
+			metadata: JSON.stringify({
+				mode: 'summary',
+				sourceChatId: 'chat-src',
+				sourceChatTitle: 'Fix the adder',
+				branchPointMessageId: 'msg-1',
+				anchor: 'derived',
+				summaryTraceId: 'trace-1',
+				regeneratedAt: null
+			})
+		});
+		const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+		expect(result).toHaveLength(1);
+		const text = (result[0].content as Array<{ type: string; text: string }>)[0].text;
+		expect(text.startsWith('[Back-propagated from "Fix the adder" · summary · ')).toBe(true);
+	});
+
+	it('participates in consecutive-user merge (artifact between two user rows)', () => {
+		resetOrd();
+		const rows: LegacyRow[] = [
+			makeRow({ role: 'user', content: 'before the artifact' }),
+			artifactRow(),
+			makeRow({ role: 'user', content: 'after the artifact' })
+		];
+		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'before the artifact' },
+					{
+						type: 'text',
+						text: '[Back-propagated from "Fix the adder" · raw · 2025-09-06T02:50:46.972Z]\n\nthe fix, verbatim'
+					},
+					{ type: 'text', text: 'after the artifact' }
+				]
+			}
+		] as ModelMessage[]);
+	});
+
+	it('missing metadata does not crash: title/mode fall back to unknown, timestamp still renders', () => {
+		resetOrd();
+		const row = artifactRow({ metadata: null });
+		const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: '[Back-propagated from "unknown" · unknown · 2025-09-06T02:50:46.972Z]\n\nthe fix, verbatim'
+					}
+				]
+			}
+		] as ModelMessage[]);
+	});
+
+	it('corrupt or empty-object metadata does not crash and degrades to unknown placeholders', () => {
+		resetOrd();
+		for (const metadata of ['not json{', '{}', '[]', '[1,2]']) {
+			const row = artifactRow({ metadata });
+			const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+			expect(result).toHaveLength(1);
+			expect(result[0].role).toBe('user');
+			const text = (result[0].content as Array<{ type: string; text: string }>)[0].text;
+			expect(text.startsWith('[Back-propagated from "unknown" · unknown · ')).toBe(true);
+			expect(text.endsWith('\n\nthe fix, verbatim')).toBe(true);
+		}
+	});
+
+	it('a row without a usable createdAt renders an unknown timestamp placeholder', () => {
+		resetOrd();
+		const row = artifactRow();
+		delete (row as { createdAt?: number }).createdAt;
+		const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+		const text = (result[0].content as Array<{ type: string; text: string }>)[0].text;
+		expect(text.startsWith('[Back-propagated from "Fix the adder" · raw · unknown]\n\n')).toBe(
+			true
+		);
+	});
+});

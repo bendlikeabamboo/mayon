@@ -124,7 +124,8 @@ describe('laneOf', () => {
 		sampling: 'internal',
 		elicitation: 'internal',
 		choices: 'internal',
-		self_corrected: 'internal'
+		self_corrected: 'internal',
+		branch_artifact: 'internal'
 	};
 
 	for (const kind of ALL_KINDS) {

@@ -25,7 +25,13 @@ import {
 } from '$lib/chat/expound';
 import type { LearningBrief } from '$lib/chat/brief';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
-import type { ComposerAttachment } from '$lib/chat/kinds';
+import {
+	parseMetadata,
+	type ComposerAttachment,
+	type BranchArtifactMetadata
+} from '$lib/chat/kinds';
+import { buildRawDelta, resolveAnchor, branchArtifactMetadata } from '$lib/chat/propagation';
+import { generateBranchArtifactSummary } from '$lib/ai/generate/generate-branch-artifact-summary';
 import { getActiveSdkProvider } from '$lib/ai/client';
 import { resolveRequestSettings } from '$lib/ai/dialects';
 import { mapSdkError } from '$lib/ai/sdk-errors';
@@ -174,6 +180,18 @@ class ChatState {
 	/** First-turn-only: suppress `branch_chat` after a manual branch (UX1a). */
 	manualBranchPending = $state<boolean>(false);
 
+	/**
+	 * Back-propagation control state (020 US1): `running` while the artifact is
+	 * being built/generated, `error` with `propagationError` on failure.
+	 */
+	propagationStatus = $state<'idle' | 'running' | 'error'>('idle');
+	propagationError = $state<string | null>(null);
+	/** Which action the current status describes, so UI error surfaces label it correctly. */
+	propagationAction = $state<'propagate' | 'regenerate'>('propagate');
+	/** Set on success for the confirmation link back to the parent chat. */
+	lastPropagation = $state<{ parentChatId: string; mode: 'raw' | 'summary' } | null>(null);
+	private propagationController: AbortController | null = null;
+
 	get showLiveBubble(): boolean {
 		return this.streaming && this.streamBufferRender.length > 0;
 	}
@@ -251,6 +269,10 @@ class ChatState {
 		this.stop();
 		this.titleController?.abort();
 		this.inferController?.abort();
+		this.propagationController?.abort();
+		this.propagationStatus = 'idle';
+		this.propagationError = null;
+		this.lastPropagation = null;
 		this.inferredBrief = null;
 		this.inferDismissed = false;
 		this.inferring = false;
@@ -700,6 +722,10 @@ class ChatState {
 		this.stop();
 		this.titleController?.abort();
 		this.inferController?.abort();
+		this.propagationController?.abort();
+		this.propagationStatus = 'idle';
+		this.propagationError = null;
+		this.lastPropagation = null;
 		this.inferredBrief = null;
 		this.inferDismissed = false;
 		this.inferring = false;
@@ -1100,6 +1126,138 @@ class ChatState {
 			title: branchTitle(this.chat.title)
 		});
 		return child.id;
+	}
+
+	/**
+	 * Back-propagate this branch's outcome into its parent as one
+	 * `branch_artifact` row (020 US1). Raw mode builds the deterministic delta;
+	 * summary mode generates FIRST and inserts only on success (FR-013). The
+	 * anchored INSERT never rewrites existing rows (FR-005/SC-003). Gated on an
+	 * active branch with at least one own message (FR-010) — misuse throws;
+	 * runtime failures land in `propagationError` / `propagationStatus`.
+	 */
+	async propagateToParent(mode: 'raw' | 'summary'): Promise<void> {
+		const chat = this.chat;
+		const chatId = this.chatId;
+		if (!chat || !chatId || this.propagationStatus === 'running') return;
+		if (chat.parentId === null) {
+			throw new Error('Cannot propagate: the active chat is not a branch.');
+		}
+		if (this.messages.length === 0) {
+			throw new Error('Cannot propagate: this branch has no messages yet.');
+		}
+		const parentId = chat.parentId;
+
+		this.propagationAction = 'propagate';
+		this.propagationStatus = 'running';
+		this.propagationError = null;
+		this.lastPropagation = null;
+		this.propagationController = new AbortController();
+		try {
+			const { placement, anchor } = await resolveAnchor(chat);
+			let content: string;
+			let metadata: BranchArtifactMetadata;
+			if (mode === 'summary') {
+				const { summary, traceId } = await generateBranchArtifactSummary(
+					chatId,
+					this.propagationController.signal
+				);
+				content = summary;
+				metadata = branchArtifactMetadata(chat, anchor, {
+					mode: 'summary',
+					summaryTraceId: traceId
+				});
+			} else {
+				content = await buildRawDelta(chatId);
+				metadata = branchArtifactMetadata(chat, anchor);
+			}
+			await repos.messages.insertAnchored(
+				parentId,
+				{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
+				placement
+			);
+			this.lastPropagation = { parentChatId: parentId, mode };
+			this.propagationStatus = 'idle';
+		} catch (err) {
+			if (isAbortError(err)) {
+				this.propagationStatus = 'idle';
+			} else {
+				this.propagationError = err instanceof Error ? err.message : String(err);
+				this.propagationStatus = 'error';
+			}
+		} finally {
+			this.propagationController = null;
+		}
+	}
+
+	/**
+	 * Regenerate a summary-mode `branch_artifact` in place (020 US3, FR-007):
+	 * re-run summary generation against the source branch, then replace only
+	 * `content` (+ `regeneratedAt`/`summaryTraceId`) — id, ord and anchor are
+	 * unchanged. Refuses with the error state (nothing touched) unless the row
+	 * is an artifact with `mode: 'summary'`; regeneration is summary-only by
+	 * contract. Status/abort semantics mirror `propagateToParent` — the same
+	 * `propagationController`, aborted by `load()`/`clearActiveView()`.
+	 */
+	async regenerateArtifact(id: string): Promise<void> {
+		if (this.propagationStatus === 'running') return;
+		const row = await repos.messages.getById(id);
+		const meta = row ? parseMetadata<BranchArtifactMetadata>(row.metadata) : null;
+		if (!row || row.kind !== 'branch_artifact' || !meta || meta.mode !== 'summary') {
+			this.propagationAction = 'regenerate';
+			this.propagationError = 'Only summary artifacts can be regenerated.';
+			this.propagationStatus = 'error';
+			return;
+		}
+		const sourceChatId = meta.sourceChatId;
+		this.propagationAction = 'regenerate';
+		// The artifact survives branch deletion, but regeneration summarises the
+		// source branch's transcript — without it we would overwrite a good
+		// summary with a vacuous one. Refuse instead (020 US3 edge case).
+		if (!(await repos.chats.getById(sourceChatId))) {
+			this.propagationError =
+				'The source branch no longer exists — this artifact can no longer be regenerated.';
+			this.propagationStatus = 'error';
+			return;
+		}
+		this.propagationStatus = 'running';
+		this.propagationError = null;
+		this.propagationController = new AbortController();
+		try {
+			const { summary, traceId } = await generateBranchArtifactSummary(
+				sourceChatId,
+				this.propagationController.signal
+			);
+			const updated = await repos.messages.updateArtifactContent(id, summary, {
+				regeneratedAt: new Date().toISOString(),
+				summaryTraceId: traceId
+			});
+			if (updated) {
+				this.messages = this.messages.map((m) => (m.id === id ? updated : m));
+			}
+			this.propagationStatus = 'idle';
+		} catch (err) {
+			if (isAbortError(err)) {
+				this.propagationStatus = 'idle';
+			} else {
+				this.propagationError = err instanceof Error ? err.message : String(err);
+				this.propagationStatus = 'error';
+			}
+		} finally {
+			this.propagationController = null;
+		}
+	}
+
+	/**
+	 * Delete one `branch_artifact` row (020 US3, FR-007): the artifact only —
+	 * no other message is touched, and future parent turns are no longer
+	 * steered by it. Clears the propagation status on completion.
+	 */
+	async deleteArtifact(id: string): Promise<void> {
+		await repos.messages.delete(id);
+		this.messages = this.messages.filter((m) => m.id !== id);
+		this.propagationStatus = 'idle';
+		this.propagationError = null;
 	}
 
 	private async createBranchChild(
