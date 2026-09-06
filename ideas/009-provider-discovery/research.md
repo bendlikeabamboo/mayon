@@ -10,7 +10,7 @@
 
 ## vLLM CORS default
 
-- **Claim**: vLLM's OpenAI-compatible server ships CORSMiddleware controlled by `--allowed-origins` / `--allowed-methods` / `--allowed-headers` flags (documented CLI args). Open issue vllm-project/vllm#11827 requests a way to *disable* the middleware (gateway deployments add their own CORS headers), indicating the middleware is permissive/open by default. Exact default value of `--allowed-origins` not verified in the docs snippet — treat "open by default" as high-confidence but unverified detail.
+- **Claim**: vLLM's OpenAI-compatible server ships CORSMiddleware controlled by `--allowed-origins` / `--allowed-methods` / `--allowed-headers` flags (documented CLI args). Open issue vllm-project/vllm#11827 requests a way to _disable_ the middleware (gateway deployments add their own CORS headers), indicating the middleware is permissive/open by default. Exact default value of `--allowed-origins` not verified in the docs snippet — treat "open by default" as high-confidence but unverified detail.
 - **Source**: https://docs.vllm.ai/en/v0.4.0.post1/serving/openai_compatible_server.html ; https://github.com/vllm-project/vllm/issues/11827
 - **Date**: 2026-09-06
 
