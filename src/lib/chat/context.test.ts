@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { modelMessageSchema } from 'ai';
 import { useFileTestDb } from '$lib/db/driver/pg-test';
 import { repos } from '$lib/db';
+import type { Message } from '$lib/db/schema';
 import { assembleContext } from './context';
 import { projectEntries, type ProjectableRow } from './projection';
 import type { LearningBrief } from './brief';
@@ -628,5 +629,111 @@ describe('assembleContext excludes internal kinds from provider context', () => 
 
 		const ctx = await assembleContext(chat.id);
 		expect(ctx.map((m) => m.content)).toEqual(['hello', 'before approval', 'after approval']);
+	});
+});
+
+describe('branch_artifact steering (020 US2 / T016)', () => {
+	const ARTIFACT = 'ARTIFACT-PAYLOAD: the fix was applied on the branch';
+
+	async function seedParentWithExchange() {
+		const parent = await repos.chats.createRoot({ title: 'Parent' });
+		const u0 = await repos.messages.append(parent.id, 'user', 'u0');
+		const a1 = await repos.messages.append(parent.id, 'assistant', 'a1');
+		const u2 = await repos.messages.append(parent.id, 'user', 'u2');
+		const a3 = await repos.messages.append(parent.id, 'assistant', 'a3');
+		return { parent, u0, a1, u2, a3 };
+	}
+
+	async function insertArtifact(
+		parentId: string,
+		after: Message,
+		before: Message | null
+	): Promise<Message> {
+		return repos.messages.insertAnchored(
+			parentId,
+			{
+				role: 'user',
+				content: ARTIFACT,
+				kind: 'branch_artifact',
+				metadata: JSON.stringify({
+					mode: 'raw',
+					sourceChatId: 'chat-src',
+					sourceChatTitle: 'Fix branch',
+					branchPointMessageId: after.id,
+					anchor: 'recorded',
+					summaryTraceId: null,
+					regeneratedAt: null
+				})
+			},
+			{ afterOrd: after.ord, beforeOrd: before ? before.ord : null }
+		);
+	}
+
+	it('emits branch_artifact rows with their stored user role (not in PROVIDER_EXCLUDED_KINDS)', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(parent.id, 'user', 'u0');
+		const a1 = await repos.messages.append(parent.id, 'assistant', 'a1');
+		const artifact = await insertArtifact(parent.id, a1, null);
+
+		expect(artifact.role).toBe('user');
+		const ctx = await assembleContext(parent.id);
+		// Emitted verbatim with its stored role — framing happens at projection.
+		expect(ctx.map((m) => m.content)).toEqual(['u0', 'a1', ARTIFACT]);
+		const artifactMsgs = ctx.filter((m) => m.content === ARTIFACT);
+		expect(artifactMsgs).toHaveLength(1);
+		expect(artifactMsgs[0].role).toBe('user');
+	});
+
+	it('parent composition includes the artifact anchored mid-thread after propagation', async () => {
+		const { parent, a1, u2 } = await seedParentWithExchange();
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a1.id,
+			title: 'Fix branch'
+		});
+		await repos.messages.append(child.id, 'user', 'fix it');
+		await repos.messages.append(child.id, 'assistant', 'fixed');
+
+		const artifact = await insertArtifact(parent.id, a1, u2);
+		// Midpoint placement between the branch point and the next parent row.
+		expect(artifact.ord).toBe((a1.ord + u2.ord) / 2);
+
+		const ctx = await assembleContext(parent.id);
+		expect(ctx.map((m) => m.content)).toEqual(['u0', 'a1', ARTIFACT, 'u2', 'a3']);
+	});
+
+	it("a pre-existing sibling branch's composition excludes the artifact (FR-009)", async () => {
+		const { parent, a1, u2 } = await seedParentWithExchange();
+		// The sibling forks at a1 BEFORE the artifact lands; its cutoff
+		// (ord <= a1.ord) sits below the artifact's midpoint ord.
+		const sibling = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a1.id,
+			title: 'Pre-existing sibling'
+		});
+		await repos.messages.append(sibling.id, 'user', 's0');
+
+		await insertArtifact(parent.id, a1, u2);
+
+		const ctx = await assembleContext(sibling.id);
+		expect(ctx.map((m) => m.content)).toEqual(['u0', 'a1', 's0']);
+		expect(ctx.some((m) => m.content === ARTIFACT)).toBe(false);
+	});
+
+	it('a branch created afterward whose branch point is at/after the artifact includes it', async () => {
+		const { parent, a1, u2 } = await seedParentWithExchange();
+		const artifact = await insertArtifact(parent.id, a1, u2);
+
+		// Fork exactly AT the artifact: the inclusive ord <= cutoff walk (1.5)
+		// picks it up.
+		const late = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: artifact.id,
+			title: 'Late branch'
+		});
+		await repos.messages.append(late.id, 'user', 'l0');
+
+		const ctx = await assembleContext(late.id);
+		expect(ctx.map((m) => m.content)).toEqual(['u0', 'a1', ARTIFACT, 'l0']);
 	});
 });

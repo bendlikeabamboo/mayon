@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
 	bigint,
+	doublePrecision,
 	integer,
 	pgTable,
 	text,
@@ -81,7 +82,8 @@ export const messages = pgTable('messages', {
 			'sampling',
 			'elicitation',
 			'choices',
-			'self_corrected'
+			'self_corrected',
+			'branch_artifact'
 		]
 	}),
 	role: text('role', { enum: ['system', 'user', 'assistant', 'tool'] }).notNull(),
@@ -93,7 +95,8 @@ export const messages = pgTable('messages', {
 	 * and behave exactly as before.
 	 */
 	parts: text('parts'),
-	ord: integer('ord').notNull(),
+	// `double precision` (020): anchored fractional placement for branch artifacts.
+	ord: doublePrecision('ord').notNull(),
 	model: text('model'),
 	tokens: integer('tokens'),
 	toolCallId: text('tool_call_id'),

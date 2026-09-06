@@ -1,6 +1,8 @@
 import type { ModelMessage } from 'ai';
 import {
 	kindOf,
+	parseMetadata,
+	type BranchArtifactMetadata,
 	type EntryKind,
 	type ImagePart,
 	type MessagePart,
@@ -38,6 +40,12 @@ export interface ProjectableRow {
 	toolName?: string | null;
 	metadata?: string | null;
 	kind?: string | null;
+	/**
+	 * Row insertion time (epoch-ms), carried so the `branch_artifact` framing
+	 * header can timestamp the artifact. Optional: `ChatMessage`s only carry it
+	 * when the caller passes it through (assembleContext does).
+	 */
+	createdAt?: number | null;
 	/** Raw `messages.parts` JSON (stored rows) or already-parsed parts (ChatMessage). */
 	parts?: string | MessagePart[] | null;
 }
@@ -94,6 +102,26 @@ function turnResultScopes(rows: readonly ProjectableRow[]): Array<Set<string>> {
 		scopes.push(current);
 	}
 	return scopes;
+}
+
+/**
+ * Framed payload of a `branch_artifact` row (020 US2): a deterministic
+ * header — source branch title, propagation mode, insertion time — followed by
+ * a blank line and the stored content verbatim. Missing or corrupt metadata
+ * degrades to 'unknown' placeholders; the payload always reaches the model.
+ */
+function artifactText(row: ProjectableRow): string {
+	const meta = parseMetadata<Partial<BranchArtifactMetadata>>(row.metadata ?? null);
+	const title =
+		meta && typeof meta.sourceChatTitle === 'string' && meta.sourceChatTitle.length > 0
+			? meta.sourceChatTitle
+			: 'unknown';
+	const mode = meta && (meta.mode === 'raw' || meta.mode === 'summary') ? meta.mode : 'unknown';
+	const createdAt =
+		typeof row.createdAt === 'number' && Number.isFinite(row.createdAt)
+			? new Date(row.createdAt).toISOString()
+			: 'unknown';
+	return `[Back-propagated from "${title}" · ${mode} · ${createdAt}]\n\n${row.content}`;
 }
 
 export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] {
@@ -173,6 +201,19 @@ export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] 
 						output: toolResultOutput(r.metadata ?? r.content)
 					}
 				]
+			} as unknown as ModelMessage);
+			continue;
+		}
+
+		if (k === 'branch_artifact') {
+			// 020 US2: one user-role message — framing header + blank line + the
+			// stored payload. Deliberately NOT in EXCLUDED_KINDS: the artifact must
+			// steer future answers (FR-008), and the generic fall-through would
+			// silently drop it. Emitted like a plain user turn so the consecutive-
+			// user merge below still applies.
+			raw.push({
+				role: 'user' as const,
+				content: [{ type: 'text', text: artifactText(r) }]
 			} as unknown as ModelMessage);
 			continue;
 		}

@@ -19,6 +19,7 @@
 	import ToolActivity from './rows/ToolActivity.svelte';
 	import AskEntry from './rows/AskEntry.svelte';
 	import ChoicesOffer from './rows/ChoicesOffer.svelte';
+	import PropagatedArtifact from './PropagatedArtifact.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { parseMetadata, textOf, type UserMessageMeta, type ChoicesMeta } from '$lib/chat/kinds';
 	import type { LiveAskPayload } from '$lib/chat/entries';
@@ -185,6 +186,12 @@
 							<ReasoningEntry {item} />
 						{:else if item.kind === 'self_corrected'}
 							<SelfCorrected {item} />
+						{:else if item.kind === 'branch_artifact'}
+							<PropagatedArtifact
+								entry={item.entry}
+								onRegenerate={(id) => chatStore.regenerateArtifact(id)}
+								onDelete={(id) => chatStore.deleteArtifact(id)}
+							/>
 						{:else if item.kind === 'approval' || item.kind === 'sampling' || item.kind === 'elicitation'}
 							<AskEntry {item} />
 						{:else if item.kind === 'choices'}

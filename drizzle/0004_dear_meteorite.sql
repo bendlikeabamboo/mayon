@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ALTER COLUMN "ord" SET DATA TYPE double precision;

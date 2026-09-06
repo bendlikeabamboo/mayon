@@ -68,11 +68,26 @@ Every server route sits behind a single `onRequest` hook (`server/src/auth/gate.
 
 The ancestor-gathering walk in `assembleContext` (`src/lib/chat/context.ts`) is unchanged; it collects rows and delegates per-row conversion to `projectEntries`. The critic's in-memory correction context (`src/lib/agent/loop.ts`) calls the same function.
 
-Rules: `user_message` → `user` text; `assistant_message` → `assistant` text; `tool_call` → `assistant` `tool-call` part; `tool_result` → `tool` `tool-result` part; `choices` → synthesized `tool-call` + `tool-result` pair; `reasoning`/`approval`/`sampling`/`elicitation`/`self_corrected` → excluded. Adjacent same-role messages merge their parts.
+Rules: `user_message` → `user` text; `assistant_message` → `assistant` text; `tool_call` → `assistant` `tool-call` part; `tool_result` → `tool` `tool-result` part; `choices` → synthesized `tool-call` + `tool-result` pair; `branch_artifact` → framed `user` text; `reasoning`/`approval`/`sampling`/`elicitation`/`self_corrected` → excluded. Adjacent same-role messages merge their parts.
 
 **Do not** read `role` or `toolCallId`/`toolName` for intent anywhere outside this module. Do not add a second projection path.
 
 **Quirk captured in golden fixtures**: `tool_call` projects with `input: {}` (empty), not `metadata.args`. The current gather step never populates `toolArgs`, so providers receive empty input on replay. This is intentional — golden equivalence requires reproducing it exactly (`src/lib/chat/golden/`). Flag, don't fix.
+
+## The `branch_artifact` kind is created anchored and additive
+
+`branch_artifact` (020 branch back-propagation) is the entry kind that lands a branch chat's outcome into its **immediate parent** as a real message row. The row is `role: 'user'` with plain-text `content` (the raw-delta transcript or the summary text) and a JSON `BranchArtifactMetadata` payload in `metadata` (`mode`, `sourceChatId`, `sourceChatTitle`, `branchPointMessageId`, `anchor`, `summaryTraceId`, `regeneratedAt`).
+
+It is created **only** through two repository functions (`src/lib/db/repositories/messages.ts`):
+
+- `insertAnchored(chatId, entry, placement)` — the anchored midpoint insert: `ord = (afterOrd + beforeOrd) / 2`, `afterOrd + 1` when the anchor is the last row, `minOrd − 1` at start-of-thread. `messages.ord` is `double precision` so midpoint inserts never exhaust the gap between neighbors — **no rebalancing path exists or may be added**, and propagation never rewrites an existing row.
+- `updateArtifactContent(id, content, metadataPatch)` — the only in-place write, guarded to `kind = 'branch_artifact'` rows (summary regenerate).
+
+The kind rides the closed-kind contract end to end:
+
+- **Projection**: an explicit mapping branch in `projection.ts` turns the row into a single `user` message — deterministic framing header (`[Back-propagated from "<sourceChatTitle>" · raw|summary · <createdAt>]`) + blank line + `content`. The kind is deliberately **not** in `PROVIDER_EXCLUDED_KINDS` or projection's `EXCLUDED_KINDS`; do not add it to either set — the artifact must steer future compositions of the parent.
+- **Search**: the raw-SQL kind filter in `src/lib/db/repositories/search.ts` includes `'branch_artifact'` next to `user_message`/`assistant_message`; `search_vec` stays a never-written generated column.
+- **Rendering**: the durable-row switch in `MessageList.svelte` dispatches the kind to `PropagatedArtifact.svelte` (collapsible entry; `laneOf` → internal lane).
 
 ## Request settings resolve through one pure seam
 

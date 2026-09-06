@@ -6,10 +6,11 @@ import { MissingKeyError, ProviderHttpError } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
+import { projectEntries } from '$lib/chat/projection';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '$lib/chat/expound';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import type { LearningBrief } from '$lib/chat/brief';
-import type { ComposerAttachment, ImagePart } from '$lib/chat/kinds';
+import type { ComposerAttachment, ImagePart, BranchArtifactMetadata } from '$lib/chat/kinds';
 import { attachmentsOf } from '$lib/chat/kinds';
 
 if (typeof requestAnimationFrame === 'undefined') {
@@ -1839,5 +1840,332 @@ describe('chatStore image-unsupported error wiring (T021 — specs/018 User Stor
 			hint: undefined
 		});
 		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+});
+
+describe('chatStore.propagateToParent (020 US1)', () => {
+	beforeEach(() => {
+		chatStore.propagationStatus = 'idle';
+		chatStore.propagationError = null;
+		chatStore.lastPropagation = null;
+	});
+
+	/** Raw SQL escape hatch for timestamp seeding (setup() is idempotent). */
+	async function handleExec(sql: string): Promise<void> {
+		const handle = await testDb.setup();
+		await handle.driver.exec(sql);
+	}
+
+	/** Parent with ords 0/1 and a recorded child branch off the first row, with two own turns. */
+	async function seedBranch() {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		const b = await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		await repos.messages.append(child.id, 'user', 'branch question');
+		await repos.messages.append(child.id, 'assistant', 'branch answer');
+		return { parent, a, b, child };
+	}
+
+	it('raw propagation inserts exactly one branch_artifact row at the midpoint with correct metadata', async () => {
+		const { parent, a, b, child } = await seedBranch();
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const rows = await repos.messages.listByChat(parent.id);
+		const artifacts = rows.filter((m) => m.kind === 'branch_artifact');
+		expect(artifacts).toHaveLength(1);
+		const art = artifacts[0]!;
+		expect(rows.map((m) => m.id)).toEqual([a.id, art.id, b.id]);
+		expect(art.ord).toBe((a.ord + b.ord) / 2);
+		expect(art.role).toBe('user');
+		expect(art.content).toBe(
+			[
+				'[excerpt]',
+				'hello',
+				'[/excerpt]',
+				'',
+				'[user] branch question',
+				'[assistant] branch answer'
+			].join('\n')
+		);
+		const meta = JSON.parse(art.metadata!) as BranchArtifactMetadata;
+		expect(meta).toEqual({
+			mode: 'raw',
+			sourceChatId: child.id,
+			sourceChatTitle: 'Branch of Root',
+			branchPointMessageId: a.id,
+			anchor: 'recorded',
+			summaryTraceId: null,
+			regeneratedAt: null
+		});
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.propagationError).toBeNull();
+	});
+
+	it('summary success generates first, persists the summary, and records the trace id', async () => {
+		const { parent, a, b, child } = await seedBranch();
+		mockDefaultProvider();
+		mockedGenerateText.mockResolvedValue({ text: 'Branch summary text' } as never);
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('summary');
+
+		const rows = await repos.messages.listByChat(parent.id);
+		const artifacts = rows.filter((m) => m.kind === 'branch_artifact');
+		expect(artifacts).toHaveLength(1);
+		const art = artifacts[0]!;
+		expect(art.content).toBe('Branch summary text');
+		expect(art.ord).toBe((a.ord + b.ord) / 2);
+		const meta = JSON.parse(art.metadata!) as BranchArtifactMetadata;
+		expect(meta.mode).toBe('summary');
+		expect(meta.summaryTraceId).not.toBeNull();
+		const trace = await repos.agentTraces.getById(meta.summaryTraceId!);
+		expect(trace?.kind).toBe('branch_artifact_summary');
+		expect(trace?.chatId).toBe(child.id);
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'summary' });
+		// b is the last parent row in ord, but the artifact anchors at a (midpoint).
+		expect(rows.map((m) => m.id)).toEqual([a.id, art.id, b.id]);
+	});
+
+	it('summary generation failure inserts NOTHING and sets the error state (FR-013)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		mockDefaultProvider();
+		mockedGenerateText.mockRejectedValue(new Error('provider down'));
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('summary');
+
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => [m.id, m.ord, m.content, m.kind])).toEqual(
+			before.map((m) => [m.id, m.ord, m.content, m.kind])
+		);
+		expect(chatStore.propagationStatus).toBe('error');
+		expect(chatStore.propagationError).toContain('provider down');
+		expect(chatStore.lastPropagation).toBeNull();
+	});
+
+	it('propagation rewrites nothing: every pre-existing parent and branch row keeps identical ord/content (FR-005, FR-011, SC-003)', async () => {
+		const { parent, child } = await seedBranch();
+		const parentBefore = await repos.messages.listByChat(parent.id);
+		const branchBefore = await repos.messages.listByChat(child.id);
+
+		mockDefaultProvider();
+		mockedGenerateText.mockResolvedValue({ text: 'Second artifact summary' } as never);
+		await chatStore.load(child.id);
+		await chatStore.propagateToParent('raw');
+		await chatStore.propagateToParent('summary');
+		// (two propagations landed two artifacts; neither rewrote anything)
+
+		const parentAfter = await repos.messages.listByChat(parent.id);
+		expect(parentAfter.filter((m) => m.kind === 'branch_artifact')).toHaveLength(2);
+		for (const before of parentBefore) {
+			const after = parentAfter.find((m) => m.id === before.id);
+			expect(after).toEqual(before);
+		}
+		expect(await repos.messages.listByChat(child.id)).toEqual(branchBefore);
+	});
+
+	it('raw propagation on a derived branch (null branch point) anchors by createdAt', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		const b = await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({ parentId: parent.id, title: 'Composer branch' });
+		await repos.messages.append(child.id, 'user', 'only turn');
+		// Force branch.createdAt between a and b.
+		await handleExec(`UPDATE chats SET created_at = ${a.createdAt + 5} WHERE id = '${child.id}'`);
+		await handleExec(`UPDATE messages SET created_at = ${a.createdAt} WHERE id = '${a.id}'`);
+		await handleExec(`UPDATE messages SET created_at = ${a.createdAt + 10} WHERE id = '${b.id}'`);
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const rows = await repos.messages.listByChat(parent.id);
+		const art = rows.find((m) => m.kind === 'branch_artifact')!;
+		expect(art.ord).toBe((a.ord + b.ord) / 2);
+		const meta = JSON.parse(art.metadata!) as BranchArtifactMetadata;
+		expect(meta.anchor).toBe('derived');
+		expect(meta.branchPointMessageId).toBeNull();
+		// No branch_source and no anchor row → no excerpt section.
+		expect(art.content).not.toContain('[excerpt]');
+		expect(art.content).toBe('[user] only turn');
+	});
+
+	it('refuses to propagate from a root chat and inserts nothing', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(root.id, 'user', 'hi');
+		await chatStore.load(root.id);
+
+		await expect(chatStore.propagateToParent('raw')).rejects.toThrow('not a branch');
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(
+			(await repos.messages.listByChat(root.id)).filter((m) => m.kind === 'branch_artifact')
+		).toHaveLength(0);
+	});
+
+	it('refuses to propagate a branch with zero own messages', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await repos.chats.createChild({ parentId: parent.id, title: 'Empty branch' });
+		await chatStore.load(child.id);
+
+		await expect(chatStore.propagateToParent('raw')).rejects.toThrow('no messages yet');
+		expect(
+			(await repos.messages.listByChat(parent.id)).filter((m) => m.kind === 'branch_artifact')
+		).toHaveLength(0);
+	});
+});
+
+describe('chatStore artifact management (020 US3)', () => {
+	beforeEach(() => {
+		chatStore.propagationStatus = 'idle';
+		chatStore.propagationError = null;
+		chatStore.lastPropagation = null;
+	});
+
+	/**
+	 * Parent with ords 0/1, a recorded child branch with two own turns, and one
+	 * propagated `branch_artifact` anchored in the parent. Ends with the parent
+	 * loaded — artifact management acts on the parent's view.
+	 */
+	async function seedArtifact(mode: 'summary' | 'raw') {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		const b = await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		await repos.messages.append(child.id, 'user', 'branch question');
+		await repos.messages.append(child.id, 'assistant', 'branch answer');
+		await chatStore.load(child.id);
+		if (mode === 'summary') {
+			mockDefaultProvider();
+			mockedGenerateText.mockResolvedValueOnce({ text: 'First summary' } as never);
+			await chatStore.propagateToParent('summary');
+		} else {
+			await chatStore.propagateToParent('raw');
+		}
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		await chatStore.load(parent.id);
+		return { parent, a, b, child, art };
+	}
+
+	it('regenerate replaces summary content in place — same id and ord — and stamps regeneratedAt', async () => {
+		const { parent, art } = await seedArtifact('summary');
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const rows = await repos.messages.listByChat(parent.id);
+		expect(rows.filter((m) => m.kind === 'branch_artifact')).toHaveLength(1);
+		const updated = rows.find((m) => m.id === art.id)!;
+		expect(updated.ord).toBe(art.ord);
+		expect(updated.content).toBe('Regenerated summary');
+		const meta = JSON.parse(updated.metadata!) as BranchArtifactMetadata;
+		expect(meta.mode).toBe('summary');
+		expect(meta.summaryTraceId).not.toBeNull();
+		expect(meta.regeneratedAt).not.toBeNull();
+		expect(Number.isNaN(Date.parse(meta.regeneratedAt!))).toBe(false);
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.propagationError).toBeNull();
+		// Store replaced the row at its original position (same id, same ord).
+		const storeIdx = chatStore.messages.findIndex((m) => m.id === art.id);
+		expect(storeIdx).toBe(rows.findIndex((m) => m.id === art.id));
+		expect(chatStore.messages[storeIdx]!.content).toBe('Regenerated summary');
+	});
+
+	it('regenerate refuses a raw-mode artifact — nothing changes', async () => {
+		const { art } = await seedArtifact('raw');
+		const before = await repos.messages.getById(art.id);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		expect(await repos.messages.getById(art.id)).toEqual(before);
+		expect(mockedGenerateText).not.toHaveBeenCalled();
+		expect(chatStore.propagationStatus).toBe('error');
+		expect(chatStore.propagationError).toContain('summary');
+	});
+
+	it('delete removes only the artifact row; parent composition no longer contains it', async () => {
+		const { parent, a, b, art } = await seedArtifact('summary');
+		const ctxBefore = await assembleContext(parent.id);
+		expect(ctxBefore.some((m) => m.content.includes('First summary'))).toBe(true);
+		const rowsBefore = await repos.messages.listByChat(parent.id);
+		const projectedBefore = JSON.stringify(projectEntries(rowsBefore));
+		expect(projectedBefore).toContain('Back-propagated from');
+		expect(projectedBefore).toContain('First summary');
+
+		await chatStore.deleteArtifact(art.id);
+
+		const rows = await repos.messages.listByChat(parent.id);
+		expect(rows.map((m) => m.id)).toEqual([a.id, b.id]);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([a.id, b.id]);
+		expect(chatStore.propagationStatus).toBe('idle');
+		for (const row of rowsBefore) {
+			if (row.id === art.id) continue;
+			expect(rows.find((m) => m.id === row.id)).toEqual(row);
+		}
+		const ctx = await assembleContext(parent.id);
+		expect(ctx.some((m) => m.content.includes('First summary'))).toBe(false);
+		const projected = JSON.stringify(projectEntries(rows));
+		expect(projected).not.toContain('First summary');
+		expect(projected).not.toContain('Back-propagated from');
+	});
+
+	it('regenerate failure leaves content and regeneratedAt untouched and surfaces the error state', async () => {
+		const { art } = await seedArtifact('summary');
+		const before = await repos.messages.getById(art.id);
+		mockedGenerateText.mockRejectedValueOnce(new Error('provider down'));
+
+		await chatStore.regenerateArtifact(art.id);
+
+		expect(await repos.messages.getById(art.id)).toEqual(before);
+		expect(chatStore.messages.find((m) => m.id === art.id)?.content).toBe(before!.content);
+		expect(chatStore.propagationStatus).toBe('error');
+		expect(chatStore.propagationError).toContain('provider down');
+	});
+
+	it('regenerate refuses when the source branch no longer exists — content untouched, nothing generated', async () => {
+		const { parent, child, art } = await seedArtifact('summary');
+		const before = await repos.messages.getById(art.id);
+		const generateCallsAtSeed = mockedGenerateText.mock.calls.length;
+		await repos.chats.deleteBranch(child.id);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		// The artifact itself survives branch deletion (spec edge case), but a
+		// regeneration attempt must not overwrite it with a vacuous summary.
+		expect(await repos.messages.getById(art.id)).toEqual(before);
+		expect(mockedGenerateText.mock.calls.length).toBe(generateCallsAtSeed);
+		expect(chatStore.propagationStatus).toBe('error');
+		expect(chatStore.propagationError).toContain('no longer exists');
+		expect(
+			(await repos.messages.listByChat(parent.id)).some((m) => m.kind === 'branch_artifact')
+		).toBe(true);
+	});
+
+	it('delete is atomic — exactly one row gone, every other row identical', async () => {
+		const { parent, art } = await seedArtifact('summary');
+		const before = await repos.messages.listByChat(parent.id);
+
+		await chatStore.deleteArtifact(art.id);
+
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after).toHaveLength(before.length - 1);
+		expect(after.some((m) => m.id === art.id)).toBe(false);
+		for (const row of before) {
+			if (row.id === art.id) continue;
+			expect(after.find((m) => m.id === row.id)).toEqual(row);
+		}
 	});
 });
