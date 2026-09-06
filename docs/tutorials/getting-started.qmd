@@ -32,14 +32,20 @@ the Dockerized server.
 
 ## First run
 
-When you open Mayon for the first time the server boots, connects to Postgres, and runs migrations automatically. Look for two signals in the header:
+When you open Mayon for the first time the server boots, connects to Postgres, and runs migrations automatically. Look for the status pill in the header:
 
-1. **DB status badge** — shows "DB ready (pg)". In development builds a self-check runs on boot that writes, reads, and deletes a test row to confirm the database is functional.
+- **DB status pill** — reads "DB ready" once the database is up. The pill's status area also shows a separate "Runtime: …" line telling you where the database is running, along with the result of the boot self-check. In development builds that self-check writes, reads, and deletes a test row to confirm the database is functional.
 
-2. **Theme toggle** — click the sun/moon icon in the header to switch between light and dark mode. Reload the tab. The theme persists, proving that storage is working correctly.
+You can also confirm storage is working by switching the theme with the sun/moon icon in the header and reloading the tab — the theme persists.
 
-If the server is unreachable, a full-screen error is shown with a `docker compose up` hint and a Retry button.
+If the server is unreachable, Mayon shows a full-screen message: "Cannot reach the Mayon server." The screen includes a `docker compose up` hint and a Retry button. Start the stack with `docker compose up`, then click Retry (or simply wait — Mayon keeps checking for the server and recovers on its own).
+
+## The home dashboard
+
+After boot you land on the home screen, not directly inside a chat. The dashboard greets you and keeps your ongoing work one click away: a **Continue learning** card picks up your most recently touched conversation, and the page also lists your **Recent chats**, **In-progress labs**, and **Recent quizzes** as they accumulate. Below the greeting, a starter prompt ("Explore a new topic") is available: clicking it starts a fresh chat and sends an opening message that asks what you are curious about.
+
+One more stop worth making before your first conversation: open **Settings** and find the **Learner profile** section. There you set your default knowledge level and preferred teaching mode, and Mayon pre-fills that context into each new chat's learning brief, so replies start at the right level.
 
 ## Start your first conversation
 
-Open the app, start a new topic, and send a message — the assistant replies right in the chat, and your topic is saved automatically. When you're ready to go deeper, the [chat and branching tutorial](chat-and-branching.qmd) shows how to branch a conversation and explore alternative replies.
+The fastest way in is the starter prompt on the home dashboard: click **Explore a new topic** and Mayon opens a new chat and sends the opening message for you. You can also start from scratch — open the chat list, click **New chat**, and either fill in a short learning brief (what you want to learn and at what level) or skip it and just start chatting. Type a message in the composer and the assistant replies right in the chat, with your topic saved automatically. When you're ready to go deeper, the [chat and branching tutorial](chat-and-branching.qmd) shows how to branch a conversation and explore alternative replies.

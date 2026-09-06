@@ -95,6 +95,7 @@ website:
               - history/018-image-chat-parts.qmd
               - history/019-diataxis-docs-website.qmd
               - history/020-branch-backprop.qmd
+              - history/021-sync-docs-implementation.qmd
   page-footer:
     center: |
       [GitHub](https://github.com/bendlikeabamboo/mayon) &middot; [Releases](https://github.com/bendlikeabamboo/mayon/releases)

@@ -56,7 +56,13 @@ docker compose up   # web on :8080, server + Postgres in containers
 
 ## Testing
 
-Tests use a pglite (Postgres-compatible) test driver — no Docker or browser needed. Run tests with:
+Tests use a pglite (Postgres-compatible) test driver — no Docker or browser needed. On a fresh checkout, build the shared package once first (its compiled output is required by tests and is not produced by `pnpm install`):
+
+```bash
+pnpm --filter @mayon/shared build
+```
+
+Run tests with:
 
 ```bash
 pnpm test

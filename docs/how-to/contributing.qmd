@@ -45,8 +45,8 @@ This runs `svelte-check` across the entire codebase.
 
 ## Branch and commit conventions
 
-- Branch names: `feature/short-description`, `fix/short-description`, `chore/short-description`.
-- Commit messages: imperative mood, short subject line. Examples: `add provider template for Ollama`, `fix branch context assembly for nested trees`.
+- Branch names: `feat/short-description`, `fix/short-description`, `chore/short-description`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): a type prefix (`feat:`, `fix:`, `docs:`, `chore:`, and so on) followed by a short, imperative subject line. Examples: `feat: add provider template for Ollama`, `fix: correct branch context assembly for nested trees`.
 - Keep commits small and atomic. Each commit should represent one logical change.
 
 ## Pull request flow

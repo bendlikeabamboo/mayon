@@ -1,0 +1,77 @@
+---
+title: "021 — Sync docs with the implementation"
+---
+
+> **Status:** standing
+
+**Goal.** Bring the published documentation back in sync with the product it describes,
+by treating factual accuracy as a contract rather than an aspiration: every checkable
+claim a page makes is a promise between the page and the product, and the promise is
+verified by performing the documented steps against a running stack and by citing code
+for every fact — not by re-reading the prose. The Diátaxis restructure (019) had given
+the docs a sound shape, but the audit behind this feature found five recurring drift
+themes underneath it: the provider how-to still described a seven-template picker when
+the registry ships eighteen; the labs guide still told a pre-Postgres story in which
+labs lived in a local SQLite database and "no server was involved"; interface labels had
+renamed themselves in the UI without the docs following ("Branch from here", "Generate
+Lab", a "DB ready (pg)" badge); the two contributor documents contradicted each other on
+branch naming and commit convention; and the architecture explanation had fallen behind
+the schema, the route map, and the provider layer.
+
+**Why.** The owner's priority ranking settled both the order and the voice of the work:
+non-developer readers come first, and within that, the path of least resistance wins.
+Beginner tutorials and everyday how-to guides outranked contributor-facing material, and
+the docs landing page had to lead with the one-line installer rather than the
+development stack — a reader who wants to try Mayon should never wade past pnpm
+commands to get started. It also meant complete, plain professional prose throughout:
+these pages are written for people using the product, not for people who already know
+it, so every fix was an ordinary rewrite rather than a patch of clipped fragments.
+
+**Outcome & reversals.** Landed 2026-09-06, docs-only by construction — no product code
+changed. The walkthroughs corrected all five themes: the provider guide now documents
+the eighteen-template registry (including GitHub Copilot's server-side sign-in and the
+Ollama base URL's `/api` suffix) and denies the "default template" the old page
+invented; the labs guide now states plainly that labs persist in the server's Postgres
+database, resolving its contradiction with the data-and-privacy guide; the branching
+tutorial describes the flat Parents/Branches/Siblings rail, the dedicated /tree page,
+and the exact "Branch from this" / "Branch from this text" labels; both contributor
+documents now state the convention the repository's own history actually follows
+(Conventional Commits, `feat/…`-style prefixes — measured, not assumed, from
+`git log` and every local and remote branch); and the architecture page gained the new
+routes, the new schema columns and tables, the five provider kinds behind the eighteen
+templates, and the product capabilities it had never mentioned. Verification ran at two
+levels: every page's steps were performed against a running dev stack, and the claims
+were pinned to code (`registry.ts`, `ProviderConfig.svelte`, `ChatRail.svelte`,
+`schema.ts`, and the rest) so the next drift has a breadcrumb to follow. The final
+consistency pass against the accuracy contract found one residual ambiguity — the
+architecture page still said cross-links "render as distinct reference edges", the very
+phrasing the walkthrough had struck from the tutorial — and tightened it to name the
+Cross-links panel as the only render site. `quarto render docs` stayed at zero
+warnings, and the repository gates (`pnpm check`, `pnpm lint`, `pnpm test`) passed
+unchanged. No reversals; the ledger closed with every discrepancy terminal.
+
+**A defect, not a doc fix.** The audit surfaced one product defect, which the docs were
+*not* edited to paper over: the server's login rate limiter does not follow the
+forwarded-client header the way its own test asserts. With `trustProxy: 1`
+(`server/src/server.ts:123-125`), a login from a different `x-forwarded-for` address on
+the same socket is expected to be rejected with a 401, but receives a 429 — the
+limiter's key (`server/src/auth/index.ts:314`) reads `request.ip`, which does not track
+the forwarded header in that position. The failure is deterministic and pre-existing
+(285 of 286 server tests pass around it). It is recorded here as the pending fix for a
+future feature, per the rule that a product defect is never resolved by bending the
+documentation to match broken behavior.
+
+**Learnings.**
+
+- Docs drift is structural, not careless: every theme traced to a feature that shipped
+  without its docs in the same change. The fix that lasts is making "update the page in
+  the same change" the recorded norm — the decision history already says so; the
+  accuracy contract gives it teeth.
+- "Perform the steps" and "cite the code" catch different classes of error. Walking the
+  UI found wrong labels and missing flows; pinning claims to `file:line` found wrong
+  URLs, wrong counts, and the defect above. Docs verification needs both.
+- A discrepancy ledger with terminal states (`doc-fixed`, `defect-recorded`,
+  `wontfix` + justification) keeps an audit from ending in a shrug: every known
+  disagreement ends in exactly one of three named places, none of which is "open".
+- The primary-source rule (when two pages overlap, one wins and the others point at it)
+  is what turns a docs sync from a whack-a-mole into a consistent corpus.

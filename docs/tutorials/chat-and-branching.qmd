@@ -11,29 +11,41 @@ At the core of Mayon is the branchable chat graph. Every conversation is a node 
 
 Open the chat view and type a prompt in the composer at the bottom of the screen. The AI streams a response in real time. Responses render as markdown with syntax highlighting for code blocks.
 
-Each chat is assigned a provider and model at creation time. You can change the active provider and model from the chat view before sending your first message.
+Mayon uses one active provider and model at a time for all chats. You choose it once in Settings under **Providers**: add a provider there, then click **Set active** on the one you want. Every chat — new or existing — sends its messages through that active provider and model; there is no per-chat switcher inside the chat view.
+
+## The composer
+
+The composer has a few extras worth knowing:
+
+- **Images** — attach a picture with the paperclip button, or simply paste one from the clipboard. Attached images appear as thumbnails above the message, and you can include up to eight per message. The paperclip appears only when the active provider and model support vision; pasting an image works regardless, and the image is sent with your next message.
+- **Thinking** — the brain-shaped toggle next to the composer controls how much reasoning effort the model spends. It offers **Off**, **On** (the default), and **Deep** (more reasoning tokens; the menu warns you if the current model does not support it). Your choice is remembered across sessions.
+
+Long replies also get a section strip: a thin hover bar alongside the response that previews each section as you move over it and jumps straight to the one you click. It can be turned off in Settings → Chat under "Section strip in long replies".
 
 ## Highlighting and branching
 
-When the AI finishes a response, click and drag to select a span of text within any assistant message. A floating action appears over the selection with a "Branch from here" option.
+When the AI finishes a response, click and drag to select a span of text within any assistant message. Two actions are available:
 
-Clicking it creates a new child chat that:
+- **Branch from this** — a small floating button that appears directly over your selection.
+- **Branch from this text** — the same action from the menu that opens when you right-click a selection.
+
+Either one creates a new child chat that:
 
 - Inherits the full conversation history up to the fork point (every message from the parent and all its ancestors, in order).
 - Injects the highlighted excerpt as a branching seed so the child's first turn is anchored to that specific text.
-- Appears as a child node in the sidebar tree.
+- Appears under **Branches** in the chat's side rail.
 
 The parent's context is **referenced**, not copied. The child reads ancestor messages up to the branch point each time it assembles context for the LLM. This means storage is lightweight — a branch does not duplicate its parent's messages.
 
-## Tree navigation
+## Getting around
 
-The sidebar shows the conversation tree. Each root chat is a top-level node. Branches appear as indented children. Click any node to jump to that chat.
+The rail beside the chat shows where you are in the conversation graph as three flat sections:
 
-The tree supports:
+- **Parents** — the chain of ancestors from the current chat back to its root, with the current chat's title at the end.
+- **Branches** — this chat's children, as clickable chips.
+- **Siblings** — other children of the same parent, so you can hop between alternative takes on the same fork.
 
-- **Expand/collapse** — click the chevron to show or hide children.
-- **Depth display** — the tree renders the depth of each node for visual context.
-- **Active indicator** — the currently viewed chat is highlighted.
+For the full picture, open the dedicated **/tree** page: it draws your conversations as a visual tree you can explore node by node.
 
 ## Breadcrumbs
 
@@ -41,9 +53,9 @@ Above the chat view, a breadcrumb trail shows the path from the current chat bac
 
 ## Cross-links
 
-You can link any two chats together with a cross-link, even if they belong to different trees. Cross-links are references between otherwise separate conversations, annotated with an optional note explaining the connection.
+You can link any two chats together with a cross-link, even if they belong to different trees. Cross-links are references between otherwise separate conversations. In the chat's side rail, a **Cross-links** panel lists the chats linked to the current one; click **Link chat** there and pick another root chat to create the connection. Cross-links are bidirectional — they show up from both ends — and you can give one an optional note explaining the connection, which then serves as the link's label.
 
-Cross-linked chats appear as distinct reference edges in the sidebar (not as parent-child relationships). This lets you build a web of related conversations without flattening them into a single tree.
+Cross-links never change parent-child relationships; they are a lightweight way to build a web of related conversations without flattening them into a single tree.
 
 ## Context assembly
 
