@@ -13,7 +13,7 @@ today*, read [architecture](../explanation/architecture.qmd) and [seams](../refe
 
 Each feature now has its own page — this page is the map, one table per arc, plus the arc
 narrative: the intros, transitions, and retrospectives that turn the entries into one
-story. The twenty-four features fall into five arcs: the agent surface taking shape, the
+story. The twenty-five features fall into five arcs: the agent surface taking shape, the
 AI plumbing industrializing, platform and delivery polish, trust, gates, and the
 industrialized practice, and surface, reach, and the docs themselves. Within each arc the
 entries flow chronologically; reversals are stated openly wherever they happened —
@@ -154,8 +154,9 @@ primitives instead of forking them; GitHub Copilot brought the workplace main AI
 as the first provider kind defined by auth rather than wire format; image chat parts gave
 vision a parts-based contract under which voice, video, and files become follow-on slices
 rather than a rewrite; branched chats learned to push their outcomes back into the parent
-as anchored artifacts; and the documentation was restructured into the Diátaxis website
-this page is published on.
+as anchored artifacts; the documentation was restructured into the Diátaxis website
+this page is published on; and the website's own accuracy was then audited claim by
+claim against the shipped product and restored.
 
 | Feature | Status |
 | --- | --- |
@@ -166,6 +167,7 @@ this page is published on.
 | [018 — Image chat parts](018-image-chat-parts.qmd) | standing — voice, video, and files stay recorded future work |
 | [019 — Diátaxis docs website](019-diataxis-docs-website.qmd) | standing |
 | [020 — Branch back-propagation](020-branch-backprop.qmd) | standing — merged to main, not yet in a tagged release |
+| [021 — Sync docs with the implementation](021-sync-docs-implementation.qmd) | standing |
 
 *Arc E in retrospect:* reach arrived without rewrites — a new modality became a nullable
 parts column beside canonical text, a new provider became a kind behind the existing
@@ -178,7 +180,7 @@ winners recorded as upgrade paths, not dead ends.
 
 ## Where the story stands
 
-Twenty-four features in three weeks of calendar time, with one recurring shape: invent
+Twenty-five features in three weeks of calendar time, with one recurring shape: invent
 narrowly, prove broadly, revise without ceremony. The durable mechanics — typed entries,
 derived states, written contracts, catalog-driven extensibility, offset-sanctified
 selection, evidenced styling rulings — now function as the platform every future feature
@@ -186,9 +188,11 @@ inherits. Arcs D and E hardened and widened that platform: releases ship through
 automated gates driven by a protocol-exact mock, the product sits behind one centrally
 enforced authentication gate with always-on security posture detection, reach grew
 through Copilot, image parts, and branch back-propagation, and the documentation became
-the Diátaxis website you are reading. Not everything is built, and the record says so:
+the Diátaxis website you are reading — then audited claim by claim against the shipped
+product. Not everything is built, and the record says so:
 the floating reply outline remains what a where-am-I marker on the strip would grow into;
 voice, video, and file support stay recorded as future work, not abandoned; and push
-protection's enforcement gap is a recorded follow-up. The know-how distilled here is
+protection's enforcement gap and the login rate limiter's forwarded-header mismatch are
+recorded follow-ups. The know-how distilled here is
 deliberately opinionated; when a future change contradicts an entry here, update that
 entry in the same change — this history is a living decision record, not a museum.

@@ -10,7 +10,9 @@ Quizzes are AI-generated assessments tied to a chat. They support multiple quest
 
 ## Generating a quiz
 
-From any chat, click the "Generate Quiz" action. The AI receives the chat's assembled context and produces a mixed set of questions. Each quiz is a leaf artifact on the chat — it does not branch.
+From any chat, click the "Generate quiz" action. The AI receives the chat's assembled context and produces a mixed set of questions. Each quiz is a leaf artifact on the chat — it does not branch.
+
+If you want to influence how quizzes are written, Settings includes a "Quiz generation prompt" section where you can adjust the instructions Mayon uses when generating a quiz.
 
 ## Question types
 
@@ -34,9 +36,9 @@ The short-answer payload stores a `rubric` string that guides the AI grader.
 
 ## Taking a quiz
 
-Open a quiz from its parent chat. The quiz runner presents questions one at a time or in a scrollable list. Answer each question and submit.
+Open a quiz from its parent chat and click **Start quiz**. All questions are shown together on one scrollable page rather than one at a time. A progress line above the questions tracks how many you have answered and your running score, and for quizzes with five or more questions a row of numbered buttons appears so you can jump straight to any question.
 
-MCQ and flashcard questions are scored immediately. Short-answer questions are graded asynchronously by the AI — you see a loading state while the grading response streams back.
+MCQ and flashcard questions are scored immediately. Short-answer questions are graded asynchronously by the AI — you see a loading state while the AI grades your answer. When every question has been answered, Mayon shows a short review state with your running score; click **Take me to the results** to open the results summary.
 
 ## Attempts and scores
 
@@ -44,7 +46,7 @@ Each time you take a quiz, a new attempt is created. Your answers for that attem
 
 The attempt records:
 
-- **Score** — total correct out of total questions (null until all questions are graded).
+- **Score** — total correct out of total questions. The score is recorded once every question has been answered; an ungraded short answer does not count toward it.
 - **Start and finish timestamps** — for tracking how long you spent.
 
 You can take a quiz multiple times. Each attempt is independent — previous answers are not modified.

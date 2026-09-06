@@ -21,7 +21,7 @@ telemetry.
   `podman compose up`); no account, no telemetry.
 - **Provider-agnostic AI** — OpenAI, Anthropic, Gemini, DeepSeek, xAI (Grok),
   Moonshot Kimi, Qwen, Groq, Mistral, Ollama, OpenRouter, Kilo Gateway, OpenCode Zen,
-  LiteLLM (self-hosted), Vercel AI Gateway, Requesty, and more — any
+  LiteLLM (self-hosted), Vercel AI Gateway, Requesty, Z.AI (GLM), GitHub Copilot, and more — any
   OpenAI-compatible endpoint works with a custom base URL; switch providers freely.
   When Mayon runs in a container and you use a local gateway (LiteLLM, Ollama
   on the host), point at `http://host.docker.internal:<port>` under Docker or

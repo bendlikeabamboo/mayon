@@ -10,27 +10,42 @@ Mayon talks to AI models through configurable providers. Each provider is an ada
 
 ## Provider templates
 
-The following templates are built in:
+Clicking **Add provider** in Settings opens a picker with eighteen built-in templates, listed below in the order they appear. No template is a default — **DeepSeek** simply leads the list. Each template prefills a base URL and a starter model list, and you can edit the base URL before saving.
 
-| Template | Type | Notes |
-|---|---|---|
-| Z.AI / GLM | OpenAI-compatible | Default template. Edit the base URL and paste your API key. |
-| OpenRouter | OpenAI-compatible | Gateway that aggregates many models. Auto-discovers its model catalog via the `/models` endpoint. |
-| Kilo Gateway | OpenAI-compatible | Gateway with model discovery. |
-| OpenAI | Native | Direct connection to the OpenAI API. |
-| Anthropic | Native | Direct connection to the Anthropic API. Subject to CORS restrictions in the browser. |
-| Gemini | Native | Direct connection to the Google Gemini API. |
-| Ollama | Local | Runs models locally on your machine. No API key needed. Default base URL is `http://localhost:11434`. |
+| Template | Type | Prefilled base URL | API key |
+|---|---|---|---|
+| DeepSeek | OpenAI-compatible | `https://api.deepseek.com` | Required |
+| xAI (Grok) | OpenAI-compatible | `https://api.x.ai/v1` | Required |
+| Moonshot Kimi | OpenAI-compatible | `https://api.moonshot.ai/v1` | Required |
+| Qwen (DashScope) | OpenAI-compatible | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Required |
+| Groq | OpenAI-compatible | `https://api.groq.com/openai/v1` | Required |
+| Mistral | OpenAI-compatible | `https://api.mistral.ai/v1` | Required |
+| OpenCode Zen | OpenAI-compatible | `https://opencode.ai/zen/v1` | Required |
+| LiteLLM (self-hosted) | OpenAI-compatible | `http://localhost:4000` | Only if your proxy enforces one |
+| Vercel AI Gateway | OpenAI-compatible | `https://ai-gateway.vercel.sh/v1` | Required |
+| Requesty | OpenAI-compatible | `https://router.requesty.ai/v1` | Required |
+| Z.AI (GLM) | OpenAI-compatible | `https://api.z.ai/api/coding/paas/v4` | Required |
+| Kilo Gateway | OpenAI-compatible | `https://api.kilo.ai/api/gateway` | Required |
+| OpenRouter | OpenAI-compatible | `https://openrouter.ai/api/v1` | Required |
+| OpenAI | OpenAI-compatible | `https://api.openai.com/v1` | Required |
+| Anthropic (Claude) | Anthropic | `https://api.anthropic.com` | Required |
+| Google Gemini | Gemini | `https://generativelanguage.googleapis.com` | Required |
+| Ollama (local) | Ollama | `http://localhost:11434/api` | Not required |
+| GitHub Copilot | GitHub Copilot | `https://api.githubcopilot.com` | GitHub sign-in instead |
+
+Most templates discover their model catalog automatically: Mayon fetches the provider's live model list and offers a searchable model picker. The templates that ship a fixed starter model list instead are Qwen (DashScope), OpenAI, Anthropic (Claude), Google Gemini, and Ollama (local).
+
+**GitHub Copilot** works differently from the other templates: instead of pasting an API key, you connect your GitHub account. Click **Connect GitHub account** in the provider's settings and authorize Mayon in the browser — there is no key to copy or paste. This sign-in flow is handled by the Mayon server, so the server must be running. Once connected, the provider shows the connected account, and a **Reconnect** action appears if the authorization ever expires.
 
 ## Configuring a provider
 
-1. Open **Settings** (gear icon in the header).
+1. Open **Settings** (gear icon in the sidebar).
 2. Click **Add provider**.
 3. Pick a template from the list.
 4. Edit the **base URL** if needed (e.g., point to a self-hosted instance).
-5. Select or search for a **model**. Gateways (OpenRouter, Kilo Gateway, Z.AI) auto-discover their available models and offer a searchable model picker.
-6. Paste your **API key**.
-7. Click **Save key**, then **Set active**.
+5. Select or search for a **model**. Templates with automatic discovery fetch the provider's live catalog and offer a searchable model picker; the others offer a fixed starter list.
+6. Paste your **API key** and click **Save key**. The LiteLLM (self-hosted) and Ollama (local) templates need no key. For GitHub Copilot, skip this step and use **Connect GitHub account** as described above.
+7. Click **Set active**.
 
 After saving, the provider becomes available for new chats. Reload the tab to confirm the configuration persists.
 
@@ -42,7 +57,7 @@ Add multiple providers and switch between them using the "Set active" action. Th
 
 API keys are never stored in the settings database. The `settings` table holds only non-secret provider configuration fields (base URL, default model, template type).
 
-**Browser:** Keys are stored in IndexedDB under the same origin as the app. The key is not sent to any server other than the provider's API endpoint during streaming (or the Mayon server's CORS proxy, which is same-origin and transient).
+**Browser:** Keys are stored in IndexedDB under the same origin as the app. The key is not sent to any server other than the provider's API endpoint during streaming (or the Mayon server's CORS proxy, which is same-origin and transient). The settings screen shows an **API key (stored locally)** field, which becomes **Replace API key (stored locally)** once a key is saved — the stored key itself is never displayed.
 
 ## CORS limitation in the browser
 
