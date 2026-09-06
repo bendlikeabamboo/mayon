@@ -1,0 +1,61 @@
+---
+title: "017 — Section peek strip"
+---
+
+> **Status:** standing (an owner ruling moved it from per-reply bars to a page-level
+> tick gutter within days of merge, before 0.6.0 shipped)
+
+**Goal.** Give long, header-structured replies an at-a-glance map and a
+two-interaction path into any section, with no permanent screen chrome: a hairline
+strip along the reply's edge, one bar per section sized by its share of the reply; hover
+fattens the bars into a readable map; a deliberate ~400 ms dwell pops a plain-text
+preview of the section's opening lines; clicking bar or preview scrolls the transcript
+so the heading lands at the viewport's top. The qualification gate keeps it quiet:
+finished streaming, at least three sections, taller than a viewport — short replies show
+nothing. A persisted settings toggle turns it off entirely; touch input skips the dwell
+and taps to jump; scrolling, text selection, expound highlighting, and copy behave
+identically with the strip present.
+
+**Why.** This spec is the winner of [ideas/003-chat-outline](../../ideas/003-chat-outline/decisions.md)
+— Card 006, hover-peek bars — dealt as a six-card deck and played on September 2. The
+card was born mid-playthrough, out of the user's own distraction worry about the
+runner-up floating panel ([015 — floating reply outline](015-floating-reply-outline.qmd)):
+a near-invisible rest state answers the objection permanent chrome could not. The
+verdict kept the panel as the recorded upgrade path and carried the card's snags into
+the spec as design requirements — hover-intent tuning, preview freshness (cache
+plain-text excerpts, refresh on edit or regenerate), a touch fallback, generous hit
+targets, and registering the strip's selectors with the expound exclusion list.
+
+**Outcome & reversals.** Specced and shipped in a day (merged September 2, PR #16):
+pure mdast extraction — real headings only, with code, callouts, tables, and math
+excluded by construction; a pure dwell state machine testable without timers; a
+sole-writer preference module with defensive reads; jump orchestration in the chat page
+(nth-heading resolution with rAF retry for far-unmounted replies, stick-to-bottom
+suppression, reduced-motion honor, no URL writes); source-contract tests pinning pointer
+discipline and the streaming gate; and the toggle housed in a new Chat section of
+014's settings registry. Review fixes tightened callout-safe jump anchors and preview
+anchoring; browser validation and the perf probe closed all 22 tasks. Then the owner
+reversed the topology before release: the strip left the message wrapper for a
+page-level gutter outside the transcript's scroll container — thin left-aligned ticks
+whose widths encode section share, scroll-synced, with the preview floating outside the
+chat area and a wheel relay keeping scrolling whole across the sibling boundary. The
+rewrite also replaced per-message reactive wiring with a context-provided registry
+after a plain array triggered a 32-second flush storm, and a mock-LLM fixture with
+deliberately duplicated headings joined the e2e suite; the 0.6.0 notes describe the
+tick form. Throughout, the feature deliberately consumed 015's contract rather than
+forking it — extraction, jump-plus-flash, and the exclusion-list rule are that design's
+primitives realized — and the where-am-I position marker was deferred as the recorded
+bridge to the floating panel.
+
+**Learnings.**
+
+- A near-invisible rest state is what makes navigation chrome acceptable; the
+  distraction objection has nothing left to hold onto.
+- Pure transition functions make pointer intent testable — no timers, no DOM in the
+  test.
+- Injected text-bearing chrome must join the selection-alignment exclusion list at
+  design time, not after the first misaligned highlight.
+- Reactive arrays over per-message DOM state can storm; a version-counter registry is
+  the cheap cure.
+- Defer the upgrade seam explicitly: the marker that would become the floating panel is
+  one decision away, and the record says so.

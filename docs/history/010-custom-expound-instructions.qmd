@@ -1,0 +1,43 @@
+---
+title: "010 — Customizable expound instructions"
+---
+
+## 010 — Customizable expound instructions {#sec-010}
+
+> **Status:** standing
+
+**Goal.** Make the option list offered during expound — highlighting a passage in a chat
+and branching off a model elaboration — fully user-managed: add/edit/remove entries with
+required unique names and optional descriptions in Settings, expand built-in defaults from
+three to five, and provide a restore-defaults escape hatch behind confirmation.
+
+**Why.** The list lived as hardcoded constants; users could not extend it, so every
+personal instruction style had to squeeze into a free-text box each time instead of
+persisting as selectable one-click options.
+
+**Outcome & reversals.** Shipped the same week it was specced. The list lives as a JSON
+value under one settings key in the generic key-value table — no schema migration — seeded
+idempotently at boot so upgrades gain the new built-ins untouched and customizations
+survive restarts. Selected instruction names serialize verbatim onto branch records;
+legacy toggle keys are mapped at read time and unknown strings preserved verbatim, so
+branches created before edits or removals keep rendering their recorded labels — no
+backfill ever rewrites history. Names validate trimmed, case-insensitively unique, length-
+capped. Two constraints shaped everything around it: this feature's labels are pure
+prompt/display strings riding atop deliberately frozen geometry — expound selections still
+resolve through raw-markdown offsets via the source map plus DOM alignment; selections
+touching generated content disable the menu; stale rows self-heal in memory only. That
+frozen geometry itself encodes an earlier reversal recorded here for completeness: an
+approach embedding links by mutating original markdown source was rejected outright
+(offset cascades, content mutation) — substring heuristics, surround-style selection, and
+full-span fallbacks are permanently banned, and the plan explicitly left selection/offset/
+overlap paths untouched.
+
+**Learnings.**
+
+- A generic settings key absorbs new preference lists with zero migration when the value
+  is loaded whole and never queried by column.
+- Recording display names at creation time keeps history stable under later renames and
+  removals — cheaper than ids or backfills.
+- Read-time legacy mapping beats one-time data rewrites for backward compatibility.
+- Features adjacent to fragile machinery should be scoped to plumbing; keeping label logic
+  out of offset/alignment code avoided regression risk entirely.

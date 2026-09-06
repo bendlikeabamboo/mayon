@@ -1,0 +1,58 @@
+---
+title: "020 — Branch back-propagation"
+---
+
+> **Status:** standing (merged to main 2026-09-06 via PR #32; not yet in a tagged release
+> at the time of writing)
+
+**Goal.** Let branched chats push their outcomes back into the parent chat's context as
+user-controlled, anchored, collapsible artifacts, so the parent stops silently trusting
+stale assumptions — it still believed code it produced was correct after the user fixed it
+on a branch, so resuming the parent answered from a version of reality the user had
+already moved past. The idea→spec relationship is direct: ideas/008-branch-context-sync
+seeded this spec, its verdict choosing Card 001's back-propagation refined through
+playthrough into a new, anchored, collapsible entry kind on the existing `messages` table
+— no new persistence paradigm — with two payload modes (the verbatim raw branch delta, or
+a model-written summary), anchored exactly at the branch point, purely additive, never
+history-altering.
+
+**Why.** Branching exists to step aside and fix something; the fix lived only on the
+branch. The idea stage's rejected cards define the design by negation: plain sync notes
+carry no authority over the parent's earlier confident claims; divergence-marker detection
+needs an LLM pass per branch ("bad idea, very expensive"); branch promotion alters
+history ("I don't like history altering"); a tree-scoped decision ledger charges a
+separate store plus a per-turn relevance cost. The idea's codebase research settled the
+winner: the message kind model from [#002](#sec-002) already provides persisted, ordered,
+collapsible entries — the artifact only needed to become a new kind.
+
+**Outcome & reversals.** Merged through PR #32 and user-verified end to end. The
+implementation rides existing abstractions throughout: the anchor reuses
+`chats.branch_point_message_id`, with composer-created branches that lack a fork point
+deriving one from creation time and labeling it `derived`; the raw delta needs no diffing
+because branch chats copy zero messages — every branch row rendered verbatim *is* the
+delta; the row stores `role: 'user'` and stays out of both provider-exclusion sets, so it
+steers every future composition as real history rather than overlay, while sibling
+branches stay isolated by the existing cutoff-inclusive ancestor walk. The one schema
+change — `messages.ord` from integer to double precision — buys mid-thread placement via
+midpoint insert with no rebalancing path, and none may ever be added, because propagation
+never rewrites existing rows. Two reversals landed inside the PR, both caught in user
+testing: summary generation initially carried its instructions only in the system prompt,
+so a branch ending on a large assistant reply made the call read as "continue the
+transcript" and emit lesson content instead of a handoff summary — fixed by anchoring the
+summary task as a trailing user turn; and the summary's word cap was dropped in favor of a
+relevance budget, on the ruling that maximal factual detail (a corrected snippet of
+syntax, say) may be exactly what the parent needs — only exploratory narration is dropped.
+The load-bearing data-model contract — artifact row shape, metadata, ord placement,
+composition mapping — is preserved verbatim at
+[appendices/020-branch-backprop-data-model.md](appendices/020-branch-backprop-data-model.md).
+
+**Learnings.**
+
+- A new entry kind follows the adoption checklist — type unions, lane, render case,
+  projection case, search filter; an unhandled kind silently vanishes from LLM context.
+- Fractional ordering buys insertion without rewriting: make rewriting impossible, not
+  merely avoided.
+- Authority is a design property: a structured, anchored artifact steers the parent;
+  plain prose merely hopes to.
+- Steering works by being real history — a user-role row in the parent's transcript —
+  not by an injection mechanism beside it.

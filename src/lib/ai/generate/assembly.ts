@@ -1,6 +1,6 @@
 /**
  * Prompt assembly shared by the quiz and lab generation orchestrators
- * (specs/020-rc-ui-verification, prompt-settings-contract.md).
+ * (docs/history/appendices/020-prompt-settings-contract.md).
  *
  * The contract is code-owned and always comes first, byte-identical to the
  * shipped constant. Custom instructions are user-authored free text appended
@@ -21,8 +21,8 @@ export function assemblePrompt(contract: string, instructions?: string | null): 
 /**
  * Read the custom-instructions value for one generation surface, performing
  * the one-time idempotent legacy migration (whole-prompt override →
- * instructions key; see specs/020-rc-ui-verification/contracts/
- * prompt-settings-contract.md). Shared by readQuizPrompt and readLabPrompt so
+ * instructions key; see docs/history/appendices/
+ * 020-prompt-settings-contract.md). Shared by readQuizPrompt and readLabPrompt so
  * the migration semantics cannot drift between the two surfaces.
  *
  * Returns the trimmed non-empty instructions string, or null when the surface

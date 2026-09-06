@@ -1,0 +1,55 @@
+---
+title: "019 — Diátaxis docs website"
+---
+
+> **Status:** standing
+
+**Goal.** Restructure the documentation around the Diátaxis framework — tutorials,
+how-to guides, reference, explanation — published as a browsable website instead of a
+linear book, because the book forced task-hunters and fact-hunters through one fixed
+sequence with teaching, task, and reference material interleaved. The idea→spec
+relationship runs from ideas/006-diataxis-docs into spec 019-diataxis-docs-website: the
+verdict chose the owner's own card — flip `_quarto.yml` from `book` to `website` and
+re-home every page into exactly one quadrant, with non-Diátaxis content (developer notes,
+decision history, changelog) on dedicated shelves rather than squeezed into Explanation.
+The runner-up rulings matter as much: the book-with-relabels card was rejected as a
+half-measure ("seems lazy" — it kept linear prev/next chrome), and the docs-platform card
+(a Docusaurus/MkDocs-class migration) was declined outright — a full content migration
+plus a permanent second toolchain for versioning and generated-reference features that pay
+off only if the docs keep growing. Revisit a platform only then.
+
+**Why.** The craving recorded at verdict time was organization plus website feel *now*.
+Readers arrive with different intents — learn, do, look up — and quadrant-shaped
+navigation plus website chrome shorten every journey because the sidebar can say which
+section serves which. Staying in Quarto kept the GitHub Pages pipeline, search, and every
+toolchain pin untouched, so the entire risk budget went to content surgery and link
+continuity instead of platform migration.
+
+**Outcome & reversals.** Landed 2026-09-04 (all 27 tasks checked) and shipped in 0.6.0:
+quadrant directories (`tutorials/`, `how-to/`, `reference/`, `explanation/`) plus
+`dev-notes/` and `history/` shelves; an intent-based landing page stating what each
+section is for; one sidebar grouped by section, with website chrome replacing book
+pagination. Page splitting stayed "3/4 strict" per the owner ruling — split where a page
+genuinely interleaves walkthrough and reference, tolerate minor mixing; quadrant purity is
+not a goal in itself. Link continuity was repaired in the same cutover rather than
+deferred: every moved page gained Quarto `aliases` (emitted as redirect pages, so old deep
+links survive on static hosting), and repository-level doc-path pointers — `AGENTS.md`,
+`CONTRIBUTING.md`/`README.md`, and the constitution's authoritative-design citations —
+were updated together, the constitution via a PATCH-level amendment with a Sync Impact
+Report. An automated `lychee` check over the rendered site reached zero broken internal
+links, and the publish workflow stayed byte-identical — same destination, same pipeline.
+No reversals; the accepted standing cost was on the record from the idea stage: nothing in
+the format enforces where new pages land, so the sidebar stays honest only as long as
+per-page filing does. The decision history itself — this document — is one of the
+dedicated shelves the restructure declared.
+
+**Learnings.**
+
+- An afternoon of configuration beats a platform migration when the craving is
+  organization rather than features.
+- Aliases turn URL churn from a lingering hazard into a solved one — free on static
+  hosting, so broken deep links have no excuse.
+- Doc-path references in governance documents are load-bearing: a cutover must repair
+  agent instructions and the constitution in the same change or they silently rot.
+- Taxonomy orphans — chronological dev notes, decision history — deserve declared
+  shelves, not unprincipled exceptions squeezed into a quadrant.

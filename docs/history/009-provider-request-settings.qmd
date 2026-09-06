@@ -1,0 +1,48 @@
+---
+title: "009 — Provider request settings"
+---
+
+## 009 — Provider request settings {#sec-009}
+
+> **Status:** standing (today's single request-settings seam, confirmed by current
+> architecture docs)
+
+**Goal.** Decide every outgoing model request's parameters through one shared, testable
+mechanism: a static dialect catalog plus a pure resolver producing top-level call
+settings, provider-namespaced body options, and a dropped-keys list; two new optional user
+fields on provider config — sampling defaults and a validated raw extra-body passthrough —
+applied identically across all four call paths (chat, critic correction pass, lab/quiz
+generation, title generation) and rendered in traces plus a settings preview.
+
+**Why.** Users controlled exactly one knob — the reasoning toggle — and it worked only
+for unprefixed GLM ids: prefixed ids via routers silently lost their mapping. Sampling
+control did not exist, and mapping data was stale: Anthropic rejected the emitted
+deprecated form outright, Gemini switched parameter names, Groq leaked raw think tags, and
+three providers needed entirely new forms.
+
+**Outcome & reversals.** Shipped with replacement at its core: the previous reasoning-map
+functions were deleted outright (zero references remained). Resolution layers, each
+overriding the last: kind baseline → endpoint dialect matched on base URL → model overlay
+matched on the model id's last segment → user sampling defaults → validated extra body,
+where the user wins. It builds on features [#007](007-inference-provider-templates.qmd#sec-007)/[#008](008-inference-router-templates.qmd#sec-008) — registry
+pinned unchanged, dialect rows attach to the same catalog, routers need none. Research
+surfaced two silent-defect fixes folded in: the options namespace key must mirror how the
+SDK itself derives it (case-preserved, dot-truncating); the old lowercasing meant the SDK
+consumed nothing, silently dropping all reasoning parameters for template-named providers,
+and because of that the old baseline had been junk-emitting empty thinking objects to
+every compatible endpoint undetected — so the baseline now invents nothing, with previously
+served endpoints re-served by dialect tables; separately, Gemini's thinking configuration
+moved out from under a key where schema validation stripped it, to the namespace root where
+it reaches the wire. Extra-body guardrails: object only, ≤16 KiB, secret-like and
+prototype-pollution keys rejected before persist; schemas that strip unknown keys return
+them as dropped keys surfaced as a Settings warning — never a silent drop.
+
+**Learnings.**
+
+- Emit namespaced options under the key the consumer itself derives, verified against SDK
+  sources — an asymmetrical key fails with no error anywhere.
+- Fixing a transport bug can activate a payload bug hiding underneath it: remove both
+  together or the fix becomes the regression.
+- Omission is part of the wire contract: unset fields must be absent at every call site.
+- Static transcribed tables carrying source-and-date provenance, plus a validated raw
+  passthrough escape hatch, absorb provider drift without dynamic capability discovery.

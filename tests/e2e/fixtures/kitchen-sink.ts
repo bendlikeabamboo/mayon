@@ -19,7 +19,7 @@ export const ALIGNED_PARAGRAPH =
 // server.mjs and pinned to the product constants by the drift-guard unit test
 // src/lib/ai/generate/classification-markers.test.ts). They were previously
 // mirrored here; that copy drifted-by-hand risk was removed in review. See
-// specs/020-rc-ui-verification/contracts/mock-llm-protocol.md for the
+// docs/history/appendices/020-mock-llm-protocol.md for the
 // classification protocol.
 
 // Grading lever triggers the mock scans for in the short_grading user block

@@ -1,0 +1,43 @@
+---
+title: "005 — Shape-driven tool result rendering"
+---
+
+## 005 — Shape-driven tool result rendering {#sec-005}
+
+> **Status:** standing
+
+**Goal.** Make expanded tool-result bodies readable by classifying each result through
+one pure classifier returning exactly one shape — records, JSON, markdown, text, or short
+prose — and rendering accordingly: URL-bearing records become a capped list of link cards
+with the separate sources list folded in; markdown renders as markdown; other JSON
+pretty-prints; anything unrecognized degrades to today's bounded raw view. Classification
+precedence is fixed, tolerant of multi-part payloads joined without separators. Strictly
+presentation-only: stored payloads are read-only inputs, so legacy chats render nicely
+with zero data change.
+
+**Why.** MCP mount code joins content parts with no separator, so concatenated JSON is
+the normal case, and nothing between storage and screen parsed it. The same payload was
+parsed again for the sources link list — links shown twice, once as a wall. Meanwhile the
+constitution forbids UI-side per-tool special cases, ruling out hand-maintained branches
+by tool name or server. Identity-blind shape detection was the only road that scales.
+
+**Outcome & reversals.** Standing today: the classifier is named the single shape
+authority in the current architecture docs — never tool identity, never a UI-side tool
+list — with degradation structural: the raw view is the ladder's bottom rung, not an error
+boundary around rendering. It replaced feature [#004](004-internal-area-unification.qmd#sec-004)'s result-body expander
+section and swapped the floating toggle for the header row itself; for record shapes the
+sources row is suppressed so exactly one list renders — partially retiring the separate
+Sources list that [#001](001-brave-search-mcp.qmd#sec-001) had introduced (it survives for other shapes). Feature
+[#006](006-ai-elements-adoption.qmd#sec-006) retained the body renderer untouched inside its new collapsible shell and
+deliberately skipped a donor code-highlighting block to avoid a second path — a direct
+endorsement. Nothing later overturns it.
+
+**Learnings.**
+
+- Classify payload shape, never tool identity: shape-based rendering survives every new
+  tool without registry coupling.
+- Build graceful degradation structurally — make the old-correct view the ladder's bottom
+  rung instead of wrapping rendering in error handling.
+- Share parsers between consumers so two views can never disagree about the payload.
+- Read actual storage shape before designing APIs: a spec'd nested-field read would have
+  silently seen nothing for every real row.

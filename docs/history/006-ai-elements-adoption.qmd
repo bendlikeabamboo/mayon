@@ -1,0 +1,41 @@
+---
+title: "006 — AI elements adoption"
+---
+
+## 006 — AI elements adoption {#sec-006}
+
+> **Status:** standing
+
+**Goal.** Converge three leaf UI surfaces onto community consensus patterns by copying
+donor blocks from the Svelte AI Elements registry into the repo as first-party code —
+trimmed, locally owned, no runtime dependency: a searchable command-palette model picker
+replacing the hand-rolled dropdown; one shared confirmation pattern unifying elicitation
+and sampling approval; and a collapsible tool-call shell for transcript rows. Constraint
+terms: zero new packages — donors depend only on libraries already present — plus four
+dependency-free vocabulary primitives added. The message render path, expound highlighting,
+and branching stayed deliberately hand-maintained.
+
+**Why.** Maintenance cost concentrated in hand-built interaction logic nobody wanted to
+own. The picker was the largest hand-maintained component with real accessibility gaps:
+no arrow-key navigation, no escape handling, no focus management. Elicitation dialog and
+sampling card were two bespoke surfaces answering one safety-critical UX. Aligning on
+widely-used patterns buys familiarity and community-hardened keyboard behavior while
+deleting bespoke code.
+
+**Outcome & reversals.** All three surfaces shipped; the dependency-manifest diff stayed
+empty end-to-end. An honest miss recorded rather than hidden: the success criterion
+required net custom UI code to shrink against its baseline, but the ledger shows growth —
+justified line-by-line as capabilities the old code lacked (keyboard nav, focus trap,
+failure badges, a failed terminal state, genuine deduplication). The ledger's argument:
+the risk actually being targeted — hand-rolled outside-click handlers, ad-hoc state spans
+— measurably retired. Adoption trade-offs held: donor auto-open behavior dropped, logos
+trimmed, domain-specific schema forms kept where generic blocks don't fit. Later features
+extended the picker's list rather than replacing it.
+
+**Learnings.**
+
+- Copy-in adoption harvests consensus behavior without registry dependency risk — but
+  "net less code" is the wrong success metric; count retired interaction logic instead.
+- Adapt donors aggressively: replace helpers, delete unwanted behaviors, keep domain forms.
+- Vocabulary primitives amortize beyond the triggering feature; ledger them separately or
+  bundle-size rules punish doing the right thing.

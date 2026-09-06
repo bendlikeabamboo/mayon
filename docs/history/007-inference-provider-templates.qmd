@@ -1,0 +1,40 @@
+---
+title: "007 — First-class inference provider templates"
+---
+
+## 007 — First-class inference provider templates {#sec-007}
+
+> **Status:** standing
+
+**Goal.** Promote six high-demand inference providers — DeepSeek, xAI Grok, Moonshot
+Kimi, Qwen/DashScope, Groq, Mistral — from manual custom-endpoint setup to first-class
+one-click entries: paste an API key, pick a model, chat with tool calling on by default,
+in under two minutes without typing an endpoint address or reading provider docs.
+
+**Why.** All six were reachable only through the generic OpenAI-compatible escape hatch,
+which demanded knowing each endpoint address and tool-calling implications. Usage evidence
+showed DeepSeek alone carrying more weekly routed usage than Google and OpenAI combined.
+Following the project's Pareto rule for provider support, six promotions were selected and
+ordered by measured demand. Everything outside stayed deliberately template-free.
+
+**Outcome & reversals.** Shipped as pure catalog data: six template constants, gateway
+URLs added to the exact-string tool-defaulting set — including regional variants and alias
+spellings — curated fallback model lists snapshotted at implementation time. No new
+dependency, transport, auth flow, or UI component (a success criterion made that
+verifiable). One designed non-outcome: whether DashScope exposes a model listing was
+probed live during implementation and answered no, so Qwen ships a curated list instead of
+live discovery — the spec had pre-approved both outcomes. Automated order tests passed;
+per-provider end-to-end chats needing real keys were logged as requiring user validation.
+Standing: feature [#008](008-inference-router-templates.qmd#sec-008) appends downstream in the same array and
+[#009](009-provider-request-settings.qmd#sec-009) left templates untouched.
+
+**Learnings.**
+
+- When candidates share one wire format, provider onboarding industrializes into data
+  entry on existing machinery.
+- Exact-string URL matching forces enumeration of every valid spelling — undocumented
+  variants would silently lose tools-on-by-default.
+- Curated fallback model lists go stale by design: snapshot at implementation, let live
+  discovery supersede them.
+- Frame verification questions so either answer ships: the DashScope probe had both
+  outcomes pre-specified, requiring no re-planning.

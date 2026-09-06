@@ -1,0 +1,56 @@
+---
+title: "015 — Floating reply outline"
+---
+
+> **Status:** designed, not built — its contract primitives shipped through
+> [017 — section peek strip](017-section-peek-strip.qmd); the floating panel remains
+> the recorded future upgrade path
+
+**Goal.** Let readers of long, heading-structured replies jump straight to any section
+from a floating outline panel: every document heading listed exactly once, in document
+order, nested to mirror heading levels; one click scrolls that heading to the viewport's
+top with a brief flash; while scrolling, the highlight tracks reading position, resting
+on the section actually in view; below the breakpoint a compact floating affordance
+offers the same jumps in two taps. Entries derive from the reply's markdown at view
+time — the spec forbade new durable data outright. The success bar: a remembered
+section reached in a single interaction, ten-heading lookup under three seconds, zero
+layout shift with the panel open versus closed, and zero regressions in selection,
+expound, or copy.
+
+**Why.** The request came straight from use: replies arrive with chapter headers and
+run for screens, and hunting through them in the UI is slow. It was fully specced on
+August 29 — before the idea stage ran — mirroring the interaction conventions
+[014](014-settings-navigation.qmd) had just proven (section-top landing, flash,
+scroll-spy band, reduced motion, mobile sheet). Days later the
+[ideas/003-chat-outline](../../ideas/003-chat-outline/decisions.md) deck re-ran the
+choice with six cards, and the panel — Card 001 — lost to the hover-peek strip on the
+distraction concern, with the verdict calling it the stronger ambient where-am-I answer
+and the natural later upgrade.
+
+**Outcome & reversals.** Fully designed and never built. Spec, plan, research, data
+model, and contracts all landed (committed August 31); no tasks.md was ever generated,
+and no ReplyOutline component exists anywhere in the tree. What survived was the design
+work: extraction from raw markdown via mdast rather than DOM queries (far replies are
+unmounted under LazyMount, so DOM-derived outlines would silently miss them); placement
+as a sibling of the chat scroller, never inside message containers, so the expound
+alignment machinery stays untouched by construction; jumps with rAF retry plus
+stick-to-bottom suppression; no URL or hash writes in chat. When the deck preferred the
+strip, [017](017-section-peek-strip.qmd) adopted this contract instead of forking it —
+extraction, jump-plus-flash, and the integration rules shipped as strip primitives —
+including the case 015's contract had explicitly anticipated: text-bearing chrome
+inside a message container must join the excluded-selectors list, which is precisely
+what the strip then did. One honest discrepancy sits in the record: the 0.6.0 changelog
+lists a floating outline panel among shipped additions; no panel ever existed — the
+outline powers users actually received arrived through the strip, and the panel remains
+what a where-am-I marker on the strip would grow into.
+
+**Learnings.**
+
+- A spec can pay for itself without shipping: the strip feature implemented this
+  contract nearly verbatim instead of writing its own.
+- Design the deviation you expect — the anticipated chrome-inside-container case became
+  the shipped sibling's exact obligation.
+- Derivation-only data makes a non-build cheap: nothing migrated, nothing to tear out
+  later.
+- Record declined winners as upgrade paths, not dead ends; the deck's verdict, not
+  forgetfulness, is why no panel exists.

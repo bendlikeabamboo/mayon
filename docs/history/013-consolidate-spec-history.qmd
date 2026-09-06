@@ -1,0 +1,59 @@
+---
+title: "013 — Consolidate spec history"
+---
+
+> **Status:** standing (the one-page form was later split into per-feature pages
+> under the same template; the entry format and the consolidation-before-deletion
+> policy stand unchanged)
+
+**Goal.** Condense the specification archive into one decision history at
+`docs/history` — for every completed feature, what was set out to achieve, why,
+whether a later decision reversed or superseded it, and what was learned — then
+remove the retired artifacts so the working tree stops presenting superseded
+planning detail as current guidance. The bar was coherence and brevity with zero
+knowledge loss: the history had to read as one continuous story rather than a
+per-feature checklist dump, and no decision still governing current behavior
+could die in the deletion.
+
+**Why.** By late August the archive had become the problem it recorded: twelve
+feature directories totaling ~160 files and 133,926 words of specs, research,
+plans, and contracts, with authoritative pages (architecture, seams) pointing
+into `specs/` for load-bearing detail. Answering any question about why the
+product is shaped the way it is required archaeology. The spec's reader test
+made the intent concrete: pick any completed feature and retrieve its goal,
+rationale, reversal status, and one durable learning from the history alone, in
+under two minutes.
+
+**Outcome & reversals.** Consolidated, audited, and deleted in three ordered
+passes, landing as one commit on 2026-08-27 (released in 0.5.0). Drafting ran in
+four subagent batches of at most three directories each, reconciled centrally
+against a fixed entry template; the audit gates — coverage bijection, per-entry
+700-word cap, reciprocal reversal pairs, secret scan — ran green before anything
+was removed. The result measured 5,275 words against a 13,392 ceiling (about 4%
+of source volume; largest entry 549 words). Contracts referenced from living
+docs were preserved verbatim under `docs/history/appendices/` — six files from
+features 004, 005, and 009 initially, a shelf that later features kept
+extending — and all nine exterior links were retargeted. A tombstone
+(`specs/history-map.md`) records every retired number with an explicit
+last-used marker so sequential numbering never silently resets after deletion.
+Two limits surfaced later, both absorbed rather than hidden: the anti-reset
+sentinel prevented resets but not collisions — parallel branches scanned the
+same last-used number, so 017 was minted three times and 019 and 020 twice, and
+the map lists the duplicates rather than renumbering shipped branches; and the
+single page sized for twelve entries gave way to per-feature pages once the
+history itself kept growing — the template, budgets, and appendices policy
+carried over intact.
+
+**Learnings.**
+
+- Deletion safety is sequencing, not care: consolidate, audit to green, then
+  delete — the gate order does the protecting.
+- Fixed templates and fixed budgets make "concise and narratively sound"
+  mechanically checkable instead of a matter of taste.
+- Preserved detail belongs verbatim in appendices; the narrative points to rules
+  rather than restating them, keeping one source of truth for each.
+- A numbering sentinel guards against resets, not collisions; parallel branches
+  minting the same number need either a claim step or a tombstone tolerant of
+  duplicates.
+- Git history is the archive; a one-file tombstone map is the only recovery
+  affordance worth maintaining.
