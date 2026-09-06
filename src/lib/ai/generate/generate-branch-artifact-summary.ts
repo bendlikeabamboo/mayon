@@ -35,16 +35,21 @@ export const BRANCH_SUMMARY_TRACE_KIND = 'branch_artifact_summary';
  */
 const SUMMARY_SYSTEM = [
 	'You write the handoff note a branched conversation sends back to its parent conversation.',
-	"You compress: you never reproduce the branch's content, and you never invent what the transcript does not show."
+	'You compress narration but never corrupt facts: whatever would change what the parent believes or does from here is preserved exactly, and you never invent what the transcript does not show.'
 ].join('\n');
 
 const BRANCH_SUMMARY_TASK = [
 	"The transcript above is the branch's full view: first the parent conversation up to the branch point, then the branch's own turns.",
-	'Write the handoff summary the branch sends back to the parent now. Rules:',
-	'- Summarize only what the BRANCH added or changed relative to the parent — decisions made, corrections applied, content added, and the resulting state. Do not restate what the parent already knew.',
-	"- Do not reproduce, restate, or continue the branch's content. No lessons, no code dumps — compress it into prose.",
-	'- Plain prose. No headings, no preamble, no sign-off, no offers to continue.',
-	'- A few sentences, at most about 120 words.'
+	'Write the handoff summary the branch sends back to the parent now.',
+	'KEEP — anything that changes what the parent should believe or do from here:',
+	"- Corrections and reversals: anything on the branch that supersedes, fixes, or contradicts the parent's earlier content.",
+	'- Exact technical facts: corrected syntax, commands, APIs, versions, file paths, error messages, names, numbers. Preserve these verbatim; a short fenced code snippet is welcome when exact wording is the point.',
+	'- Decisions made and the resulting state: what now exists, what was chosen, what is settled.',
+	'DROP:',
+	'- Exploratory narration: motivation, encouragement, transitions, teaching flow.',
+	'- Turn-by-turn recaps of the conversation itself, and anything the parent already knew before the branch.',
+	'- Whole lessons, explanations, or code dumps — compress the prose and keep only the minimal exact snippets that carry the correction or decision.',
+	'Style: plain prose, no headings, no preamble, no sign-off, no offers to continue. As short as the content allows and as detailed as the facts require — brevity is for narration, never for load-bearing facts.'
 ].join('\n');
 
 export interface BranchArtifactSummary {

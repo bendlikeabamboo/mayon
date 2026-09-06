@@ -57,16 +57,23 @@ describe('generateBranchArtifactSummary', () => {
 		expect(messages.at(-2)!.content).toBe("the branch's big reply");
 	});
 
-	it('task demands the branch delta only and forbids reproducing content', async () => {
+	it('task demands the branch delta only: facts exact, narration dropped', async () => {
 		mockedGenerateText.mockResolvedValue({ text: 'summary' } as never);
 		await import('./generate-branch-artifact-summary').then((m) =>
 			m.generateBranchArtifactSummary('branch-1')
 		);
 		const call = mockedGenerateText.mock.calls[0][0];
 		const task = (call.messages as Array<{ content: string }>).at(-1)!.content;
-		expect(task).toContain('added or changed relative to the parent');
-		expect(task).toContain('Do not reproduce');
-		expect(task).toContain('120 words');
+		// Load-bearing facts survive verbatim — corrections are the payload.
+		expect(task).toContain('Corrections and reversals');
+		expect(task).toContain('Preserve these verbatim');
+		expect(task).toContain('fenced code snippet');
+		// Narration and echo are the things we cut.
+		expect(task).toContain('Exploratory narration');
+		expect(task).toContain('Turn-by-turn recaps');
+		expect(task).toContain('never for load-bearing facts');
+		// No hard word ceiling: the budget is relevance, not length.
+		expect(task).not.toContain('words');
 	});
 
 	it('system prompt carries only the role framing, not the full task', async () => {
