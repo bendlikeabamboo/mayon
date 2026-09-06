@@ -417,7 +417,8 @@ export async function main(argv: string[]): Promise<number> {
 			return 2;
 		}
 		const schemaOk = await pool.query(
-			`SELECT to_regclass('public.__drizzle_migrations') IS NOT NULL
+			`SELECT (to_regclass('drizzle.__drizzle_migrations') IS NOT NULL
+			  OR to_regclass('public.__drizzle_migrations') IS NOT NULL)
 			  AND to_regclass('public.auth_identities') IS NOT NULL AS ok`,
 			[]
 		);
