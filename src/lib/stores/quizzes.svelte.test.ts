@@ -414,3 +414,166 @@ describe('quizzesStore.loadList / loadQuiz', () => {
 		expect(quizzesStore.current).toBeNull();
 	});
 });
+
+describe('quizzesStore.answerShort grading buckets (mock-llm fixture payloads)', () => {
+	// Mirrors tests/fixtures/mock-llm/quiz-fixture.mjs (QUIZ_FIXTURE). Values
+	// are duplicated (not imported) so vitest never depends on the e2e fixture
+	// tree; keep the two in sync.
+	const fixtureQuiz: GeneratedQuiz = {
+		questions: [
+			{
+				type: 'mcq',
+				prompt: 'Which pigment absorbs the light energy that powers photosynthesis?',
+				payload: {
+					options: ['Chlorophyll a', 'Hemoglobin', 'Cellulose', 'Melanin'],
+					answerIndex: 0
+				}
+			},
+			{
+				type: 'flashcard',
+				prompt: 'Recall the inputs and outputs of the light-dependent reactions.',
+				payload: {
+					front: 'What does the light-dependent reaction of photosynthesis take in and release?',
+					back: 'It takes in water and light energy and releases oxygen, producing ATP and NADPH.'
+				}
+			},
+			{
+				type: 'short',
+				prompt: 'Name the organelle where photosynthesis takes place in plant cells.',
+				payload: {
+					rubric:
+						'A correct answer must name the chloroplast as the organelle where photosynthesis takes place.'
+				}
+			}
+		]
+	};
+
+	const fixtureCorrectFeedback = 'Correct — the chloroplast is where photosynthesis takes place.';
+	const fixtureIncorrectFeedback =
+		'Not quite — the chloroplast, not the nucleus, hosts photosynthesis.';
+
+	async function generateFixtureQuizAndStartAttempt(quiz: GeneratedQuiz): Promise<void> {
+		mockProviderReturningQuiz(quiz);
+		mockGenerateReturningQuiz(quiz);
+		const chatId = await seedChat();
+		const id = await quizzesStore.generate(chatId);
+		quizzesStore.current = await repos.quizzes.getById(id!);
+		quizzesStore.questions = await repos.quizQuestions.listByQuiz(id!);
+		await quizzesStore.startAttempt();
+	}
+
+	function shortQuestionId(): string {
+		return quizzesStore.questions.find((q) => q.type === 'short')!.id;
+	}
+
+	it('persists the correct bucket (isCorrect true) and finalises a perfect attempt', async () => {
+		await generateFixtureQuizAndStartAttempt(fixtureQuiz);
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [
+				{ toolName: 'json', input: { isCorrect: true, feedback: fixtureCorrectFeedback } }
+			],
+			text: ''
+		} as never);
+
+		const mcq = quizzesStore.questions[0];
+		const mcqPayload = repos.quizQuestions.parsePayload<McqPayload>(mcq.payload);
+		// Payload-driven locator (D5): options are shuffled at persist time, so
+		// the correct pick is found by its fixture label, never by position.
+		await quizzesStore.answerMcq(mcq.id, mcqPayload.options.indexOf('Chlorophyll a'));
+		await quizzesStore.answerFlashcard(quizzesStore.questions[1].id, true);
+		// The deck drives the grading lever via the answer text (D3:
+		// "should be correct"); the SDK stub returns the matching bucket.
+		await quizzesStore.answerShort(shortQuestionId(), 'The chloroplast. should be correct');
+
+		const shortId = shortQuestionId();
+		expect(quizzesStore.answers[shortId].isCorrect).toBe(true);
+		expect(quizzesStore.answers[shortId].aiFeedback).toBe(fixtureCorrectFeedback);
+		const rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
+		const row = rows.find((r) => r.questionId === shortId);
+		expect(row!.isCorrect).toBe(true);
+		expect(row!.aiFeedback).toBe(fixtureCorrectFeedback);
+		expect(quizzesStore.score).toBe(3);
+		expect(quizzesStore.isComplete).toBe(true);
+	});
+
+	it('persists the incorrect bucket (isCorrect false) without counting toward the score', async () => {
+		await generateFixtureQuizAndStartAttempt({
+			questions: [fixtureQuiz.questions[2]]
+		});
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [
+				{ toolName: 'json', input: { isCorrect: false, feedback: fixtureIncorrectFeedback } }
+			],
+			text: ''
+		} as never);
+
+		await quizzesStore.answerShort(shortQuestionId(), 'The nucleus. should be wrong');
+
+		const shortId = shortQuestionId();
+		expect(quizzesStore.answers[shortId].isCorrect).toBe(false);
+		expect(quizzesStore.answers[shortId].aiFeedback).toBe(fixtureIncorrectFeedback);
+		const rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
+		const row = rows.find((r) => r.questionId === shortId);
+		expect(row!.isCorrect).toBe(false);
+		expect(row!.aiFeedback).toBe(fixtureIncorrectFeedback);
+		expect(quizzesStore.score).toBe(0);
+	});
+
+	it('persists the null bucket on GradeError with aiFeedback, and regrade() recovers', async () => {
+		await generateFixtureQuizAndStartAttempt({
+			questions: [fixtureQuiz.questions[2]]
+		});
+		const { GradeError } = await import('$lib/ai/generate/generate-quiz');
+		mockedGenerateText
+			.mockRejectedValueOnce(new GradeError('Grading failed.', 'model said nothing useful'))
+			.mockResolvedValueOnce({
+				toolCalls: [
+					{ toolName: 'json', input: { isCorrect: true, feedback: fixtureCorrectFeedback } }
+				],
+				text: ''
+			} as never);
+
+		const shortId = shortQuestionId();
+		await quizzesStore.answerShort(shortId, 'The chloroplast');
+
+		expect(quizzesStore.answers[shortId].isCorrect).toBeNull();
+		let rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
+		let row = rows.find((r) => r.questionId === shortId);
+		expect(row!.isCorrect).toBeNull();
+		expect(row!.aiFeedback).toContain('Grading failed');
+		expect(quizzesStore.isComplete).toBe(false);
+
+		await quizzesStore.regrade(shortId);
+
+		expect(quizzesStore.answers[shortId].isCorrect).toBe(true);
+		expect(quizzesStore.answers[shortId].aiFeedback).toBe(fixtureCorrectFeedback);
+		rows = await repos.quizAnswers.listByAttempt(quizzesStore.activeAttempt!.id);
+		row = rows.find((r) => r.questionId === shortId);
+		expect(row!.isCorrect).toBe(true);
+		expect(row!.aiFeedback).toBe(fixtureCorrectFeedback);
+	});
+
+	it('finishIfComplete counts only isCorrect === true when finalising', async () => {
+		await generateFixtureQuizAndStartAttempt({
+			questions: [fixtureQuiz.questions[0], fixtureQuiz.questions[2]]
+		});
+		mockedGenerateText.mockResolvedValue({
+			toolCalls: [
+				{ toolName: 'json', input: { isCorrect: false, feedback: fixtureIncorrectFeedback } }
+			],
+			text: ''
+		} as never);
+
+		const mcq = quizzesStore.questions[0];
+		const mcqPayload = repos.quizQuestions.parsePayload<McqPayload>(mcq.payload);
+		await quizzesStore.answerMcq(mcq.id, mcqPayload.options.indexOf('Chlorophyll a'));
+		await quizzesStore.answerShort(shortQuestionId(), 'Sunlight? should be wrong');
+
+		expect(quizzesStore.score).toBe(1);
+		expect(quizzesStore.allAnswered).toBe(true);
+		expect(quizzesStore.isComplete).toBe(true);
+		const attempt = await repos.quizAttempts.getById(quizzesStore.activeAttempt!.id);
+		expect(attempt!.finishedAt).not.toBeNull();
+		expect(attempt!.score).toBe(1);
+	});
+});

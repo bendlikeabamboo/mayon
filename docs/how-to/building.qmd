@@ -72,6 +72,17 @@ kitchen-sink reply. The reply comes from a tests-owned mock LLM service (`mock-l
 `docker-compose.dev.yml`) that speaks the OpenAI chat protocol — no real AI service, no API key, no
 external network. The suite runs automatically in the `e2e` CI job on every pull request.
 
+Since feature 020 the mock also discriminates request kinds — chat, quiz generation, lab generation,
+short-answer grading, and learning-brief generation — and answers each with its own deterministic
+fixture (short-answer grading is steered by an answer-text lever: answers containing "should be
+correct" grade correct, "should be wrong" grade incorrect). The suite therefore also covers the quiz
+and labs flows end to end (`mock-classification.spec.ts`, `quiz.spec.ts`, `lab.spec.ts`,
+`prompt-contract.spec.ts`), which is what replaces the manual quiz-and-labs pass on release
+candidates. The classification protocol, fixtures, and the no-interception guardrail are specified
+in `tests/fixtures/mock-llm/README.md` and
+`specs/020-rc-ui-verification/contracts/mock-llm-protocol.md` — never stub the provider request
+path with `page.route`; a bypassed hop tests the mocks, not the app.
+
 Prerequisites (fresh checkout):
 
 ```bash
@@ -93,7 +104,9 @@ browser-runnable report in `playwright-report/` (open with `pnpm exec playwright
 
 If your `mayon-dev` stack is busy serving a different checkout (the bind mounts follow whoever ran
 `pnpm dev:up` last), run the suite against an isolated stack for this checkout instead — the volumes
-and network are project-prefixed, so nothing collides:
+and network are project-prefixed, so nothing collides. Note that the `mock-llm` service mounts its
+fixture directory read-only, so after editing anything under `tests/fixtures/mock-llm/` restart it
+(`docker compose -p <project> restart mock-llm`):
 
 ```bash
 docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml up -d

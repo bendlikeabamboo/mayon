@@ -474,3 +474,76 @@ describe('shuffleMcqOptions', () => {
 		expect(result).toEqual({ options: ['only'], answerIndex: 0 });
 	});
 });
+
+describe('truly malformed questions are not rescued', () => {
+	// normalizeQuestion's repairs (alias mapping, payload lifting, prompt
+	// adoption) must not paper over genuinely broken question objects. Shapes
+	// mirror tests/fixtures/mock-llm/quiz-fixture.mjs, corrupted.
+	it('rejects a question with no prompt at all (none to lift from payload)', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [
+					{
+						type: 'short',
+						payload: {
+							rubric:
+								'A correct answer must name the chloroplast as the organelle where photosynthesis takes place.'
+						}
+					}
+				]
+			})
+		).toThrow();
+	});
+
+	it('rejects a question with no payload and no flat fields to lift', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [
+					{
+						type: 'mcq',
+						prompt: 'Which pigment absorbs the light energy that powers photosynthesis?'
+					}
+				]
+			})
+		).toThrow();
+	});
+
+	it('rejects an mcq payload missing answerIndex', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [
+					{
+						type: 'mcq',
+						prompt: 'Which pigment absorbs the light energy that powers photosynthesis?',
+						payload: { options: ['Chlorophyll a', 'Hemoglobin'] }
+					}
+				]
+			})
+		).toThrow();
+	});
+
+	it('rejects wrong-type payload fields (numeric option, string answerIndex)', () => {
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [
+					{
+						type: 'mcq',
+						prompt: 'Which pigment absorbs the light energy that powers photosynthesis?',
+						payload: { options: ['Chlorophyll a', 42], answerIndex: 0 }
+					}
+				]
+			})
+		).toThrow();
+		expect(() =>
+			GeneratedQuizSchema.parse({
+				questions: [
+					{
+						type: 'mcq',
+						prompt: 'Which pigment absorbs the light energy that powers photosynthesis?',
+						payload: { options: ['Chlorophyll a', 'Hemoglobin'], answerIndex: '0' }
+					}
+				]
+			})
+		).toThrow();
+	});
+});
