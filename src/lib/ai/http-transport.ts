@@ -40,7 +40,7 @@ export function createFetchTransport(store: BrowserKeyStore): HttpStreamTranspor
 
 			let res: Response;
 			try {
-				res = await getLlmFetch()(req.url, {
+				res = await getLlmFetch(req.url)(req.url, {
 					method: req.method ?? 'POST',
 					headers,
 					body: req.body,

@@ -1,7 +1,7 @@
 import { streamText, tool, jsonSchema, APICallError } from 'ai';
 import type { LanguageModel, ToolSet } from 'ai';
 import { getToolDefinitions, getToolDefinition, toolsRun } from '$lib/agent/registry';
-import { isSessionDisabled, disableToolsForSession } from '$lib/agent/capability';
+import { resolveToolCapability, disableToolsForSession } from '$lib/agent/capability';
 import { validateTurn, type CriticIssue } from '$lib/agent/critic';
 import { projectEntries } from '$lib/chat/projection';
 import { buildCapabilitiesPreamble, buildFirstTurnOrientationPreamble } from '$lib/chat/brief';
@@ -278,8 +278,7 @@ async function runCriticPhase(
 }
 
 export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: boolean }> {
-	const baseCapability = deps.config.toolCapability && !isSessionDisabled();
-	const toolCapability = baseCapability && !deps.firstTurn;
+	const toolCapability = resolveToolCapability(deps.config) && !deps.firstTurn;
 
 	async function inner(toolsEnabled: boolean): Promise<{ aborted: boolean }> {
 		const turnBudget = { subCalls: 0, maxSubCalls: 1 };

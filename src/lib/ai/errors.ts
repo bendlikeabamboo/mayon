@@ -15,7 +15,8 @@ import {
 	MissingKeyError,
 	NetworkError,
 	ProviderHttpError,
-	RateLimitError
+	RateLimitError,
+	TimeoutError
 } from './types';
 
 /** User-facing payload rendered by the UI error block. */
@@ -91,6 +92,13 @@ export function formatProviderError(err: unknown): FormattedProviderError {
 			hint: 'Check your connection and that the provider base URL is reachable.'
 		};
 	}
+	if (err instanceof TimeoutError) {
+		return {
+			title: 'No response in time',
+			message: 'The provider did not respond in time.',
+			hint: 'Check the host and port, and whether the server is under load.'
+		};
+	}
 	if (err instanceof DOMException && err.name === 'AbortError') {
 		return { title: 'Stopped', message: 'The stream was cancelled.' };
 	}
@@ -114,6 +122,10 @@ export function formatProviderError(err: unknown): FormattedProviderError {
 export function classifyFetchError(err: unknown, baseUrl: string): Error {
 	// Aborted by the user — let it propagate; the UI treats AbortError specially.
 	if (err instanceof DOMException && err.name === 'AbortError') return err;
+
+	// Deadline expiry (AbortSignal.timeout aborts with this DOMException) — a
+	// distinct "too slow" class, not a generic network failure.
+	if (err instanceof DOMException && err.name === 'TimeoutError') return new TimeoutError();
 
 	if (err instanceof TypeError) {
 		// Browsers surface CORS + offline both as TypeError. Heuristic: if the
@@ -208,5 +220,6 @@ export {
 	MissingKeyError,
 	NetworkError,
 	ProviderHttpError,
-	RateLimitError
+	RateLimitError,
+	TimeoutError
 } from './types';

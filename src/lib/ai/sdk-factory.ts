@@ -28,7 +28,11 @@ export async function buildSdkModel(
 			const customFetch = createKeychainFetch({
 				header: 'Authorization',
 				scheme: 'Bearer',
-				keyId: config.id
+				keyId: config.id,
+				// Keyless openai-compatible endpoints (local runtimes, keyless
+				// gateways) chat without a key; a key saved later upgrades the
+				// connection (the 008 keyless flow).
+				optionalKey: config.requiresKey === false
 			});
 			const provider = createOpenAICompatible({
 				name: config.name ?? 'openai-compatible',

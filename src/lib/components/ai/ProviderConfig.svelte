@@ -10,8 +10,10 @@
 	} from '$lib/components/ui/collapsible/index.js';
 	import { ModelSelect } from '$lib/components/ai/model-select/index.js';
 	import CopilotAuthDialog from '$lib/components/ai/copilot-auth-dialog.svelte';
-	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
+	import { type ProviderTemplate } from '$lib/ai/registry';
+	import ProviderTemplatePicker from '$lib/components/ai/provider-template-picker.svelte';
 	import { describeDialect, resolveRequestSettings, validateExtraBody } from '$lib/ai/dialects';
+	import { testProviderConnection } from '$lib/ai/connection-test';
 	import {
 		deleteProviderKey,
 		discoverProviderModels,
@@ -47,6 +49,7 @@
 	let keyFlags = $state<Record<string, boolean>>({}); // id → has a key set
 	let keyDrafts = $state<Record<string, string>>({}); // id → unsaved key input value
 	let discovering = $state<Record<string, boolean>>({}); // id → model list refreshing
+	let testing = $state<Record<string, boolean>>({}); // id → connection test in flight
 	// GitHub Copilot device-flow connector: which provider's auth dialog is open,
 	// and the GitHub login shown on the connected line (local state only — the
 	// KeyStore grant is the only persisted secret).
@@ -129,9 +132,11 @@
 		}
 		loading = false;
 		// Keep gateway catalogs fresh: discover in the background for providers
-		// that can (best-effort, silent — failures don't surface here).
+		// that can (best-effort, silent — failures don't surface here). Local-group
+		// providers are skipped — no probing (FR-015): locals discover on add, on
+		// Test, or on an explicit Refresh click only.
 		for (const p of providers) {
-			if (p.discoverable && (!kindRequiresKey(p) || keyFlags[p.id])) {
+			if (p.discoverable && p.group !== 'local' && (!kindRequiresKey(p) || keyFlags[p.id])) {
 				void refreshModels(p.id, { silent: true });
 			}
 		}
@@ -161,6 +166,8 @@
 			defaultModel: t.defaultModel,
 			models: [...t.models],
 			discoverable: t.discoverable,
+			group: t.group,
+			requiresKey: t.requiresKey,
 			toolCapability: t.toolCapability
 		};
 		const next = [...providers, config];
@@ -170,7 +177,9 @@
 			if (next.length === 1) void activate(id);
 			// Auto-discover the catalog for gateways (best-effort; works pre-key
 			// for public endpoints, and is re-run after a key is saved).
-			if (config.discoverable) void refreshModels(id, { silent: true });
+			// Locals skip add-time auto-discovery: they discover via Test
+			// connection or the explicit Refresh click only (no probing, FR-015).
+			if (config.discoverable && config.group !== 'local') void refreshModels(id, { silent: true });
 		});
 	}
 
@@ -222,6 +231,42 @@
 
 	function modelsText(p: ProviderConfig): string {
 		return p.models.join(', ');
+	}
+
+	/**
+	 * Run the explicit "Test connection" probe for a discoverable provider and
+	 * surface the classified result in the status line. On success the discovered
+	 * catalog merges through the same pattern as `refreshModels` (discovered
+	 * first, manual entries preserved) and the first model auto-fills only while
+	 * `defaultModel` is empty; a failure never alters the stored config.
+	 */
+	async function testConnection(id: string) {
+		const p = providers.find((x) => x.id === id);
+		if (!p) return;
+		testing = { ...testing, [id]: true };
+		status = 'Testing…';
+		try {
+			const result = await testProviderConnection(p);
+			if (result.ok) {
+				const discovered = result.models ?? [];
+				if (discovered.length > 0) {
+					const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
+					const defaultModel = p.defaultModel === '' ? discovered[0] : p.defaultModel;
+					providers = providers.map((x) =>
+						x.id === id ? { ...x, models: merged, defaultModel } : x
+					);
+					await saveProviders(providers);
+				}
+				status = `Connection OK — ${discovered.length} ${discovered.length === 1 ? 'model' : 'models'} found.`;
+			} else if (result.failure) {
+				const f = result.failure;
+				status = [f.title, f.message, f.hint].filter(Boolean).join(' ');
+			}
+		} catch (err) {
+			status = `Test failed: ${err instanceof Error ? err.message : String(err)}`;
+		} finally {
+			testing = { ...testing, [id]: false };
+		}
 	}
 
 	function onModelsInput(id: string, raw: string) {
@@ -384,6 +429,7 @@
 		const flags = { ...keyFlags };
 		const drafts = { ...keyDrafts };
 		const probing = { ...discovering };
+		const testingState = { ...testing };
 		const sampling = { ...samplingDrafts };
 		const samplingErr = { ...samplingErrors };
 		const extraDrafts = { ...extraBodyDrafts };
@@ -394,6 +440,7 @@
 		delete flags[id];
 		delete drafts[id];
 		delete probing[id];
+		delete testingState[id];
 		delete sampling[id];
 		delete samplingErr[id];
 		delete extraDrafts[id];
@@ -404,6 +451,7 @@
 		keyFlags = flags;
 		keyDrafts = drafts;
 		discovering = probing;
+		testing = testingState;
 		samplingDrafts = sampling;
 		samplingErrors = samplingErr;
 		extraBodyDrafts = extraDrafts;
@@ -453,20 +501,8 @@
 		</div>
 
 		{#if adding}
-			<div class="space-y-2 rounded-lg border border-border p-4">
-				<p class="text-sm font-medium">Pick a template</p>
-				<div class="grid gap-2 sm:grid-cols-2">
-					{#each PROVIDER_TEMPLATES as t (t.label)}
-						<button
-							type="button"
-							class="rounded-md border border-input bg-background p-3 text-left text-sm transition-colors hover:bg-accent"
-							onclick={() => addFromTemplate(t)}
-						>
-							<span class="block font-medium">{t.label}</span>
-							<span class="block text-xs text-muted-foreground">{t.description}</span>
-						</button>
-					{/each}
-				</div>
+			<div class="space-y-3 rounded-lg border border-border p-4">
+				<ProviderTemplatePicker onselect={addFromTemplate} />
 				<div class="flex justify-end">
 					<Button variant="ghost" size="sm" onclick={() => (adding = false)}>Cancel</Button>
 				</div>
@@ -570,22 +606,35 @@
 							</div>
 						</div>
 
+						{#if p.discoverable}
+							<div>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={testing[p.id] === true}
+									onclick={() => void testConnection(p.id)}
+								>
+									{testing[p.id] ? 'Testing…' : 'Test connection'}
+								</Button>
+							</div>
+						{/if}
+
 						<label class="space-y-1 text-xs text-muted-foreground">
 							<span>Tool capability</span>
 							<select
 								class={inputClass}
-								value={p.toolCapability ?? 'auto'}
+								value={p.toolCapability ?? 'on'}
 								onchange={(e) => {
 									updateField(p.id, {
-										toolCapability: e.currentTarget.value as 'auto' | 'on' | 'off'
+										toolCapability: e.currentTarget.value as 'on' | 'off'
 									});
 									commit(p.id);
 								}}
 							>
-								<option value="auto">Auto (provider default)</option>
-								<option value="on">On</option>
-								<option value="off">Off</option>
+								<option value="on">Enabled</option>
+								<option value="off">Disabled</option>
 							</select>
+							<p>Tools let the agent call Mayon's tools through this provider.</p>
 						</label>
 
 						<label class="space-y-1 text-xs text-muted-foreground">

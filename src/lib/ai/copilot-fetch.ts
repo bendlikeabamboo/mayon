@@ -39,7 +39,7 @@ export function createCopilotFetch(config: ProviderConfig): typeof globalThis.fe
 		const target = resolveTarget(url, session.endpoint, config.baseUrl);
 		let res: Response;
 		try {
-			res = await getLlmFetch()(target, { ...init, headers, cache: 'no-store' });
+			res = await getLlmFetch(target)(target, { ...init, headers, cache: 'no-store' });
 		} catch (err) {
 			throw classifyFetchError(err, target);
 		}

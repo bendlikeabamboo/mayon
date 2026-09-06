@@ -14,6 +14,7 @@ vi.mock('$lib/services/status.svelte', () => ({
 
 import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
 import { serverStatus } from '$lib/services/status.svelte';
+import { isLoopbackUrl } from '$lib/ai/llm-target';
 
 describe('getLlmFetch', () => {
 	const originalFetch = globalThis.fetch;
@@ -30,7 +31,7 @@ describe('getLlmFetch', () => {
 	it('returns globalThis.fetch directly when llm-proxy cap is absent', async () => {
 		vi.mocked(serverStatus.has).mockReturnValue(false);
 
-		const fetchFn = getLlmFetch();
+		const fetchFn = getLlmFetch('https://api.example.test/v1/chat');
 		expect(fetchFn).toBe(globalThis.fetch);
 
 		const fakeRes = new Response('ok', { status: 200 });
@@ -57,7 +58,7 @@ describe('getLlmFetch', () => {
 		});
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
 
-		const fetchFn = getLlmFetch();
+		const fetchFn = getLlmFetch('https://api.example.test/v1/chat');
 		const res = await fetchFn('https://api.example.test/v1/chat', {
 			method: 'POST',
 			headers: { authorization: 'Bearer secret123', 'content-type': 'application/json' },
@@ -88,7 +89,7 @@ describe('getLlmFetch', () => {
 		const fakeRes = new Response('[]', { status: 200 });
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
 
-		const fetchFn = getLlmFetch();
+		const fetchFn = getLlmFetch('https://api.example.test/v1/models');
 		await fetchFn('https://api.example.test/v1/models', {
 			method: 'GET',
 			headers: { authorization: 'Bearer k' }
@@ -109,7 +110,7 @@ describe('getLlmFetch', () => {
 		const fakeRes = new Response('ok', { status: 200 });
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
 
-		const fetchFn = getLlmFetch();
+		const fetchFn = getLlmFetch('https://api.example.test/v1/chat');
 		await fetchFn('https://api.example.test/v1/chat', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -121,5 +122,28 @@ describe('getLlmFetch', () => {
 				.body as string
 		);
 		expect(sentBody.body).toBeUndefined();
+	});
+
+	it.each([
+		['localhost', 'http://localhost:1234/v1/chat'],
+		['127.0.0.1', 'http://127.0.0.1:8080/x'],
+		['[::1]', 'http://[::1]:1/x']
+	])('bypasses the proxy for loopback target %s', (_label, url) => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
+
+		expect(getLlmFetch(url)).toBe(globalThis.fetch);
+	});
+});
+
+describe('isLoopbackUrl', () => {
+	it.each([
+		['http://localhost:1234/v1', true],
+		['http://127.0.0.1:8080/x', true],
+		['http://[::1]:1/x', true],
+		['https://api.example.test/v1', false],
+		['http://localhost.evil.test/v1', false],
+		['not a url', false]
+	])('%s → %s', (url, expected) => {
+		expect(isLoopbackUrl(url)).toBe(expected);
 	});
 });

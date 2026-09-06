@@ -25,7 +25,7 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 | Framework | SvelteKit, Svelte 5 (runes), SPA via `adapter-static` |
 | UI | Tailwind v4 + shadcn-svelte (bits-ui), lucide icons |
 | Database | Postgres via server; drizzle-kit schema; pglite for tests |
-| AI | Provider-agnostic adapters (OpenAI/Anthropic/Gemini/Ollama + OpenAI-compatible gateways: Z.AI/GLM, OpenRouter, Kilo Gateway), streaming |
+| AI | Provider catalog (20 curated templates in four fixed groups: Local — Ollama, LM Studio, vLLM — Cloud APIs, Gateways, Custom) over provider-agnostic adapters, streaming |
 | Branch context | Excerpt + full history up to the fork point |
 | Branch storage | **Reference-based** — child reads ancestor messages up to a fork-point cutoff (no duplication) |
 | Transport | Browser streaming `fetch` (IndexedDB keys); server CORS proxy when available |
@@ -35,7 +35,7 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 ### Key tradeoffs
 
 - **Reference-based branching:** single source of truth, light storage; the accepted cost is that a pre-branch edit in a parent propagates to descendants. If immutability is ever needed, add a content-hash/version column later (no schema break).
-- **Server-required:** the app connects to a local Mayon server container for its primary Postgres store. CORS-blocked providers (e.g. Anthropic) stream through the server's CORS proxy; a clear "run the server" message is shown when the server is unreachable.
+- **Server-required:** the app connects to a local Mayon server container for its primary Postgres store. CORS-blocked providers (e.g. Anthropic) stream through the server's CORS proxy — loopback local targets bypass it and always fetch browser-direct; a clear "run the server" message is shown when the server is unreachable.
 
 ## System architecture
 
@@ -325,8 +325,9 @@ Message search (`src/lib/db/repositories/search.ts`) filters to `kind IN ('user_
 ## Provider / AI layer
 
 - **`Provider` interface:** `chatStream(messages, opts): AsyncIterable<Token>`, plus `generateLab`, `generateQuiz`, `gradeAnswer` (structured output / tool calls).
-- **Adapters:** OpenAI, Anthropic, Gemini, Ollama (local) — all configurable in Settings.
-- **Transport:** browser streaming `fetch` (keys resolved from IndexedDB). When the server is connected with the `llm-proxy` cap, requests to CORS-blocked providers route through the server's `POST /api/llm/proxy`.
+- **Adapters:** OpenAI, Anthropic, Gemini, Ollama — all configurable in Settings from a 20-template catalog in four fixed groups: Local (Ollama, LM Studio, vLLM), Cloud APIs, Gateways, Custom. LM Studio and vLLM onboard as OpenAI-compatible, key-free, discovery-first entries in Local.
+- **Transport:** browser streaming `fetch` (keys resolved from IndexedDB). When the server is connected with the `llm-proxy` cap, requests to CORS-blocked providers route through the server's `POST /api/llm/proxy`. Loopback targets bypass the proxy and always fetch browser-direct — the server container cannot reach the host's loopback.
+- **Connection test:** the Settings "Test connection" probe classifies a failed check (server not running / cross-origin blocked / insecure-context blocked / timeout / auth / wrong path) and shows a coached remedy for each class.
 - **Key handling:** IndexedDB under the same origin as the app.
 - **Generation helpers** use provider structured-output to produce typed lab/quiz payloads.
 - **Grading:** MCQ/flashcard auto-scored; short-answer AI-graded against the stored rubric.

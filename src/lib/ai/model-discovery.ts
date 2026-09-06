@@ -50,12 +50,19 @@ interface CopilotModelEntry {
  * Bearer from the KeyStore, or the Copilot session for `github-copilot`). Throws
  * the same typed provider errors as a chat request on HTTP/network failure (so
  * the UI can format them via `formatProviderError`).
+ *
+ * Without a caller-supplied signal, discovery is bounded by
+ * `MODEL_DISCOVERY_TIMEOUT_MS`: loopback targets fetch browser-direct (no
+ * proxy fail-fast), so a dropped-port endpoint must not spin forever.
  */
+export const MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+
 export async function discoverModels(
 	config: ProviderConfig,
 	deps: ModelDiscoveryDeps,
 	signal?: AbortSignal
 ): Promise<string[]> {
+	signal ??= AbortSignal.timeout(MODEL_DISCOVERY_TIMEOUT_MS);
 	if (config.kind === 'github-copilot') {
 		return discoverCopilotModels(config, signal);
 	}

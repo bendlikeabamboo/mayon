@@ -7,6 +7,12 @@ export interface KeychainFetchAuth {
 	header: string;
 	keyId: string;
 	scheme?: string;
+	/**
+	 * Keyless providers (e.g. local runtimes, keyless gateways): proceed without
+	 * the auth header when no key is stored instead of throwing
+	 * `MissingKeyError`. A key saved later is still attached.
+	 */
+	optionalKey?: boolean;
 }
 
 export function createKeychainFetch(auth: KeychainFetchAuth): typeof globalThis.fetch {
@@ -19,12 +25,12 @@ function createBrowserKeychainFetch(auth: KeychainFetchAuth): typeof globalThis.
 		const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 		const headers = new Headers(init?.headers);
 		const key = await store.get(auth.keyId);
-		if (!key) throw new MissingKeyError(undefined, auth.keyId);
-		headers.set(auth.header, auth.scheme ? `${auth.scheme} ${key}` : key);
+		if (!key && !auth.optionalKey) throw new MissingKeyError(undefined, auth.keyId);
+		if (key) headers.set(auth.header, auth.scheme ? `${auth.scheme} ${key}` : key);
 
 		let res: Response;
 		try {
-			res = await getLlmFetch()(url, {
+			res = await getLlmFetch(url)(url, {
 				...init,
 				headers,
 				cache: 'no-store'
