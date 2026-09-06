@@ -16,8 +16,14 @@ import {
 } from './quiz';
 import { generateObjectViaTool, extractObjectErrorRaw, ObjectToolError } from './object-tool';
 import { splitContextForGeneration } from './context-split';
+import { assemblePrompt, readCustomInstructions } from './assembly';
 
-export const DEFAULT_QUIZ_PROMPT = [
+/**
+ * Code-owned quiz generation contract (output shape + exact-structure example
+ * + rules). Never read from settings and never editable through any UI path;
+ * custom instructions are appended after it, never replacing it.
+ */
+export const QUIZ_CONTRACT = [
 	'You are a quiz designer. Given a conversation, produce a mixed quiz that lets a learner self-check the topic.',
 	'',
 	'# Output shape',
@@ -78,6 +84,9 @@ export const DEFAULT_QUIZ_PROMPT = [
 	'- Return raw JSON as the tool arguments only: no prose around it, no markdown code fences, no stringified encoding.'
 ].join('\n');
 
+/** The default quiz prompt IS the contract (kept as an alias for existing imports). */
+export const DEFAULT_QUIZ_PROMPT = QUIZ_CONTRACT;
+
 /**
  * Tool-description contract for quiz generation. Some providers weight the
  * tool description alongside the system prompt, so we restate the discriminated
@@ -116,8 +125,13 @@ export const DEFAULT_GRADE_PROMPT = [
 	'- Return raw JSON as the tool arguments only: no prose around it, no markdown code fences.'
 ].join('\n');
 
-/** Tool-description contract for grading — see QUIZ_TOOL_DESCRIPTION rationale. */
-const GRADE_TOOL_DESCRIPTION =
+/**
+ * Tool-description contract for grading — see QUIZ_TOOL_DESCRIPTION rationale.
+ * Exported for the classification-marker drift guard
+ * (classification-markers.test.ts): the e2e mock classifies grading requests
+ * by GRADING_MARKER inside this string, so it is part of the test contract.
+ */
+export const GRADE_TOOL_DESCRIPTION =
 	'Emit the grading verdict for the learner\'s short answer. Call this tool exactly once with the verdict object as the arguments: {"isCorrect": boolean, "feedback": string} — no other fields, no nesting, no stringified encoding.';
 
 export class QuizGenerationError extends Error {
@@ -140,10 +154,16 @@ export class GradeError extends Error {
 	}
 }
 
+/**
+ * Assemble the effective quiz system prompt: the code-owned contract plus any
+ * custom instructions (`quizInstructions` settings key), with a one-time
+ * idempotent migration of the legacy whole-prompt override (`quizPrompt`)
+ * into the instructions key. Grading has no user override and gains none.
+ * Migration/read semantics live in readCustomInstructions (shared with lab).
+ */
 export async function readQuizPrompt(): Promise<string> {
-	const { repos } = await import('$lib/db');
-	const override = await repos.settings.get<string>('quizPrompt');
-	return override && override.trim().length > 0 ? override : DEFAULT_QUIZ_PROMPT;
+	const instructions = await readCustomInstructions('quizInstructions', 'quizPrompt');
+	return instructions ? assemblePrompt(QUIZ_CONTRACT, instructions) : QUIZ_CONTRACT;
 }
 
 export interface GenerateQuizOptions {

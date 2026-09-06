@@ -210,3 +210,44 @@ describe('labsStore.loadList / loadLab', () => {
 		expect(labsStore.current).toBeNull();
 	});
 });
+
+describe('labsStore rawOffer → saveRaw chain (failure recovery)', () => {
+	it('offers the raw payload on a failed generation and saving it persists a checklist-less lab', async () => {
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		// Raw output shaped like the tests/fixtures/mock-llm/lab-fixture.mjs
+		// (LAB_FIXTURE) topic, standing in for the unparsed model text a
+		// schema-mismatch generation failure would carry.
+		const fixtureRaw =
+			'# Floating Leaf Disc Photosynthesis Lab\n\nMeasure the rate of photosynthesis by timing how fast vacuum-infiltrated leaf discs float.';
+		const { ObjectToolError } = await import('$lib/ai/generate/object-tool');
+		mockedGenerateText.mockRejectedValue(
+			new ObjectToolError(
+				'Structured result did not match the schema: expected object, received string',
+				fixtureRaw,
+				'schema_mismatch'
+			)
+		);
+		const chatId = await seedChat();
+
+		const id = await labsStore.generate(chatId);
+
+		expect(id).toBeNull();
+		expect(labsStore.rawOffer).not.toBeNull();
+		expect(labsStore.rawOffer!.chatId).toBe(chatId);
+		expect(labsStore.rawOffer!.raw).toBe(fixtureRaw);
+		expect(await repos.labs.listAll()).toEqual([]);
+
+		const savedId = await labsStore.saveRaw(labsStore.rawOffer!.chatId, labsStore.rawOffer!.raw);
+
+		expect(savedId).not.toBeNull();
+		const lab = await repos.labs.getById(savedId!);
+		expect(lab!.title).toBe('Floating Leaf Disc Photosynthesis Lab');
+		expect(lab!.content).toBe(fixtureRaw);
+		expect(repos.labs.parseChecklist(lab!.checklist)).toEqual([]);
+		expect(labsStore.rawOffer).toBeNull();
+	});
+});

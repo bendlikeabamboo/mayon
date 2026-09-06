@@ -13,8 +13,14 @@ import type { ChatMessage, ResolvedRequestSettings } from '../types';
 import { GeneratedLabSchema, type GeneratedLab } from './lab';
 import { generateObjectViaTool, extractObjectErrorRaw } from './object-tool';
 import { splitContextForGeneration } from './context-split';
+import { assemblePrompt, readCustomInstructions } from './assembly';
 
-export const DEFAULT_LAB_PROMPT = [
+/**
+ * Code-owned lab generation contract (output shape + exact-structure example
+ * + rules). Never read from settings and never editable through any UI path;
+ * custom instructions are appended after it, never replacing it.
+ */
+export const LAB_CONTRACT = [
 	'You are a learning lab designer. Given a conversation, produce a hands-on lab that lets a learner practice the topic.',
 	'',
 	'The output must be a JSON object with EXACTLY these four fields:',
@@ -49,6 +55,9 @@ export const DEFAULT_LAB_PROMPT = [
 	'- Each step is a single concrete instruction string. Include backticks for code inline — do not escape them.'
 ].join('\n');
 
+/** The default lab prompt IS the contract (kept as an alias for existing imports). */
+export const DEFAULT_LAB_PROMPT = LAB_CONTRACT;
+
 export class LabGenerationError extends Error {
 	constructor(
 		message: string,
@@ -59,10 +68,16 @@ export class LabGenerationError extends Error {
 	}
 }
 
+/**
+ * Assemble the effective lab system prompt: the code-owned contract plus any
+ * custom instructions (`labInstructions` settings key), with a one-time
+ * idempotent migration of the legacy whole-prompt override (`labPrompt`)
+ * into the instructions key. Migration/read semantics live in
+ * readCustomInstructions (shared with quiz).
+ */
 export async function readLabPrompt(): Promise<string> {
-	const { repos } = await import('$lib/db');
-	const override = await repos.settings.get<string>('labPrompt');
-	return override && override.trim().length > 0 ? override : DEFAULT_LAB_PROMPT;
+	const instructions = await readCustomInstructions('labInstructions', 'labPrompt');
+	return instructions ? assemblePrompt(LAB_CONTRACT, instructions) : LAB_CONTRACT;
 }
 
 export interface GenerateLabOptions {
