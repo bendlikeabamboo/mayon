@@ -10,7 +10,7 @@ A lab is a hands-on learning guide generated from a chat. It takes the conversat
 
 ## Generating a lab
 
-From any chat, look for the "Generate Lab" action. Clicking it sends the chat's assembled context to the AI, which produces a structured output containing:
+From any chat, look for the "Generate lab" action. Clicking it sends the chat's assembled context to the AI, which produces a structured output containing:
 
 - **Title** — a short name for the lab.
 - **Introduction** — context and goals.
@@ -31,7 +31,7 @@ The lab view renders the generated content as a scrollable guide:
 
 Click any checklist item to toggle its completion state. The progress is saved immediately — close the lab and reopen it later, and your completed items persist.
 
-A progress bar at the top of the checklist shows how many items you have completed out of the total. When all items are checked the lab is marked as complete.
+A counter next to the "Checklist" heading shows your progress in the form "2/5 done" — two of the five items completed. Checked items are crossed off in the list so you can see at a glance what is left.
 
 ## Progress tracking
 
@@ -41,11 +41,15 @@ The checklist is stored as JSON in the database (`labs.checklist`). Each item ha
 - **text** — the task description.
 - **done** — boolean completion state.
 
-Because the checklist is persisted in the same local SQLite database as the chat, progress survives app restarts and page reloads. There is no server or account involved.
+Labs and their checklists live in Mayon's PostgreSQL database — the same server-side database that holds every other part of the app (see [Data and Privacy](data-and-privacy.qmd)). The Mayon server must be running for labs to work. In return, your progress is durable: it survives page reloads, app restarts, and container restarts, because the database persists in the `pg-data` Docker volume.
 
-## Regenerating a lab
+## Customizing generation
 
-If the generated lab does not fit your needs, you can regenerate it. The previous version is replaced with a new generation based on the current chat context. Your checklist progress from the previous version is not carried over.
+The instructions Mayon follows when generating a lab can be adjusted in **Settings → Lab generation prompt**. The settings page shows the built-in lab instructions (read-only) alongside a text box for your own additions. Anything you write there is appended after the built-in instructions when a lab is generated — the built-in rules always come first and cannot be changed, so your notes refine the output (shorter steps, a different tone, a focus on particular skills) without altering what a lab is. Clearing the text box, or using the "Reset instructions" button, returns generation to the default behavior.
+
+## Generating another lab
+
+Generating a lab never replaces anything. Each click of "Generate lab" creates a brand-new lab from the chat's current context, and labs you generated earlier are kept exactly as they are. All labs from a chat are listed in that chat's sidebar, so an earlier version — including its checklist progress — stays one click away. A newly generated lab starts with every checklist item unchecked; it does not inherit progress from any earlier lab.
 
 ## Link back to the chat
 

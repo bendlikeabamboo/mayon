@@ -15,6 +15,7 @@ A personal, **local-first** learning app built around a **branchable chat graph*
 - Chat with an AI about a topic. When a response is too dense, **highlight a span** and **branch** a new conversation rooted in that excerpt — the child inherits the excerpt plus the full history up to that point.
 - Every branch is a node in a **navigable tree** (sidebar tree + breadcrumb path to root) with optional **cross-links** between otherwise separate chats.
 - From any chat, generate AI **labs** (hands-on guide + progress checklist) and **quizzes** (mixed MCQ / flashcard / AI-graded short answer). Both are **leaf artifacts** on a chat (they do not branch).
+- Chats accept **image parts** — paste or attach a picture and vision-capable providers receive it alongside the text. A **Learner Profile** (personas and Learning Brief settings) shapes how the assistant teaches, a **section peek strip** offers hover navigation over long replies, and the Expound, Lab, and Quiz generation prompts can be customized in Settings.
 - Personal, single-user. Ships as a browser SPA that connects to a local Mayon server container with Postgres.
 
 ## Locked decisions
@@ -44,7 +45,7 @@ One codebase. A SvelteKit SPA connects to a local server container that provides
 ```
 ┌───────────────────────────────────────────────────────────┐
 │  SvelteKit SPA (adapter-static) — Svelte 5 runes           │
-│  routes: /chat · /lab · /quiz · /search · /tree · /settings     │
+│  routes: / · /login · /chat · /lab · /quiz · /search · /tree · /settings  │
 ├───────────────────────────────────────────────────────────┤
 │  lib/ai      Provider interface · chat stream                      │
 │              generateLab · generateQuiz · gradeShortAnswer          │
@@ -98,6 +99,7 @@ A node in the conversation tree.
 | provider | TEXT | |
 | model | TEXT | |
 | brief | TEXT | Learning Brief on root chats; nullable |
+| mcp_config | TEXT | nullable; JSON `ChatMcpConfig` (`src/lib/mcp/types.ts`) — per-chat MCP server enablement; `NULL` inherits globally enabled servers, `{}` disables MCP tools for the chat |
 | created_at / updated_at | INTEGER | |
 
 #### messages
@@ -111,6 +113,7 @@ Content of a single chat. Each row carries exactly one durable `kind` from a clo
 | kind | TEXT | Entry kind: `user_message`, `assistant_message`, `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`, `branch_artifact` (020). Added nullable by drizzle DDL; `SET NOT NULL` enforced by the v1→v2 data migration after backfill proves completeness. |
 | role | TEXT | system, user, assistant, or tool — authoring side only; not used for presentation or projection |
 | content | TEXT | markdown |
+| parts | TEXT | nullable; JSON `MessagePart[]` (`src/lib/chat/kinds.ts`) — multimodal parts such as images; `NULL` = legacy text-only row, readers derive `[{type:'text', text: content}]` |
 | ord | DOUBLE PRECISION | ordering within the chat; fractional since 020 so anchored `branch_artifact` inserts can take midpoints |
 | model | TEXT | nullable |
 | tokens | INTEGER | nullable |
@@ -207,6 +210,24 @@ Leaf artifact on a chat.
 | ai_feedback | TEXT | nullable; for short-answer AI grading |
 | graded_at | INTEGER | nullable |
 
+#### agent_traces
+
+Per-turn diagnostics emitted by the agent runtime.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | TEXT PK | |
+| chat_id | TEXT → chats.id | |
+| assistant_message_id | TEXT → messages.id | nullable |
+| model | TEXT | nullable |
+| config_kind | TEXT | generation config that produced the turn |
+| reasoning | TEXT | |
+| kind | TEXT | defaults to `chat` |
+| lab_id / quiz_id | TEXT → labs.id / quizzes.id | nullable |
+| created_at | INTEGER | |
+| duration_ms | INTEGER | nullable |
+| trace | TEXT | |
+
 #### settings
 
 Key/value store (JSON values).
@@ -249,7 +270,7 @@ assembleContext(target):
   return parts sorted by depth asc, then ord asc
 ```
 
-The fork's **excerpt** is injected as a branching seed (a system note) so the child's first turn is anchored to the highlighted text. Messages created in a parent after a fork (ord > cutoff) never leak into the child. Sidebar tree + breadcrumb derive from `parent_id` / `root_id`; cross-links render as distinct reference edges.
+The fork's **excerpt** is injected as a branching seed (a system note) so the child's first turn is anchored to the highlighted text. Messages created in a parent after a fork (ord > cutoff) never leak into the child. Sidebar tree + breadcrumb derive from `parent_id` / `root_id`; cross-links are stored as separate reference rows (`cross_links`) and render only in the chat rail's Cross-links panel — never as edges in the sidebar tree.
 
 The ancestor-gathering walk is implemented in `src/lib/chat/context.ts` (`assembleContext`). Per-row conversion to provider-visible `ModelMessage[]` is delegated to the pure projection module `src/lib/chat/projection.ts` — see [Context projection](#context-projection).
 
@@ -354,7 +375,7 @@ src/
     assets/      static assets
     chat/        kinds, entries, projection, presentation, golden,
                   tree ops, branch-from-highlight, crosslinks, expound, selection
-    components/  subdirs: ai/ chat/ diagnostics/ labs/ mcp/ quizzes/ settings/ ui/
+    components/  subdirs: ai/ chat/ diagnostics/ generation/ labs/ mcp/ quizzes/ settings/ ui/
                     + top-level shells (AppShell, BootGate, Sidebar, etc.)
     db/          schema, migrations, StorageDriver + adapters, repositories
     dev/         dev-only utilities
@@ -363,7 +384,7 @@ src/
     services/    platform services
     stores/      Svelte stores
     utils/       shared helpers
-  routes/        /chat /lab /quiz /search /tree /settings
+  routes/        / /login /chat /lab /quiz /search /tree /settings
 server/           Node/TS: stdio MCP bridge, LLM CORS proxy, sandbox DB, backup
 packages/shared/  Wire-protocol types shared by web + server
 ```

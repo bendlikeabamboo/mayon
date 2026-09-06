@@ -34,8 +34,12 @@ The narrative record of feature decisions and reversals.
 
 ## Quick start
 
+The fastest way to get Mayon running on your own machine is the one-line installer. It detects your container engine, generates a secure database password, writes everything to `~/.mayon`, and starts the whole stack for you:
+
 ```bash
-docker compose pull && docker compose up -d
+curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/install.sh | bash
 ```
 
-To work on Mayon itself, `pnpm dev` runs the all-Docker dev stack (web HMR on <http://localhost:5173>).
+When the command finishes, open <http://localhost:8080> in your browser and start chatting. The [README](https://github.com/bendlikeabamboo/mayon#readme) covers the other ways to install and run Mayon.
+
+If you want to work on Mayon itself, `pnpm dev` runs the all-Docker dev stack (web HMR on <http://localhost:5173>).
