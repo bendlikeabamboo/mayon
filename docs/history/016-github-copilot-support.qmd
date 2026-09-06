@@ -1,0 +1,59 @@
+---
+title: "016 — GitHub Copilot support"
+---
+
+> **Status:** standing (the four manual smokes needing a real Copilot subscription
+> remain logged for user validation, as with 007's real-key chats)
+
+**Goal.** Make Mayon usable on the requester's workplace main AI: GitHub Copilot as a
+first-class provider kind. Add it in settings, authorize with a GitHub account through
+the device flow without ever copying a secret, and chat with streamed replies and tool
+calls at full parity with any other provider. Renewal of short-lived access is
+invisible; a dead grant surfaces a provider-specific reconnect state with one action;
+the model list comes live from the account's catalog with a curated fallback; multiple
+accounts coexist. The bar: add-to-first-reply in under three minutes with zero manual
+secret handling, and 100% of expiry-affected requests completing without user
+interaction.
+
+**Why.** A standalone spec — no idea deck; a direct user need ("that's our main AI in
+my official work") following the provider-template features 007/008, and the first case
+that broke the template pattern: templates can only serve a pasted static key, and the
+whole point here was account authorization with renewable, short-lived access — the PAT
+path was rejected by construction. Research was done with measured CORS probes rather
+than documentation: github.com's device-flow endpoints send no CORS headers at all,
+while the Copilot API answers browser calls with permissive CORS — an undocumented
+accident.
+
+**Outcome & reversals.** Specced and implemented August 29, merged September 2 after
+two review rounds (PRs #11 and #13). Topology: the device flow runs server-side (flow
+state in memory, the device code never leaves), the resulting GitHub grant lives in the
+browser KeyStore under the provider id — the constitution's one secret home — and the
+server mints short-lived Copilot session tokens with 120-second eager refresh and
+single-flight caching. Serving reuses `createOpenAICompatible` behind a session-aware
+fetch injecting the mandatory header set (measured: 400 without the integration id, 403
+without editor headers), targeting the endpoint the exchange declares authoritative, so
+Business/Enterprise hosts come free. Renewal, revocation, and quota map onto typed
+errors — auth-required, subscription-required, and the existing rate limit carrying
+`Retry-After` — so the chat store never learns a new kind. Discovery filters to
+chat-capable, policy-enabled models and deliberately ignores `model_picker_enabled`, a
+known source of false negatives. Zero schema changes; the provider catalog grew 17→18
+with order tests extended. Two alternatives were rejected outright: browser-direct
+exchange (it would pin the feature to undocumented CORS) and server-side grant storage
+(the KeyStore rule exists precisely to avoid server-held user credentials). The
+accepted risk is recorded, not hidden: the Copilot API surface and the
+ecosystem-standard client id are undocumented and ToS-gray, so both sit in one
+constants module — a future official path is a one-file change. The server API contract
+is preserved verbatim at
+[appendices/016-copilot-server-api.md](appendices/016-copilot-server-api.md).
+
+**Learnings.**
+
+- Provider kind, not template, is the unit of customization when auth — not wire
+  format — is what differs.
+- Probe CORS empirically before choosing auth topology; a permissive header today is
+  not a contract.
+- Map the observable failure families (expiry, revocation, quota) onto typed errors and
+  upstream quirks never reach the chat store.
+- Isolate ToS-gray constants in one module so the risk is a one-file swap, not a
+  rewrite.
+- Even server-required features must define their server-absent degradation path.

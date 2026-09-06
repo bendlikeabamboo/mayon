@@ -1,0 +1,47 @@
+---
+title: "012 — UI visual articulation pass"
+---
+
+## 012 — UI visual articulation pass {#sec-012}
+
+> **Status:** standing — three mid-flight owner reversals, all landed before merge
+
+**Goal.** A restyling-and-affordance pass over every screen: exactly one warm accent hue
+reserved for actionable emphasis (buttons, links, active nav, focus rings, focused
+composer); a three-step surface hierarchy — canvas, panel, raised card; the composer as a
+centered rounded card whose launchers immediately create persistent artifacts anchored to
+the conversation; a home page with resume affordances; hover-revealed row actions;
+connector-line tree carets; one shared row-card grammar for chat/quiz/lab lists;
+stagger-fade motion honoring reduced-motion preferences; skeletons only past ~300 ms.
+
+**Why.** Nothing looked clickable without trial and error; hierarchy was encoded nowhere
+perceivable; powerful features (branching, quizzes, labs) were tribal knowledge. Hard
+governing principles bounded the how: articulation comes from hairline borders and subtle
+shadows — edges, not brightness — because the low text contrast is intentional eye
+comfort, so flatness must never be fixed by raising text contrast; exactly one sans-serif
+type family; everything persists, reinforcing the standing rule that interactions become
+artifacts on the main screen rather than ephemeral modals; compress chrome without
+amputating facts; one accent system-wide, status colors stay status-only.
+
+**Outcome & reversals.** Landed through the feature branch and merged with all ten success
+criteria verdicts PASS and test gates green. Three reversals were caught by the pass's own
+evidence discipline and landed before merge: (1) the proposed warm-charcoal night theme —
+fully built as a token-level hue shift at constant lightness — was ruled down to achromatic
+grays ("stick to the gray palette, keeping the accent"), reverting neutrals at digit-
+identical lightness with the accent trio surviving as the sole saturated family — proving
+hairline-edge articulation carries hierarchy without warmth; (2) the serif typography
+experiment was introduced and cut within the same effort, confirming the sans-serif ruling;
+(3) the five-seed home starter chip set was reduced to a single explore-new-topic chip,
+the removed seeds duplicating what composer launchers and the resume card already cover.
+Launcher persistence was demonstrated as real database rows, honoring the artifacts-not-
+modals principle. A pre-existing cold-load bootstrap race was reproduced during testing,
+pinned as predating the feature, and flagged for follow-up.
+
+**Learnings.**
+
+- Depth reads through edges and shadow, never brightened text; preserving exact lightness
+  made the achromatic revert risk-free.
+- Tokenize experiments so an owner veto is a cheap revert, not a redesign.
+- A hard persistence principle keeps shiny new affordances from minting ephemeral state.
+- Per-story evidence captured before sign-off meant reversals cost almost nothing and left
+  an auditable trail.

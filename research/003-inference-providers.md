@@ -197,7 +197,7 @@ to self-hosters. Chat Completions
 The user's primary work AI provider: the feature exists so Mayon runs on a workplace
 Copilot license with zero manual secret handling. Not on the shortlist above: Copilot
 access isn't a pasted key, so the S-effort playbook didn't apply. Shipped via
-[feature 016](../specs/016-github-copilot-support/research.md) as the fifth kind —
+[feature 016](../docs/history/016-github-copilot-support.qmd) as the fifth kind —
 the L-effort case (new kind), though it reuses the OpenAI wire format and the AI SDK
 path, so no new SDK package or transport work.
 
@@ -236,8 +236,9 @@ no official third-party client program, and GitHub's tolerance of the shared VS 
 client_id is informal. If tolerance is revoked the feature breaks at the exchange (404).
 Containment: the client_id and header constants are isolated in
 `server/src/copilot-auth.ts` and `src/lib/ai/copilot-fetch.ts`, making a future official
-path a one-file change. **Depth:** `specs/016-github-copilot-support/research.md`
-(D2 auth rationale, D3 serving, D4 renewal/error mapping).
+path a one-file change. **Depth:** `docs/history/016-github-copilot-support.qmd`
+(D2 auth rationale, D3 serving, D4 renewal/error mapping; full research.md
+recoverable from git history).
 
 ---
 

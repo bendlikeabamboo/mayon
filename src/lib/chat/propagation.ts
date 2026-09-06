@@ -6,7 +6,7 @@
  * the parent. Reads go through repositories only (layering rule); the single
  * write is `messagesRepo.insertAnchored`, driven by the store.
  *
- * Raw-delta format (specs/020-branch-backprop/data-model.md): the anchored
+ * Raw-delta format (docs/history/appendices/020-branch-backprop-data-model.md): the anchored
  * excerpt (omitted when unresolvable) followed by every branch row rendered
  * verbatim in `ord` order — `[user] `, `[assistant] `, `[tool: <name>] `.
  * No truncation, ever.

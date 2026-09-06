@@ -1,0 +1,38 @@
+---
+title: "011 — Podman compatibility"
+---
+
+## 011 — Podman compatibility {#sec-011}
+
+> **Status:** standing (one scope reversal inside the feature, same session)
+
+**Goal.** Let self-hosters install and lifecycle-manage Mayon with Podman — containers
+running rootless, without root privileges — while Docker remains the primary engine
+everywhere: detection default, dev default, CI, release packaging. One installer and one
+engine-neutral compose file serve both engines; no forked variants.
+
+**Why.** The owner's own workstation is Podman-only; shell aliases help interactive
+typing but are useless for non-interactive contexts — piped installs and npm scripts never
+load them — so real binary-level engine resolution was required, not convenience.
+
+**Outcome & reversals.** Shipped and merged. The installer resolves the engine in a fixed
+order — explicit override → recorded preference file → auto-detection preferring Docker —
+falling back if the preferred engine lacks working compose support. Every lifecycle
+subcommand binds to the recorded engine thereafter: a missing engine dies with a clear
+message naming the preference key rather than silently switching. The cross-engine hazard
+— named volumes are engine-scoped and invisible to the other engine — is detected before
+deploy, with interactive confirm defaulting to abort and a hard abort under non-interactive
+stdin, so an empty fresh database can never masquerade as the user's data. Rootless
+low-port attempts get engine-specific remediation guidance. The dev workflow gained the
+same policy through one shared dispatcher script used structurally by all dev commands —
+with the important nuance that this *secondary* dev support was itself a same-session
+scope reversal: the clarification originally excluded dev entirely, and CI/release
+packaging remain Docker-only permanently. Runtime code and app behavior were untouched.
+
+**Learnings.**
+
+- Engine-scoped storage turns "which engine created this volume" into the central
+  correctness hazard, bigger than CLI compatibility.
+- Persist the engine decision at creation time; it prevents silent divergence later.
+- Non-interactive invocations invalidate interactive conveniences; selection logic must
+  inspect real binaries.

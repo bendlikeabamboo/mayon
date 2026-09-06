@@ -80,7 +80,7 @@ and labs flows end to end (`mock-classification.spec.ts`, `quiz.spec.ts`, `lab.s
 `prompt-contract.spec.ts`), which is what replaces the manual quiz-and-labs pass on release
 candidates. The classification protocol, fixtures, and the no-interception guardrail are specified
 in `tests/fixtures/mock-llm/README.md` and
-`specs/020-rc-ui-verification/contracts/mock-llm-protocol.md` — never stub the provider request
+`../history/appendices/020-mock-llm-protocol.md` — never stub the provider request
 path with `page.route`; a bypassed hop tests the mocks, not the app.
 
 Prerequisites (fresh checkout):

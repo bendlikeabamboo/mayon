@@ -1,0 +1,57 @@
+---
+title: "019 — Security posture detection"
+---
+
+> **Status:** standing (one leg degraded: platform push protection was verified
+> non-enforcing on this repo; the enforcement gap is a recorded follow-up, not
+> a fix in this feature)
+
+**Goal.** Make the project automatically tell the maintainer when dependencies,
+release artifacts, or committed content introduce known weaknesses. Detection
+latency was previously infinite — only manual audits surfaced anything — and
+the freshly public launch ([017 — secure public
+launch](017-secure-public-launch.qmd)) made that gap consequential. The
+assessment's verdict was Option B: zero-config detection, strictly report-only.
+
+**Why.** Posture was maintained by hand and memory while the product went
+internet-facing. Report-only was a deliberate ruling, not a compromise: a solo
+maintainer's noise budget, plus the constraint that security work must never tax
+features, performance, or the one-step install. Everything runs upstream of the
+shipped artifact; artifact hardening (digest pinning, non-root containers, TLS
+defaults) was explicitly out of scope, as was gating any merge or release on
+findings.
+
+**Outcome & reversals.** Merged as PR #27 (2026-09-05); the entire diff is two
+workflow files and repo settings, nothing under `src/` or `server/`.
+Dependabot vulnerability alerts and security updates went live via settings
+alone — no `dependabot.yml`, because scheduled version-update floods were
+explicitly declined against the noise budget — and enablement immediately
+surfaced 40 known vulnerabilities on the default branch, converting detection
+latency from never to same-day. A report-only CI job audits all three manifest
+roots on every PR, and each release leg Trivy-scans its built image into job
+summaries, per-image SARIF categories, and artifacts, with explicit
+clean/findings/scan-failed lines so a scan that did not run can never masquerade
+as a clean result. Rehearsal proved the surface carries real signal: the server
+image held CRITICAL and HIGH CVEs while the web image scanned clean. The
+reversal of expectation came in US3, which assumed push protection was already
+live and merely needed proving: live tests (re-run two days later to rule out
+propagation lag) showed AWS-pattern enforcement never engages on this
+personal-account public repo despite settings reporting enabled — pushes of
+synthetic credentials sailed through with zero alerts. The owner accepted a
+degraded US3 (2026-09-05), recorded FR-005/FR-006 as unmet by the platform, and
+spun the enforcement gap out as a follow-up rather than scope-creeping a
+compensating scanner into a report-only feature. The first Dependabot security
+PR's release-contract check stays open as an event-driven task.
+
+**Learnings.**
+
+- "Enabled" in a settings API is not "enforcing" — a verification-only story
+  still needs a live adversarial test, and the test was the feature.
+- Report-only is a design: never-gate plus never-silence delivers signal
+  without creating a new way to block a release.
+- Zero-config beats config: continuous dependency-graph alerts removed
+  detection latency without adding one scheduled task to maintain.
+- The shipped artifact deserves its own per-release record — image scans see
+  the full OS-plus-application closure a lockfile audit cannot.
+- Accepting a degraded outcome with a recorded follow-up beats bending a
+  report-only feature to absorb a compensating tool.

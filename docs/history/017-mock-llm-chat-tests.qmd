@@ -1,0 +1,57 @@
+---
+title: "017 — Mock-LLM chat test suite"
+---
+
+> **Status:** standing (extended, not superseded, by
+> [020 — RC UI verification](020-rc-ui-verification.qmd))
+
+**Goal.** Automated Playwright E2E coverage of the full chat experience —
+onboarding, send/receive, rendering — with no live LLM, no API key, no external
+network, and zero changes to the product codebase. The work began as idea
+004-automated-chat-testing, whose decisions.md verdict picked the contrarian
+stock-mock-server card over building a mock provider into the product — the
+owner's reasoning: "the most complete and does the job well."
+
+**Why.** Every E2E test that traversed a chat reply needed a live provider, so
+request-path tests got skipped or flaked, and rendering assertions were too
+nondeterministic to automate without fixed content. The card table had already
+priced the rejected alternative precisely: a sixth, mock provider kind would
+thread through the closed factory switch and every per-kind dialect table
+forever, skip the key-storage path by construction (keyless), and bypass the
+server proxy — the exact paths the suite exists to witness.
+
+**Outcome & reversals.** The stand-in is a ~100-line dependency-free Node
+fixture speaking the OpenAI chat protocol, because protocol fidelity was the
+acceptance bar and the app's expectations were unusually specific: a terminal
+`finish_reason` chunk is mandatory, SSE and single-shot JSON share one endpoint,
+and a fresh chat's first turn fires three concurrent calls (reply, title,
+brief) that all need answers. A `mock-llm` compose service is reachable only
+inside the docker network — the server container's proxy is where provider
+fetches execute — and the suite onboards it through the real settings UI via
+the LiteLLM template, saving a placeholder key through the real IndexedDB path.
+One deterministic kitchen-sink markdown document, with known structure and
+known offsets, drives assertions over markdown structure, KaTeX math, mermaid,
+copy affordances, and expound source alignment. Two product bugs blocked the
+round trip and were fixed as documented exceptions to the zero-diff rule, each
+with its regression test per the constitution: a cold direct load of `/chat`
+rendered a 500, and the draft restore clobbered a prompt typed while the chat
+was still loading. A known sourcemap edge — multi-line display math
+desynchronizing alignment — was deliberately recorded as a follow-up, the
+fixture avoiding it. Landed across PRs #17 and #21 (2026-09-02/03), shipped in
+0.6.0 with the new CI e2e job validated green at 2m52s; the suite later
+survived the auth gate landing by learning to wait out the security-setup
+prompt.
+
+**Learnings.**
+
+- Test scaffolding owned by tests stays protocol-exact; a product mock kind
+  inherits every provider-seam refactor forever and never exercises the real
+  paths.
+- A mock that answers in the wrong shape produces confidence that is false, not
+  merely reduced — fidelity is the whole game.
+- The first green round trip through the real UI is a bug detector: it surfaced
+  two product defects no unit suite had caught.
+- Name a zero-diff constraint's exception process up front, so real bugs get
+  fixed with regression tests instead of breaking the guarantee quietly.
+- Write the no-interception guardrail ("everything through the real proxy hop")
+  down before the first flake, not after.

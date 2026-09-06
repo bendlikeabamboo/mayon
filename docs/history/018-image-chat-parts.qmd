@@ -1,0 +1,60 @@
+---
+title: "018 — Image chat parts"
+---
+
+> **Status:** standing (idea 005's remaining modality slices — voice support, video
+> support, files — stay recorded as future work, not abandoned)
+
+**Goal.** Let users paste or attach an image into a chat whenever the connected model
+supports vision, so Mayon finally exercises what multimodal models can do — until now the
+composer and the server LLM path were text-only, so vision delivered none of its value
+inside the app. The idea stage (ideas/005-multimedia-support, folded into spec
+018-image-chat-parts) ruled a hybrid: Card 002's images-only scope — paste/attach with
+capability gating — built under Card 001's extensibility contract, a parts-based message
+architecture designed so every other modality becomes a follow-on slice rather than a
+rewrite. Client-side compress/downsize before upload was day-one work; images live in the
+primary store and ride the existing backup story; the vision gate stays advisory, failing
+with clear errors rather than pretending to be omniscient.
+
+**Why.** The recorded use case is vision-first — learning frontend engineering by sending
+screenshots the model must see — which decided the idea deck: the files-as-text reframe
+lost the bet ("the why is images the model can see"), and the voice-first and MCP-pull
+cards were no-gos. Vision was judged roughly 90% of real demand; the hybrid delivers it in
+a week or two while keeping Card 001's every-modality destination alive in the contract.
+
+**Outcome & reversals.** Shipped in 0.6.0 (merged 2026-09-03, PR #24) with zero new
+dependencies — downsizing uses the native Canvas API. The design holds every invariant by
+construction rather than by patching: `content` remains the canonical flat text while a
+nullable `parts` JSON-text column carries the ordered typed parts, so the generated
+`search_vec` column keeps extracting message text with zero full-text-search changes,
+guarded by a regression test; image bytes store as base64 data-URLs inside that same
+column, riding pg_dump/restore untouched. Day-one downsizing (1568 px long edge, JPEG
+q0.85, ≤500 KB target, passthrough for already-small images, first frame of animated GIFs)
+runs before anything is stored or sent; two routes received a bounded 16 MiB `bodyLimit`
+override because Fastify's 1 MiB default would have rejected downsized base64 payloads —
+per-route widening following the backup-route precedent, not a global ceiling. The vision
+gate follows the `toolCapability` precedent — `auto|on|off` over a static allowlist,
+permissive-with-clear-error, never a hard block or runtime probing; the load-bearing
+contract is preserved verbatim at
+[appendices/018-provider-vision-flag.md](appendices/018-provider-vision-flag.md). Images
+render outside the Markdown pipeline — the sanitize schema strips `data:` URIs, and
+keeping parts out of markdown means zero expound/source-map interaction. A failed send
+still leaves no row, since parts persist in the same single append as the text. No
+reversals; the deliberate refusals — rewriting the search expression over JSON, a separate
+blob store, chunked uploads — each traded an invariant for nothing at single-user scale.
+Accepted deferred costs: image token weight is not estimated in context splitting (the
+token-cost affordance is post-launch), and the manual full-quickstart validation pass was
+left unticked at merge while all automated gates ran green. The idea stage's research
+provenance now points at this page.
+
+**Learnings.**
+
+- Fold an idea's breadth into a contract, not a feature: parts-based messages made voice
+  and video follow-on slices instead of a rewrite.
+- Keep canonical text canonical: deriving search from the untouched text column held the
+  full-text-search invariant by construction.
+- Capability gates must be advisory when provider advertisement is fuzzy — a stale
+  allowlist must still let a working model work, with a typed error instead of a provider
+  dump.
+- Widen only what must widen: bounded per-route limits absorb heavy payloads without a
+  global ceiling or an upload protocol.

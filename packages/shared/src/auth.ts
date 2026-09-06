@@ -1,6 +1,6 @@
 /**
  * Auth wire types for the security gate (`/api/auth/*` + gate semantics).
- * See `specs/017-secure-public-launch/contracts/auth-api.md`.
+ * See `docs/history/appendices/017-auth-api.md`.
  */
 export type AuthMode = 'open' | 'locked';
 export type GateRole = 'owner' | 'invitee';

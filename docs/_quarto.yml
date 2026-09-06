@@ -8,24 +8,25 @@ website:
   site-url: https://bendlikeabamboo.github.io/mayon
   repo-url: https://github.com/bendlikeabamboo/mayon
   bread-crumbs: true
+  page-navigation: true
+  repo-actions: [issue, source]
+  open-graph: true
   navbar:
     left:
       - href: index.qmd
         text: Home
-      - text: Sections
-        menu:
-          - href: tutorials/getting-started.qmd
-            text: Tutorials
-          - href: how-to/providers.qmd
-            text: How-to guides
-          - href: reference/seams.qmd
-            text: Reference
-          - href: explanation/architecture.qmd
-            text: Explanation
-          - href: dev-notes/index.qmd
-            text: Development notes
-          - href: history/index.qmd
-            text: Decision history
+      - href: tutorials/getting-started.qmd
+        text: Tutorials
+      - href: how-to/providers.qmd
+        text: How-to guides
+      - href: reference/seams.qmd
+        text: Reference
+      - href: explanation/architecture.qmd
+        text: Explanation
+      - href: dev-notes/index.qmd
+        text: Dev notes
+      - href: history/index.qmd
+        text: Decision history
     right:
       - icon: github
         href: https://github.com/bendlikeabamboo/mayon
@@ -60,3 +61,47 @@ website:
       - section: 'Decision history'
         contents:
           - history/index.qmd
+          - section: 'Arc A — The agent surface takes shape'
+            contents:
+              - history/001-brave-search-mcp.qmd
+              - history/002-chat-timeline-kinds.qmd
+              - history/003-timeline-ux-fixes.qmd
+              - history/004-internal-area-unification.qmd
+          - section: 'Arc B — The AI plumbing industrializes'
+            contents:
+              - history/005-shape-driven-results.qmd
+              - history/006-ai-elements-adoption.qmd
+              - history/007-inference-provider-templates.qmd
+              - history/008-inference-router-templates.qmd
+              - history/009-provider-request-settings.qmd
+              - history/010-custom-expound-instructions.qmd
+          - section: 'Arc C — Platform & delivery polish'
+            contents:
+              - history/011-podman-support.qmd
+              - history/012-ui-visual-articulation.qmd
+          - section: 'Arc D — Trust, gates & the industrialized practice'
+            contents:
+              - history/013-consolidate-spec-history.qmd
+              - history/017-secure-public-launch.qmd
+              - history/017-mock-llm-chat-tests.qmd
+              - history/019-security-posture-detection.qmd
+              - history/020-rc-ui-verification.qmd
+          - section: 'Arc E — Surface, reach & the docs themselves'
+            contents:
+              - history/014-settings-navigation.qmd
+              - history/015-floating-reply-outline.qmd
+              - history/016-github-copilot-support.qmd
+              - history/017-section-peek-strip.qmd
+              - history/018-image-chat-parts.qmd
+              - history/019-diataxis-docs-website.qmd
+              - history/020-branch-backprop.qmd
+  page-footer:
+    center: |
+      [GitHub](https://github.com/bendlikeabamboo/mayon) &middot; [Releases](https://github.com/bendlikeabamboo/mayon/releases)
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-location: right
+    smooth-scroll: true

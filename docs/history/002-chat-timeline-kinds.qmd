@@ -1,0 +1,52 @@
+---
+title: "002 — Chat timeline kind model"
+---
+
+## 002 — Chat timeline kind model {#sec-002}
+
+> **Status:** core standing; presentation rules partly superseded by
+> [#004](004-internal-area-unification.qmd#sec-004) (live-item placement and stream-buffer retirement only)
+
+**Goal.** Replace the timeline's implied content model — provider intent and UI
+presentation both guessed from nullable column combinations — with one explicit durable
+`kind` per timeline event from a closed ten-value enum. Lane (user/internal/external)
+becomes a pure derivation from kind, never stored; a single kind→presentation registry
+drives every renderer for persisted rows and live streaming alike; permission, sampling,
+and elicitation asks persist with resolved outcomes surviving reload; choice offers
+persist with the tapped chip linked back; reasoning persists per agent-loop iteration;
+critic corrections record a self-corrected note. Context assembly becomes a pure
+entries→provider-messages projection locked to prior behavior by golden tests. Storage
+evolves in place: an additive column plus a stamped migration backfilling every legacy
+row.
+
+**Why.** The verified pre-existing facts were damning: approval asks lived in ephemeral
+in-memory arrays and vanished on reload; reasoning from all iterations accumulated into
+one buffer glued onto the final assistant row, misattributing thinking; the render ladder
+hid blank bookkeeping rows through scattered special cases; tool-heavy turns produced a
+wall of muted text; and context assembly re-guessed provider intent from the same
+ambiguous columns the UI guessed from — a standing invitation to divergence between what
+the user sees and what the model receives.
+
+**Outcome & reversals.** Delivered in full across five stories. The legacy render ladder
+was deleted in favor of per-kind renderers dispatched through the registry; a boot-time
+migration runner was added (research found version-stamped upgrades previously had no
+consumer that ran data migrations); the backfill classifies 100% of legacy rows and fails
+loudly on unmatched shapes, preserving row IDs so branch points and expound offsets stay
+valid; full-text search was deliberately tightened to user/assistant kinds — tool
+summaries were searchable noise before; new-turn choices collapse from a hidden tool-call
+pair into one offer entry linked to the tapped chip. One quirk was deliberately preserved:
+replayed tool calls project with empty input because the old gather step never populated
+args — "flag, don't fix" to keep golden equivalence. Later refinement: feature
+[#004](004-internal-area-unification.qmd#sec-004) replaced the rule that live items always append after durable ones,
+moving stream-buffer retirement into the store at tool-call boundaries and merging pending
+asks to their durable row's chronological position.
+
+**Learnings.**
+
+- Intent inferred from nullable column combinations rots independently in every consumer;
+  one explicit kind fixed UI, migration, and projection at once.
+- Snapshot golden fixtures from current code *before* rewriting the seam they protect —
+  equivalence claims need a prior baseline to compare against.
+- Earn constraints: backfill everything first, then enforce non-null — silent defaults
+  mask exactly the rot the migration exists to classify.
+- Phase risk down: ship new semantics as runtime derivation first, land storage second.

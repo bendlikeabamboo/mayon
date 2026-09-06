@@ -1,6 +1,6 @@
 /**
  * Vision-capability resolution for the advisory image gate (spec 018,
- * `specs/018-image-chat-parts/contracts/provider-vision-flag.md`). Mirrors the
+ * `docs/history/appendices/018-provider-vision-flag.md`). Mirrors the
  * `toolCapability` precedent (`src/lib/agent/capability.ts`): `'on'`/`'off'`
  * override; `'auto'` (or absent) consults a static allowlist. Pure and
  * synchronous — no network probing (no standard vision-probe endpoint exists

@@ -1,5 +1,5 @@
 /**
- * Composer image intake (specs/018-image-chat-parts, research D3/D9).
+ * Composer image intake (docs/history/018-image-chat-parts.qmd, research D3/D9).
  *
  * Pure, environment-free logic (mime sniffing, size caps, dimension planning,
  * data-URL helpers) is exported and unit-tested in node. All browser-dependent

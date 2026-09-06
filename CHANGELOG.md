@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs: decision history split into per-feature pages** — the single
+  `docs/history/index.qmd` is now an overview mapping five arcs (A–E) onto
+  twenty-four per-feature pages (001–020, one page per spec; idea-stage folders
+  folded into their specs). The condensed spec folders (features 013–020) and idea
+  folders (ideas 001–008) are deleted; load-bearing contracts are preserved verbatim
+  under
+  `docs/history/appendices/`, and `specs/history-map.md` + the new
+  `ideas/history-map.md` act as tombstones with numbering sentinels so retired
+  feature/idea numbers are never reused. The docs site also adopts the cosmo
+  theme with a flattened navbar, page footer, repo actions, and a card-grid
+  landing page.
+
 ## [0.6.0] - 2026-09-03
 
 ### Added

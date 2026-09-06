@@ -1,0 +1,44 @@
+---
+title: "003 — Timeline UX fixes"
+---
+
+## 003 — Timeline UX fixes {#sec-003}
+
+> **Status:** standing
+
+**Goal.** Fix four defects reported against the freshly shipped timeline: (1) the orbit
+spinner spun forever on finished replies, persisting after reload; (2) turn order rendered
+the reply before its thought process, violating canonical chronological order — reasoning,
+then assistant text, then tool activity; (3) terminal tools such as the choices presenter
+ended the turn by design yet displayed a failure icon and "No Result Recorded"; (4) the
+diagnostics panel crashed whenever an MCP server connected and disconnected in one
+session, blocking users from opening chats at all. Each fix ships with a regression test
+that fails without it.
+
+**Why.** These were the first real-world verdicts on the kind registry. The permanent
+spinner trained users to ignore genuine progress signals. Misordered renders read as
+dishonest history — the exact failure mode the kind model was built to eliminate. And the
+diagnostics crash took priority purely operationally: it destroyed the reporting channel
+the other three bugs depended on.
+
+**Outcome & reversals.** All four landed as presentation-layer surgery plus one
+persist-order correction, with no schema change and golden provider-context tests passing
+unmodified. Root-causing the third defect revealed deeper rot: the agent loop persisted
+tool iterations out of order, and worse, the tool-pairing map was keyed by row id instead
+of tool-call id — meaning **no production tool pair had ever grouped**, invisible because
+test fixtures set both fields to identical strings. The fixes: persist reasoning first per
+iteration; key pairing correctly; drop the end-of-timeline flush that fabricated false
+chronology; add a stable within-turn reorder pass that repairs wrongly-stored history
+without touching stored data. Later features extended this work:
+[#004](004-internal-area-unification.qmd#sec-004) taught awaiting-approval calls to read as pending rather than failed, and
+[#005](005-shape-driven-results.qmd#sec-005) rebuilt the expanded result body.
+
+**Learnings.**
+
+- Never let fixture identifiers equal their join keys — synthetic equality masked a
+  production-wide pairing failure.
+- Pair a presentation-time repair pass (fixes historical display without data writes) with
+  persist-order fixes (stop manufacturing bad history going forward).
+- Classification belongs to one registry; a UI-maintained tool-name list drifts the moment
+  the backend changes.
+- Availability of the bug-reporting path ranks above UX polish in triage.

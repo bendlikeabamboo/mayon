@@ -4,7 +4,7 @@ Static fixtures served by `server.mjs`, the stand-in OpenAI-compatible LLM used
 by the RC verification deck (feature `020-rc-ui-verification`). The wire
 protocol — request-kind classification, reply shapes, and the grading lever —
 is specified in
-[specs/020-rc-ui-verification/contracts/mock-llm-protocol.md](../../../specs/020-rc-ui-verification/contracts/mock-llm-protocol.md) The classification markers themselves live once in [markers.mjs](markers.mjs) — imported by `server.mjs` and pinned to the product constants by `src/lib/ai/generate/classification-markers.test.ts`; never re-type them.,
+[docs/history/appendices/020-mock-llm-protocol.md](../../../docs/history/appendices/020-mock-llm-protocol.md) The classification markers themselves live once in [markers.mjs](markers.mjs) — imported by `server.mjs` and pinned to the product constants by `src/lib/ai/generate/classification-markers.test.ts`; never re-type them.,
 which is the source of truth for this directory.
 
 ## FR-005 guardrail: the real request path only

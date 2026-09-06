@@ -1,0 +1,54 @@
+---
+title: "001 — Brave Search MCP service"
+---
+
+## 001 — Brave Search MCP service {#sec-001}
+
+> **Status:** standing (its credential/topology design was revised twice within the
+> feature itself, before release)
+
+**Goal.** Give the assistant web search through the official Brave Search MCP server as
+Mayon's first external tool integration. A self-hoster adds a "Brave Search" connection
+like any other MCP server, and during conversation the model consults search whenever a
+question touches something recent or fast-moving that its training data cannot answer
+reliably. Every reply that drew on results displays its consulted sources as links, so
+answers become checkable rather than stale guesses. Success criteria set the bar: a
+healthy connection within two minutes of opening settings, at least 90% correct answers
+on twenty post-training-cutoff questions, sources visible on 100% of search-backed
+replies, and graceful degradation — normal chat completes with an unobtrusive notice
+whenever search is down, disabled, or out of quota.
+
+**Why.** The requester's recorded rationale is explicit: model knowledge goes stale and
+external validation is the only cure, and the compose-based deployment made adding a
+component cheap. Without it, any question about events after the model's cutoff got an
+unverifiable answer. Privacy shaped the design too: third-party-hosted Brave endpoints
+put the API key into URL query parameters and interpose an intermediary, so the spec
+demanded a private path where the key never appears in a URL, settings, or logs.
+
+**Outcome & reversals.** The feature shipped twice in one day. Research established that
+the official package accepts its API key only at process startup, so the first shipped
+design was a dedicated companion container holding the key as deployment configuration,
+reached browser-to-container through a same-origin streaming proxy route on the Mayon
+server and gated by a new capability flag. The same day, the owner revised the
+requirement: all credentials must live in one place, the app's existing keystore.
+Everything container-specific — compose service, proxy route, capability, HTTP template —
+was removed, and Brave became a plain stdio template: the Mayon server spawns the pinned
+package per session, injecting the key from the browser keystore at spawn time. Key
+rotation applies next turn with no restarts; an invalid key surfaces only when a search
+runs, since the handshake succeeds regardless. Retained from the container iteration were
+the transport-agnostic pieces: the citations extractor rendering source links from
+already-persisted tool-result metadata (zero migrations, retroactive for old chats),
+degradation/recovery tests, and root-relative URL support. Accepted cost: a one-to-three-
+second per-session spawn while enabled.
+
+**Learnings.**
+
+- An upstream constraint does not dictate topology: for a spawned child, spawn time *is*
+  startup, so keystore-to-env injection reconciles unified secret custody with the key's
+  startup-only injection.
+- Derive view-only data from already-persisted metadata when a single consumer exists —
+  no migrations, and history upgrades retroactively.
+- Work built for a reverted design is not waste if kept general; URL support and
+  degradation tests outlived the proxy, capability, and container.
+- One consistent secret home for all MCP servers beat a leaner deployment with split
+  custody.

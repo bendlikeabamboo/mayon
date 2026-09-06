@@ -1,0 +1,48 @@
+---
+title: "004 — Internal area unification"
+---
+
+## 004 — Internal area unification {#sec-004}
+
+> **Status:** contracts standing; result-body presentation section superseded by
+> [#005](005-shape-driven-results.qmd#sec-005)
+
+**Goal.** The third iteration on the chat surface closed five verified defect classes
+exposed by one live MCP tool-call turn, and converged all assistant-initiated interaction
+into the timeline's internal lane: an assistant text segment renders exactly once across
+the streaming→persisted boundary; a tool call awaiting approval reads as waiting, not
+failed; results render collapsed with a one-line summary; approvals, sampling asks, and
+elicitation offers live at their chronological position while the composer stays strictly
+user-input-only; and the captured request trace mirrors what was actually sent to the
+provider. Four written contracts came out of it — timeline assembly, tool activity status,
+interactive surfaces, request trace — with zero schema change.
+
+**Why.** Live use proved the timeline could lie. Persisted text kept rendering again from
+a stale stream buffer until turn end — a duplicate that fixed itself only after approval.
+A pending approval showed two ask surfaces at once while its tool row wore a failure icon,
+actively convincing the reporter something had errored. Multi-part MCP search results
+dumped as a wall of raw JSON. Pacing chips sat in the composer, asks at the tail, choices
+in the lane — three places answering one need. Worst, the diagnostics trace duplicated the
+system prompt and stripped tool identity, making users suspect double-sent context. At
+stake was trust in every approval wait.
+
+**Outcome & reversals.** All shipped presentation-layer: no migrations, one additive field
+on new tool-result metadata, golden provider-context tests unmodified. Three contracts
+stand today: no assistant-initiated interaction may ever be added to the composer — pacing
+offers are tappable on the timeline's choices offer, overriding the earlier rule
+([#002](002-chat-timeline-kinds.qmd#sec-002)) that live items simply append after durable rows; tool activity
+statuses derive at render time from stored rows, live state, and the registry — never
+stored; and the request trace mirrors only the projected wire payload. Within days, the
+collapsed-result body section (truncated summary plus floating expander) was replaced by
+[#005](005-shape-driven-results.qmd#sec-005)'s shape-driven renderer, which explicitly supersedes that contract section
+while keeping collapse-by-default intact.
+
+**Learnings.**
+
+- Retire live state at the persist choke point; content-matching dedupe at assembly hides
+  staleness instead of fixing it.
+- Derive display states, never store them — a pure function of stored rows, live state,
+  and registry is testable and migration-free.
+- Diagnostics that log transformed data lie; log the wire payload itself.
+- Interaction placement is a contract, not styling: writing down "composer = user input
+  only" is what prevents slow regression.

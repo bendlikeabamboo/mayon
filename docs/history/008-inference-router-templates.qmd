@@ -1,0 +1,43 @@
+---
+title: "008 — First-class inference router templates"
+---
+
+## 008 — First-class inference router templates {#sec-008}
+
+> **Status:** standing
+
+**Goal.** Extend the one-click treatment from direct providers to inference routers —
+services fronting many upstream models behind one endpoint: a curated coding-agent
+gateway with a free tier, self-hosted LiteLLM, a zero-markup hosted gateway, and an
+EU-endpoint router — alongside the existing OpenRouter and Kilo Gateway entries.
+
+**Why.** Companion research identified four high-audience routers users could only reach
+via manual custom endpoints. LiteLLM mattered doubly: it is the de-facto self-hosted
+gateway of Mayon's audience, and the sanctioned path to enterprise-cloud models — cloud
+credentials stay server-side inside the user's own gateway, so Mayon ever sees only
+standard wire format. Direct enterprise integrations remained explicit non-goals.
+
+**Outcome & reversals.** Shipped in roughly half a day: four templates appended after the
+direct-provider block (order tests extended, catalog grew to seventeen), more gateway URLs
+added, and — the single runtime change — discovery now skips entries typed as embedding:
+a conservative one-value denylist protecting discoverable providers from mixed catalogs,
+provably leaving untyped catalogs unchanged. LiteLLM became the first hosted template with
+no required key, reusing Ollama's keyless flow: setup completes without a key prompt,
+anonymous discovery works, and a key saved later upgrades the connection. Its fallback
+list ships intentionally wrong placeholders: for a private gateway, the user's own
+configured aliases are the only real catalog. Documented rough edge rather than solved:
+inside Mayon's containerized server, localhost resolves within the container, so docs
+point self-hosted-gateway users at the docker host address — an address edit, not
+auto-detection. No reversals; feature [#009](009-provider-request-settings.qmd#sec-009) routes router-prefixed model ids
+through last-segment matching instead of adding router dialect rows.
+
+**Learnings.**
+
+- Delegation beats accumulation: one self-hosted-gateway template covers arbitrarily many
+  upstreams, including clouds whose auth flows Mayon will never implement.
+- Append template cohorts as contiguous demand-ordered blocks; order stays meaningful and
+  tests extend instead of rewriting.
+- Discovery filters should be denylists grown only on observed evidence; an allowlist
+  would have emptied the many untyped catalogs.
+- Keyless support is positive capability design — skip the prompt, discover anonymously,
+  upgrade later.

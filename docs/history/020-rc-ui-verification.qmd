@@ -1,0 +1,63 @@
+---
+title: "020 — RC UI verification"
+---
+
+> **Status:** standing
+
+**Goal.** Replace the manual quiz-and-labs pass on every release candidate with
+automated, deterministic verification: a browser deck driving the real app
+through onboarding → chat → quiz generation → every question type → both
+grading outcomes → lab completion, plus a logic-layer suite for depth a browser
+cannot affordably reach. The work began as idea 007-rc-ui-verification, whose
+decisions.md verdict chose a user-defined hybrid — the Playwright deck as
+spine, the logic-not-browser card as complement — and folded in two owner
+refinements: a read-only generation-prompt contract, and the mock's
+deterministic grading lever.
+
+**Why.** Manual RC passes are repeat-on-every-tag chores — slow, inconsistently
+applied, and growing with the features. The stand-in from [017 — mock-LLM chat
+tests](017-mock-llm-chat-tests.qmd) answered every request with the same chat
+reply, which blocked all quiz/labs verification on day one; teaching it
+request-kind discrimination was the bulk of the work, not an edge case. The
+feature's one deliberate product change was user-ruled against 017's
+zero-diff spirit: the format/contract sections of the quiz and lab generation
+prompts — which the parser's output contract depends on — were user-editable
+settings values, a silent-breakage risk for real users and for the mock's
+classification alike.
+
+**Outcome & reversals.** Merged as PR #33 (2026-09-06). The mock classifies
+requests exclusively on code-owned, user-un-influenceable bytes — the stream
+flag, the `json` tool's description, `startsWith` against code-owned contract
+openings — and serves a deterministic fixture per kind; unknown kinds get a
+loud 400 with diagnostic hints, never a wrong-fixture reply that would
+manufacture a false green. The grading lever keys on submitted answer text
+("should be correct" / "should be wrong", conservative `false` default) and is
+asserted end to end through the real UI, proving trigger phrases survive the
+app's answer handling. The contract became a code constant with custom
+instructions appended after it and legacy whole-prompt overrides migrated on
+read — read-only by construction, not by UI enforcement. Two quiet
+determinism traps were designed around rather than patched: MCQ options
+legitimately shuffle per run, so the deck asserts payload-driven (by answer
+text, never position) instead of seeding the RNG, which would have been a
+test-only product mode; and classification anchors on contract openings
+because prepended context notes defeat substring matching. The logic suite
+covers parse→persist, every grading bucket (true/false/null via `GradeError`),
+and failure paths — corrective retries ending in typed generation errors.
+The wire classification and prompt-assembly rules are preserved verbatim at
+[appendices/020-mock-llm-protocol.md](appendices/020-mock-llm-protocol.md) and
+[appendices/020-prompt-settings-contract.md](appendices/020-prompt-settings-contract.md),
+pinned to the product constants by a marker test.
+
+**Learnings.**
+
+- Classify requests only on bytes users cannot influence — code-owned contract
+  sections make discrimination as trustworthy as the constants themselves.
+- Unknown must fail loudly: a mock that falls back to the wrong fixture
+  produces exactly the false greens verification exists to prevent.
+- Read-only-by-construction (a code constant) is the only contract protection
+  that holds against every write path; UI-level enforcement is cosmetic.
+- Assert payloads, not positions, when the product legitimately randomizes —
+  test-mode seeding would smuggle a test-only mode into the product.
+- The browser deck and the logic suite are complements: only the browser
+  witnesses the proxy hop and key path, only the logic layer reaches every
+  grading bucket and failure path affordably.

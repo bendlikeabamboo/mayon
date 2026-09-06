@@ -1,0 +1,59 @@
+---
+title: "017 — Secure public launch"
+---
+
+> **Status:** standing
+
+**Goal.** Launch Mayon on the public internet gated so only the owner — and
+explicitly invited people — can reach the app and its APIs. The work began as
+idea 002-secure-public-launch, whose decisions.md verdict picked the
+password-plus-MFA gate built into the app (the owner's own card, chosen because
+learning is a first-class goal in a hobby project), with a reverse-proxy
+basic-auth floor as the one-evening on-ramp while the gate was built; the
+zero-trust edge stayed the standing fallback, and multi-user isolation died at
+the card table on the owner's ruling.
+
+**Why.** The prod stack had no front door at all, and the winning card's
+playthrough had named the characteristic failure mode precisely: the gate fails
+one unguarded route at a time, silently. That shaped the whole design —
+enforcement had to be centralized at the server seam, never left to per-route
+discipline. Owner rulings bounded the rest: security is opt-in (first-run setup
+is skippable, with no re-nagging); MFA is mandatory whenever the gate is locked
+(no password-only mode); sessions last until the end of the calendar day; the
+hostile-takeover risk of a stranger enabling security first on a public URL is
+explicitly accepted, with server-side CLI recovery as the way back; and there is
+no registration, no self-service reset, no per-user data isolation — identities
+exist for access control only.
+
+**Outcome & reversals.** Merged as PR #19 (2026-09-03) and shipped in 0.6.0,
+all seven user stories intact. One Fastify `onRequest` hook registered before
+every route plugin covers all current and future capabilities; a CI sweep test
+enumerates every registered route and asserts uniform 401 without a session —
+the unguarded-endpoint failure mode converted into a permanent invariant.
+Passwords hash with argon2id; TOTP verifies with a replay guard and ±1-step
+drift tolerance; TOTP secrets are AES-256-GCM-wrapped under a key held outside
+Postgres, so a stolen `pg_dump` yields no usable credentials; sessions are
+opaque tokens stored hash-only, expiring at local midnight; login attempts run
+a per-IP exponential-delay ladder; invites hand over one-time passwords with
+immediate revocation killing live sessions; the Caddy floor ships as release
+templates, using compose's `!override` tag to un-publish the app port so the
+single-entrance property is checkable. Adversarial review blockers were fixed
+pre-merge, and fast-follows repaired real findings: a TOTP input pattern that
+rejected every valid code, and same-origin 403s behind host-rewriting proxies
+(plus trustProxy hardening and nginx forwarding headers). The full wire
+contract is preserved at
+[appendices/017-auth-api.md](appendices/017-auth-api.md).
+
+**Learnings.**
+
+- A gate enforced once at the seam turns "every endpoint must remember to
+  check" into a structural property — and the sweep test keeps it one.
+- Optional security is still a decision surface: the open state must be visible
+  and honest, or "optional" silently reads as "broken".
+- A stolen database yielding nothing usable is a storage-layer property: hash
+  passwords, wrap MFA secrets under a key outside the database, store only
+  token hashes.
+- Un-publishing a port requires compose `!override`, because `ports:` lists
+  merge on override — the floor's wall would otherwise be silently void.
+- Deletion can be the security feature: with no self-service reset, the
+  classic bypass door does not exist to be forgotten.

@@ -1,14 +1,41 @@
 ---
-title: "Overview"
+title: "Mayon Docs"
 ---
 
-Welcome to the documentation for **Mayon**, a personal learning app built around a branchable chat graph. These docs are organized by intent: use the table below to pick the section that matches what you are trying to do.
+> Documentation for **Mayon**, a personal learning app built around a branchable chat graph. The docs are organized by intent — pick the section below that matches what you are trying to do.
 
-| Section | Intent |
-| ------- | ------ |
-| [Tutorials](tutorials/getting-started.qmd) (learning-oriented) | Guided lessons — start here if you're new to Mayon |
-| [How-to guides](how-to/providers.qmd) (task-oriented) | Step-by-step recipes for a specific goal |
-| [Reference](reference/seams.qmd) (information-oriented) | Technical truth, scannable — contracts, rules, keys |
-| [Explanation](explanation/architecture.qmd) (understanding-oriented) | Why Mayon is shaped the way it is |
-| [Development notes](dev-notes/index.qmd) | Phase-by-phase build history from development (non-Diátaxis shelf) |
-| [Decision history](history/index.qmd) | The narrative record of feature decisions and reversals (non-Diátaxis shelf) |
+## Choose your path
+
+::: {layout-ncol="3"}
+### [Tutorials ›](tutorials/getting-started.qmd)
+
+Guided lessons — start here if you're new to Mayon.
+
+### [How-to guides ›](how-to/providers.qmd)
+
+Step-by-step recipes for a specific goal.
+
+### [Reference ›](reference/seams.qmd)
+
+Technical truth, scannable — contracts, rules, keys.
+
+### [Explanation ›](explanation/architecture.qmd)
+
+Why Mayon is shaped the way it is.
+
+### [Development notes ›](dev-notes/index.qmd)
+
+Phase-by-phase build history from development.
+
+### [Decision history ›](history/index.qmd)
+
+The narrative record of feature decisions and reversals.
+:::
+
+## Quick start
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+To work on Mayon itself, `pnpm dev` runs the all-Docker dev stack (web HMR on <http://localhost:5173>).

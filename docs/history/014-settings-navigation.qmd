@@ -1,0 +1,57 @@
+---
+title: "014 — Settings page navigation"
+---
+
+> **Status:** standing
+
+**Goal.** Make any section of the single, long `/settings` page reachable in one
+interaction. The reported pain was concrete: finding Backup meant scrolling past
+everything above it — and Backup sits second-from-bottom. The feature keeps the page
+exactly as it is, one route with sections in their current order, and adds navigation
+around it: a sticky anchor rail mirroring the real headings with a scroll-spy highlight;
+a visible search field (cmd-K as enhancement, scoped to settings) over a static section
+index with aliases; URL hash anchors with strict history discipline; and a mobile
+floating jump button opening a compact sheet. The success bar: a known section reached
+in a single click with zero scrolling, under three seconds by name, the highlight
+correct in 100% of spot checks even after content-height changes, no history entries
+from scrolling, no unsaved edit ever lost to a jump, and any section within two taps on
+a phone.
+
+**Why.** The idea stage ([ideas/001-settings-navigation](../../ideas/001-settings-navigation/decisions.md))
+had already played the deck and its verdict assembled a composite rather than picking a
+card: keep the single page — the shrink-the-page and routed-subpages bets declined,
+because subpages' URL powers could be captured by hash sync without route surgery, and
+only a never-unmounting page dodges the unsaved-changes trilemma — with the sticky rail
+as the spine, search absorbed into it, and mobile left explicitly open for the spec to
+decide (it became a floating button plus bottom sheet). The frustration was scan-load
+on a known-target hunt, a navigation problem rather than an organization problem, so
+reorganizing sections was ruled out by the verdict itself.
+
+**Outcome & reversals.** Specced, built, and merged the same day (August 28). Research
+corrected the spec's own assumption before implementation: three listed sections turned
+out to be eight, verified against the DOM, and the inventory froze into a static
+registry whose labels are pinned by tests. The build split cleanly — pure modules
+(registry; hash-sync with push-on-jump, replace-on-spy, and duplicate suppression; an
+IntersectionObserver scroll-spy with a pure reducer and no scroll listeners) plus
+presentation-only components and one shared jump pipeline: push, smooth-scroll, heading
+flash, optimistic highlight, hash frozen while a jump scroll is in flight. Research
+also caught that `window` never scrolls in the app shell — spy and scroll code must
+target `<main>`, or silently no-op. cmd-K was scoped to settings so the global
+`/search` binding survived untouched. Perf was measured before and after under a
+dedicated probe scenario, an accessibility pass covered rail, sheet, and flash, and all
+26 tasks closed. The maintenance design then proved itself: the public-launch security
+panels and [017 — section peek strip](017-section-peek-strip.qmd)'s new Chat section —
+whose aliases literally read "strip, outline" — joined the page later by editing the
+one registry, no component changes. No later feature has overturned any of its
+contracts.
+
+**Learnings.**
+
+- Navigation chrome that mirrors real structure beats reorganizing: freezing content
+  and adding a map around it fixed findability without touching a section.
+- A static, test-pinned index beats DOM scraping — labels cannot silently drift, and
+  new sections join by editing one registry.
+- History discipline is a state machine, not styling: push only explicit jumps, replace
+  spy updates, suppress duplicates, or Back becomes a scrolling slideshow.
+- In a shell layout, target the real scroll container; window-level scroll code fails
+  silently.

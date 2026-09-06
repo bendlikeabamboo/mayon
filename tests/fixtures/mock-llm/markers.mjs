@@ -1,6 +1,6 @@
 /**
  * Single source of truth for the mock LLM's request-kind classification
- * markers (feature 020 — specs/020-rc-ui-verification/contracts/mock-llm-protocol.md).
+ * markers (feature 020 — docs/history/appendices/020-mock-llm-protocol.md).
  *
  * server.mjs imports from here, and the drift-guard unit test
  * (src/lib/ai/generate/classification-markers.test.ts) asserts each product

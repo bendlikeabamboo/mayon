@@ -52,7 +52,7 @@ export interface LlmProxyRequest {
 /**
  * GitHub Copilot server endpoints (016). The server runs the GitHub device
  * flow and mints session tokens; the browser never talks to github.com
- * directly. See `specs/016-github-copilot-support/contracts/copilot-server-api.md`.
+ * directly. See `docs/history/appendices/016-copilot-server-api.md`.
  */
 export type CopilotAuthStartRequest = Record<string, never>;
 export interface CopilotAuthStartResponse {
