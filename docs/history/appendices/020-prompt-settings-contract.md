@@ -1,6 +1,7 @@
 <!--
   Appendix: preserved from specs/020-rc-ui-verification/contracts/prompt-settings-contract.md @ commit f0c0ff3763a39807050f92534ecfeed1eae57e43
   Copied: 2026-09-06 (verbatim, unmodified — load-bearing artifact referenced from living docs/code)
+  Exception: the mock-llm-protocol.md link below was retargeted to the appendix filename 020-mock-llm-protocol.md (2026-09-06)
 -->
 
 # Contract: Generation prompt settings (read-only contract + custom instructions)
@@ -43,4 +44,4 @@ When assembling, if the legacy key (`quizPrompt`/`labPrompt`) has a non-empty va
 - I1: For any instructions value (including adversarial text that embeds contract-like content), the contract section of the assembled prompt is byte-identical to the shipped constant, and instructions appear only in the trailing `# Custom instructions` block.
 - I2: With no instructions, the assembled prompt equals the contract exactly.
 - I3: After migration, the legacy keys no longer exist and re-reading is stable (no re-migration churn).
-- I4: The mock's classification markers (see [mock-llm-protocol.md](./mock-llm-protocol.md)) are present in every assembled generation prompt regardless of instructions.
+- I4: The mock's classification markers (see [mock-llm-protocol.md](./020-mock-llm-protocol.md)) are present in every assembled generation prompt regardless of instructions.

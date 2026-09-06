@@ -16,7 +16,7 @@ nothing. A persisted settings toggle turns it off entirely; touch input skips th
 and taps to jump; scrolling, text selection, expound highlighting, and copy behave
 identically with the strip present.
 
-**Why.** This spec is the winner of [ideas/003-chat-outline](../../ideas/003-chat-outline/decisions.md)
+**Why.** This spec is the winner of the `ideas/003-chat-outline` deck
 — Card 006, hover-peek bars — dealt as a six-card deck and played on September 2. The
 card was born mid-playthrough, out of the user's own distraction worry about the
 runner-up floating panel ([015 — floating reply outline](015-floating-reply-outline.qmd)):

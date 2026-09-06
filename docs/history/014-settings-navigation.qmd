@@ -17,7 +17,7 @@ correct in 100% of spot checks even after content-height changes, no history ent
 from scrolling, no unsaved edit ever lost to a jump, and any section within two taps on
 a phone.
 
-**Why.** The idea stage ([ideas/001-settings-navigation](../../ideas/001-settings-navigation/decisions.md))
+**Why.** The idea stage (`ideas/001-settings-navigation`, condensed with this feature)
 had already played the deck and its verdict assembled a composite rather than picking a
 card: keep the single page — the shrink-the-page and routed-subpages bets declined,
 because subpages' URL powers could be captured by hash sync without route surgery, and
