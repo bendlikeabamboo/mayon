@@ -6,7 +6,8 @@
  * the GLM model list (glm-5.2 / glm-5.1 / glm-5-turbo / glm-4.7 / glm-4.5-air),
  * and is served by the same `openai-compatible` adapter as OpenAI.
  */
-import type { ProviderKind } from './types';
+import type { ProviderConfig, ProviderGroup, ProviderKind } from './types';
+import { legacyToolDefault } from '$lib/agent/capability';
 
 /** The set of kinds selectable in the Settings UI. */
 export function listProviderKinds(): ProviderKind[] {
@@ -33,11 +34,14 @@ export interface ProviderTemplate {
 	 * used until discovery completes (and when no key is set yet).
 	 */
 	discoverable?: boolean;
+	/** Curated group assignment (registry test asserts one on every template). */
+	group: ProviderGroup;
 	/**
-	 * Default tool-capability seed for new providers from this template.
-	 * `'auto'` lets the resolver decide per kind/baseUrl.
+	 * Tool-capability seed copied onto new providers from this template.
+	 * All templates ship `'on'` — the retired `'auto'` inference lives only in
+	 * `legacyToolDefault` (read-time normalization of legacy configs).
 	 */
-	toolCapability?: 'auto' | 'on' | 'off';
+	toolCapability: 'on' | 'off';
 	/**
 	 * Default vision seed for new providers from this template, mirroring
 	 * `toolCapability`. `'auto'` (or absent) defers to the per-model allowlist
@@ -61,7 +65,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['deepseek-chat', 'deepseek-reasoner'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -72,7 +77,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['grok-4.6', 'grok-4.3'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -83,7 +89,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['kimi-k3', 'kimi-k2.6'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -94,7 +101,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['qwen3.8-max', 'qwen-plus'],
 		requiresKey: true,
 		discoverable: false,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -105,7 +113,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'groq/compound'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -116,7 +125,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['mistral-large-latest', 'devstral-medium-2507'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -128,7 +138,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['big-pickle', 'claude-sonnet-5'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'gateway',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -140,7 +151,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['gpt-4o-mini', 'claude-sonnet-4-5'],
 		requiresKey: false,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'gateway',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -152,7 +164,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['openai/gpt-5.6-sol', 'openai/gpt-4o-mini'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'gateway',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -164,7 +177,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-5'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'gateway',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -175,7 +189,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-4.7', 'glm-4.5-air'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -187,7 +202,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		models: ['z-ai/glm-5.2', 'anthropic/claude-sonnet-4.5', 'openai/gpt-4o'],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'gateway',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -205,7 +221,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'gateway',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'openai-compatible',
@@ -215,7 +232,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'gpt-4o',
 		models: ['gpt-4o', 'gpt-4o-mini', 'o1-mini'],
 		requiresKey: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'anthropic',
@@ -225,7 +243,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'claude-3-5-sonnet-latest',
 		models: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
 		requiresKey: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'gemini',
@@ -235,7 +254,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'gemini-1.5-flash',
 		models: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'],
 		requiresKey: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'ollama',
@@ -245,7 +265,34 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		defaultModel: 'llama3.2',
 		models: ['llama3.2', 'qwen2.5', 'mistral'],
 		requiresKey: false,
-		toolCapability: 'auto'
+		group: 'local',
+		toolCapability: 'on'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'LM Studio (local)',
+		description:
+			'A local LM Studio server — OpenAI-compatible. No API key required; models discovered from the running server.',
+		baseUrl: 'http://localhost:1234/v1',
+		defaultModel: '',
+		models: [],
+		requiresKey: false,
+		discoverable: true,
+		group: 'local',
+		toolCapability: 'on'
+	},
+	{
+		kind: 'openai-compatible',
+		label: 'vLLM (local)',
+		description:
+			'A local vLLM server — OpenAI-compatible. No API key required; models discovered from the running server.',
+		baseUrl: 'http://localhost:8000/v1',
+		defaultModel: '',
+		models: [],
+		requiresKey: false,
+		discoverable: true,
+		group: 'local',
+		toolCapability: 'on'
 	},
 	{
 		kind: 'github-copilot',
@@ -264,11 +311,51 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 		],
 		requiresKey: true,
 		discoverable: true,
-		toolCapability: 'auto'
+		group: 'cloud',
+		toolCapability: 'on'
 	}
 ];
 
 /** Look up a template by label (the Settings UI keys off the label). */
 export function findTemplate(label: string): ProviderTemplate | undefined {
 	return PROVIDER_TEMPLATES.find((t) => t.label === label);
+}
+
+/**
+ * The legacy stored config shape: `toolCapability` may still carry the retired
+ * `'auto'`, and `group`/`requiresKey` may be absent (pre-021 records).
+ */
+export interface LegacyProviderConfig extends Omit<
+	ProviderConfig,
+	'toolCapability' | 'group' | 'requiresKey'
+> {
+	toolCapability?: 'auto' | 'on' | 'off';
+	group?: ProviderGroup;
+	requiresKey?: boolean;
+}
+
+function inferGroup(config: Pick<ProviderConfig, 'kind' | 'baseUrl'>): ProviderGroup {
+	const baseUrl = config.baseUrl.replace(/\/+$/, '');
+	const template = PROVIDER_TEMPLATES.find(
+		(t) => t.kind === config.kind && t.baseUrl.replace(/\/+$/, '') === baseUrl
+	);
+	return template?.group ?? 'custom';
+}
+
+/**
+ * Read-time normalization of a stored provider config into the current
+ * `ProviderConfig` shape (feature 021, no schema migration): legacy
+ * `'auto'`/absent `toolCapability` maps through `legacyToolDefault` (prior
+ * effective behavior preserved exactly), `group` defaults via kind + baseUrl
+ * template match (else `'custom'`), `requiresKey` defaults via the kind rule
+ * (`kind !== 'ollama'`). Pure and idempotent — normalized configs pass through
+ * unchanged; the result becomes durable on the next user save.
+ */
+export function normalizeProviderConfig(raw: LegacyProviderConfig): ProviderConfig {
+	return {
+		...raw,
+		toolCapability: legacyToolDefault(raw),
+		group: raw.group ?? inferGroup(raw),
+		requiresKey: raw.requiresKey ?? raw.kind !== 'ollama'
+	};
 }

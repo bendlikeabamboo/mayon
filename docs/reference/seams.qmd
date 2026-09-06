@@ -46,7 +46,7 @@ All code above the driver layer is runtime-agnostic.
 
 ## No secrets in settings
 
-The `settings` table is a key/value store for non-secret configuration. Provider configuration (base URL, default model, template type, display name) lives in `settings` as JSON values.
+The `settings` table is a key/value store for non-secret configuration. Provider configuration (base URL, default model, template type, display name, group) lives in `settings` as JSON values. The Settings catalog is a fixed list of 20 templates in four groups — Local (Ollama, LM Studio, vLLM), Cloud APIs, Gateways, Custom; LM Studio and vLLM onboard as OpenAI-compatible, key-free, discovery-first entries, and the connection test classifies probe failures (server not running / cross-origin blocked / timeout / auth / wrong path) into coached messages. All of these fields are non-secret handles.
 
 API keys are **never** stored in `settings`. They are stored in:
 

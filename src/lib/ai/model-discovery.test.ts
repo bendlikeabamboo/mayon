@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invalidateCopilotSession } from './copilot-session';
 import { createFetchTransport, setHttpTransport } from './http-transport';
 import type { BrowserKeyStore } from './keystore/browser';
-import { discoverModels, parseModelIds, readAll } from './model-discovery';
+import {
+	discoverModels,
+	MODEL_DISCOVERY_TIMEOUT_MS,
+	parseModelIds,
+	readAll
+} from './model-discovery';
 import { MissingKeyError, ProviderHttpError, type ProviderConfig } from './types';
 
 const keys = vi.hoisted(() => ({ current: {} as Record<string, string> }));
@@ -262,6 +267,31 @@ describe('discoverModels', () => {
 		const url = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0];
 		expect(url).toBe('https://openrouter.ai/api/v1/models');
 	});
+
+	it('bounds discovery with a default deadline when the caller passes no signal', async () => {
+		// Regression: loopback targets fetch browser-direct (no proxy fail-fast),
+		// so a dropped-port endpoint must not hang discovery forever.
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+			(_url: unknown, init?: { signal?: AbortSignal }) =>
+				new Promise<Response>((_resolve, reject) => {
+					const signal = init?.signal;
+					if (signal?.aborted) {
+						reject(new DOMException('The operation was aborted.', 'AbortError'));
+					} else {
+						signal?.addEventListener('abort', () =>
+							reject(new DOMException('The operation was aborted.', 'AbortError'))
+						);
+					}
+				})
+		);
+		const deadline = AbortSignal.abort('deadline');
+		const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline);
+
+		await expect(
+			discoverModels(config, { hasKey: () => Promise.resolve(false) })
+		).rejects.toThrow();
+		expect(timeoutSpy).toHaveBeenCalledWith(MODEL_DISCOVERY_TIMEOUT_MS);
+	}, 5_000);
 
 	describe('github-copilot discovery', () => {
 		it('resolves a session first and sends the Copilot header set to the session endpoint', async () => {

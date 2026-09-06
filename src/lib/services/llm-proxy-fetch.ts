@@ -1,4 +1,5 @@
 import { serverStatus } from './status.svelte';
+import { isLoopbackUrl } from '$lib/ai/llm-target';
 
 function createProxyFetch(): typeof globalThis.fetch {
 	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -32,8 +33,12 @@ function createProxyFetch(): typeof globalThis.fetch {
 	};
 }
 
-export function getLlmFetch(): typeof globalThis.fetch {
-	if (serverStatus.has('llm-proxy')) {
+/**
+ * Fetch for LLM traffic: proxied through the server (`llm-proxy` cap) unless
+ * `url` targets loopback, which the server cannot reach — those go direct.
+ */
+export function getLlmFetch(url: string): typeof globalThis.fetch {
+	if (serverStatus.has('llm-proxy') && !isLoopbackUrl(url)) {
 		return createProxyFetch();
 	}
 	return globalThis.fetch;

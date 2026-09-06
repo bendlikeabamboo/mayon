@@ -81,7 +81,11 @@ const stubConfig: ProviderConfig = {
 	name: 'stub',
 	baseUrl: 'http://stub',
 	defaultModel: 'stub-model',
-	models: ['stub-model']
+	models: ['stub-model'],
+	// These tests exercise the plain chat path; tool gating is covered in
+	// capability.test.ts. Explicit off models a toolless endpoint (the
+	// pre-021 allowlist default for unknown URLs).
+	toolCapability: 'off'
 };
 
 function mockStreamReply(tokens: string[]): void {

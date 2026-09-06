@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	asImageUnsupported,
+	classifyFetchError,
 	formatProviderError,
 	httpStatusToError,
 	SERVER_REQUIRED_HINT
@@ -13,7 +14,8 @@ import {
 	MissingKeyError,
 	NetworkError,
 	ProviderHttpError,
-	RateLimitError
+	RateLimitError,
+	TimeoutError
 } from './types';
 
 describe('formatProviderError', () => {
@@ -76,6 +78,13 @@ describe('formatProviderError', () => {
 		expect(out.message).toMatch(/cancel/);
 	});
 
+	it('maps TimeoutError to the no-response copy', () => {
+		const out = formatProviderError(new TimeoutError());
+		expect(out.title).toBe('No response in time');
+		expect(out.message).toMatch(/did not respond/);
+		expect(out.hint).toMatch(/host and port/);
+	});
+
 	it('maps unknown errors to a generic payload without leaking a raw stack', () => {
 		const out = formatProviderError(new Error('boom'));
 		expect(out.title).toBe('Something went wrong');
@@ -83,6 +92,21 @@ describe('formatProviderError', () => {
 
 		const outStr = formatProviderError('weird');
 		expect(outStr.message).toBe('weird');
+	});
+});
+
+describe('classifyFetchError', () => {
+	it('maps a TimeoutError DOMException to the typed TimeoutError', () => {
+		const out = classifyFetchError(
+			new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+			'https://api.example.test/v1'
+		);
+		expect(out).toBeInstanceOf(TimeoutError);
+	});
+
+	it('passes a user-initiated AbortError through unchanged', () => {
+		const abort = new DOMException('cancelled', 'AbortError');
+		expect(classifyFetchError(abort, 'https://api.example.test/v1')).toBe(abort);
 	});
 });
 

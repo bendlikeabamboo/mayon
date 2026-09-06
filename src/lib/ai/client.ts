@@ -12,6 +12,7 @@ import { repos } from '$lib/db';
 import { buildSdkModel, type ActiveProvider } from './sdk-factory';
 import { createKeyStore } from './keystore/client';
 import { discoverModels } from './model-discovery';
+import { normalizeProviderConfig, type LegacyProviderConfig } from './registry';
 import { MissingKeyError, type ProviderConfig, type ReasoningEffort } from './types';
 
 const ACTIVE_KEY = 'activeProvider';
@@ -21,11 +22,16 @@ const EFFORT_KEY = 'reasoningEffort';
 /** Runtime secret store (OS keychain on desktop / IndexedDB in browser). */
 const keyStore = createKeyStore();
 
-/** Read all configured providers from settings. Empty on first run. */
+/**
+ * Read all configured providers from settings. Empty on first run. Stored
+ * records are read as the legacy shape and normalized at this boundary, so
+ * every consumer sees explicit `toolCapability` plus defaulted
+ * `group`/`requiresKey` (feature 021 read-time normalization).
+ */
 export async function listProviders(): Promise<ProviderConfig[]> {
-	const map = await repos.settings.get<Record<string, ProviderConfig>>(PROVIDERS_KEY);
+	const map = await repos.settings.get<Record<string, LegacyProviderConfig>>(PROVIDERS_KEY);
 	if (!map) return [];
-	return Object.values(map);
+	return Object.values(map).map(normalizeProviderConfig);
 }
 
 /** Read the id of the currently active provider (or null if none selected). */
@@ -70,9 +76,9 @@ export async function hasProviderKey(id: string): Promise<boolean> {
 	return keyStore.has(id);
 }
 
-/** True if a provider of this kind needs a key (Ollama does not). */
-export function kindRequiresKey(config: Pick<ProviderConfig, 'kind'>): boolean {
-	return config.kind !== 'ollama';
+/** True if a provider needs an API key (stored flag; legacy configs fall back to the kind rule — Ollama does not). */
+export function kindRequiresKey(config: Pick<ProviderConfig, 'kind' | 'requiresKey'>): boolean {
+	return config.requiresKey ?? config.kind !== 'ollama';
 }
 
 /**
@@ -98,15 +104,22 @@ export async function getActiveSdkProvider(): Promise<ActiveProvider> {
 		throw new MissingKeyError('No provider is active. Add one in Settings.');
 	}
 
-	const map = await repos.settings.get<Record<string, ProviderConfig>>(PROVIDERS_KEY);
-	const config = map?.[activeId];
-	if (!config) {
+	const map = await repos.settings.get<Record<string, LegacyProviderConfig>>(PROVIDERS_KEY);
+	const stored = map?.[activeId];
+	if (!stored) {
 		await setActiveProvider(null);
 		throw new MissingKeyError(`The active provider was removed. Pick one in Settings.`, activeId);
 	}
+	const config = normalizeProviderConfig(stored);
 
 	if (kindRequiresKey(config)) {
 		if (!(await hasProviderKey(activeId))) throw new MissingKeyError(undefined, activeId);
+	}
+
+	// Discovery-first locals can be active with no model chosen yet (empty until
+	// discovery/Test auto-fill); chat cannot proceed without one.
+	if (!config.defaultModel) {
+		throw new Error('No model selected for this provider — pick one in Settings.');
 	}
 
 	return buildSdkModel(config, { hasKey: () => hasProviderKey(activeId) });

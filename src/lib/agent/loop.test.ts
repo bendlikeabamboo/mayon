@@ -33,10 +33,20 @@ vi.mock('ai', () => {
 	};
 });
 
-vi.mock('$lib/agent/capability', () => ({
-	isSessionDisabled: vi.fn(() => false),
-	disableToolsForSession: vi.fn(() => {})
-}));
+vi.mock('$lib/agent/capability', () => {
+	const isSessionDisabled = vi.fn(() => false);
+	const disableToolsForSession = vi.fn(() => {
+		isSessionDisabled.mockReturnValue(true);
+	});
+	return {
+		isSessionDisabled,
+		disableToolsForSession,
+		resolveToolCapability: vi.fn(
+			(config: { toolCapability?: 'on' | 'off' }) =>
+				config.toolCapability !== 'off' && !isSessionDisabled()
+		)
+	};
+});
 
 vi.mock('$lib/agent/registry', () => {
 	const toolDefs = [
@@ -412,7 +422,7 @@ describe('runAgentTurn', () => {
 		} as never);
 
 		const deps = makeDeps({
-			config: makeConfig({ toolCapability: undefined })
+			config: makeConfig({ toolCapability: 'off' as const })
 		});
 
 		const result = await runAgentTurn(deps);
@@ -613,7 +623,7 @@ describe('runAgentTurn', () => {
 		expect(Object.keys(enabledTools!)).toContain('toggle_checklist_item');
 
 		vi.clearAllMocks();
-		const deps2 = makeDeps({ config: makeConfig({ toolCapability: undefined }) });
+		const deps2 = makeDeps({ config: makeConfig({ toolCapability: 'off' as const }) });
 		await runAgentTurn(deps2);
 		const disabledTools = mockedStreamText.mock.calls[0][0].tools;
 		expect(disabledTools).toEqual({});

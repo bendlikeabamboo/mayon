@@ -23,6 +23,39 @@ const KNOWN_GATEWAY_BASEURLS: ReadonlySet<string> = new Set([
 	'https://api.openai.com/v1'
 ]);
 
+/** Structural input for `legacyToolDefault`: the legacy stored config shape. */
+export interface LegacyToolConfig {
+	kind: ProviderConfig['kind'];
+	baseUrl: string;
+	/** Legacy stored value — the retired `'auto'` (or absence) resolves via the kind table. */
+	toolCapability?: 'auto' | 'on' | 'off';
+}
+
+/**
+ * The prior (pre-021) effective tool capability as an explicit `'on' | 'off'`:
+ * an explicit stored value passes through; otherwise the legacy kind table
+ * applies, with `openai-compatible` gated on the `KNOWN_GATEWAY_BASEURLS`
+ * allowlist (trailing slashes stripped). Used only by read-time normalization
+ * (`normalizeProviderConfig` in `registry.ts`) — never in the request path.
+ */
+export function legacyToolDefault(config: LegacyToolConfig): 'on' | 'off' {
+	if (config.toolCapability === 'on') return 'on';
+	if (config.toolCapability === 'off') return 'off';
+
+	switch (config.kind) {
+		case 'anthropic':
+		case 'gemini':
+		case 'github-copilot':
+			return 'on';
+		case 'ollama':
+			return 'off';
+		case 'openai-compatible':
+			return KNOWN_GATEWAY_BASEURLS.has(config.baseUrl.replace(/\/+$/, '')) ? 'on' : 'off';
+		default:
+			return 'off';
+	}
+}
+
 let sessionToolsDisabled = false;
 
 export function disableToolsForSession(): void {
@@ -34,24 +67,5 @@ export function isSessionDisabled(): boolean {
 }
 
 export function resolveToolCapability(config: ProviderConfig): boolean {
-	if (config.toolCapability === 'on') return true;
-	if (config.toolCapability === 'off') return false;
-
-	const autoDefault = defaultForKind(config.kind, config.baseUrl);
-	return autoDefault && !sessionToolsDisabled;
-}
-
-function defaultForKind(kind: ProviderConfig['kind'], baseUrl: string): boolean {
-	switch (kind) {
-		case 'anthropic':
-		case 'gemini':
-		case 'github-copilot':
-			return true;
-		case 'ollama':
-			return false;
-		case 'openai-compatible':
-			return KNOWN_GATEWAY_BASEURLS.has(baseUrl.replace(/\/+$/, ''));
-		default:
-			return false;
-	}
+	return config.toolCapability !== 'off' && !sessionToolsDisabled;
 }

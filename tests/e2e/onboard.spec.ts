@@ -39,4 +39,26 @@ test.describe('mock-llm onboarding and round trip', () => {
 		await expect(page.getByRole('option', { name: MODEL_ID })).toBeVisible();
 		await page.keyboard.press('Escape');
 	});
+
+	test('connects LM Studio as a keyless local provider', async ({ onboarded }) => {
+		const { page } = onboarded;
+		await page.goto('/settings#providers');
+		await page.getByRole('button', { name: 'Add provider' }).click();
+		await page.getByRole('button', { name: /LM Studio \(local\)/ }).click();
+		// The onboarded fixture added LiteLLM first; the new card appends last.
+		const providerCard = page.locator('#providers li').last();
+		await expect(providerCard).toBeVisible();
+
+		const baseUrl = providerCard.getByLabel('Base URL');
+		await baseUrl.fill(MOCK_BASE_URL);
+		await baseUrl.press('Tab');
+
+		await providerCard.getByRole('button', { name: 'Test connection' }).click();
+		await expect(page.getByText('Connection OK — 1 model found.')).toBeVisible();
+		await expect(modelListFooter(providerCard)).toHaveText(settledModelFooter(1));
+		await expect(providerCard.getByLabel('API key (stored locally)')).toHaveCount(0);
+		await providerCard.locator('button[aria-haspopup="dialog"]').click();
+		await expect(page.getByRole('option', { name: MODEL_ID })).toBeVisible();
+		await page.keyboard.press('Escape');
+	});
 });

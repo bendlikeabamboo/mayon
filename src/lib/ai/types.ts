@@ -121,6 +121,13 @@ export type HazardId =
 	| 'cannot-disable-thinking'
 	| 'reasoning-eats-token-cap';
 
+/**
+ * Curated provider-group taxonomy (feature 021). Fixed four values; display
+ * order `local → cloud → gateway → custom`. Membership is template metadata,
+ * never inferred from the endpoint address.
+ */
+export type ProviderGroup = 'local' | 'cloud' | 'gateway' | 'custom';
+
 export interface ProviderConfig {
 	id: string;
 	kind: ProviderKind;
@@ -136,12 +143,24 @@ export interface ProviderConfig {
 	 */
 	discoverable?: boolean;
 	/**
-	 * Per-provider tool-capability flag. `'auto'`/undefined → resolved default per
-	 * kind (anthropic/gemini→true, ollama→false, openai-compatible→true iff baseUrl
-	 * is a known gateway). `'on'`/`'off'` override. Respected by the agent loop
-	 * (AG3) to decide whether tool definitions are sent.
+	 * Curated group copied from the provider template on add. Optional: legacy
+	 * configs predate this field and get it inferred (kind + baseUrl template
+	 * match, else `'custom'`) at read time (`normalizeProviderConfig`).
 	 */
-	toolCapability?: 'auto' | 'on' | 'off';
+	group?: ProviderGroup;
+	/**
+	 * Whether this provider needs an API key, copied from the template on add.
+	 * Optional: legacy configs fall back to the kind default (`kind !==
+	 * 'ollama'`) at read time. LM Studio/vLLM (`openai-compatible`) set this
+	 * `false` so they show no key prompt.
+	 */
+	requiresKey?: boolean;
+	/**
+	 * Per-provider tool-capability flag. Always explicit `'on'`/`'off'` — the
+	 * retired legacy `'auto'`/undefined is normalized at read time (see
+	 * `legacyToolDefault`) before it reaches any consumer.
+	 */
+	toolCapability?: 'on' | 'off';
 	/**
 	 * Per-provider vision flag. `'auto'`/undefined → resolved from a static
 	 * allowlist of vision-capable model-family prefixes (see
@@ -257,6 +276,15 @@ export class NetworkError extends Error {
 	) {
 		super(message);
 		this.name = 'NetworkError';
+	}
+}
+
+/** Deadline expiry — the endpoint did not answer within the allowed time
+ *  (`AbortSignal.timeout`). User-initiated aborts stay `AbortError`. */
+export class TimeoutError extends Error {
+	constructor(message = 'The provider did not respond in time.') {
+		super(message);
+		this.name = 'TimeoutError';
 	}
 }
 

@@ -58,8 +58,16 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 			await baseUrl.press('Tab');
 			const footer = modelListFooter(providerCard);
 			// The add-time discovery failed against the template URL, so the
-			// template's 2 fallback models are all the card knows.
-			await expect(footer).toHaveText(settledModelFooter(2));
+			// template's 2 fallback models are all the card knows. Loopback
+			// targets fetch browser-direct and can be silently dropped by
+			// restrictive networks, so allow the (now deadline-bounded)
+			// discovery to fail before asserting the settled fallback count.
+			// Which URL the add-time discovery read (template URL before the
+			// edit, or the edited mock URL) is a timing race; both settle states
+			// are valid here — only the settled (non-refreshing) footer matters.
+			await expect(footer).toHaveText(/\d+ models\s*·\s*click ⟳ to refresh$/, {
+				timeout: 25_000
+			});
 
 			await providerCard.getByRole('button', { name: 'Refresh model list' }).click();
 			// This exact state only renders once the mock catalog has been
@@ -68,11 +76,17 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 			await providerCard.locator('button[aria-haspopup="dialog"]').click();
 			await page.getByRole('option', { name: MODEL_ID }).click();
 
-			await providerCard.getByLabel('API key (stored locally)').fill(PLACEHOLDER_KEY);
-			await providerCard.getByRole('button', { name: 'Save key' }).click();
-			await expect(providerCard.getByLabel(/Replace API key/)).toBeVisible();
-			// Saving a key re-runs discovery; let it settle before more clicks.
-			await expect(footer).toHaveText(settledModelFooter(3));
+			// LiteLLM is keyless (requiresKey: false), so the key section renders
+			// only for key-required providers. Save a placeholder key when the
+			// field exists; keyless setups skip straight to activation.
+			const keyField = providerCard.getByLabel('API key (stored locally)');
+			if (await keyField.isVisible()) {
+				await keyField.fill(PLACEHOLDER_KEY);
+				await providerCard.getByRole('button', { name: 'Save key' }).click();
+				await expect(providerCard.getByLabel(/Replace API key/)).toBeVisible();
+				// Saving a key re-runs discovery; let it settle before more clicks.
+				await expect(footer).toHaveText(settledModelFooter(3));
+			}
 
 			const setActive = providerCard.getByRole('button', { name: 'Set active' });
 			if (await setActive.isVisible()) {
