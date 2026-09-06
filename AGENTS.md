@@ -41,6 +41,18 @@ topology, and the invariants you must respect when editing.
 | `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                                                                  |
 | `docker compose up`                | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first.                                          |
 
+## Worktrees
+
+`node_modules/` is gitignored, so every new git worktree starts without
+dependencies and with no built `@mayon/shared`. Before running, checking, or
+testing anything in a fresh worktree:
+
+1. `pnpm install` — fast in worktrees (pnpm's global store is shared across checkouts, so packages hard-link instead of re-downloading).
+2. `pnpm --filter @mayon/shared build` — consumers resolve `@mayon/shared` types from its `dist/`, which is gitignored too (see the invariant below).
+
+If the worktree's work touches deps, config, or `@mayon/shared`, also rebuild
+the dev images with `pnpm dev:build`.
+
 ## Releasing & versioning
 
 - **SemVer.** Versions are `MAJOR.MINOR.PATCH` (`0.x` is pre-1.0 instability).
