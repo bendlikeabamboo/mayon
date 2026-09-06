@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-07
+
+### Added
+
+- **Branch back-propagation** — branched chats can push their outcome back
+  into the parent chat as a persisted, collapsible artifact anchored exactly
+  at the branch point via fractional placement (messages `ord` is now double
+  precision; purely additive — no existing row is ever rewritten). The user
+  chooses the form on the branch chat: a raw delta (branch-only turns plus a
+  verbatim anchored excerpt) or a model-written summary. The artifact steers
+  future parent compositions via an explicit projection branch while
+  pre-existing sibling branches remain cutoff-isolated; it can be regenerated
+  (summary only, source-branch-guarded) or deleted in place. Search gains a
+  `branch_artifact` kind filter, and backup/restore round-trips it.
+- **Automated quiz/labs verification** — the manual quiz-and-labs pass on
+  release candidates is replaced by deterministic automated runs: a mock LLM
+  that classifies request kinds from user-un-influenceable bytes and serves
+  per-kind fixtures (with drift-guarded, single-homed markers), a Playwright
+  deck covering onboarding → chat → quiz (every question type, both grading
+  outcomes) → lab completion through the real proxy hop, and logic-layer
+  Vitest suites for parse → persist, every grading bucket, failure paths, and
+  prompt-assembly invariants. Quiz/lab generation prompt contracts become
+  code-owned and read-only; users attach custom instructions
+  (`quizInstructions` / `labInstructions`) with a one-time idempotent legacy
+  migration and a shared settings panel.
+- **Report-only security posture detection** — CI gains a dependency audit
+  and release image scans that report findings without blocking.
+- **Local-first grouped provider picker** — the provider catalog is grouped
+  into Local / Cloud APIs / Gateways / Custom with name-search across groups;
+  LM Studio and vLLM onboard as discovery-first keyless openai-compatible
+  Local entries. The URL-allowlist tool-capability guess is replaced by an
+  explicit per-endpoint toggle (default on; legacy `auto` normalized at read
+  time preserving prior behavior), and connection-test failures are
+  classified into coached remedies (not running / cross-origin blocked with
+  runtime-specific fixes / timeout / auth / wrong path / rate limit). Loopback
+  targets fetch browser-direct (the server container cannot reach the host
+  loopback), discovery is deadline-bounded, and keyless openai-compatible
+  chat proceeds without an API key while still attaching one when saved.
+
 ### Changed
 
 - **Docs: decision history split into per-feature pages** — the single
@@ -20,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   feature/idea numbers are never reused. The docs site also adopts the cosmo
   theme with a flattened navbar, page footer, repo actions, and a card-grid
   landing page.
+- **Dependencies:** fastify bumped from 5.10.0 to 5.12.1.
+
+### Fixed
+
+- **Auth schema check** — the on-request auth gate's schema check no longer
+  rejects databases that carry drizzle's `__drizzle_migrations` bookkeeping
+  table.
 
 ## [0.6.0] - 2026-09-03
 
