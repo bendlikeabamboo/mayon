@@ -1,0 +1,3 @@
+# Research: 008-branch-context-sync
+
+- 2026-09-05 — Claim: the messages table already has a durable `kind` enum (`user_message`, `assistant_message`, `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`) plus `role`, `content`, and optional JSON `parts` — i.e. collapsible, ordered, persisted entry types are an existing abstraction. A back-propagated context artifact could be a new `kind` on this table (anchored by existing row ordering) instead of a separate store. Source: `src/lib/db/schema.ts` lines 61–86 (checked during playthrough of cards 001/005).

@@ -1,1 +1,0 @@
-as user, sometimes when the llm replies, it replies with chapter headers or soemthing and sometimes their replies are long. that's okay but i just wish there's like a floating outline that I can maybe interact with to speed up my searching in the UI.

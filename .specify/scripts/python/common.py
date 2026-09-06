@@ -551,4 +551,4 @@ def format_speckit_command(command_name: str, repo_root: Path) -> str:
     elif name.startswith("speckit-"):
         name = name[len("speckit-") :]
     name = name.replace(".", separator)
-    return f"/speckit{separator}{name}"
+    return f"$speckit{separator}{name}"
