@@ -41,7 +41,7 @@
 		"@ai-sdk/openai-compatible": "^3.0.2",
 		"@fontsource/newsreader": "^5.2.10",
 		"@mayon/shared": "workspace:*",
-		"@sveltejs/kit": "^2.68.0",
+		"@sveltejs/kit": "^2.70.2",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"ai": "^7.0.4",
 		"bits-ui": "^2.18.1",
