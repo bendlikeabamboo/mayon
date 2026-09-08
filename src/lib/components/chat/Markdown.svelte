@@ -179,6 +179,27 @@
 		margin: 0.5em 0;
 		padding-left: 1.5em;
 	}
+	/* Tailwind Preflight resets `list-style: none` globally; restore markers. */
+	:global(.markdown-body ul) {
+		list-style-type: disc;
+	}
+	:global(.markdown-body ul ul) {
+		list-style-type: circle;
+	}
+	:global(.markdown-body ul ul ul) {
+		list-style-type: square;
+	}
+	:global(.markdown-body ol) {
+		list-style-type: decimal;
+	}
+	:global(.markdown-body ol ol) {
+		list-style-type: lower-alpha;
+	}
+	/* GFM task lists: sanitize strips the task-list classes, but the
+	   checkbox input survives — suppress the bullet next to it. */
+	:global(.markdown-body li:has(> input[type='checkbox'])) {
+		list-style-type: none;
+	}
 	:global(.markdown-body li) {
 		margin: 0.2em 0;
 	}
