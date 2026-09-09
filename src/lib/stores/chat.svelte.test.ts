@@ -2373,4 +2373,44 @@ describe('chatStore paced streaming (022 US1)', () => {
 		await sendP;
 		expect(chatStore.streamPhase).toBe('idle');
 	});
+
+	it('switching presets mid-stream never rewinds already-visible text', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		let capturedUpdate: ((n: string) => void) | null = null;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			capturedUpdate = deps.updateStreamBuffer;
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		// Stream starts under the default Standard preset (verbatim render).
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(capturedUpdate).not.toBeNull());
+		const text = 'word '.repeat(40);
+		capturedUpdate!(text);
+		await vi.advanceTimersByTimeAsync(80);
+		expect(chatStore.streamBufferRender).toBe(text);
+
+		// Preset loads/switches to a paced preset mid-stream: the pacer has
+		// never ticked, so it must fast-forward past the visible text.
+		chatStore.setStreamPreset('expressive');
+		await vi.advanceTimersByTimeAsync(80);
+		expect(chatStore.streamBufferRender.length).toBeGreaterThanOrEqual(text.length - 12);
+		expect(chatStore.streamBuffer.length).toBe(text.length);
+
+		resolveTurn();
+		await vi.advanceTimersByTimeAsync(2000);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+	});
 });

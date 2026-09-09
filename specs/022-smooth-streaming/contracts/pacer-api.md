@@ -41,9 +41,13 @@ export interface Pacer {
   onAbort(): void;
   /** Call at turn teardown → returns to idle. */
   reset(): void;
-  /** Call on each store flush tick. Returns the length of the raw buffer that
-   *  should be visible now, snapped to a safe boundary, or raw.length when flushed. */
-  tick(raw: string): number;
+	/** Call on each store flush tick. Returns the length of the raw buffer that
+	 *  should be visible now, snapped to a safe boundary, or raw.length when flushed. */
+	tick(raw: string): number;
+	/** Fast-forward the release point to `visible` chars (never rewinds). Used
+	 *  when pacing activates mid-stream over text that is already on screen
+	 *  (e.g. the preset switches from Standard, which never ticks the pacer). */
+	syncTo(visible: number, raw: string): void;
   /** Current mode; the store reads `draining → flushed` to time finalization
    *  (persist the durable row only after flushed) and the overlay syncs its
    *  lift transition to the same moment. */
@@ -58,9 +62,10 @@ export interface Pacer {
 3. **Eased drain**: `onStreamEnd()` ramps the rate (double every `drainRampMs`) under a total `drainBudgetMs` bound; completion is never a single-tick dump (FR-004, SC-002).
 4. **Abort fast-path**: after `onAbort()`, the next `tick()` returns `raw.length` (FR-005).
 5. **Reset tolerance**: if `raw.length` shrinks below `visible.length` (critic-phase `updateStreamBuffer('')` clears, loop.ts:225/245), the pacer resets to 0 and continues in the current mode (D2).
-6. **Presets**: the *store* decides whether to consult the pacer — preset `standard` bypasses it entirely (verbatim copy = today's behavior, FR-012); `calm`/`expressive` route through it. The pacer itself is preset-agnostic.
-7. **Store integration invariants**: `streamBuffer` (raw) is never paced or mutated; `streamBufferRender` is always a prefix of `streamBuffer`; abort/error keeps today's immediate full flush + `interrupted: true` persist (D3).
-8. **Instrumentation**: the store's flush path adds `mark('pacing:flush', …)` / `incRender(...)` via `src/lib/perf/mark.ts`; a source-contract test asserts the marks exist (SectionStrip.contract.test.ts pattern).
+6. **Mid-stream activation**: `syncTo(visible, raw)` fast-forwards the release point over text that is already visible (never rewinds it). It lands on a safe boundary within the snap window when one exists; word-safety governs *withheld* text, not text already on screen. A no-op when `visible` ≤ released or the pacer is idle/flushed. The store calls it before every paced `tick` so Standard↔paced preset switches mid-stream are seamless.
+7. **Presets**: the *store* decides whether to consult the pacer — preset `standard` bypasses it entirely (verbatim copy = today's behavior, FR-012); `calm`/`expressive` route through it. The pacer itself is preset-agnostic.
+8. **Store integration invariants**: `streamBuffer` (raw) is never paced or mutated; `streamBufferRender` is always a prefix of `streamBuffer`; abort/error keeps today's immediate full flush + `interrupted: true` persist (D3).
+9. **Instrumentation**: the store's flush path adds `mark('pacing:flush', …)` / `incRender(...)` via `src/lib/perf/mark.ts`; a source-contract test asserts the marks exist (SectionStrip.contract.test.ts pattern).
 
 ## Failure modes
 

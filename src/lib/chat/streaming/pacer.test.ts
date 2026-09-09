@@ -213,6 +213,46 @@ describe('empty and whitespace deltas', () => {
 	});
 });
 
+describe('syncTo (mid-stream pacing activation)', () => {
+	it('fast-forwards to already-visible text without rewinding it', () => {
+		const raw = 'alpha beta gamma delta epsilon ';
+		const pacer = makePacer();
+		pacer.onArrived(raw);
+		// Pacing activates after Standard already revealed everything verbatim.
+		pacer.syncTo(raw.length, raw);
+		expect(pacer.tick(raw)).toBe(raw.length);
+	});
+
+	it('snaps the fast-forward back to a safe boundary within the lookback window', () => {
+		const raw = 'alpha beta gamma delta';
+		const pacer = makePacer();
+		pacer.onArrived(raw);
+		pacer.syncTo(15, raw); // visible tail lands mid-'gamma'
+		const released = pacer.tick(raw);
+		expect(released).toBe(11); // boundary before 'gamma'
+	});
+
+	it('never rewinds and ignores idle syncs', () => {
+		const pacer = makePacer();
+		pacer.syncTo(5, 'abc def ');
+		expect(pacer.mode).toBe('idle');
+		const raw = 'alpha beta ';
+		pacer.onArrived(raw);
+		pacer.syncTo(raw.length, raw);
+		expect(pacer.tick(raw)).toBe(raw.length);
+		pacer.syncTo(2, raw);
+		expect(pacer.tick(raw)).toBe(raw.length);
+	});
+
+	it('clamps to the raw length when visible exceeds arrived (shrink guard)', () => {
+		const pacer = makePacer();
+		const raw = 'hello world ';
+		pacer.onArrived(raw);
+		pacer.syncTo(500, raw);
+		expect(pacer.tick(raw)).toBe(raw.length);
+	});
+});
+
 describe('injectable clock', () => {
 	it('honors a custom now() source', () => {
 		let t = 1000;

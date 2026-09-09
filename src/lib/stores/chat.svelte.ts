@@ -204,6 +204,9 @@ class ChatState {
 			return;
 		}
 		mark('pacing:flush', () => {
+			// Pacing may activate mid-stream (preset switch) over text the
+			// verbatim Standard path already revealed — never rewind it.
+			pacer.syncTo(this.streamBufferRender.length, this.streamBuffer);
 			const released = pacer.tick(this.streamBuffer);
 			this.streamBufferRender = this.streamBuffer.slice(0, released);
 			incRender('Pacer');

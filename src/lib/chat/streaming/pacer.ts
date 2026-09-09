@@ -46,6 +46,10 @@ export interface Pacer {
 	/** Call on each store flush tick. Returns the length of the raw buffer that
 	 *  should be visible now, snapped to a safe boundary, or raw.length when flushed. */
 	tick(raw: string): number;
+	/** Fast-forward the release point to `visible` chars (never rewinds). Used
+	 *  when pacing activates mid-stream over text that is already on screen
+	 *  (e.g. the preset switches from Standard, which never ticks the pacer). */
+	syncTo(visible: number, raw: string): void;
 	readonly mode: PacerMode;
 }
 
@@ -125,12 +129,26 @@ export function createPacer(
 		return released;
 	};
 
+	const syncTo = (visible: number, raw: string): void => {
+		if (mode !== 'streaming' && mode !== 'draining') return;
+		const target = Math.min(visible, raw.length);
+		if (target <= released) return;
+		// Already-visible text must never rewind, so land on a safe boundary if
+		// one is in the snap window — else take the raw target (word-safety
+		// governs withheld text, not text that is already on screen).
+		let i = target;
+		const floor = Math.max(released, target - cfg.snapLookback);
+		while (i > floor && !isSafeBoundary(raw, i)) i--;
+		released = i;
+	};
+
 	return {
 		onArrived,
 		onStreamEnd,
 		onAbort,
 		reset,
 		tick,
+		syncTo,
 		get mode() {
 			return mode;
 		}
