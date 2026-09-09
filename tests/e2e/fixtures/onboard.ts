@@ -29,6 +29,12 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 					sql: "DELETE FROM settings WHERE key IN ('providers', 'activeProvider')"
 				}
 			});
+			// The expound test asserts offsets of the branch row it just created
+			// via "latest row"; stale rows from earlier sessions on a shared dev
+			// DB would otherwise win the ORDER BY. Nothing references this table.
+			await request.post('/api/db/query', {
+				data: { op: 'exec', sql: 'DELETE FROM branch_sources' }
+			});
 			await page.goto('/settings#providers');
 			// First-run security setup gate (skippable): boot does not start until
 			// dismissed, and the prompt renders after the async auth check — wait

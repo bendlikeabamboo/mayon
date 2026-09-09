@@ -3,6 +3,7 @@
 	import { renderMarkdown, renderMarkdownLive } from '$lib/markdown/render';
 	import { incRender } from '$lib/perf/mark';
 	import { hasMermaid, renderMermaidBlock } from '$lib/markdown/mermaid';
+	import { themeState } from '$lib/stores/theme.svelte.js';
 	import { isExternalLink } from '$lib/markdown/links';
 	import { enhanceFocusable } from '$lib/markdown/focusable';
 	import MermaidPreview from './MermaidPreview.svelte';
@@ -28,6 +29,49 @@
 	let focusNode = $state<HTMLElement | null>(null);
 	let focusTitle = $state('Table');
 
+	// Serialize mermaid re-renders within this instance so concurrent syncs
+	// (theme effect + in-flight initial renders) cannot interleave renders.
+	let mermaidSync: Promise<void> = Promise.resolve();
+
+	/** Re-render every diagram whose stamped theme no longer matches. */
+	function syncMermaidTheme(resolved: 'light' | 'dark'): Promise<void> {
+		mermaidSync = mermaidSync.catch(() => {}).then(() => rerenderStaleMermaid(resolved));
+		return mermaidSync;
+	}
+
+	async function rerenderStaleMermaid(resolved: 'light' | 'dark'): Promise<void> {
+		if (live || !container) return;
+		const wrappers = Array.from(
+			container.querySelectorAll<HTMLElement>('.mermaid-svg[data-mermaid-source]')
+		);
+		for (const wrapper of wrappers) {
+			if (wrapper.dataset.renderedTheme === resolved) continue;
+			try {
+				const { svg, theme } = await renderMermaidBlock(wrapper.dataset.mermaidSource ?? '');
+				// In-place innerHTML swap: the click listener and dataset survive.
+				wrapper.innerHTML = svg;
+				// Stamp the theme actually rendered with, not the pass's resolved:
+				// a flip mid-pass lands exactly-stamped, so the next sync skips it.
+				wrapper.dataset.renderedTheme = theme;
+			} catch (err) {
+				const note = document.createElement('p');
+				note.className = 'my-3 text-xs text-red-600 dark:text-red-400';
+				note.textContent = `Mermaid render failed: ${err instanceof Error ? err.message : String(err)}`;
+				wrapper.replaceWith(note);
+			}
+		}
+	}
+
+	// Diagrams are rendered with theme-baked colors; re-render them in place
+	// when the resolved theme flips (preference change or OS-level flip while
+	// preference is "system"). Mirrors the onMount guard: streaming messages
+	// never create wrappers, so there is nothing to sync.
+	$effect(() => {
+		const resolved = themeState.resolved;
+		if (live || !container) return;
+		void syncMermaidTheme(resolved);
+	});
+
 	onMount(() => {
 		if (live || !needsMermaid || !container) return;
 
@@ -49,16 +93,23 @@
 
 			scheduleIdle(() => {
 				void renderMermaidBlock(source)
-					.then((svg) => {
+					.then(({ svg, theme }) => {
 						const wrapper = document.createElement('div');
 						wrapper.className =
 							'mermaid-svg my-3 flex justify-center overflow-x-auto cursor-zoom-in';
 						wrapper.title = 'Click to preview';
 						wrapper.innerHTML = svg;
+						wrapper.dataset.mermaidSource = source;
+						// `theme` is what the SVG was actually rendered with; the
+						// follow-up sync corrects anything a flip left stale.
+						wrapper.dataset.renderedTheme = theme;
 						wrapper.addEventListener('click', () => {
 							previewSvg = wrapper.innerHTML;
 						});
 						placeholder.replaceWith(wrapper);
+						// Correct a render that started under the old theme and
+						// landed after a flip.
+						void syncMermaidTheme(themeState.resolved);
 					})
 					.catch((err) => {
 						const note = document.createElement('p');

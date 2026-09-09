@@ -8,7 +8,8 @@ import {
 	expectMath,
 	expectMermaidDiagram,
 	openKitchenSinkReply,
-	selectParagraph
+	selectParagraph,
+	setThemePreferenceToSystem
 } from './fixtures/render';
 
 const fixtureRaw = readFileSync(
@@ -32,6 +33,31 @@ test.describe('kitchen-sink rendering', () => {
 	test('renders the mermaid fence as a diagram', async ({ onboarded }) => {
 		const body = await openKitchenSinkReply(onboarded.page);
 		await expectMermaidDiagram(body);
+	});
+
+	test('re-renders the mermaid diagram when the theme flips to dark', async ({ onboarded }) => {
+		const { page } = onboarded;
+		const body = await openKitchenSinkReply(page);
+		await expectMermaidDiagram(body);
+		// Pin the preference to "system" (through the real toggle) so the
+		// resolved theme — and with it the diagram — follows the OS-level
+		// emulated color scheme.
+		await setThemePreferenceToSystem(page);
+		await page.emulateMedia({ colorScheme: 'light' });
+		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'light', {
+			timeout: 30_000
+		});
+		await page.emulateMedia({ colorScheme: 'dark' });
+		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'dark', {
+			timeout: 30_000
+		});
+		await expect(body.locator('.mermaid-svg svg')).toBeVisible();
+		// Flip back to light and expect the diagram to follow.
+		await page.emulateMedia({ colorScheme: 'light' });
+		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'light', {
+			timeout: 30_000
+		});
+		await expect(body.locator('.mermaid-svg svg')).toBeVisible();
 	});
 
 	test('gives every code block a working copy affordance', async ({ onboarded }) => {
