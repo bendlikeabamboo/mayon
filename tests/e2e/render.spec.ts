@@ -8,7 +8,8 @@ import {
 	expectMath,
 	expectMermaidDiagram,
 	openKitchenSinkReply,
-	selectParagraph
+	selectParagraph,
+	setThemePreferenceToSystem
 } from './fixtures/render';
 
 const fixtureRaw = readFileSync(
@@ -34,6 +35,31 @@ test.describe('kitchen-sink rendering', () => {
 		await expectMermaidDiagram(body);
 	});
 
+	test('re-renders the mermaid diagram when the theme flips to dark', async ({ onboarded }) => {
+		const { page } = onboarded;
+		const body = await openKitchenSinkReply(page);
+		await expectMermaidDiagram(body);
+		// Pin the preference to "system" (through the real toggle) so the
+		// resolved theme — and with it the diagram — follows the OS-level
+		// emulated color scheme.
+		await setThemePreferenceToSystem(page);
+		await page.emulateMedia({ colorScheme: 'light' });
+		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'light', {
+			timeout: 30_000
+		});
+		await page.emulateMedia({ colorScheme: 'dark' });
+		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'dark', {
+			timeout: 30_000
+		});
+		await expect(body.locator('.mermaid-svg svg')).toBeVisible();
+		// Flip back to light and expect the diagram to follow.
+		await page.emulateMedia({ colorScheme: 'light' });
+		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'light', {
+			timeout: 30_000
+		});
+		await expect(body.locator('.mermaid-svg svg')).toBeVisible();
+	});
+
 	test('gives every code block a working copy affordance', async ({ onboarded }) => {
 		const { page } = onboarded;
 		const body = await openKitchenSinkReply(page);
@@ -50,32 +76,41 @@ test.describe('kitchen-sink rendering', () => {
 		await expect(dialog.locator('p[title]')).toHaveAttribute('title', ALIGNED_PARAGRAPH);
 		await dialog.getByRole('button', { name: 'Send', exact: true }).click();
 		await expect(page.locator('.markdown-body', { hasText: LATE_MARKER })).toBeVisible();
-		// Rows come back positional: [start_char, end_char, excerpt].
-		const queryRow = async () => {
+		// Rows come back positional: [start_char, end_char, excerpt]. Read a
+		// recent window, never just the latest row: on a shared dev DB another
+		// session's rows can sit on top, and the suite never mutates rows it
+		// does not own.
+		const queryRows = async (): Promise<Array<[number, number, string]>> => {
 			const response = await page.request.post('/api/db/query', {
 				data: {
 					op: 'query',
-					sql: 'SELECT start_char, end_char, excerpt FROM branch_sources ORDER BY created_at DESC LIMIT 1'
+					sql: 'SELECT start_char, end_char, excerpt FROM branch_sources ORDER BY created_at DESC LIMIT 10'
 				}
 			});
 			const { rows } = (await response.json()) as { rows: Array<[number, number, string]> };
-			return rows[0];
+			return rows;
 		};
-		// The branch persists asynchronously behind the new chat's first turn.
+		// The branch persists asynchronously behind the new chat's first turn;
+		// poll for THIS test's row by its exact offsets + excerpt.
+		const start = fixtureRaw.indexOf(ALIGNED_PARAGRAPH);
+		expect(start).toBeGreaterThan(0);
+		const end = start + ALIGNED_PARAGRAPH.length;
 		let row: [number, number, string] | undefined;
 		await expect
 			.poll(
 				async () => {
-					row = await queryRow();
+					const match = (await queryRows()).find(
+						(candidate) =>
+							candidate[0] === start && candidate[1] === end && candidate[2] === ALIGNED_PARAGRAPH
+					);
+					if (match) row = match;
 					return row;
 				},
 				{ timeout: 15_000 }
 			)
 			.toBeTruthy();
-		const start = fixtureRaw.indexOf(ALIGNED_PARAGRAPH);
-		expect(start).toBeGreaterThan(0);
 		expect(row![0]).toBe(start);
-		expect(row![1]).toBe(start + ALIGNED_PARAGRAPH.length);
+		expect(row![1]).toBe(end);
 		expect(row![2]).toBe(ALIGNED_PARAGRAPH);
 	});
 });
