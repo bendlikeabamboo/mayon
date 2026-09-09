@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Standard = today's behavior). The message DOM keeps its exact shape, so
   expound alignment, full-text search, and copy buttons are untouched.
 
+### Fixed
+
+- **Mermaid diagrams readable in dark mode** — diagrams render with mermaid's
+  builtin dark theme when the resolved theme is dark, and already-rendered
+  diagrams re-render in place when the theme flips (including OS-level flips
+  while the preference is `system`); the resolved theme is now reactive to OS
+  preference changes instead of only toggling the `.dark` class.
+
 ## [0.7.0] - 2026-09-07
 
 ### Added

@@ -11,6 +11,26 @@ export async function openKitchenSinkReply(page: Page): Promise<Locator> {
 	return body;
 }
 
+/**
+ * Cycle the real ThemeToggle until the app preference is "system", so the
+ * resolved theme follows the OS-level (emulated) color scheme. The starting
+ * preference is unknowable: it hydrates from the settings KV on a shared DB.
+ */
+export async function setThemePreferenceToSystem(page: Page): Promise<void> {
+	const toggle = page.getByRole('button', { name: /Theme: .* \(click to switch\)/ });
+	await expect
+		.poll(
+			async () => {
+				const label = (await toggle.getAttribute('aria-label')) ?? '';
+				if (label.includes('Theme: system')) return true;
+				await toggle.click();
+				return false;
+			},
+			{ timeout: 15_000 }
+		)
+		.toBe(true);
+}
+
 export async function expectMarkdownStructure(body: Locator): Promise<void> {
 	await expect(
 		body.getByRole('heading', { level: 1, name: 'The Kitchen-Sink Fixture' })
@@ -35,6 +55,11 @@ export async function expectMath(body: Locator): Promise<void> {
 
 export async function expectMermaidDiagram(body: Locator): Promise<void> {
 	await expect(body.locator('.mermaid-svg svg')).toBeVisible({ timeout: 30_000 });
+	// Diagrams are stamped with the resolved theme they were rendered under.
+	await expect(body.locator('.mermaid-svg')).toHaveAttribute(
+		'data-rendered-theme',
+		/^(light|dark)$/
+	);
 	await expect(body.locator('code.language-mermaid')).toHaveCount(0);
 }
 

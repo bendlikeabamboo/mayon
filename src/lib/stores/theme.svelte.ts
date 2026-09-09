@@ -15,6 +15,9 @@ function applyTheme(theme: Theme) {
 
 class ThemeState {
 	preference = $state<Theme>('system');
+	// $state mirror of the OS preference so `resolved` is trackable inside
+	// $effect (the matchMedia class toggle alone is invisible to reactivity).
+	#systemDark = $state(systemDark());
 
 	constructor() {
 		if (typeof window === 'undefined') return;
@@ -22,13 +25,14 @@ class ThemeState {
 		this.preference = stored ?? 'system';
 		applyTheme(this.preference);
 		// Keep "system" in sync with the OS preference.
-		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+			this.#systemDark = e.matches;
 			if (this.preference === 'system') applyTheme('system');
 		});
 	}
 
 	get resolved(): 'light' | 'dark' {
-		return this.preference === 'system' ? (systemDark() ? 'dark' : 'light') : this.preference;
+		return this.preference === 'system' ? (this.#systemDark ? 'dark' : 'light') : this.preference;
 	}
 
 	set(theme: Theme) {

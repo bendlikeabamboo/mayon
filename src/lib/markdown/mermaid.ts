@@ -20,41 +20,61 @@
  * wrapper element, never mixed back into the sanitized prose tree.
  */
 import type { Mermaid } from 'mermaid';
+import { themeState } from '$lib/stores/theme.svelte.js';
 
 let mermaidPromise: Promise<Mermaid> | null = null;
+let initializedTheme: 'light' | 'dark' | null = null;
 
 /** True if a message's HTML contains a fenced mermaid block to render. */
 export function hasMermaid(html: string): boolean {
 	return /<code[^>]*class="[^"]*\blanguage-mermaid\b[^"]*"/.test(html);
 }
 
-/** Initialize mermaid once (idempotent). Returns the configured API. */
-async function getMermaid(): Promise<Mermaid> {
+/** Initialize mermaid once per theme (idempotent). Returns the configured API. */
+async function getMermaid(theme: 'light' | 'dark'): Promise<Mermaid> {
 	if (!mermaidPromise) {
-		mermaidPromise = (async () => {
-			const mod = await import('mermaid');
-			const api = mod.default;
-			// startOnReady must be false under a framework: we render imperatively.
-			api.initialize({
-				startOnLoad: false,
-				securityLevel: 'strict',
-				theme: 'default'
-			});
-			return api;
-		})();
+		mermaidPromise = import('mermaid').then((mod) => mod.default);
 	}
-	return mermaidPromise;
+	const api = await mermaidPromise;
+	if (initializedTheme !== theme) {
+		initializedTheme = theme;
+		// Re-calling initialize is the documented way to change mermaid config;
+		// it must happen before subsequent render calls. Colors are baked into
+		// the SVG at render time, so a theme change needs a re-initialize.
+		api.initialize({
+			startOnLoad: false,
+			securityLevel: 'strict',
+			theme: theme === 'dark' ? 'dark' : 'default'
+		});
+	}
+	return api;
 }
 
 let renderSeq = 0;
 
+// Module-wide chain: each initialize+render pair runs atomically, so an
+// in-flight render can never straddle a theme re-initialize (initialize
+// mutates mermaid's global config; renders read it lazily).
+let renderChain: Promise<unknown> = Promise.resolve();
+
 /**
- * Render a single mermaid source string to an SVG string. Throws on parse
- * error; the caller decides whether to show a fallback or skip.
+ * Render a single mermaid source string to an SVG string, themed for the
+ * resolved app theme at call time. Returns the theme the SVG was actually
+ * rendered with so callers can stamp it. Rejects on parse error; the caller
+ * decides whether to show a fallback or skip.
  */
-export async function renderMermaidBlock(source: string): Promise<string> {
-	const api = await getMermaid();
-	const id = `mmd-${Date.now()}-${renderSeq++}`;
-	const { svg } = await api.render(id, source);
-	return svg;
+export function renderMermaidBlock(
+	source: string
+): Promise<{ svg: string; theme: 'light' | 'dark' }> {
+	const theme = themeState.resolved;
+	const run = renderChain
+		.catch(() => {})
+		.then(async () => {
+			const api = await getMermaid(theme);
+			const id = `mmd-${Date.now()}-${renderSeq++}`;
+			const { svg } = await api.render(id, source);
+			return { svg, theme };
+		});
+	renderChain = run;
+	return run;
 }
