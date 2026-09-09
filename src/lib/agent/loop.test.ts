@@ -111,7 +111,8 @@ vi.mock('$lib/chat/projection', () => ({
 
 vi.mock('$lib/chat/brief', () => ({
 	buildCapabilitiesPreamble: vi.fn(() => 'preamble'),
-	buildFirstTurnOrientationPreamble: vi.fn(() => 'orientation')
+	buildFirstTurnOrientationPreamble: vi.fn(() => 'orientation'),
+	buildReplyTiersPreamble: vi.fn(() => 'tiers')
 }));
 
 vi.mock('$lib/ai/dialects', () => ({
@@ -451,6 +452,7 @@ describe('runAgentTurn', () => {
 		const callArgs = mockedStreamText.mock.calls[0][0];
 		expect(callArgs.tools).toEqual({});
 		expect(callArgs.system).toContain('orientation');
+		expect(callArgs.system).not.toContain('tiers');
 		expect(mockedBuildFirstTurnOrientationPreamble).toHaveBeenCalledOnce();
 		expect(mockedBuildCapabilitiesPreamble).not.toHaveBeenCalled();
 	});
@@ -471,6 +473,7 @@ describe('runAgentTurn', () => {
 		const callArgs = mockedStreamText.mock.calls[0][0];
 		expect(Object.keys(callArgs.tools as object).length).toBeGreaterThan(0);
 		expect(callArgs.system).toContain('preamble');
+		expect(callArgs.system).toContain('tiers');
 		expect(mockedBuildCapabilitiesPreamble).toHaveBeenCalledOnce();
 		expect(mockedBuildFirstTurnOrientationPreamble).not.toHaveBeenCalled();
 	});

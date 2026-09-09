@@ -291,6 +291,33 @@ export function buildFirstTurnOrientationPreamble(): string {
 	].join('\n');
 }
 
+// ───────────────── engagement reply tiers (AG4) ─────────────────
+
+/**
+ * Engagement-based reply-tier directive, appended by the agent loop on every
+ * non-first turn (brief-less chats included). Tiers size the reply; the
+ * strategy blocks in `strategies.ts` carry tier-aware density lines governed
+ * by this preamble. Chat-only by design — labs/quizzes/grading reuse the brief
+ * note via `assembleContext` and must not inherit chat-reply sizing.
+ */
+export function buildReplyTiersPreamble(): string {
+	return [
+		"REPLY TIERS — gauge the learner's engagement from their recent turns, then size each reply.",
+		'',
+		'Read these signals:',
+		'• LOW: explicit impatience ("just give me the answer", "make it short", "I\'m in a hurry"), flat or dismissive affect ("whatever", "I guess"), drifting off-topic, asking to wrap up.',
+		'• HIGH: follow-up questions, "why"/"how", paraphrasing the idea back, pasting their own attempt or an error, tying the topic to their own situation, typed directions that go beyond the offered chips.',
+		'• NEUTRAL: chip taps, short typed answers, chip-adjacent prose ("let\'s continue") — the app offers chips as the easy path, so using them says nothing about interest. Brevity alone is never a LOW signal.',
+		'• Anything ambiguous or unlisted → treat as MODERATE.',
+		'',
+		"Tier 1 — LOW: 80–300 words. Structure is optional this turn: drop beats that don't serve the moment and give the learner what they need right now. Compress any pacing gate to a single line.",
+		'Tier 2 — MODERATE (the default): keep the structure at its own designed density — never inflated to fill the band, never trimmed. Where the material is dense, break it up with headings, lists, a table, or one good example.',
+		'Tier 3 — HIGH, and only when the topic can carry it: up to ~2000 words of full structure plus richer material — worked examples, code, tables, diagrams, contrasts — chosen to fit the topic. Never force code or visual apparatus onto reflective, preference, or personal topics.',
+		'',
+		'Never relax at any tier: one unit/step/increment per turn, and the pacing gate wherever the structure uses one. Word counts are prose; fenced code blocks never count. A "go deeper" chip acts like the typed direction: it permits deeper sizing for that one turn without changing the engagement estimate.'
+	].join('\n');
+}
+
 // ─────────────────────────── summary ──────────────────────────
 
 /**
