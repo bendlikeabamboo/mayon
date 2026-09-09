@@ -9,6 +9,7 @@ import {
 	buildBriefSystemNote,
 	buildCapabilitiesPreamble,
 	buildFirstTurnOrientationPreamble,
+	buildReplyTiersPreamble,
 	isPersonaId,
 	parseBrief,
 	personaForId,
@@ -459,5 +460,28 @@ describe('buildFirstTurnOrientationPreamble', () => {
 		expect(s.length).toBeGreaterThan(0);
 		expect(s).toContain('first turn');
 		expect(s.toLowerCase()).toContain('orient');
+	});
+});
+
+describe('buildReplyTiersPreamble', () => {
+	it('defines all three tiers with their word bands', () => {
+		const s = buildReplyTiersPreamble();
+		expect(s).toContain('Tier 1 — LOW: 80–300 words');
+		expect(s).toContain('Tier 2 — MODERATE');
+		expect(s).toContain('Tier 3 — HIGH');
+		expect(s).toContain('~2000 words');
+	});
+
+	it('treats chips and brevity as neutral, not LOW', () => {
+		const s = buildReplyTiersPreamble();
+		expect(s).toContain('NEUTRAL');
+		expect(s).toContain('Brevity alone is never a LOW signal');
+	});
+
+	it('keeps gates, per-turn units, and prose-only word counts at every tier', () => {
+		const s = buildReplyTiersPreamble();
+		expect(s).toContain('one unit/step/increment per turn');
+		expect(s).toContain('fenced code blocks never count');
+		expect(s).toContain('pacing gate');
 	});
 });

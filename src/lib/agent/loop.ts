@@ -4,7 +4,11 @@ import { getToolDefinitions, getToolDefinition, toolsRun } from '$lib/agent/regi
 import { resolveToolCapability, disableToolsForSession } from '$lib/agent/capability';
 import { validateTurn, type CriticIssue } from '$lib/agent/critic';
 import { projectEntries } from '$lib/chat/projection';
-import { buildCapabilitiesPreamble, buildFirstTurnOrientationPreamble } from '$lib/chat/brief';
+import {
+	buildCapabilitiesPreamble,
+	buildFirstTurnOrientationPreamble,
+	buildReplyTiersPreamble
+} from '$lib/chat/brief';
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
 import { resolveRequestSettings } from '$lib/ai/dialects';
 import type { Message } from '$lib/db/schema';
@@ -298,6 +302,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			const ctx = await deps.reassembleContext();
 
 			const sysParts = ctx.filter((m) => m.role === 'system').map((m) => m.content);
+			if (!deps.firstTurn) {
+				sysParts.push(buildReplyTiersPreamble());
+			}
 			if (toolsEnabled) {
 				sysParts.push(buildCapabilitiesPreamble());
 			}
