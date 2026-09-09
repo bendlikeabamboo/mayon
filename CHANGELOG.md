@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Smooth streaming** — streamed replies emerge at a steady, word-safe
+  cadence with an eased final drain, plus a growth-edge overlay (soft blur
+  for Expressive, plain caret for Calm) behind a new "Streaming look"
+  appearance setting (`streamPreset`: Calm / Standard / Expressive; default
+  Standard = today's behavior). The message DOM keeps its exact shape, so
+  expound alignment, full-text search, and copy buttons are untouched.
+
 ### Fixed
 
 - **Mermaid diagrams readable in dark mode** — diagrams render with mermaid's

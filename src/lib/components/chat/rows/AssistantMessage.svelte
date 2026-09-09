@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from '../Markdown.svelte';
 	import Reasoning from '../Reasoning.svelte';
+	import GrowthEdge from '../GrowthEdge.svelte';
 	import Highlighter from '../Highlighter.svelte';
 	import Spinner from '../Spinner.svelte';
 	import SectionStrip from '../strip/SectionStrip.svelte';
@@ -15,6 +16,7 @@
 	import { parseMetadata } from '$lib/chat/kinds';
 	import type { AssistantMessageMeta } from '$lib/chat/kinds';
 	import { incRender } from '$lib/perf/mark';
+	import { chatStore } from '$lib/stores/chat.svelte';
 
 	interface SharedCallbacks {
 		onExpound: (
@@ -143,7 +145,16 @@
 				<Markdown raw={visible} />
 			</Highlighter>
 		{:else}
-			<Markdown raw={visible} live={true} />
+			<div class="group/live relative">
+				<Markdown raw={visible} live={true} />
+				{#if chatStore.streamPreset !== 'standard'}
+					<GrowthEdge
+						variant={chatStore.streamPreset === 'expressive' ? 'blur-fade' : 'caret'}
+						buffer={visible}
+						lifting={chatStore.streamPhase === 'draining'}
+					/>
+				{/if}
+			</div>
 		{/if}
 	</div>
 	{#if isDurable && stripEligible}

@@ -576,3 +576,61 @@
 	opacity: 1;
 	transition-delay: 0.5s;
 }
+
+/* Growth-edge overlay (live streaming rows): backdrop blur feathered by a
+   gradient mask over the trailing text (Expressive); thin blinking bar for
+   Calm. See specs/022-smooth-streaming/contracts/growth-edge-overlay.md. */
+.growth-edge-blur {
+	position: absolute;
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
+	mask-image: linear-gradient(to right, transparent, black 45%);
+	-webkit-mask-image: linear-gradient(to right, transparent, black 45%);
+	background: color-mix(in oklch, var(--background) 20%, transparent);
+	border-radius: 2px;
+}
+.growth-edge-soften {
+	backdrop-filter: blur(3px);
+	-webkit-backdrop-filter: blur(3px);
+	mask-image: linear-gradient(to right, transparent, black 25%);
+	-webkit-mask-image: linear-gradient(to right, transparent, black 25%);
+}
+.growth-edge-liftable {
+	transition-property:
+		opacity,
+		backdrop-filter,
+		-webkit-backdrop-filter;
+	transition-duration: 200ms;
+	transition-timing-function: ease;
+}
+.growth-edge-lift {
+	opacity: 0;
+	backdrop-filter: blur(0);
+	-webkit-backdrop-filter: blur(0);
+}
+.growth-caret {
+	position: absolute;
+	width: 2px;
+	border-radius: 1px;
+	background: color-mix(in oklch, var(--foreground) 75%, transparent);
+	animation: growth-caret-blink 1s steps(1, end) infinite;
+}
+@keyframes growth-caret-blink {
+	0%,
+	55% {
+		opacity: 1;
+	}
+	56%,
+	100% {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.growth-edge-blur,
+	.growth-edge-liftable {
+		transition: none;
+	}
+	.growth-caret {
+		animation: none;
+	}
+}

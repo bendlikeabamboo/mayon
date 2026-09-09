@@ -2173,3 +2173,244 @@ describe('chatStore artifact management (020 US3)', () => {
 		}
 	});
 });
+
+describe('chatStore paced streaming (022 US1)', () => {
+	beforeEach(() => {
+		// Minimal fake set: timers drive the rAF polyfill + drain wait, Date
+		// drives the flush gate and pacer clock; everything else stays real.
+		vi.useFakeTimers({
+			toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date']
+		});
+	});
+
+	afterEach(() => {
+		vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl!);
+		chatStore.setStreamPreset('standard');
+		vi.useRealTimers();
+	});
+
+	function wordSafe(rendered: string, raw: string): boolean {
+		if (rendered === raw) return true;
+		if (rendered.length === 0) return true;
+		const word = /[A-Za-z0-9]/;
+		return !(
+			word.test(rendered[rendered.length - 1]!) &&
+			raw[rendered.length] !== undefined &&
+			word.test(raw[rendered.length]!)
+		);
+	}
+
+	it('paced streaming releases the render copy steadily and word-safe', async () => {
+		chatStore.setStreamPreset('expressive');
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		let capturedUpdate: ((n: string) => void) | null = null;
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			capturedUpdate = deps.updateStreamBuffer;
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(capturedUpdate).not.toBeNull());
+
+		capturedUpdate!('alpha beta ');
+		expect(chatStore.streamBufferRender).toBe('');
+		await vi.advanceTimersByTimeAsync(80);
+		const first = chatStore.streamBufferRender;
+		expect(first.length).toBeGreaterThan(0);
+		expect(first.length).toBeLessThan(chatStore.streamBuffer.length);
+		expect(wordSafe(first, chatStore.streamBuffer)).toBe(true);
+		expect(chatStore.streamPhase).toBe('streaming');
+
+		capturedUpdate!(chatStore.streamBuffer + 'gamma delta epsilon ');
+		let released = first.length;
+		let grew = 0;
+		for (let i = 0; i < 8; i++) {
+			await vi.advanceTimersByTimeAsync(80);
+			const next = chatStore.streamBufferRender;
+			expect(next.length).toBeGreaterThanOrEqual(released);
+			if (next.length > released) grew++;
+			expect(wordSafe(next, chatStore.streamBuffer)).toBe(true);
+			released = next.length;
+		}
+		expect(grew).toBeGreaterThan(1);
+
+		resolveTurn();
+		await vi.advanceTimersByTimeAsync(2000);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+	});
+
+	it('standard preset keeps verbatim behavior — finalize without any drain wait', async () => {
+		chatStore.setStreamPreset('standard');
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		mockDefaultProvider();
+		mockStreamReply(['Standard reply ']);
+
+		const sendP = chatStore.send('hello');
+		await sendP;
+
+		expect(chatStore.streaming).toBe(false);
+		expect(chatStore.streamPhase).toBe('idle');
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistant = msgs.find((m) => m.role === 'assistant');
+		expect(assistant!.content).toBe('Standard reply ');
+		expect(assistant!.metadata).toBeNull();
+	});
+
+	it('defers finalize until the drain completes, walking streaming → draining', async () => {
+		chatStore.setStreamPreset('calm');
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		mockDefaultProvider();
+		mockStreamReply(['Deferred drain reply ']);
+
+		const sendP = chatStore.send('hello');
+		const phases = new Set<string>();
+		for (let i = 0; i < 2000 && chatStore.streamPhase !== 'draining'; i++) {
+			phases.add(chatStore.streamPhase);
+			await vi.advanceTimersByTimeAsync(1);
+		}
+		phases.add(chatStore.streamPhase);
+		expect(chatStore.streaming).toBe(true);
+
+		let msgs = await repos.messages.listByChat(root.id);
+		expect(msgs.some((m) => m.role === 'assistant')).toBe(false);
+
+		for (let i = 0; i < 2000 && chatStore.streaming; i++) {
+			phases.add(chatStore.streamPhase);
+			await vi.advanceTimersByTimeAsync(1);
+		}
+		expect(phases.has('draining')).toBe(true);
+
+		await sendP;
+		expect(chatStore.streaming).toBe(false);
+		msgs = await repos.messages.listByChat(root.id);
+		const assistant = msgs.find((m) => m.role === 'assistant');
+		expect(assistant!.content).toBe('Deferred drain reply ');
+		expect(chatStore.streamPhase).toBe('idle');
+	});
+
+	it('abort during a paced stream persists the raw buffer immediately with interrupted:true', async () => {
+		chatStore.setStreamPreset('expressive');
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.updateStreamBuffer('partial reply');
+			await turnBlocked;
+			return { aborted: true };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('partial reply'));
+
+		chatStore.stop();
+		resolveTurn();
+		await vi.advanceTimersByTimeAsync(100);
+		await sendP;
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const interrupted = msgs.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(interrupted).toBeDefined();
+		expect(interrupted!.content).toBe('partial reply');
+		expect(chatStore.streamPhase).toBe('idle');
+	});
+
+	it('critic-style buffer clear resets the release position without throwing', async () => {
+		chatStore.setStreamPreset('expressive');
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		let capturedUpdate: ((n: string) => void) | null = null;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			capturedUpdate = deps.updateStreamBuffer;
+			capturedUpdate('hello world this is text ');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.streamBufferRender.length).toBeGreaterThan(0));
+		await vi.advanceTimersByTimeAsync(80);
+
+		capturedUpdate!('');
+		await vi.advanceTimersByTimeAsync(80);
+
+		expect(chatStore.streamBuffer).toBe('');
+		expect(chatStore.streamBufferRender).toBe('');
+
+		resolveTurn();
+		await vi.advanceTimersByTimeAsync(2000);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+	});
+
+	it('switching presets mid-stream never rewinds already-visible text', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		let capturedUpdate: ((n: string) => void) | null = null;
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			capturedUpdate = deps.updateStreamBuffer;
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		// Stream starts under the default Standard preset (verbatim render).
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(capturedUpdate).not.toBeNull());
+		const text = 'word '.repeat(40);
+		capturedUpdate!(text);
+		await vi.advanceTimersByTimeAsync(80);
+		expect(chatStore.streamBufferRender).toBe(text);
+
+		// Preset loads/switches to a paced preset mid-stream: the pacer has
+		// never ticked, so it must fast-forward past the visible text.
+		chatStore.setStreamPreset('expressive');
+		await vi.advanceTimersByTimeAsync(80);
+		expect(chatStore.streamBufferRender.length).toBeGreaterThanOrEqual(text.length - 12);
+		expect(chatStore.streamBuffer.length).toBe(text.length);
+
+		resolveTurn();
+		await vi.advanceTimersByTimeAsync(2000);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+	});
+});

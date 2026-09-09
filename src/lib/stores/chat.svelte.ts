@@ -33,6 +33,9 @@ import {
 import { buildRawDelta, resolveAnchor, branchArtifactMetadata } from '$lib/chat/propagation';
 import { generateBranchArtifactSummary } from '$lib/ai/generate/generate-branch-artifact-summary';
 import { getActiveSdkProvider } from '$lib/ai/client';
+import type { StreamPreset } from '$lib/chat/streaming/pref';
+import { createPacer, type Pacer, type PacerMode } from '$lib/chat/streaming/pacer';
+import { mark, incRender } from '$lib/perf/mark';
 import { resolveRequestSettings } from '$lib/ai/dialects';
 import { mapSdkError } from '$lib/ai/sdk-errors';
 import {
@@ -54,6 +57,17 @@ import type { LiveEntry, LiveAskPayload } from '$lib/chat/entries';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
+}
+
+const WORD_CHAR = /[\p{L}\p{N}_'’-]/u;
+
+/**
+ * Safe release boundary for the streaming pacer: `raw.slice(0, index)` must
+ * never end mid-word. Ends of the arrived text count as safe.
+ */
+function isSafeBoundary(raw: string, index: number): boolean {
+	if (index <= 0 || index >= raw.length) return true;
+	return !WORD_CHAR.test(raw[index - 1]!) || !WORD_CHAR.test(raw[index]!);
 }
 
 export interface ApprovalEntry {
@@ -110,7 +124,10 @@ class ChatState {
 	streaming = $state(false);
 	streamBuffer = $state('');
 	streamBufferRender = $state('');
+	/** Pacer lifecycle of the in-flight stream, synced from `pacer.mode` (US2 overlay reads it). */
+	streamPhase = $state<PacerMode>('idle');
 	reasoningBuffer = $state('');
+	streamPreset = $state<StreamPreset>('standard');
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
 	/**
@@ -142,6 +159,7 @@ class ChatState {
 	private titleController: AbortController | null = null;
 	private titling = false;
 	private rafId: number | null = null;
+	private pacer: Pacer | null = null;
 
 	/**
 	 * Minimum interval between streaming-render flushes. Streaming text only
@@ -152,18 +170,63 @@ class ChatState {
 	 */
 	private static readonly RENDER_INTERVAL_MS = 80;
 
+	/**
+	 * Upper bound on the deferred-finalize drain wait. Strictly above the
+	 * pacer's own `drainBudgetMs` escape so the pacer reaches `flushed` first
+	 * during normal ticks; also guards against a suspended rAF loop (hidden
+	 * tab) stalling persistence forever.
+	 */
+	private static readonly DRAIN_DEADLINE_MS = 1200;
+
 	private startRenderFlush() {
 		let last = -Infinity;
 		const tick = () => {
-			const now = performance.now();
+			const now = Date.now();
 			if (now - last >= ChatState.RENDER_INTERVAL_MS) {
 				last = now;
-				this.streamBufferRender = this.streamBuffer;
+				this.flushRender();
 			}
 			if (this.streaming) this.rafId = requestAnimationFrame(tick);
 			else this.rafId = null;
 		};
 		this.rafId = requestAnimationFrame(tick);
+	}
+
+	/**
+	 * One render-flush step on the shared rAF loop. Standard preset (or no
+	 * pacer) copies the raw buffer verbatim — byte-for-byte today's behavior;
+	 * paced presets release only the pacer's safe prefix.
+	 */
+	private flushRender(): void {
+		const pacer = this.pacer;
+		if (this.streamPreset === 'standard' || !pacer) {
+			this.streamBufferRender = this.streamBuffer;
+			return;
+		}
+		mark('pacing:flush', () => {
+			// Pacing may activate mid-stream (preset switch) over text the
+			// verbatim Standard path already revealed — never rewind it.
+			pacer.syncTo(this.streamBufferRender.length, this.streamBuffer);
+			const released = pacer.tick(this.streamBuffer);
+			this.streamBufferRender = this.streamBuffer.slice(0, released);
+			incRender('Pacer');
+		});
+		this.streamPhase = pacer.mode;
+	}
+
+	/**
+	 * Resolve once the pacer has flushed everything (normal finish only).
+	 * Bounded by the drain deadline; aborting the turn breaks out immediately
+	 * so persistence is never delayed by pacing.
+	 */
+	private async waitForDrain(pacer: Pacer): Promise<void> {
+		const signal = this.controller?.signal;
+		const started = Date.now();
+		while (pacer.mode !== 'flushed') {
+			if (signal?.aborted || Date.now() - started > ChatState.DRAIN_DEADLINE_MS) break;
+			await new Promise((r) => setTimeout(r, ChatState.RENDER_INTERVAL_MS));
+		}
+		this.streamPhase = pacer.mode;
 	}
 
 	inferredBrief = $state<LearningBrief | null>(null);
@@ -390,6 +453,8 @@ class ChatState {
 		this.streaming = true;
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
+		this.streamPhase = 'idle';
+		this.pacer = createPacer(isSafeBoundary);
 		this.reasoningBuffer = '';
 		this.generativeStatus = null;
 		this.controller = new AbortController();
@@ -397,6 +462,9 @@ class ChatState {
 
 		const builder = new TraceBuilder();
 		const startTime = Date.now();
+		/** Final assistant text of the turn, captured by `appendAssistantText`
+		 *  before buffer teardown (the DEV strategy lint reads it post-turn). */
+		let finalAssistantText = '';
 		let model: LanguageModel | undefined;
 		let config: ProviderConfig | undefined;
 		let mcpSession: { unmountAll: () => void } | null = null;
@@ -474,15 +542,40 @@ class ChatState {
 					...mcpDisabled
 				],
 				firstTurn: isFirstRootTurn,
-				updateStreamBuffer: (n) => (this.streamBuffer = n),
+				updateStreamBuffer: (n) => {
+					this.streamBuffer = n;
+					const pacer = this.pacer;
+					if (pacer) {
+						pacer.onArrived(n);
+						this.streamPhase = pacer.mode;
+					}
+				},
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {
+					finalAssistantText = content;
+					const pacer = this.pacer;
+					// Deferred finalization (research.md D3): on a normal finish the
+					// durable row waits for the eased drain; abort/error persists now.
+					if (
+						pacer &&
+						this.streamPreset !== 'standard' &&
+						content &&
+						!this.controller?.signal.aborted
+					) {
+						pacer.onStreamEnd();
+						this.streamPhase = pacer.mode;
+						await this.waitForDrain(pacer);
+					}
 					const row = await repos.messages.append(chatId, 'assistant', content, {
 						model: opts?.model
 					});
 					this.messages = [...this.messages, row];
 					this.streamBuffer = '';
 					this.streamBufferRender = '';
+					if (pacer) {
+						pacer.reset();
+						this.streamPhase = pacer.mode;
+					}
 					await repos.chats.touch(chatId);
 					builder.assistantMessageId = row.id;
 					builder.empty = !content;
@@ -580,7 +673,7 @@ class ChatState {
 						const { strategyForBrief } = await import('$lib/chat/brief');
 						const { lintTurn } = await import('$lib/dev/strategy-lint');
 						const strat = strategyForBrief(rootBrief);
-						const result = lintTurn(strat.id, this.streamBuffer);
+						const result = lintTurn(strat.id, finalAssistantText || this.streamBuffer);
 						if (result.pass) {
 							console.info('[strategy-lint]', result.strategy, 'PASS', result.words, 'words');
 						} else {
@@ -643,6 +736,7 @@ class ChatState {
 			}
 			this.streamBufferRender = this.streamBuffer;
 			const wasAborted = this.controller?.signal.aborted ?? false;
+			if (wasAborted || this.error) this.pacer?.onAbort();
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
 					const row = await repos.messages.append(chatId, 'assistant', this.streamBuffer, {
@@ -656,6 +750,9 @@ class ChatState {
 			this.streaming = false;
 			this.streamBuffer = '';
 			this.streamBufferRender = '';
+			this.pacer?.reset();
+			this.pacer = null;
+			this.streamPhase = 'idle';
 			this.reasoningBuffer = '';
 			this.generativeStatus = null;
 			this.controller = null;
@@ -715,6 +812,11 @@ class ChatState {
 	/** Clear the staged expound prompt (called by the route after draining it). */
 	clearPendingPrompt(): void {
 		this.pendingPrompt = null;
+	}
+
+	/** Apply the persisted streaming-look preset (loaded by the chat route on mount). */
+	setStreamPreset(preset: StreamPreset): void {
+		this.streamPreset = preset;
 	}
 
 	/** Abort in-flight work and drop the active-conversation view from the store. */
