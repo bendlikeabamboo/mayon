@@ -1,0 +1,4 @@
+# Research: 010-streaming-text-animation
+
+- 2026-09-08 — FlowToken (Ephibbs/flowtoken, README): React component library that animates streaming LLM markdown output. Splits content into word or character spans (`sep`: `"word"` | `"char"`) and applies named CSS animations per span (`blurIn`, `blurAndSharpen`, `fadeIn`, `typewriter`, `dropIn`, `wave`, …) with configurable `animationDuration` and `animationTimingFunction`; custom keyframes can be registered by class name. Source: https://github.com/Ephibbs/flowtoken (fetched under URL safe-list, host github.com).
+- 2026-09-08 — FlowToken README note: "To lower the memory footprint, disable animations by setting the `animation` parameter to `null` on any completed messages" — the library's own guidance flags a steady-state cost to keeping animated spans in the DOM. Source: same README.
