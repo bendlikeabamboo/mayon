@@ -482,6 +482,6 @@ describe('buildReplyTiersPreamble', () => {
 		const s = buildReplyTiersPreamble();
 		expect(s).toContain('one unit/step/increment per turn');
 		expect(s).toContain('fenced code blocks never count');
-		expect(s).toContain('pacing gate');
+		expect(s).toContain('the pacing gate wherever the structure uses one');
 	});
 });

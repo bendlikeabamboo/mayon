@@ -314,7 +314,7 @@ export function buildReplyTiersPreamble(): string {
 		'Tier 2 — MODERATE (the default): keep the structure at its own designed density — never inflated to fill the band, never trimmed. Where the material is dense, break it up with headings, lists, a table, or one good example.',
 		'Tier 3 — HIGH, and only when the topic can carry it: up to ~2000 words of full structure plus richer material — worked examples, code, tables, diagrams, contrasts — chosen to fit the topic. Never force code or visual apparatus onto reflective, preference, or personal topics.',
 		'',
-		'Never relax at any tier: one unit/step/increment per turn, and the pacing gate. Word counts are prose; fenced code blocks never count. A "go deeper" chip acts like the typed direction: it permits deeper sizing for that one turn without changing the engagement estimate.'
+		'Never relax at any tier: one unit/step/increment per turn, and the pacing gate wherever the structure uses one. Word counts are prose; fenced code blocks never count. A "go deeper" chip acts like the typed direction: it permits deeper sizing for that one turn without changing the engagement estimate.'
 	].join('\n');
 }
 
