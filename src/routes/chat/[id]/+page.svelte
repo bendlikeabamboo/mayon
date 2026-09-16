@@ -1008,6 +1008,18 @@
 							{chatStore.generativeStatus.label}
 						</div>
 					{/if}
+					{#if chatStore.mcpNotices.length > 0}
+						<div
+							class="rounded-lg border border-yellow-600/40 bg-yellow-500/10 px-3 py-2 text-sm text-muted-foreground"
+						>
+							{#each chatStore.mcpNotices as note (note)}
+								<p>
+									<span class="font-medium text-foreground">MCP server unavailable.</span>
+									{note} — its tools are disabled for this reply.
+								</p>
+							{/each}
+						</div>
+					{/if}
 					{#if chatStore.error}
 						<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
 							<p class="font-medium text-red-700 dark:text-red-400">{chatStore.error.title}</p>

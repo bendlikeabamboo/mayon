@@ -23,6 +23,21 @@ vi.mock('$lib/ai/client', () => ({
 	getActiveSdkProvider: vi.fn()
 }));
 
+// Real lifecycle module except connectSession, which tests override to emit
+// mcp-lifecycle events (or stay benign with no servers).
+type ConnectSession = (typeof import('$lib/mcp/lifecycle'))['connectSession'];
+const connectSessionMock = vi.fn<ConnectSession>(async () => ({
+	clients: new Map(),
+	unmountAll: () => {}
+}));
+vi.mock('$lib/mcp/lifecycle', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/mcp/lifecycle')>();
+	return {
+		...actual,
+		connectSession: (...args: Parameters<ConnectSession>) => connectSessionMock(...args)
+	};
+});
+
 vi.mock('ai', () => ({
 	generateObject: vi.fn(),
 	generateText: vi.fn(),
@@ -856,6 +871,58 @@ describe('chatStore approval flow', () => {
 		const result = await promise;
 		expect(result).toEqual({ approved: false, aborted: true });
 		expect(chatStore.pendingApprovals).toHaveLength(0);
+	});
+});
+
+describe('chatStore MCP connect notices', () => {
+	beforeEach(() => {
+		connectSessionMock.mockReset();
+		connectSessionMock.mockImplementation(async () => ({
+			clients: new Map(),
+			unmountAll: () => {}
+		}));
+	});
+
+	it('surfaces enabled-server connect failures as mcpNotices during the turn', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await repos.mcp.upsertServer({
+			id: 'srv-1',
+			name: 'Brave Search',
+			transport: 'stdio',
+			command: 'npx',
+			args: [],
+			enabled: true,
+			createdAt: Date.now()
+		});
+		mockDefaultProvider();
+		mockStreamReply(['ok']);
+		connectSessionMock.mockImplementation(async (_configs, onTrace) => {
+			onTrace?.({
+				kind: 'mcp-lifecycle',
+				serverId: 'srv-1',
+				serverName: 'Brave Search',
+				action: 'error',
+				detail: 'command not found in PATH: npx'
+			});
+			return { clients: new Map(), unmountAll: () => {} };
+		});
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		expect(chatStore.mcpNotices).toEqual(['Brave Search: command not found in PATH: npx']);
+	});
+
+	it('clears mcpNotices at the start of the next send', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['ok']);
+
+		await chatStore.load(root.id);
+		(chatStore as unknown as { mcpNotices: string[] }).mcpNotices = ['stale note'];
+		await chatStore.send('hello');
+
+		expect(chatStore.mcpNotices).toEqual([]);
 	});
 });
 

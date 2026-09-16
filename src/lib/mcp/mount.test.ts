@@ -304,6 +304,42 @@ describe('mountMcpServer', () => {
 		unmount();
 	});
 
+	it('classifies the stdio transport request timeout as a tool timeout', async () => {
+		const transport = new FakeMcpTransport({
+			tools: [{ name: 'slow', inputSchema: { type: 'object', properties: {} } }],
+			callHandler: () => Promise.reject(new Error('request timeout: tools/call'))
+		});
+		const client = new McpClient(transport);
+		await client.initialize();
+
+		const unmount = await mountMcpServer('rt', client);
+
+		const result = await toolsRun('mcp.rt.slow', {}, fakeCtx());
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toBe('tool timed out');
+
+		unmount();
+	});
+
+	it('keeps the real message for server errors that merely mention timeout', async () => {
+		const transport = new FakeMcpTransport({
+			tools: [{ name: 'bad', inputSchema: { type: 'object', properties: {} } }],
+			callHandler: () => Promise.reject(new Error('invalid timeout value'))
+		});
+		const client = new McpClient(transport);
+		await client.initialize();
+
+		const unmount = await mountMcpServer('bad', client);
+
+		const result = await toolsRun('mcp.bad.bad', {}, fakeCtx());
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toBe('tool error: invalid timeout value');
+
+		unmount();
+	});
+
 	it('returns ok:false on invalid args', async () => {
 		const transport = new FakeMcpTransport({
 			tools: [

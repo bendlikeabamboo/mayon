@@ -22,6 +22,8 @@ export class ServerStdioMcpTransport implements McpTransport {
 	#notificationHandler: ((n: McpNotification) => void) | null = null;
 	#requestHandler: ((req: McpServerRequest) => void) | null = null;
 	#closed = false;
+	/** Set when the child exits or the bridge socket drops: why this transport is dead. */
+	#dead: string | null = null;
 	#ws: WebSocket | null = null;
 
 	private serverId: string;
@@ -52,11 +54,34 @@ export class ServerStdioMcpTransport implements McpTransport {
 		const ws = this.wsFactory();
 		this.#ws = ws;
 
+		const failAllPending = (reason: string) => {
+			if (this.#dead === null) this.#dead = reason;
+			for (const [id, pending] of this.#pending) {
+				clearTimeout(pending.timer);
+				this.#pending.delete(id);
+				pending.reject(new Error(reason));
+			}
+		};
+
+		ws.addEventListener('close', () => {
+			failAllPending('websocket closed');
+		});
+
 		ws.addEventListener('message', (ev: MessageEvent) => {
 			let frame: Record<string, unknown>;
 			try {
 				frame = JSON.parse(ev.data as string) as Record<string, unknown>;
 			} catch {
+				return;
+			}
+
+			// A child exit after spawn means no outstanding request can ever be
+			// answered — reject them now with the real reason instead of letting
+			// each one wait out its full call timeout.
+			if (frame.kind === 'exit') {
+				const code = frame.code as number;
+				const data = (frame.data as string) || '';
+				failAllPending(`MCP server exited (code ${code ?? 0})${data ? `: ${data}` : ''}`);
 				return;
 			}
 
@@ -177,6 +202,7 @@ export class ServerStdioMcpTransport implements McpTransport {
 
 	request(method: string, params?: unknown): Promise<unknown> {
 		if (this.#closed) return Promise.reject(new Error('transport closed'));
+		if (this.#dead !== null) return Promise.reject(new Error(this.#dead));
 		const id = this.#nextId++;
 		const envelope = { jsonrpc: '2.0' as const, id, method, params: params ?? {} };
 

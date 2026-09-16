@@ -144,6 +144,13 @@ class ChatState {
 	 * starts, or per provider once reconnecting succeeds.
 	 */
 	lastMappedError = $state<Error | null>(null);
+	/**
+	 * Enabled MCP servers that failed to connect for the current turn, as
+	 * user-visible notes ("Brave Search: command not found in PATH: npx").
+	 * Their tools are silently absent from the turn otherwise; this keeps the
+	 * failure visible. Rebuilt at the start of every send.
+	 */
+	mcpNotices = $state<string[]>([]);
 	loading = $state(false);
 	generativeStatus = $state<{ toolName: string; label: string } | null>(null);
 
@@ -346,6 +353,7 @@ class ChatState {
 		this.reasoningBuffer = '';
 		this.streaming = false;
 		this.generativeStatus = null;
+		this.mcpNotices = [];
 		this.chatId = chatId;
 		try {
 			const [chat, msgs] = await Promise.all([
@@ -487,11 +495,18 @@ class ChatState {
 			const toolCallCounter = { count: 0 };
 			const chatMcpConfig = await repos.mcp.getChatMcpConfig(chatId);
 			const enabledServers = (await repos.mcp.listServers()).filter((s) => s.enabled);
+			this.mcpNotices = [];
 			try {
 				const { connectSession } = await import('$lib/mcp/lifecycle');
 				mcpSession = await connectSession(enabledServers, (e) => {
 					builder.emit(e);
 					diagnosticsStore.liveEmit(e);
+					if (e.kind === 'mcp-lifecycle' && e.action === 'error') {
+						const note = `${e.serverName}: ${e.detail ?? 'failed to connect'}`;
+						if (!this.mcpNotices.includes(note)) {
+							this.mcpNotices = [...this.mcpNotices, note];
+						}
+					}
 				});
 			} catch (err) {
 				console.warn('[mcp] session connect failed:', err);
