@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import type { McpFrame } from '@mayon/shared';
 import type { FastifyInstance } from 'fastify';
@@ -12,6 +13,36 @@ export function resetLiveChildren(): void {
 
 export function getMaxChildren(): number {
 	return parseInt(process.env.MCP_MAX_CHILDREN ?? String(DEFAULT_MAX_CHILDREN), 10);
+}
+
+/**
+ * Resolve a spawn command to an executable path. Absolute paths and
+ * slash-relative commands pass through untouched (spawn resolves those against
+ * cwd). Bare names (npx, node, …) are resolved against PATH so they work
+ * regardless of the runtime's spawn semantics, and unresolvable names fail
+ * fast with the real reason instead of surfacing as a generic timeout later.
+ */
+export function resolveCommand(
+	command: string,
+	env: NodeJS.ProcessEnv
+): { path: string } | { error: string } {
+	if (process.platform === 'win32') return { path: command };
+	if (command === '') return { error: 'missing command' };
+	if (path.isAbsolute(command) || command.includes('/')) return { path: command };
+
+	const searchPath = String(env.PATH ?? '')
+		.split(path.delimiter)
+		.filter(Boolean);
+	for (const dir of searchPath) {
+		const candidate = path.join(dir, command);
+		try {
+			fs.accessSync(candidate, fs.constants.X_OK);
+			return { path: candidate };
+		} catch {
+			/* keep searching */
+		}
+	}
+	return { error: `command not found in PATH: ${command}` };
 }
 
 export function registerMcpBridge(app: FastifyInstance): void {
@@ -73,14 +104,18 @@ export function registerMcpBridge(app: FastifyInstance): void {
 						return;
 					}
 
-					if (!path.isAbsolute(s.command)) {
-						console.warn(`[mcp] command is not an absolute path: ${s.command}`);
+					const spawnEnv: NodeJS.ProcessEnv = { ...process.env, ...s.env };
+					const resolved = resolveCommand(s.command, spawnEnv);
+					if ('error' in resolved) {
+						console.warn(`[mcp] ${resolved.error}`);
+						sendExit(frame.serverId, -1, resolved.error);
+						return;
 					}
 
 					let child: ChildProcess;
 					try {
-						child = spawn(s.command, s.args ?? [], {
-							env: { ...process.env, ...s.env },
+						child = spawn(resolved.path, s.args ?? [], {
+							env: spawnEnv,
 							cwd: s.cwd,
 							stdio: ['pipe', 'pipe', 'pipe']
 						});

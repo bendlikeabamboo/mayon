@@ -322,6 +322,48 @@ describe('ServerStdioMcpTransport', () => {
 		await transport.close();
 	});
 
+	it('exit frame after spawn rejects pending requests immediately with the real reason', async () => {
+		const transport = new ServerStdioMcpTransport({
+			config: makeConfig({ callTimeoutMs: 10_000 }),
+			wsFactory: () => ws as unknown as WebSocket
+		});
+
+		await completeStart(transport);
+
+		const pending = transport.request('tools/call', { name: 'echo', arguments: {} });
+		dispatch(ws, { kind: 'exit', serverId: 'test-server', code: 7, data: '' });
+
+		await expect(pending).rejects.toThrow('MCP server exited (code 7)');
+	});
+
+	it('requests after exit fail fast instead of waiting for the call timeout', async () => {
+		const transport = new ServerStdioMcpTransport({
+			config: makeConfig({ callTimeoutMs: 10_000 }),
+			wsFactory: () => ws as unknown as WebSocket
+		});
+
+		await completeStart(transport);
+		dispatch(ws, { kind: 'exit', serverId: 'test-server', code: 1, data: 'boom' });
+
+		await expect(transport.request('tools/call', {})).rejects.toThrow(
+			'MCP server exited (code 1): boom'
+		);
+	});
+
+	it('websocket close rejects pending requests', async () => {
+		const transport = new ServerStdioMcpTransport({
+			config: makeConfig({ callTimeoutMs: 10_000 }),
+			wsFactory: () => ws as unknown as WebSocket
+		});
+
+		await completeStart(transport);
+
+		const pending = transport.request('tools/call', { name: 'echo', arguments: {} });
+		ws.dispatchEvent(new Event('close'));
+
+		await expect(pending).rejects.toThrow('websocket closed');
+	});
+
 	it('close() sends kill, closes WS, rejects remaining pending', async () => {
 		const transport = new ServerStdioMcpTransport({
 			config: makeConfig(),

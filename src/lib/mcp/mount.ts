@@ -83,7 +83,13 @@ export async function mountMcpServer(
 						}
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						if (msg.includes('timed out') || msg.includes('Abort')) {
+						// 'timeout' covers the transport's "request timeout: tools/call";
+						// 'timed out' covers withTimeout's own rejection message.
+						if (
+							msg.toLowerCase().includes('timeout') ||
+							msg.includes('timed out') ||
+							msg.includes('Abort')
+						) {
 							return { ok: false, summary: 'tool timed out' };
 						}
 						return { ok: false, summary: `tool error: ${msg}` };

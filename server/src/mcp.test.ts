@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './server';
-import { resetLiveChildren } from './mcp';
+import { resetLiveChildren, resolveCommand } from './mcp';
 import type Fastify from 'fastify';
 import WebSocket from 'ws';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 const STUB_PATH = fileURLToPath(
 	new URL('../../tests/fixtures/stub-mcp-server.mjs', import.meta.url)
@@ -54,6 +55,41 @@ function waitForExit(
 function connectWs(basePort: number): WebSocket {
 	return new WebSocket(`ws://127.0.0.1:${basePort}/ws/mcp`);
 }
+
+describe('resolveCommand', () => {
+	it('passes absolute paths through unchanged', () => {
+		const abs = process.execPath;
+		expect(resolveCommand(abs, process.env)).toEqual({ path: abs });
+	});
+
+	it('passes slash-relative commands through unchanged (cwd is spawn-owned)', () => {
+		expect(resolveCommand('./tool', process.env)).toEqual({ path: './tool' });
+	});
+
+	it('resolves bare names against PATH', () => {
+		const env = { PATH: path.dirname(process.execPath) };
+		const resolved = resolveCommand('node', env);
+		expect('path' in resolved && resolved.path).toBe(process.execPath);
+	});
+
+	it('respects a PATH override from the server config env', () => {
+		const env = { PATH: '/nonexistent-dir-first:' + path.dirname(process.execPath) };
+		const resolved = resolveCommand('node', env);
+		expect('path' in resolved && resolved.path).toBe(process.execPath);
+	});
+
+	it('fails with the command name when it is not on PATH', () => {
+		const resolved = resolveCommand('mayon-not-a-real-command', { PATH: '/usr/bin' });
+		expect('error' in resolved && resolved.error).toBe(
+			'command not found in PATH: mayon-not-a-real-command'
+		);
+	});
+
+	it('fails on empty command', () => {
+		const resolved = resolveCommand('', { PATH: '/usr/bin' });
+		expect('error' in resolved && resolved.error).toBe('missing command');
+	});
+});
 
 describe('MCP bridge', () => {
 	let app: Fastify.Instance;
@@ -222,6 +258,64 @@ describe('MCP bridge', () => {
 				.then((f) => {
 					expect(f.code).toBe(-1);
 					expect(typeof f.data).toBe('string');
+					ws.close();
+					resolve();
+				})
+				.catch((e) => {
+					ws.close();
+					reject(e);
+				});
+		});
+	});
+
+	it('bare command resolves via PATH (spawned, not rejected)', () => {
+		return new Promise<void>((resolve, reject) => {
+			const ws = connectWs(basePort);
+			ws.on('error', reject);
+			ws.on('open', () => {
+				sendFrame(ws, {
+					kind: 'spawn',
+					serverId: 'bare1',
+					spawn: {
+						serverId: 'bare1',
+						command: 'node',
+						args: [STUB_PATH],
+						env: { PATH: path.dirname(process.execPath) }
+					}
+				});
+			});
+			waitForFrame(ws, 'spawned')
+				.then(() => {
+					ws.close();
+					resolve();
+				})
+				.catch((e) => {
+					ws.close();
+					reject(e);
+				});
+		});
+	});
+
+	it('bare command missing from PATH → immediate exit frame with the reason', () => {
+		return new Promise<void>((resolve, reject) => {
+			const ws = connectWs(basePort);
+			ws.on('error', reject);
+			ws.on('open', () => {
+				sendFrame(ws, {
+					kind: 'spawn',
+					serverId: 'bare2',
+					spawn: {
+						serverId: 'bare2',
+						command: 'mayon-not-a-real-command',
+						args: [],
+						env: {}
+					}
+				});
+			});
+			waitForExit(ws, 'bare2')
+				.then((f) => {
+					expect(f.code).toBe(-1);
+					expect(f.data).toBe('command not found in PATH: mayon-not-a-real-command');
 					ws.close();
 					resolve();
 				})
