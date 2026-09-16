@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-16
+
 ### Added
 
 - **Smooth streaming** — streamed replies emerge at a steady, word-safe
@@ -15,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appearance setting (`streamPreset`: Calm / Standard / Expressive; default
   Standard = today's behavior). The message DOM keeps its exact shape, so
   expound alignment, full-text search, and copy buttons are untouched.
+- **Engagement-based reply tiers** — tutor replies are sized by detected
+  learner engagement instead of one fixed density. A tier preamble joins the
+  system string on every non-first turn: Tier 1 (LOW) compresses to 80–300
+  words, Tier 2 (MODERATE, the default) keeps each structure's designed
+  density unchanged, and Tier 3 (HIGH, where the topic permits) stretches up
+  to ~2000 words with structure-appropriate apparatus. Chips and short typed
+  answers are neutral signals; LOW requires affirmative disinterest and HIGH
+  means follow-up questions, pasted attempts, or typed directions beyond the
+  chips. Chat-only by construction — quizzes, labs, and grading never see it
+  — and turn 1 is unchanged.
+
+### Changed
+
+- **Dependencies:** mermaid bumped from 11.16.0 to 11.16.1, SvelteKit from
+  2.68.0 to 2.70.2, vitest (dev) from 4.1.9 to 4.1.11.
 
 ### Fixed
 
@@ -23,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagrams re-render in place when the theme flips (including OS-level flips
   while the preference is `system`); the resolved theme is now reactive to OS
   preference changes instead of only toggling the `.dark` class.
+- **List bullet markers restored** — Tailwind Preflight resets `list-style`
+  globally, so LLM message lists rendered without bullets; markers are
+  restored under `.markdown-body` (disc/circle/square for `ul`,
+  decimal/lower-alpha for `ol`) and suppressed on GFM task-list rows whose
+  checkbox survives sanitize.
+- **MCP failures surfaced** — a misbehaving stdio MCP server could end a
+  turn reply-less with no visible error. Bare commands now resolve against
+  PATH with the child's cwd semantics and unresolvable spawns fail
+  immediately with the real reason; pending requests reject the moment the
+  child exits instead of waiting out each call's timeout; and the chat shows
+  a notice chip when an enabled MCP server fails to connect.
 
 ## [0.7.0] - 2026-09-07
 
