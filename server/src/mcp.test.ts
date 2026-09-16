@@ -5,6 +5,8 @@ import type Fastify from 'fastify';
 import WebSocket from 'ws';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const STUB_PATH = fileURLToPath(
 	new URL('../../tests/fixtures/stub-mcp-server.mjs', import.meta.url)
@@ -88,6 +90,52 @@ describe('resolveCommand', () => {
 	it('fails on empty command', () => {
 		const resolved = resolveCommand('', { PATH: '/usr/bin' });
 		expect('error' in resolved && resolved.error).toBe('missing command');
+	});
+
+	it('resolves relative PATH entries against the child cwd, not the bridge cwd', () => {
+		const base = mkdtempSync(path.join(tmpdir(), 'mayon-rc-'));
+		try {
+			mkdirSync(path.join(base, 'bin'));
+			const exe = path.join(base, 'bin', 'toolx');
+			writeFileSync(exe, '#!/bin/sh\nexit 0\n');
+			chmodSync(exe, 0o755);
+
+			const resolved = resolveCommand('toolx', { PATH: 'bin' }, base);
+			expect('path' in resolved && resolved.path).toBe(exe);
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
+
+	it('treats empty PATH entries as the child cwd (execvp semantics)', () => {
+		const base = mkdtempSync(path.join(tmpdir(), 'mayon-rc-'));
+		try {
+			const exe = path.join(base, 'toolx');
+			writeFileSync(exe, '#!/bin/sh\nexit 0\n');
+			chmodSync(exe, 0o755);
+
+			const resolved = resolveCommand('toolx', { PATH: ':/nonexistent' }, base);
+			expect('path' in resolved && resolved.path).toBe(exe);
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
+
+	it('does not find a binary that is only on the bridge cwd for a child cwd elsewhere', () => {
+		const base = mkdtempSync(path.join(tmpdir(), 'mayon-rc-'));
+		const other = mkdtempSync(path.join(tmpdir(), 'mayon-rc-'));
+		try {
+			const exe = path.join(base, 'bin', 'toolx');
+			mkdirSync(path.join(base, 'bin'));
+			writeFileSync(exe, '#!/bin/sh\nexit 0\n');
+			chmodSync(exe, 0o755);
+
+			const resolved = resolveCommand('toolx', { PATH: 'bin' }, other);
+			expect('error' in resolved && resolved.error).toBe('command not found in PATH: toolx');
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+			rmSync(other, { recursive: true, force: true });
+		}
 	});
 });
 

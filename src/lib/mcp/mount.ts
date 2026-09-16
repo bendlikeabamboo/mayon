@@ -83,13 +83,14 @@ export async function mountMcpServer(
 						}
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						// 'timeout' covers the transport's "request timeout: tools/call";
-						// 'timed out' covers withTimeout's own rejection message.
-						if (
-							msg.toLowerCase().includes('timeout') ||
-							msg.includes('timed out') ||
-							msg.includes('Abort')
-						) {
+						// Classify only the transport/mount's own timeout and abort forms —
+						// "request timeout: <method>" (stdio transport), "timed out"
+						// (withTimeout cap), and AbortError (signal). Server-provided
+						// errors that merely mention "timeout" keep their real message.
+						const isTransportTimeout = msg.startsWith('request timeout') || msg === 'timed out';
+						const isAbort =
+							(err instanceof Error && err.name === 'AbortError') || msg === 'Aborted';
+						if (isTransportTimeout || isAbort) {
 							return { ok: false, summary: 'tool timed out' };
 						}
 						return { ok: false, summary: `tool error: ${msg}` };
