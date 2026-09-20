@@ -2,6 +2,8 @@
 
 Mayon — a local-first learning app built around a branchable chat graph.
 
+https://github.com/user-attachments/assets/de10d77f-d369-4903-97b1-606cfa819cae
+
 Chat with an AI about any topic, highlight a dense response, and branch a new
 conversation from that exact excerpt. From any chat, generate AI-powered
 hands-on labs and mixed-format quizzes (MCQ, flashcard, short-answer with AI
