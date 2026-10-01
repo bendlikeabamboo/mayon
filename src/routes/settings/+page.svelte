@@ -163,7 +163,7 @@
 
 <svelte:window onkeydowncapture={handleGlobalKeydown} />
 
-<div bind:this={pageRoot} class="relative mx-auto w-full max-w-[64rem] xl:pr-52">
+<div bind:this={pageRoot} class="relative mx-auto w-full max-w-[64rem] max-lg:pt-6 xl:pr-52">
 	<div class="pointer-events-none absolute inset-y-0 right-6 hidden w-44 xl:block">
 		<div class="sticky top-0 flex h-screen items-center">
 			<SettingsRail {sections} {activeId} onJump={jumpToSection} />

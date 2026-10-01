@@ -199,13 +199,16 @@
 {/snippet}
 
 <Sheet bind:open={diagnosticsStore.open}>
-	<SheetContent side="right" class="w-[480px] sm:w-[540px]">
+	<SheetContent
+		side="right"
+		class="w-full max-w-[540px] sm:w-[540px] data-[side=right]:w-full data-[side=right]:sm:max-w-[540px]"
+	>
 		<SheetHeader>
 			<SheetTitle>{title ?? 'Mayon console'}</SheetTitle>
 		</SheetHeader>
 
 		<div class="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
-			<div class="flex items-center justify-between">
+			<div class="flex flex-wrap items-center justify-between gap-2">
 				<div class="flex flex-wrap gap-1">
 					{#each KIND_OPTIONS as opt (opt.label)}
 						<button

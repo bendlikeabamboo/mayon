@@ -59,6 +59,14 @@ describe('US8: RowCard anatomy', () => {
 		expect(source).toContain('pointer-events-none');
 	});
 
+	it('keeps the action slot visible and tappable on coarse pointers', () => {
+		expect(source).toContain('@media (any-pointer: coarse)');
+		const block = source.match(/\.rowcard-action\.rowcard-action\s*\{[^}]*\}/);
+		expect(block, '.rowcard-action coarse override not found').not.toBeNull();
+		expect(block![0]).toContain('opacity: 1');
+		expect(block![0]).toContain('pointer-events: auto');
+	});
+
 	it('compact prop sizes the home mini variant (reduced padding/typography)', () => {
 		expect(source).toMatch(/compact\s*\?\s*'px-2\.5 py-1\.5'\s*:\s*'p-3'/);
 		expect(source).toMatch(/compact \? 'text-\[11px\]' : 'text-xs'/);

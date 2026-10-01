@@ -38,6 +38,12 @@ describe('US1: SectionStrip pointer-discipline, motion, and touch source contrac
 		expect(bar![1]).toContain('pointer-events-auto');
 	});
 
+	it('gives bars ≥24px-wide × 32px-tall hit targets around the 2px visual bar', () => {
+		const bar = source.match(/<button[\s\S]*?class="([^"]*)"/);
+		expect(bar![1]).toContain('w-6');
+		expect(bar![1]).toContain('min-h-8');
+	});
+
 	it('honors reduced motion on its transitions', () => {
 		expect(source).toContain('transition-');
 		expect(source).toContain('motion-reduce:transition-none');

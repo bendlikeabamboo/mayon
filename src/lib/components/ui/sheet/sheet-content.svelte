@@ -44,7 +44,12 @@
 		{#if showCloseButton}
 			<SheetPrimitive.Close data-slot="sheet-close">
 				{#snippet child({ props })}
-					<Button variant="ghost" class="absolute top-3 right-3 size-7" size="icon" {...props}>
+					<Button
+						variant="ghost"
+						class="absolute top-3 right-3 size-7 max-lg:size-10"
+						size="icon"
+						{...props}
+					>
 						<XIcon />
 						<span class="sr-only">Close</span>
 					</Button>

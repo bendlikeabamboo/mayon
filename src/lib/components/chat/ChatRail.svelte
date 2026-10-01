@@ -51,7 +51,7 @@
 								{:else}
 									<a
 										href="/chat/{chat.id}"
-										class="block truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
+										class="block max-lg:py-2.5 truncate text-sm text-muted-foreground hover:text-foreground hover:underline"
 										title={chat.title}
 									>
 										{chat.title}
@@ -73,7 +73,7 @@
 							<li>
 								<a
 									href="/chat/{c.id}"
-									class="inline-block rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
+									class="inline-block max-lg:py-3 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
 									title={c.title}
 								>
 									{c.title}
@@ -94,7 +94,7 @@
 							<li>
 								<a
 									href="/chat/{c.id}"
-									class="inline-block rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
+									class="inline-block max-lg:py-3 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
 									title={c.title}
 								>
 									{c.title}
@@ -113,7 +113,7 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						class="h-6 px-2 text-xs"
+						class="h-6 max-lg:h-10 px-2 text-xs"
 						onclick={onGenerateLab}
 						disabled={generatingLab || generatingQuiz}
 					>
@@ -130,7 +130,7 @@
 							<li>
 								<a
 									href="/lab/{l.id}"
-									class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
+									class="inline-flex max-lg:py-3 items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
 									title={l.title}
 								>
 									<FlaskConical class="size-3" />
@@ -150,7 +150,7 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						class="h-6 px-2 text-xs"
+						class="h-6 max-lg:h-10 px-2 text-xs"
 						onclick={onGenerateQuiz}
 						disabled={generatingLab || generatingQuiz}
 					>
@@ -167,7 +167,7 @@
 							<li>
 								<a
 									href="/quiz/{q.id}"
-									class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
+									class="inline-flex max-lg:py-3 items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs hover:bg-accent"
 									title={new Date(q.createdAt).toLocaleString()}
 								>
 									<ListChecks class="size-3" />

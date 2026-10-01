@@ -6,7 +6,9 @@
 	}
 </script>
 
-<div class="pointer-events-none fixed right-4 bottom-4 z-50 flex flex-col-reverse gap-2">
+<div
+	class="pointer-events-none fixed right-[calc(1rem+env(safe-area-inset-right))] bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex flex-col-reverse gap-2"
+>
 	{#each toastState.toasts as toast (toast.id)}
 		<div
 			class="pointer-events-auto flex w-80 items-start gap-3 rounded-lg border border-border bg-background p-4 shadow-lg"

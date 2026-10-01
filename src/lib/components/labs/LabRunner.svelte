@@ -26,7 +26,7 @@
 </svelte:head>
 
 <div class="mx-auto flex max-w-3xl flex-col gap-4 p-6">
-	<div class="flex items-center justify-between gap-2">
+	<div class="flex flex-wrap items-center justify-between gap-2">
 		<Button href="/chat/{lab.chatId}" variant="ghost" size="sm">
 			<ArrowLeft class="size-4" /> Back to chat
 		</Button>

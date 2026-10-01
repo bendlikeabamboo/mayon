@@ -38,7 +38,7 @@ describe('US5: AssistantMessage hover-revealed action row', () => {
 
 	it('pins the coarse-pointer steady-visible override (touch parity)', () => {
 		expect(source).toContain('us5-coarse-pointer');
-		expect(source).toContain('@media (pointer: coarse)');
+		expect(source).toContain('@media (any-pointer: coarse)');
 		const block = source.match(/\.message-actions\.message-actions\s*\{[^}]*\}/);
 		expect(block, '.message-actions.message-actions override not found').not.toBeNull();
 		expect(block![0]).toContain('opacity: 1');

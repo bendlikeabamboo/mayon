@@ -69,7 +69,12 @@
 		</div>
 		<div class="space-y-1">
 			<label class="text-sm" for="stream-preset">Streaming look</label>
-			<select id="stream-preset" bind:value={streamPreset} onchange={changePreset}>
+			<select
+				id="stream-preset"
+				class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				bind:value={streamPreset}
+				onchange={changePreset}
+			>
 				{#each STREAM_PRESET_OPTIONS as p (p)}
 					<option value={p}>{STREAM_PRESET_LABELS[p]}</option>
 				{/each}

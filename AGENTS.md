@@ -84,6 +84,12 @@ the dev images with `pnpm dev:build`.
   RC (`vX.Y.Z-rcN`) and stable (`vX.Y.Z`) releases. Do not leave a release with
   only auto-generated notes. Never mark a release "done" until its body is
   populated.
+- **Do not hard-wrap GitHub release bodies.** `CHANGELOG.md` is
+  Prettier-wrapped, but that wrapping is for the file only. When pasting the
+  section into a release body — or composing any GitHub description (PR body,
+  comment) — join each wrapped paragraph and each list item into a single
+  line and let GitHub wrap the text itself; preserve code fences and
+  list/nesting structure verbatim.
 - **Release steps:**
   1. Set `"version": "X.Y.Z"` in all three `package.json` files.
   2. Add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (keep a fresh

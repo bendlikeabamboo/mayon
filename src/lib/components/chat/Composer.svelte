@@ -449,53 +449,62 @@
 				{/if}
 				<button
 					type="button"
-					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-50"
 					title={branchTitle}
 					data-tip={branchTitle}
 					class:tip={branchBlocked}
 					aria-label={branchTitle}
-					onclick={() => void onBranch()}
-					disabled={branchBlocked}
+					onclick={() => {
+						if (branchBlocked) return;
+						void onBranch();
+					}}
+					aria-disabled={branchBlocked}
 				>
 					<GitBranch class="size-3.5" />
-					<span>branch here</span>
+					<span class="hidden sm:inline">branch here</span>
 				</button>
 				<button
 					type="button"
-					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-50"
 					title={quizTitle}
 					data-tip={quizTitle}
 					class:tip={generationBlocked}
 					aria-label={quizTitle}
-					onclick={() => void onQuiz()}
-					disabled={generationBlocked}
+					onclick={() => {
+						if (generationBlocker) return;
+						void onQuiz();
+					}}
+					aria-disabled={generationBlocked}
 				>
 					{#if quizBusy}
 						<LoaderCircle class="size-3.5 animate-spin" />
 					{:else}
 						<ListChecks class="size-3.5" />
 					{/if}
-					<span>quiz me</span>
+					<span class="hidden sm:inline">quiz me</span>
 				</button>
 				<button
 					type="button"
-					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+					class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-50"
 					title={labTitle}
 					data-tip={labTitle}
 					class:tip={generationBlocked}
 					aria-label={labTitle}
-					onclick={() => void onLab()}
-					disabled={generationBlocked}
+					onclick={() => {
+						if (generationBlocker) return;
+						void onLab();
+					}}
+					aria-disabled={generationBlocked}
 				>
 					{#if labBusy}
 						<LoaderCircle class="size-3.5 animate-spin" />
 					{:else}
 						<FlaskConical class="size-3.5" />
 					{/if}
-					<span>open lab</span>
+					<span class="hidden sm:inline">open lab</span>
 				</button>
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center justify-end gap-2">
 				{#if hasMcpServers}
 					<DropdownMenu>
 						<DropdownMenuTrigger>
@@ -656,6 +665,7 @@
 					<Button
 						variant="destructive"
 						size="icon"
+						class="max-lg:size-10"
 						onclick={() => void onStop()}
 						title="Stop"
 						aria-label="Stop"
@@ -663,7 +673,14 @@
 						<Square />
 					</Button>
 				{:else}
-					<Button size="icon" onclick={send} disabled={!canSend} title="Send" aria-label="Send">
+					<Button
+						size="icon"
+						class="max-lg:size-10"
+						onclick={send}
+						disabled={!canSend}
+						title="Send"
+						aria-label="Send"
+					>
 						<Send />
 					</Button>
 				{/if}

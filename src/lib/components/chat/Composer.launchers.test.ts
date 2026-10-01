@@ -27,3 +27,38 @@ describe('Composer instrument card + artifact launchers (US3)', () => {
 		expect(source.indexOf('aria-label="Send"')).toBeGreaterThan(cardAt);
 	});
 });
+
+describe('Composer launchers aria-disabled no-op (B3a)', () => {
+	it('converts the three launchers to aria-disabled instead of the disabled attribute', () => {
+		// \s prefix so aria-disabled={…} doesn't count as a native disabled.
+		expect(source).not.toMatch(/\sdisabled=\{branchBlocked\}/);
+		expect(source).not.toMatch(/\sdisabled=\{generationBlocked\}/);
+		expect(source).toContain('aria-disabled={branchBlocked}');
+		expect(source.match(/aria-disabled=\{generationBlocked\}/g)?.length).toBe(2);
+	});
+
+	it('clicks no-op while aria-disabled: each guard returns before invoking its action', () => {
+		expect(source).toMatch(/if \(branchBlocked\) return;\s*void onBranch\(\);/);
+		expect(source).toMatch(/if \(generationBlocker\) return;\s*void onQuiz\(\);/);
+		expect(source).toMatch(/if \(generationBlocker\) return;\s*void onLab\(\);/);
+	});
+
+	it('keeps the functional reason readable via tip while blocked', () => {
+		expect(source).toContain('class:tip={branchBlocked}');
+		expect(source.match(/class:tip=\{generationBlocked\}/g)?.length).toBe(2);
+	});
+});
+
+describe('Composer footer compaction below sm (C3)', () => {
+	it('collapses launcher labels to icon-only', () => {
+		expect(source.match(/<span class="hidden sm:inline">/g)?.length).toBe(3);
+	});
+
+	it('keeps send/stop at ≥40px touch targets below lg', () => {
+		expect(source.match(/max-lg:size-10/g)?.length).toBe(2);
+	});
+
+	it('lets right-side dropdown triggers wrap', () => {
+		expect(source).toContain('flex flex-wrap items-center justify-end gap-2');
+	});
+});

@@ -76,7 +76,7 @@
 	<title>Tree — Mayon</title>
 </svelte:head>
 
-<div class="art-stagger mx-auto flex max-w-5xl flex-col gap-6 p-8">
+<div class="art-stagger mx-auto flex max-w-5xl flex-col gap-6 p-4 pt-14 sm:px-8 sm:pb-8 lg:pt-8">
 	<div in:entry|global={{ index: 0, count: pagedForests.length + 1 }} class="space-y-1">
 		<h1 class="text-2xl font-semibold tracking-tight">Conversation tree</h1>
 		<p class="text-sm text-muted-foreground">
@@ -111,7 +111,7 @@
 				{#if hasChildren}
 					<button
 						type="button"
-						class="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						class="shrink-0 rounded-sm p-3 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						onclick={() => toggle(node.chat.id)}
 						aria-expanded={!isCollapsed}
 						aria-label={isCollapsed ? 'Expand' : 'Collapse'}
@@ -126,7 +126,7 @@
 						/>
 					</button>
 				{:else}
-					<span class="inline-block w-4 shrink-0"></span>
+					<span class="inline-block w-10 shrink-0"></span>
 				{/if}
 				<a
 					href="/chat/{node.chat.id}"
@@ -142,7 +142,7 @@
 						type="button"
 						title="Delete this branch and its sub-branches"
 						aria-label="Delete branch"
-						class="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+						class="shrink-0 rounded-sm p-2 text-muted-foreground opacity-0 pointer-events-none transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 [@media(any-pointer:coarse)]:pointer-events-auto [@media(any-pointer:coarse)]:opacity-100"
 						disabled={deletingId === node.chat.id}
 						onclick={() => deleteBranch(node)}
 					>

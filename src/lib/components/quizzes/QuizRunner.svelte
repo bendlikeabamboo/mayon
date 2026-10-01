@@ -24,7 +24,7 @@
 
 {#if quizzesStore.current}
 	<div class="mx-auto flex max-w-3xl flex-col gap-4 p-6">
-		<div class="flex items-center justify-between gap-2">
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			<Button href="/chat/{quizzesStore.current.chatId}" variant="ghost" size="sm">
 				<ArrowLeft class="size-4" /> Back to chat
 			</Button>
@@ -79,7 +79,7 @@
 						{@const answered = !!quizzesStore.answers[q.id]}
 						<button
 							type="button"
-							class="size-7 rounded border text-xs font-medium transition-colors {answered
+							class="size-7 rounded border text-xs font-medium transition-colors [@media(any-pointer:coarse)]:size-10 {answered
 								? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
 								: 'border-border bg-card text-muted-foreground hover:bg-accent'}"
 							title="Question {ord + 1}"

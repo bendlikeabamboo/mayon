@@ -110,7 +110,7 @@
 	{#each sections as section (section.index)}
 		<button
 			type="button"
-			class="group/bar pointer-events-auto flex w-4 min-h-6 items-stretch justify-end py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isTouch
+			class="group/bar pointer-events-auto flex w-6 min-h-8 items-stretch justify-end py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isTouch
 				? ''
 				: 'group-hover/bar:text-ring'}"
 			style="flex-grow:{Math.max(section.length, 1)};flex-basis:0;"

@@ -55,7 +55,7 @@
 			<Link2 class="size-3.5" /> Cross-links
 		</h3>
 		{#if !pickerOpen}
-			<Button variant="ghost" size="sm" class="h-6 px-2 text-xs" onclick={openPicker}>
+			<Button variant="ghost" size="sm" class="h-6 max-lg:h-10 px-2 text-xs" onclick={openPicker}>
 				<Plus class="size-3" /> Link chat
 			</Button>
 		{/if}

@@ -295,6 +295,8 @@
 		display: block;
 		width: max-content;
 		min-width: 100%;
+		max-width: 100%;
+		overflow-x: auto;
 		margin: 0.5em 0;
 		font-size: 0.85em;
 	}
@@ -405,6 +407,16 @@
 	:global(.md-focusable-btn:hover) {
 		opacity: 1;
 		color: var(--foreground);
+	}
+	@media (any-pointer: coarse) {
+		:global(.md-copy-btn) {
+			opacity: 1;
+		}
+		:global(.md-focusable-btn) {
+			opacity: 1;
+			width: 2rem;
+			height: 2rem;
+		}
 	}
 	.mermaid-pending {
 		display: flex;

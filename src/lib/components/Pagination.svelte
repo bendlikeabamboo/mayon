@@ -5,11 +5,23 @@
 </script>
 
 <div class="flex items-center justify-center gap-2 py-2">
-	<Button variant="outline" size="sm" disabled={page <= 1} onclick={() => (page -= 1)}>Prev</Button>
+	<Button
+		variant="outline"
+		size="sm"
+		class="[@media(any-pointer:coarse)]:h-9 [@media(any-pointer:coarse)]:min-w-9"
+		disabled={page <= 1}
+		onclick={() => (page -= 1)}>Prev</Button
+	>
 	<span class="text-sm text-muted-foreground">
 		Page {page} of {totalPages}
 	</span>
-	<Button variant="outline" size="sm" disabled={page >= totalPages} onclick={() => (page += 1)}>
+	<Button
+		variant="outline"
+		size="sm"
+		class="[@media(any-pointer:coarse)]:h-9 [@media(any-pointer:coarse)]:min-w-9"
+		disabled={page >= totalPages}
+		onclick={() => (page += 1)}
+	>
 		Next
 	</Button>
 </div>

@@ -25,7 +25,10 @@
 		{ href: '/settings', label: 'Settings', icon: Settings }
 	];
 
-	let { collapsed = $bindable(false) }: { collapsed?: boolean } = $props();
+	let {
+		collapsed = $bindable(false),
+		onNavigate
+	}: { collapsed?: boolean; onNavigate?: () => void } = $props();
 
 	function isActive(href: string) {
 		if (href === '/') return page.url.pathname === '/';
@@ -67,7 +70,7 @@
 		{#each nav as item (item.href)}
 			<a
 				href={item.href}
-				class="relative flex items-center rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out"
+				class="relative flex items-center rounded-md px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-out"
 				class:gap-3={!collapsed}
 				class:gap-0={collapsed}
 				class:bg-sidebar-accent={isActive(item.href)}
@@ -76,6 +79,7 @@
 				class:hover:bg-sidebar-accent={true}
 				class:tip={collapsed}
 				data-tip={item.label}
+				onclick={onNavigate}
 			>
 				{#if isActive(item.href)}
 					<span

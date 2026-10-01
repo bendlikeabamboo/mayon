@@ -62,6 +62,7 @@
 	import { mark } from '$lib/perf/mark';
 	import { entry, prefersReducedMotion } from '$lib/motion/stagger';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
+	import { mediaQuery } from '$lib/utils/media.svelte.js';
 
 	let breadcrumb = $state<Chat[]>([]);
 	let children = $state<Chat[]>([]);
@@ -88,7 +89,7 @@
 	let propagateOpen = $state(false);
 	let railOpen = $state(false);
 	let railCollapsed = $state(localStorage.getItem('mayon:ui:rail') === '1');
-	let lg = $state(false);
+	const lg = mediaQuery('(min-width: 1024px)');
 
 	let activeModelId = $state<string | undefined>(undefined);
 	let activeConfig = $state<ProviderConfig | null>(null);
@@ -482,13 +483,6 @@
 	}
 
 	onMount(() => {
-		const mq = window.matchMedia('(min-width: 1024px)');
-		lg = mq.matches;
-		function onMatchChange(e: MediaQueryListEvent) {
-			lg = e.matches;
-		}
-		mq.addEventListener('change', onMatchChange);
-
 		(async () => {
 			void isStripEnabled().then((enabled) => (stripEnabled = enabled));
 			void getStreamPreset().then((preset) => chatStore.setStreamPreset(preset));
@@ -508,7 +502,6 @@
 		})();
 
 		return () => {
-			mq.removeEventListener('change', onMatchChange);
 			if (sectionFlashTimer) clearTimeout(sectionFlashTimer);
 		};
 	});
@@ -722,30 +715,32 @@
 			<Button
 				variant="ghost"
 				size="icon"
-				class="absolute top-2 right-2 z-30 tip"
+				class="absolute top-2 right-2 z-30 tip size-10 rounded-lg border border-border bg-card shadow-(--shadow-card)"
 				data-tip="Toggle rail"
 				aria-label="Toggle rail"
 				onclick={() => {
-					if (lg) {
+					if (lg.matches) {
 						railCollapsed = !railCollapsed;
 					} else {
 						railOpen = !railOpen;
 					}
 				}}
 			>
-				{#if lg && !railCollapsed}
+				{#if lg.matches && !railCollapsed}
 					<PanelRightClose class="size-4" />
 				{:else}
 					<PanelRight class="size-4" />
 				{/if}
 			</Button>
-			<div class="art-stagger mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-3 p-4">
+			<div
+				class="art-stagger mx-auto flex h-full min-h-0 max-w-3xl flex-col gap-3 p-4 max-lg:pt-14"
+			>
 				<div
 					in:entry|global={{ index: 0, count: 3 }}
 					class="flex shrink-0 flex-col gap-3"
 					bind:this={topPane}
 				>
-					<div class="flex items-center justify-between gap-2">
+					<div class="flex items-center justify-between gap-1 sm:gap-2">
 						<div class="min-w-0 flex-1">
 							<Breadcrumb chain={breadcrumb} />
 						</div>
@@ -997,7 +992,7 @@
 
 				<div
 					in:entry|global={{ index: 2, count: 3 }}
-					class="flex shrink-0 flex-col gap-3"
+					class="flex shrink-0 flex-col gap-3 [@media(any-pointer:coarse)]:pb-[env(safe-area-inset-bottom)]"
 					bind:this={bottomPane}
 				>
 					{#if chatStore.generativeStatus}

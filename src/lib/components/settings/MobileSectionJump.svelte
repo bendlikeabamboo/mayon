@@ -1,26 +1,17 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { List } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
+	import { mediaQuery } from '$lib/utils/media.svelte.js';
 	import type { SectionEntry } from '$lib/settings/sections';
 
 	let { sections, onJump }: { sections: SectionEntry[]; onJump: (id: string) => void } = $props();
 
-	let xl = $state(false);
+	const xl = mediaQuery('(min-width: 1280px)');
 	let open = $state(false);
 
-	onMount(() => {
-		const mq = window.matchMedia('(min-width: 1280px)');
-		xl = mq.matches;
-		function onMatchChange(e: MediaQueryListEvent) {
-			xl = e.matches;
-			if (e.matches) open = false;
-		}
-		mq.addEventListener('change', onMatchChange);
-		return () => {
-			mq.removeEventListener('change', onMatchChange);
-		};
+	$effect(() => {
+		if (xl.matches) open = false;
 	});
 
 	function pick(entry: SectionEntry) {
@@ -29,7 +20,7 @@
 	}
 </script>
 
-{#if !xl}
+{#if !xl.matches}
 	<Button
 		type="button"
 		variant="default"

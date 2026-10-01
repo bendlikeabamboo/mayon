@@ -48,9 +48,14 @@
 	const PANEL_WIDTH = 320;
 	const PANEL_HEIGHT = 360;
 
-	const pos = $derived({
-		left: Math.min(Math.max(8, x), window.innerWidth - PANEL_WIDTH - 8),
-		top: Math.min(Math.max(8, y), window.innerHeight - PANEL_HEIGHT - 8)
+	const pos = $derived.by(() => {
+		// Mirrors the `w-[min(20rem,calc(100vw_-_1rem))]` class so the clamp
+		// bound never goes negative on phones (floors at 8px).
+		const width = Math.min(PANEL_WIDTH, window.innerWidth - 16);
+		return {
+			left: Math.min(Math.max(8, x), Math.max(8, window.innerWidth - width - 8)),
+			top: Math.min(Math.max(8, y), Math.max(8, window.innerHeight - PANEL_HEIGHT - 8))
+		};
 	});
 
 	function toggle(name: string) {
@@ -94,7 +99,7 @@
 	style:left="{pos.left}px"
 	style:top="{pos.top}px"
 	style:max-height="calc(100vh - {pos.top}px - 8px)"
-	class="fixed z-50 flex max-h-[80vh] w-80 flex-col rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+	class="fixed z-50 flex max-h-[80vh] w-[min(20rem,calc(100vw_-_1rem))] flex-col rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
 	role="dialog"
 	aria-label="Expound on excerpt"
 >

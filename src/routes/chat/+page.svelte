@@ -87,7 +87,7 @@
 	<title>Chat — Mayon</title>
 </svelte:head>
 
-<div class="art-stagger mx-auto flex max-w-3xl flex-col gap-4 p-6">
+<div class="art-stagger mx-auto flex max-w-3xl flex-col gap-4 p-6 max-lg:pt-14">
 	{#if showIntake}
 		<BriefCard mode="intake" onSave={onSaveBrief} onSkip={onSkipBrief} />
 		<div class="flex justify-start">

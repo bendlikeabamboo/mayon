@@ -113,7 +113,7 @@
 	});
 </script>
 
-<div class="mx-auto max-w-3xl p-6 space-y-4">
+<div class="mx-auto max-w-3xl space-y-4 p-6 max-lg:pt-14">
 	<form onsubmit={handleSubmit}>
 		<input
 			type="text"

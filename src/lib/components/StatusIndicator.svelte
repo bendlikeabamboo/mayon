@@ -66,7 +66,7 @@
 <Popover>
 	<PopoverTrigger
 		class={cn(
-			'flex w-full cursor-pointer items-center rounded-md py-1 pr-2 text-left text-xs font-medium text-muted-foreground transition-colors duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring outline-none focus-visible:ring-2',
+			'flex w-full cursor-pointer items-center rounded-md py-2.5 pr-2 text-left text-xs font-medium text-muted-foreground transition-colors duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring outline-none focus-visible:ring-2',
 			collapsed ? 'justify-center gap-0 pl-2' : 'gap-2 pl-2'
 		)}
 		title={label}

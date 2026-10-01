@@ -213,7 +213,7 @@
 <style>
 	/* us5-coarse-pointer: touch devices have no hover, so the action row stays
 	   steadily visible. Doubled class out-specifies the opacity-0 utility. */
-	@media (pointer: coarse) {
+	@media (any-pointer: coarse) {
 		.message-actions.message-actions {
 			opacity: 1;
 			pointer-events: auto;

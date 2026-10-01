@@ -80,7 +80,7 @@
 	<title>Labs — Mayon</title>
 </svelte:head>
 
-<div class="art-stagger mx-auto flex max-w-3xl flex-col gap-4 p-6">
+<div class="art-stagger mx-auto flex max-w-3xl flex-col gap-4 p-6 max-lg:pt-14">
 	<div in:entry|global={{ index: 0, count: groups.length + 1 }} class="space-y-1">
 		<h1 class="text-2xl font-semibold tracking-tight">Labs</h1>
 		<p class="text-sm text-muted-foreground">Hands-on labs generated from your chats.</p>

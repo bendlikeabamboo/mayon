@@ -85,3 +85,12 @@
 		</span>
 	{/if}
 </div>
+
+<style>
+	@media (any-pointer: coarse) {
+		.rowcard-action.rowcard-action {
+			opacity: 1;
+			pointer-events: auto;
+		}
+	}
+</style>

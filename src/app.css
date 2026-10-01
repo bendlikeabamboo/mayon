@@ -475,6 +475,16 @@
 	}
 }
 
+/* iOS Safari zooms any focused field with font-size < 16px. Unlayered so it
+   wins over text-size utilities on phones. */
+@media (max-width: 640px) {
+	input,
+	textarea,
+	select {
+		font-size: 16px;
+	}
+}
+
 /* Persistent underline marking an excerpt that has been expounded into a
    branch. Applied via post-render DOM wrapping (Highlighter.svelte), not the
    markdown sanitize pipeline. Solid highlight underline, clickable. */
@@ -575,6 +585,11 @@
 .tip:hover::after {
 	opacity: 1;
 	transition-delay: 0.5s;
+}
+.tip:focus-visible::after,
+.tip:active::after {
+	opacity: 1;
+	transition-delay: 0s;
 }
 
 /* Growth-edge overlay (live streaming rows): backdrop blur feathered by a

@@ -65,6 +65,7 @@
 
 	const inputClass =
 		'h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
+	const rowInputClass = `${inputClass} sm:flex-1`;
 
 	onMount(load);
 
@@ -670,15 +671,15 @@
 						{#if ds.headers && Object.keys(ds.headers).length > 0}
 							<div class="space-y-2">
 								{#each Object.entries(ds.headers) as [name, entry] (name)}
-									<div class="flex items-center gap-2">
+									<div class="flex flex-wrap items-center gap-2">
 										<input
-											class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+											class="w-full sm:w-auto sm:min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
 											value={name}
 											oninput={(e) => draftRenameHeader(name, e.currentTarget.value)}
 											placeholder="Header-Name"
 										/>
 										<input
-											class={inputClass}
+											class={rowInputClass}
 											placeholder="value"
 											value={entry.value ?? ''}
 											oninput={(e) => onDraftHeaderValueInput(name, e.currentTarget.value)}
@@ -711,9 +712,9 @@
 					{#if ds.env && Object.keys(ds.env).length > 0}
 						<div class="space-y-2">
 							{#each Object.entries(ds.env) as [name, _entry] (name)}
-								<div class="flex items-center gap-2">
+								<div class="flex flex-wrap items-center gap-2">
 									<input
-										class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										class="w-full sm:w-auto sm:min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
 										value={name}
 										oninput={(e) => draftRenameEnvVar(name, e.currentTarget.value)}
 										placeholder="VAR_NAME"
@@ -721,7 +722,7 @@
 									{#if draftSecretDraft[name] !== undefined}
 										<input
 											type="password"
-											class={inputClass}
+											class={rowInputClass}
 											placeholder="paste value"
 											value={draftSecretDraft[name]}
 											oninput={(e) =>
@@ -733,7 +734,7 @@
 									{:else}
 										<input
 											type="password"
-											class={inputClass}
+											class={rowInputClass}
 											disabled
 											placeholder="•••••••• (set after creation)"
 										/>
@@ -813,9 +814,9 @@
 				{@const isTrustedServer = trustFlags[s.id] === true}
 				{@const showTrustBanner = trustingId === s.id}
 				<li class="space-y-3 rounded-lg border border-border p-4">
-					<div class="flex items-start justify-between gap-2">
+					<div class="flex flex-wrap items-start justify-between gap-2">
 						<div class="min-w-0 space-y-0.5">
-							<div class="flex items-center gap-2">
+							<div class="flex flex-wrap items-center gap-2">
 								<input
 									class="bg-transparent text-sm font-semibold outline-none focus-visible:underline"
 									value={s.name}
@@ -954,9 +955,9 @@
 									{#if s.headers && Object.keys(s.headers).length > 0}
 										<div class="space-y-2">
 											{#each Object.entries(s.headers) as [name, entry] (name)}
-												<div class="flex items-center gap-2">
+												<div class="flex flex-wrap items-center gap-2">
 													<input
-														class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+														class="w-full sm:w-auto sm:min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
 														value={name}
 														oninput={(e) => renameHeader(s.id, name, e.currentTarget.value)}
 														placeholder="Header-Name"
@@ -965,7 +966,7 @@
 														{#if _headerDrafts[s.id]}
 															<input
 																type="password"
-																class={inputClass}
+																class={rowInputClass}
 																placeholder="paste value"
 																value={_headerDrafts[s.id]}
 																oninput={(e) =>
@@ -985,7 +986,7 @@
 														{:else}
 															<input
 																type="password"
-																class={inputClass}
+																class={rowInputClass}
 																disabled
 																placeholder="•••••••• (saved)"
 															/>
@@ -1001,7 +1002,7 @@
 														{/if}
 													{:else}
 														<input
-															class={inputClass}
+															class={rowInputClass}
 															placeholder="value"
 															value={entry.value ?? ''}
 															oninput={(e) =>
@@ -1046,9 +1047,9 @@
 								{#if s.env && Object.keys(s.env).length > 0}
 									<div class="space-y-2">
 										{#each Object.entries(s.env) as [name, _entry] (name)}
-											<div class="flex items-center gap-2">
+											<div class="flex flex-wrap items-center gap-2">
 												<input
-													class="min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+													class="w-full sm:w-auto sm:min-w-[8rem] rounded-md border border-input bg-background px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
 													value={name}
 													oninput={(e) => renameEnvVar(s.id, name, e.currentTarget.value)}
 													placeholder="VAR_NAME"
@@ -1056,7 +1057,7 @@
 												{#if secretDrafts[s.id] && secretDrafts[s.id] !== 'cleared'}
 													<input
 														type="password"
-														class={inputClass}
+														class={rowInputClass}
 														placeholder="paste value"
 														value={secretDrafts[s.id]}
 														oninput={(e) =>
@@ -1077,7 +1078,7 @@
 												{:else}
 													<input
 														type="password"
-														class={inputClass}
+														class={rowInputClass}
 														disabled
 														placeholder="•••••••• (saved)"
 													/>

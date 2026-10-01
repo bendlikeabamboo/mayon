@@ -28,7 +28,7 @@
 <Button
 	variant="ghost"
 	size="sm"
-	class={collapsed ? 'w-full justify-start gap-0' : 'w-full justify-start gap-2'}
+	class={collapsed ? 'h-9 w-full justify-start gap-0' : 'h-9 w-full justify-start gap-2'}
 	title={label}
 	aria-label={label}
 	onclick={toggle}
