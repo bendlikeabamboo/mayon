@@ -121,8 +121,9 @@ export interface BuildAppOptions {
 
 export function buildApp(dbPath = SANDBOX_DB_PATH, opts: BuildAppOptions = {}) {
 	const trustProxyHops = Number.parseInt(process.env.MAYON_TRUST_PROXY_HOPS ?? '1', 10);
+	const trustedHops = Number.isFinite(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1;
 	const app = Fastify({
-		trustProxy: Number.isFinite(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1
+		trustProxy: (_address, index) => index < trustedHops
 	});
 
 	app.register(fp);
