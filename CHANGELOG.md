@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-02
+
+### Fixed
+
+- **Dependabot security sweep** — pinned patched versions of every flagged
+  transitive dependency via `pnpm.overrides`: undici 7.30.0, nanoid 3.3.19,
+  postcss 8.5.28, brace-expansion 5.0.12, fast-uri 3.1.8 / 4.2.1, devalue
+  5.9.4, and dompurify 3.4.16, closing all open high and medium alerts. The
+  katex exact pin moved from 0.16.11 to 0.16.47, collapsing a duplicate
+  transitive copy; katex renders math in the SPA, so chat math rendering is
+  the only user-visible change.
+- **Forwarded-IP rate limiting restored** — fastify 5.12 made numeric
+  `trustProxy` fail closed (X-Forwarded-For never honored), silently
+  collapsing the per-IP auth lockout buckets behind a reverse proxy into one
+  global bucket: ten failed logins from a single client locked out every
+  user for ten minutes, repeatable indefinitely. The server now passes an
+  explicit hop-count trust function, restoring the intended per-IP
+  semantics; fastify is bumped 5.12.1 → 5.12.5.
+
 ## [0.8.0] - 2026-09-16
 
 ### Added
