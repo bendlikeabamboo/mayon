@@ -102,6 +102,10 @@ Rules:
 
 Detail: `docs/history/appendices/009-request-settings-resolution.md`, `docs/history/appendices/009-dialect-catalog.md`.
 
+## Context usage is display-only and single-seam
+
+The context gauge (023) reads but never steers. Provider-reported usage reaches storage only through `messagesRepo.recordUsage` (`src/lib/db/repositories/messages.ts`), called from the chat turn path (`chatStore.send()`'s `finally`); nothing else writes `messages.tokens` or `metadata.usage` for chat turns. The gauge derives only through `deriveContextGauge` (`src/lib/chat/context-usage.ts`) — pure, anchored on the highest-`ord` assistant row with usage — and model-limit statics live only in `src/lib/ai/model-limits.ts`. Nothing in the gauge path may alter request parameters: `resolveRequestSettings` stays the only request seam.
+
 ## Presentation decided by kind only
 
 The presentation registry (`src/lib/chat/presentation.ts`) maps each kind to lane, collapsible, collapsed-by-default, and a renderer name string. Timeline assembly (`src/lib/chat/entries.ts`) builds a `TimelineItem[]` from messages; `MessageList.svelte` dispatches each item through the registry.

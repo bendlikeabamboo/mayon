@@ -50,3 +50,5 @@ docs/_book/
 
 .playwright/
 .playwright-cli/
+# Validation screenshots (local evidence, referenced by quickstart-results.md)
+specs/*/checklists/*.png

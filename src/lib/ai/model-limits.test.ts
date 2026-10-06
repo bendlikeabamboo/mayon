@@ -32,6 +32,16 @@ describe('estimateContextLimit', () => {
 		expect(estimateContextLimit('unknown-model')).toBe(null);
 	});
 
+	it('returns null for unknown router-prefixed models', () => {
+		expect(estimateContextLimit('moonshotai/kimi-k3')).toBe(null);
+	});
+
+	it('matches on last segment for router-prefixed models', () => {
+		expect(estimateContextLimit('z-ai/glm-5.2')).toBe(128000);
+		expect(estimateContextLimit('openai/gpt-4o')).toBe(128000);
+		expect(estimateContextLimit('gateway/openai/gpt-4o')).toBe(128000);
+	});
+
 	it('returns null for empty/undefined', () => {
 		expect(estimateContextLimit('')).toBe(null);
 		expect(estimateContextLimit(undefined)).toBe(null);

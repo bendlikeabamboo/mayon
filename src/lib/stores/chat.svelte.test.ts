@@ -6,6 +6,7 @@ import { MissingKeyError, ProviderHttpError } from '$lib/ai/types';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '$lib/chat/context';
+import { deriveContextGauge } from '$lib/chat/context-usage';
 import { projectEntries } from '$lib/chat/projection';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '$lib/chat/expound';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
@@ -2479,5 +2480,190 @@ describe('chatStore paced streaming (022 US1)', () => {
 		await vi.advanceTimersByTimeAsync(2000);
 		await sendP;
 		expect(chatStore.streamPhase).toBe('idle');
+	});
+});
+
+describe('chatStore usage persistence (023 T006+T016)', () => {
+	afterEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	it('completed turn persists the provider-reported usage on the final assistant row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: { modelId: 'stub-model' } as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'Hello ';
+				yield 'world';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'Hello ' };
+				yield { type: 'text-delta', text: 'world' };
+				yield {
+					type: 'finish',
+					finishReason: 'stop',
+					totalUsage: { promptTokens: 120, completionTokens: 45, totalTokens: 165 }
+				};
+			})(),
+			text: 'Hello world',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistant = msgs.find((m) => m.kind === 'assistant_message');
+		expect(assistant).toBeDefined();
+		expect(assistant!.tokens).toBe(165);
+		const meta = JSON.parse(assistant!.metadata!);
+		expect(meta.usage).toEqual({
+			promptTokens: 120,
+			completionTokens: 45,
+			totalTokens: 165,
+			modelId: 'stub-model'
+		});
+	});
+
+	it('aborted turn that never emitted usage writes nothing onto the assistant row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		let resolveStream!: () => void;
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'token';
+				await new Promise<void>((r) => (resolveStream = r));
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'token' };
+				await new Promise<void>((r) => (resolveStream = r));
+			})(),
+			text: 'token',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		void chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(true));
+		chatStore.stop();
+		resolveStream();
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistant = msgs.find((m) => m.kind === 'assistant_message');
+		expect(assistant).toBeDefined();
+		expect(assistant!.tokens).toBeNull();
+		expect(assistant!.metadata).toBeNull();
+	});
+
+	it('multi-row turn persists usage on the final assistant_message, not an earlier one', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			await deps.appendAssistantText('first iteration', {});
+			await deps.appendAssistantText('final iteration', {});
+			deps.onTrace?.({
+				kind: 'usage',
+				usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+				modelId: 'stub-model'
+			});
+			return { aborted: false };
+		});
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistants = msgs.filter((m) => m.kind === 'assistant_message');
+		expect(assistants).toHaveLength(2);
+		expect(assistants[0]!.content).toBe('first iteration');
+		expect(assistants[0]!.tokens).toBeNull();
+		expect(assistants[0]!.metadata).toBeNull();
+		expect(assistants[1]!.content).toBe('final iteration');
+		expect(assistants[1]!.tokens).toBe(15);
+		expect(JSON.parse(assistants[1]!.metadata!).usage).toEqual({
+			promptTokens: 10,
+			completionTokens: 5,
+			totalTokens: 15,
+			modelId: 'stub-model'
+		});
+	});
+
+	it('usage event without any assistant text row writes nothing', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onTrace?.({
+				kind: 'usage',
+				usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+				modelId: 'stub-model'
+			});
+			return { aborted: false };
+		});
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs.some((m) => m.kind === 'assistant_message')).toBe(false);
+		expect(msgs.every((m) => m.tokens === null)).toBe(true);
+	});
+
+	it('a second turn moves the anchor: latest assistant row carries the new usage', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: { modelId: 'stub-model' } as LanguageModel,
+			config: stubConfig,
+			toolCapability: true
+		});
+		const replyWithUsage = (totalTokens: number) =>
+			mockedStreamText.mockReturnValue({
+				textStream: (async function* () {
+					yield 'reply';
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: 'reply' };
+					yield {
+						type: 'finish',
+						finishReason: 'stop',
+						totalUsage: { promptTokens: totalTokens - 10, completionTokens: 10, totalTokens }
+					};
+				})(),
+				text: 'reply',
+				response: { id: 'test' }
+			} as never);
+
+		await chatStore.load(root.id);
+		replyWithUsage(100);
+		await chatStore.send('first');
+		replyWithUsage(200);
+		await chatStore.send('second');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistants = msgs.filter((m) => m.kind === 'assistant_message');
+		expect(assistants).toHaveLength(2);
+		expect(assistants[0]!.tokens).toBe(100);
+		expect(JSON.parse(assistants[0]!.metadata!).usage.totalTokens).toBe(100);
+		expect(assistants[1]!.tokens).toBe(200);
+		expect(JSON.parse(assistants[1]!.metadata!).usage.totalTokens).toBe(200);
+
+		await chatStore.load(root.id);
+		const input = chatStore.contextGaugeInput;
+		const usageCandidates = input.candidates.filter((c) => c.kind === 'assistant_message');
+		expect(usageCandidates).toHaveLength(2);
+		const gauge = deriveContextGauge({
+			...input,
+			activeModelId: 'stub-model',
+			declaredWindow: null
+		});
+		expect(gauge.anchorMessageId).toBe(assistants[1]!.id);
+		expect(gauge.usedTokens).toBe(200);
+		expect(gauge.provenance).toBe('reported');
 	});
 });

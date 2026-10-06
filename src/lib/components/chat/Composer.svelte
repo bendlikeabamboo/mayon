@@ -35,6 +35,8 @@
 	import { assertCanAttach, intakeImage } from '$lib/chat/images';
 	import type { ComposerAttachment } from '$lib/chat/kinds';
 	import type { ReasoningEffort } from '$lib/ai/types';
+	import ContextGauge from '$lib/components/chat/ContextGauge.svelte';
+	import type { ContextGauge as ContextGaugeModel } from '$lib/chat/context-usage';
 
 	/**
 	 * Prompt input rendered as an instrument card: a bordered raised container
@@ -65,6 +67,7 @@
 		supportsVision = true,
 		providerName,
 		modelId,
+		gauge = null,
 		chatId,
 		canGenerate = true,
 		quizBusy = false,
@@ -89,6 +92,7 @@
 		supportsVision?: boolean;
 		providerName?: string;
 		modelId?: string;
+		gauge?: ContextGaugeModel | null;
 		chatId?: string;
 		/** True when an active provider exists (prerequisite for quiz/lab gen). */
 		canGenerate?: boolean;
@@ -364,8 +368,11 @@
 
 <div class="flex flex-col gap-1.5">
 	{#if providerName && modelId}
-		<div class="flex items-center gap-1.5 px-1 text-[11px] leading-none text-muted-foreground">
+		<div
+			class="flex items-center justify-between gap-1.5 px-1 text-[11px] leading-none text-muted-foreground"
+		>
 			<span>{providerName} · {modelId}</span>
+			<ContextGauge {gauge} />
 		</div>
 	{/if}
 	{#if toastVisible}

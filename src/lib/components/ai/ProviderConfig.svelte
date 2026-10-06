@@ -604,6 +604,23 @@
 									</select>
 								{/if}
 							</div>
+							<label class="space-y-1 text-xs text-muted-foreground">
+								<span>Context window (tokens)</span>
+								<input
+									type="number"
+									min="1"
+									step="1"
+									class={inputClass}
+									value={p.contextWindow ?? ''}
+									oninput={(e) => {
+										const raw = e.currentTarget.value;
+										updateField(p.id, {
+											contextWindow: raw === '' ? undefined : Number(raw)
+										});
+									}}
+									onchange={() => commit(p.id)}
+								/>
+							</label>
 						</div>
 
 						{#if p.discoverable}

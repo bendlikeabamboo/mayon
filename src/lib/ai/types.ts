@@ -170,6 +170,12 @@ export interface ProviderConfig {
 	 * block, or rewrite message parts on the wire.
 	 */
 	vision?: 'auto' | 'on' | 'off';
+	/**
+	 * Optional provider-declared context window in tokens (positive integer).
+	 * User-declared per provider; absent when unknown. Drives the context
+	 * gauge (feature 023); not a secret.
+	 */
+	contextWindow?: number;
 	requestDefaults?: SamplingRequestDefaults;
 	extraBody?: Record<string, JSONValue>;
 }

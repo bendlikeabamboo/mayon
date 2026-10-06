@@ -197,6 +197,75 @@ describe('updateArtifactContent', () => {
 	});
 });
 
+describe('recordUsage', () => {
+	it('writes tokens and metadata.usage on an assistant_message row', async () => {
+		const { chat, b } = await seedChat();
+		await repos.messages.recordUsage(b.id, {
+			promptTokens: 100,
+			completionTokens: 50,
+			totalTokens: 150,
+			modelId: 'gpt-test'
+		});
+
+		const row = await repos.messages.getById(b.id);
+		expect(row!.tokens).toBe(150);
+		const meta = JSON.parse(row!.metadata!) as { usage: Record<string, unknown> };
+		expect(meta.usage).toEqual({
+			promptTokens: 100,
+			completionTokens: 50,
+			totalTokens: 150,
+			modelId: 'gpt-test'
+		});
+		expect((await repos.messages.listByChat(chat.id)).find((m) => m.id === b.id)!.tokens).toBe(150);
+	});
+
+	it('no-ops on a user_message row: fields unchanged', async () => {
+		const { a } = await seedChat();
+		await repos.messages.recordUsage(a.id, { totalTokens: 99, modelId: 'gpt-test' });
+
+		const row = await repos.messages.getById(a.id);
+		expect(row!.tokens).toBeNull();
+		expect(row!.metadata).toBeNull();
+	});
+
+	it('no-ops on a missing id without throwing', async () => {
+		await expect(
+			repos.messages.recordUsage('nonexistent', { totalTokens: 1, modelId: 'm' })
+		).resolves.toBeUndefined();
+	});
+
+	it('merges into pre-existing metadata keys', async () => {
+		const { chat } = await seedChat();
+		const withMeta = await repos.messages.append(chat.id, 'assistant', 'with meta', {
+			metadata: JSON.stringify({ outcome: { ok: true }, other: 'keep' })
+		});
+		await repos.messages.recordUsage(withMeta.id, {
+			promptTokens: 10,
+			completionTokens: 5,
+			modelId: 'm'
+		});
+
+		const meta = JSON.parse((await repos.messages.getById(withMeta.id))!.metadata!) as Record<
+			string,
+			unknown
+		>;
+		expect(meta.other).toBe('keep');
+		expect(meta.outcome).toEqual({ ok: true });
+		expect(meta.usage).toEqual({ promptTokens: 10, completionTokens: 5, modelId: 'm' });
+	});
+
+	it('partial usage computes total from prompt+completion; totalTokens alone used directly', async () => {
+		const { chat } = await seedChat();
+		const p = await repos.messages.append(chat.id, 'assistant', 'partial');
+		await repos.messages.recordUsage(p.id, { promptTokens: 7, completionTokens: 3, modelId: 'm' });
+		expect((await repos.messages.getById(p.id))!.tokens).toBe(10);
+
+		const t = await repos.messages.append(chat.id, 'assistant', 'total only');
+		await repos.messages.recordUsage(t.id, { totalTokens: 42, modelId: 'm' });
+		expect((await repos.messages.getById(t.id))!.tokens).toBe(42);
+	});
+});
+
 describe('migration 0004 — double precision ord', () => {
 	it('fresh test database applies the migration: ord is double precision', async () => {
 		const handle = await testDb.setup();

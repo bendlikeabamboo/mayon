@@ -51,6 +51,7 @@
 	import { getActiveSdkProvider } from '$lib/ai/client';
 	import { describeDialect } from '$lib/ai/dialects';
 	import { supportsVision } from '$lib/ai/vision-capability';
+	import { deriveContextGauge } from '$lib/chat/context-usage';
 	import { DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
 	import MessageList from '$lib/components/chat/MessageList.svelte';
@@ -105,6 +106,13 @@
 		if (!activeConfig || !activeModelId) return true;
 		return supportsVision(activeConfig, activeModelId);
 	});
+	const contextGauge = $derived.by(() =>
+		deriveContextGauge({
+			...chatStore.contextGaugeInput,
+			activeModelId: activeModelId ?? null,
+			declaredWindow: activeConfig?.contextWindow ?? null
+		})
+	);
 
 	let viewport = $state<HTMLDivElement | null>(null);
 	let topPane = $state<HTMLDivElement | null>(null);
@@ -1105,6 +1113,7 @@
 						supportsVision={supportsVisionModel}
 						providerName={activeProviderName}
 						modelId={activeModelId}
+						gauge={contextGauge}
 						chatId={chatStore.chat.id}
 						canGenerate={Boolean(activeProviderName && activeModelId)}
 						quizBusy={quizzesStore.generating}

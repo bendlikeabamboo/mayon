@@ -17,10 +17,13 @@ const LIMITS: [string, number][] = [
 
 export function estimateContextLimit(modelId: string | undefined): number | null {
 	if (!modelId) return null;
-	const normalized = modelId
-		.replace(/\[.*?\]/g, '')
-		.trim()
-		.toLowerCase();
+	const normalized =
+		modelId
+			.split('/')
+			.pop()
+			?.replace(/\[.*?\]/g, '')
+			.trim()
+			.toLowerCase() ?? '';
 	for (const [prefix, limit] of LIMITS) {
 		if (normalized.startsWith(prefix)) return limit;
 	}

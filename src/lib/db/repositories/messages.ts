@@ -224,6 +224,47 @@ export const messagesRepo = {
 		return updated ?? null;
 	},
 
+	/**
+	 * Usage anchor write (023): record provider token usage on a completed
+	 * turn's final assistant row — `tokens` = the total, `metadata.usage` =
+	 * the usage triple + modelId. No-ops on missing id or non-assistant kind.
+	 */
+	async recordUsage(
+		messageId: string,
+		usage: {
+			promptTokens?: number;
+			completionTokens?: number;
+			totalTokens?: number;
+			modelId: string;
+		}
+	): Promise<void> {
+		const db = await awaitDb();
+		const [existing] = await db.select().from(messages).where(eq(messages.id, messageId));
+		if (!existing || existing.kind !== 'assistant_message') return;
+		const total =
+			usage.totalTokens ??
+			(usage.promptTokens != null && usage.completionTokens != null
+				? usage.promptTokens + usage.completionTokens
+				: null);
+		let meta: Record<string, unknown> = {};
+		if (existing.metadata) {
+			try {
+				meta = JSON.parse(existing.metadata);
+			} catch {
+				/* corrupt → default empty */
+			}
+		}
+		meta.usage = usage;
+		await db
+			.update(messages)
+			.set(
+				total == null
+					? { metadata: JSON.stringify(meta) }
+					: { tokens: total, metadata: JSON.stringify(meta) }
+			)
+			.where(and(eq(messages.id, messageId), eq(messages.kind, 'assistant_message')));
+	},
+
 	async delete(id: string): Promise<void> {
 		await (await awaitDb()).delete(messages).where(eq(messages.id, id));
 	},

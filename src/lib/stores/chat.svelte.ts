@@ -26,10 +26,13 @@ import {
 import type { LearningBrief } from '$lib/chat/brief';
 import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
 import {
+	kindOf,
 	parseMetadata,
 	type ComposerAttachment,
-	type BranchArtifactMetadata
+	type BranchArtifactMetadata,
+	type SharedMetadata
 } from '$lib/chat/kinds';
+import type { ContextGaugeCandidate } from '$lib/chat/context-usage';
 import { buildRawDelta, resolveAnchor, branchArtifactMetadata } from '$lib/chat/propagation';
 import { generateBranchArtifactSummary } from '$lib/ai/generate/generate-branch-artifact-summary';
 import { getActiveSdkProvider } from '$lib/ai/client';
@@ -51,7 +54,12 @@ import { getToolDefinitions } from '$lib/agent/registry';
 import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
 import { generateBrief } from '$lib/ai/generate/generate-brief';
 import { toastState } from '$lib/stores/toasts.svelte';
-import { TraceBuilder, buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
+import {
+	TraceBuilder,
+	buildObjectTrace,
+	type ObjectTraceInput,
+	type TraceEvent
+} from '$lib/agent/trace';
 import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 import type { LiveEntry, LiveAskPayload } from '$lib/chat/entries';
 
@@ -153,6 +161,7 @@ class ChatState {
 	mcpNotices = $state<string[]>([]);
 	loading = $state(false);
 	generativeStatus = $state<{ toolName: string; label: string } | null>(null);
+	lastAssembledChars = $state(0);
 
 	/**
 	 * A prompt staged to auto-send once the next branch finishes loading. Set by
@@ -330,6 +339,19 @@ class ChatState {
 		return items;
 	}
 
+	get contextGaugeInput(): { candidates: ContextGaugeCandidate[]; assembledChars: number } {
+		return {
+			candidates: this.messages.map((m) => ({
+				id: m.id,
+				kind: kindOf(m),
+				ord: m.ord,
+				tokens: m.tokens,
+				usage: parseMetadata<SharedMetadata>(m.metadata)?.usage ?? null
+			})),
+			assembledChars: this.lastAssembledChars
+		};
+	}
+
 	/**
 	 * Load a chat and its messages into the store. Fully resets transient state
 	 * so switching chats never leaks a previous conversation's buffer/error.
@@ -354,6 +376,7 @@ class ChatState {
 		this.streaming = false;
 		this.generativeStatus = null;
 		this.mcpNotices = [];
+		this.lastAssembledChars = 0;
 		this.chatId = chatId;
 		try {
 			const [chat, msgs] = await Promise.all([
@@ -473,12 +496,19 @@ class ChatState {
 		/** Final assistant text of the turn, captured by `appendAssistantText`
 		 *  before buffer teardown (the DEV strategy lint reads it post-turn). */
 		let finalAssistantText = '';
+		/** Latest provider-reported usage (023); each agent-loop iteration
+		 *  overwrites, so the final iteration wins for the turn persist. */
+		let finalUsage: Extract<TraceEvent, { kind: 'usage' }> | null = null;
+		/** Local mirror of the final assistant row id (TraceBuilder's
+		 *  assistantMessageId is setter-only, unreadable at runtime). */
+		let assistantMessageId: string | null = null;
 		let model: LanguageModel | undefined;
 		let config: ProviderConfig | undefined;
 		let mcpSession: { unmountAll: () => void } | null = null;
 
 		try {
-			const [_ctx, sdk] = await Promise.all([assembleContext(chatId), getActiveSdkProvider()]);
+			const [ctx, sdk] = await Promise.all([assembleContext(chatId), getActiveSdkProvider()]);
+			this.lastAssembledChars = ctx.reduce((n, m) => n + m.content.length, 0);
 			model = sdk.model;
 			config = sdk.config;
 
@@ -489,7 +519,7 @@ class ChatState {
 			const shouldInferBrief =
 				chat && chat.parentId === null && parseBrief(chat.brief) === null && !this.inferDismissed;
 			if (shouldInferBrief) {
-				void this.inferBriefRoot(model, _ctx);
+				void this.inferBriefRoot(model, ctx);
 			}
 
 			const toolCallCounter = { count: 0 };
@@ -593,6 +623,7 @@ class ChatState {
 					}
 					await repos.chats.touch(chatId);
 					builder.assistantMessageId = row.id;
+					assistantMessageId = row.id;
 					builder.empty = !content;
 					return row;
 				},
@@ -649,7 +680,11 @@ class ChatState {
 					}
 					return row;
 				},
-				reassembleContext: () => assembleContext(chatId),
+				reassembleContext: async () => {
+					const ctx = await assembleContext(chatId);
+					this.lastAssembledChars = ctx.reduce((n, m) => n + m.content.length, 0);
+					return ctx;
+				},
 				appendReasoning: async (text, iteration) => {
 					const row = await repos.messages.append(chatId, 'assistant', text, {
 						kind: 'reasoning',
@@ -676,6 +711,7 @@ class ChatState {
 				notifyLowRisk: (toolLabel, summary) => this.notifyLowRiskImpl(toolLabel, summary),
 				notifyGenerativeStatus: (status) => (this.generativeStatus = status),
 				onTrace: (e) => {
+					if (e.kind === 'usage') finalUsage = e;
 					builder.emit(e);
 					diagnosticsStore.liveEmit(e);
 				}
@@ -787,6 +823,32 @@ class ChatState {
 				});
 			} catch {
 				/* best-effort; never surfaces to user */
+			}
+			if (finalUsage && assistantMessageId) {
+				const u = finalUsage.usage;
+				const usageTriple = {
+					promptTokens: u.promptTokens,
+					completionTokens: u.completionTokens,
+					totalTokens: u.totalTokens,
+					modelId: finalUsage.modelId
+				};
+				try {
+					await repos.messages.recordUsage(assistantMessageId, usageTriple);
+					this.messages = this.messages.map((m) =>
+						m.id === assistantMessageId
+							? {
+									...m,
+									tokens: u.totalTokens ?? m.tokens ?? null,
+									metadata: JSON.stringify({
+										...parseMetadata<SharedMetadata>(m.metadata),
+										usage: usageTriple
+									})
+								}
+							: m
+					);
+				} catch {
+					/* best-effort; never surfaces to user */
+				}
 			}
 			if (!this.error) {
 				this.lastFailedPrompt = null;
