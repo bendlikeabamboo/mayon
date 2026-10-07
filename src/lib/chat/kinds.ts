@@ -69,6 +69,12 @@ export interface SharedMetadata {
 	reasoning?: string;
 	model?: string;
 	tokens?: number;
+	usage?: {
+		promptTokens?: number;
+		completionTokens?: number;
+		totalTokens?: number;
+		modelId: string;
+	};
 }
 
 export interface UserMessageMeta extends SharedMetadata {

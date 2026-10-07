@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { PROVIDER_TEMPLATES } from '$lib/ai/registry';
+import { PROVIDER_TEMPLATES, normalizeProviderConfig } from '$lib/ai/registry';
+import type { LegacyProviderConfig } from '$lib/ai/registry';
+
+const baseConfig: LegacyProviderConfig = {
+	id: 'p1',
+	kind: 'openai-compatible',
+	name: 'Test Provider',
+	baseUrl: 'https://example.com/v1',
+	defaultModel: 'test-model',
+	models: ['test-model']
+};
 
 describe('DeepSeek template', () => {
 	const t = PROVIDER_TEMPLATES[0];
@@ -363,5 +373,75 @@ describe('vLLM (local) template', () => {
 		expect(t!.models).toEqual([]);
 		expect(t!.defaultModel).toBe('');
 		expect(t!.toolCapability).toBe('on');
+	});
+});
+
+describe('normalizeProviderConfig contextWindow', () => {
+	it('keeps a valid positive integer', () => {
+		expect(normalizeProviderConfig({ ...baseConfig, contextWindow: 128000 }).contextWindow).toBe(
+			128000
+		);
+	});
+
+	it.each([0, -1, -128000, 128000.5, NaN, Infinity, '128000', null])(
+		'drops invalid contextWindow %p',
+		(bad) => {
+			const normalized = normalizeProviderConfig({ ...baseConfig, contextWindow: bad as number });
+			expect('contextWindow' in normalized).toBe(false);
+			expect(normalized.contextWindow).toBeUndefined();
+		}
+	);
+
+	it('keeps absent contextWindow absent', () => {
+		const normalized = normalizeProviderConfig(baseConfig);
+		expect('contextWindow' in normalized).toBe(false);
+	});
+});
+
+describe('normalizeProviderConfig modelContextWindows', () => {
+	it('keeps a valid map', () => {
+		const normalized = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: { 'test-model': 128000 }
+		});
+		expect(normalized.modelContextWindows).toEqual({ 'test-model': 128000 });
+	});
+
+	it.each([
+		{ 'test-model': 0 },
+		{ 'test-model': -1 },
+		{ 'test-model': -128000 },
+		{ 'test-model': 128000.5 },
+		{ 'test-model': '128000' },
+		{ 'test-model': null },
+		{ 'test-model': NaN },
+		{ 'test-model': Infinity }
+	])('drops invalid value in %p', (bad) => {
+		const normalized = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: bad as Record<string, number>
+		});
+		expect(normalized.modelContextWindows).toEqual({});
+	});
+
+	it('prunes orphaned keys not present in models', () => {
+		const normalized = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: { 'test-model': 128000, ghost: 8192 }
+		});
+		expect(normalized.modelContextWindows).toEqual({ 'test-model': 128000 });
+	});
+
+	it('keeps an absent map absent', () => {
+		const normalized = normalizeProviderConfig(baseConfig);
+		expect('modelContextWindows' in normalized).toBe(false);
+	});
+
+	it('passes a normalized map through unchanged', () => {
+		const once = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: { 'test-model': 4096 }
+		});
+		expect(normalizeProviderConfig(once)).toEqual(once);
 	});
 });

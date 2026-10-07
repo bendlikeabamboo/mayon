@@ -45,11 +45,62 @@ interface CopilotModelEntry {
 }
 
 /**
- * Discover the available model IDs from a provider's `/models` endpoint. Returns
- * a de-duplicated, alphabetically-sorted list. Auth is resolved per kind (static
- * Bearer from the KeyStore, or the Copilot session for `github-copilot`). Throws
- * the same typed provider errors as a chat request on HTTP/network failure (so
- * the UI can format them via `formatProviderError`).
+ * One surviving `/models` entry: its id plus, when the listing carried a usable
+ * top-level `context_length` / `context_window` / `max_context_length`, the
+ * reported context window in tokens. `contextWindow` is absent (never
+ * null/zero) when not reported.
+ */
+export interface DiscoveredModel {
+	id: string;
+	contextWindow?: number;
+}
+
+/**
+ * Read a context window off a listing entry's TOP-LEVEL fields only, in the
+ * contract order `context_length`, `context_window`, `max_context_length`
+ * (Mistral's spelling). Only positive integers count as reported; anything
+ * else (absent, string, zero, negative, float, nested objects) means
+ * "not reported" — no clamping, no rounding.
+ */
+function readContextWindow(entry: Record<string, unknown>): number | undefined {
+	for (const field of ['context_length', 'context_window', 'max_context_length'] as const) {
+		const value = entry[field];
+		if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return value;
+	}
+	return undefined;
+}
+
+/**
+ * Rebuild the persisted `modelContextWindows` map for one provider from a
+ * fresh discovery response, per the data-model state table: entries with a
+ * harvested window overwrite/insert (latest wins); ids the response reported
+ * without a window are removed (the provider stopped reporting); ids absent
+ * from the response retain their last-known value. Returns a fresh object —
+ * the input map is never mutated.
+ */
+export function mergeModelContextWindows(
+	previous: Record<string, number> | undefined,
+	entries: DiscoveredModel[]
+): Record<string, number> {
+	const reported = new Set(entries.map((entry) => entry.id));
+	const next: Record<string, number> = {};
+	for (const [id, window] of Object.entries(previous ?? {})) {
+		if (!reported.has(id)) next[id] = window;
+	}
+	for (const entry of entries) {
+		if (entry.contextWindow !== undefined) next[entry.id] = entry.contextWindow;
+	}
+	return next;
+}
+
+/**
+ * Discover the available models from a provider's `/models` endpoint. Returns
+ * a de-duplicated, alphabetically-sorted entry list with harvested context
+ * windows.
+ * windows. Auth is resolved per kind (static Bearer from the KeyStore, or the
+ * Copilot session for `github-copilot`). Throws the same typed provider errors
+ * as a chat request on HTTP/network failure (so the UI can format them via
+ * `formatProviderError`).
  *
  * Without a caller-supplied signal, discovery is bounded by
  * `MODEL_DISCOVERY_TIMEOUT_MS`: loopback targets fetch browser-direct (no
@@ -61,7 +112,7 @@ export async function discoverModels(
 	config: ProviderConfig,
 	deps: ModelDiscoveryDeps,
 	signal?: AbortSignal
-): Promise<string[]> {
+): Promise<DiscoveredModel[]> {
 	signal ??= AbortSignal.timeout(MODEL_DISCOVERY_TIMEOUT_MS);
 	if (config.kind === 'github-copilot') {
 		return discoverCopilotModels(config, signal);
@@ -79,7 +130,7 @@ export async function discoverModels(
 		{ url, method: req.method, auth: req.auth },
 		signal
 	);
-	return parseModelIds(await readAll(body));
+	return parseModelEntries(await readAll(body));
 }
 
 /**
@@ -94,7 +145,7 @@ export async function discoverModels(
 async function discoverCopilotModels(
 	config: ProviderConfig,
 	signal?: AbortSignal
-): Promise<string[]> {
+): Promise<DiscoveredModel[]> {
 	const grant = await createBrowserKeyStore().get(config.id);
 	if (!grant) throw new MissingKeyError(undefined, config.id);
 
@@ -108,7 +159,7 @@ async function discoverCopilotModels(
 		},
 		signal
 	);
-	return parseCopilotModelIds(await readAll(body));
+	return parseCopilotModelEntries(await readAll(body));
 }
 
 /**
@@ -147,11 +198,16 @@ function extractCandidates(json: unknown): unknown[] {
 }
 
 /**
- * Extract model IDs from a `/models` response body. Tolerates the OpenAI shape
- * (`{ data: [{ id }] }`) as well as a bare array of `{ id }` objects or strings.
- * Unparseable / unrecognized shapes yield an empty list.
+ * Extract model entries from a `/models` response body, harvesting context
+ * windows per the model-listing-harvest contract: top-level `context_length`,
+ * `context_window`, `max_context_length`, positive integers only, first
+ * usable wins. Tolerates
+ * the OpenAI shape (`{ data: [{ id }] }`) as well as a bare array of `{ id }`
+ * objects or strings. Duplicate ids keep exactly one entry — the first
+ * encountered (id and window together). Unparseable / unrecognized shapes
+ * yield an empty list.
  */
-export function parseModelIds(body: string): string[] {
+export function parseModelEntries(body: string): DiscoveredModel[] {
 	let json: unknown;
 	try {
 		json = JSON.parse(body);
@@ -159,28 +215,44 @@ export function parseModelIds(body: string): string[] {
 		return [];
 	}
 
-	const ids = new Set<string>();
+	const models = new Map<string, DiscoveredModel>();
 	for (const entry of extractCandidates(json)) {
 		let id: unknown;
+		let contextWindow: number | undefined;
 		if (typeof entry === 'string') id = entry;
 		else if (entry && typeof entry === 'object') {
 			if ((entry as { type?: unknown }).type === 'embedding') continue;
 			if ('id' in entry) id = (entry as { id: unknown }).id;
+			contextWindow = readContextWindow(entry as Record<string, unknown>);
 		}
-		if (typeof id === 'string' && id.length > 0) ids.add(id);
+		if (typeof id === 'string' && id.length > 0 && !models.has(id)) {
+			models.set(id, contextWindow === undefined ? { id } : { id, contextWindow });
+		}
 	}
-	return [...ids].sort((a, b) => a.localeCompare(b));
+	return [...models.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**
- * Extract model IDs from a Copilot `/models` response body. Deliberately
- * stricter than `parseModelIds`: Copilot's catalog mixes in embeddings and
- * internal router objects, so an entry is kept only when `object === 'model'`
- * && `capabilities.type === 'chat'` && `policy.state !== 'disabled'` — and
- * never filtered on `model_picker_enabled` (known to report false for working
- * models). Unparseable / unrecognized shapes yield an empty list.
+ * Extract model IDs from a `/models` response body (id projection of
+ * `parseModelEntries`). Tolerates the OpenAI shape (`{ data: [{ id }] }`) as
+ * well as a bare array of `{ id }` objects or strings. Unparseable /
+ * unrecognized shapes yield an empty list.
  */
-export function parseCopilotModelIds(body: string): string[] {
+export function parseModelIds(body: string): string[] {
+	return parseModelEntries(body).map((model) => model.id);
+}
+
+/**
+ * Extract model entries from a Copilot `/models` response body (same context
+ * harvest as `parseModelEntries`). Deliberately stricter than
+ * `parseModelEntries`: Copilot's catalog mixes in embeddings and internal
+ * router objects, so an entry is kept only when `object === 'model'` &&
+ * `capabilities.type === 'chat'` && `policy.state !== 'disabled'` — and never
+ * filtered on `model_picker_enabled` (known to report false for working
+ * models). Duplicate ids keep exactly one entry — the first encountered.
+ * Unparseable / unrecognized shapes yield an empty list.
+ */
+export function parseCopilotModelEntries(body: string): DiscoveredModel[] {
 	let json: unknown;
 	try {
 		json = JSON.parse(body);
@@ -188,16 +260,31 @@ export function parseCopilotModelIds(body: string): string[] {
 		return [];
 	}
 
-	const ids = new Set<string>();
+	const models = new Map<string, DiscoveredModel>();
 	for (const entry of extractCandidates(json)) {
 		if (!entry || typeof entry !== 'object') continue;
 		const model = entry as CopilotModelEntry;
 		if (model.object !== 'model') continue;
 		if (model.capabilities?.type !== 'chat') continue;
 		if (model.policy?.state === 'disabled') continue;
-		if (typeof model.id === 'string' && model.id.length > 0) ids.add(model.id);
+		if (typeof model.id === 'string' && model.id.length > 0 && !models.has(model.id)) {
+			const contextWindow = readContextWindow(entry as Record<string, unknown>);
+			models.set(
+				model.id,
+				contextWindow === undefined ? { id: model.id } : { id: model.id, contextWindow }
+			);
+		}
 	}
-	return [...ids].sort((a, b) => a.localeCompare(b));
+	return [...models.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Extract model IDs from a Copilot `/models` response body (id projection of
+ * `parseCopilotModelEntries`). Unparseable / unrecognized shapes yield an
+ * empty list.
+ */
+export function parseCopilotModelIds(body: string): string[] {
+	return parseCopilotModelEntries(body).map((model) => model.id);
 }
 
 /** Join a base URL and a path, tolerating a trailing slash / leading slash. */

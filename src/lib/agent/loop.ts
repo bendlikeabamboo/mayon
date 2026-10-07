@@ -180,10 +180,23 @@ async function consumeStream(
 			onReasoningDelta(p.text);
 		} else if (p.type === 'finish') {
 			finishReason = p.finishReason as string;
+			// Prefer the richer of usage / totalUsage per field: chunked-usage
+			// providers can report zeros in `usage` with real counts in `totalUsage`.
+			const u = p.usage as
+				| { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+				| undefined;
+			const t = p.totalUsage as
+				| { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+				| undefined;
 			usage =
-				((p.usage ?? p.totalUsage) as
-					| { promptTokens?: number; completionTokens?: number; totalTokens?: number }
-					| undefined) ?? null;
+				u || t
+					? {
+							promptTokens: Math.max(u?.promptTokens ?? 0, t?.promptTokens ?? 0) || undefined,
+							completionTokens:
+								Math.max(u?.completionTokens ?? 0, t?.completionTokens ?? 0) || undefined,
+							totalTokens: Math.max(u?.totalTokens ?? 0, t?.totalTokens ?? 0) || undefined
+						}
+					: null;
 		} else if (p.type === 'error') {
 			throw p.error as Error;
 		}

@@ -16,7 +16,7 @@
 	import { testProviderConnection } from '$lib/ai/connection-test';
 	import {
 		deleteProviderKey,
-		discoverProviderModels,
+		discoverProviderModelEntries,
 		getActiveProviderId,
 		hasProviderKey,
 		kindRequiresKey,
@@ -25,6 +25,7 @@
 		setActiveProvider,
 		setProviderKey
 	} from '$lib/ai/client';
+	import { mergeModelContextWindows } from '$lib/ai/model-discovery';
 	import type {
 		HazardId,
 		ProviderConfig,
@@ -198,7 +199,8 @@
 
 	/**
 	 * Fetch the live model catalog for a discoverable gateway and merge it into
-	 * the stored config (discovered IDs first, any manual additions preserved).
+	 * the stored config (discovered IDs first, any manual additions preserved),
+	 * rebuilding the captured `modelContextWindows` map from the same response.
 	 * Best-effort: `silent` suppresses status messages (used on load/add).
 	 */
 	async function refreshModels(id: string, { silent = false }: { silent?: boolean } = {}) {
@@ -207,10 +209,19 @@
 		discovering = { ...discovering, [id]: true };
 		if (!silent) status = 'Discovering models…';
 		try {
-			const discovered = await discoverProviderModels(p);
+			const entries = await discoverProviderModelEntries(p);
+			const discovered = entries.map((entry) => entry.id);
 			if (discovered.length > 0) {
 				const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
-				providers = providers.map((x) => (x.id === id ? { ...x, models: merged } : x));
+				providers = providers.map((x) =>
+					x.id === id
+						? {
+								...x,
+								models: merged,
+								modelContextWindows: mergeModelContextWindows(p.modelContextWindows, entries)
+							}
+						: x
+				);
 				await saveProviders(providers);
 				if (!merged.includes(p.defaultModel)) {
 					// FR-011: point at the picker — never auto-mutate the user's choice.
@@ -237,8 +248,9 @@
 	 * Run the explicit "Test connection" probe for a discoverable provider and
 	 * surface the classified result in the status line. On success the discovered
 	 * catalog merges through the same pattern as `refreshModels` (discovered
-	 * first, manual entries preserved) and the first model auto-fills only while
-	 * `defaultModel` is empty; a failure never alters the stored config.
+	 * first, manual entries preserved) with the same `modelContextWindows`
+	 * capture, and the first model auto-fills only while `defaultModel` is
+	 * empty; a failure never alters the stored config.
 	 */
 	async function testConnection(id: string) {
 		const p = providers.find((x) => x.id === id);
@@ -250,10 +262,17 @@
 			if (result.ok) {
 				const discovered = result.models ?? [];
 				if (discovered.length > 0) {
+					// The probe projects discovery to ids; fetch entries to capture
+					// context windows (best-effort — on failure the stored map stays
+					// untouched).
+					const entries = await discoverProviderModelEntries(p).catch(() => null);
+					const modelContextWindows = entries
+						? mergeModelContextWindows(p.modelContextWindows, entries)
+						: p.modelContextWindows;
 					const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
 					const defaultModel = p.defaultModel === '' ? discovered[0] : p.defaultModel;
 					providers = providers.map((x) =>
-						x.id === id ? { ...x, models: merged, defaultModel } : x
+						x.id === id ? { ...x, models: merged, defaultModel, modelContextWindows } : x
 					);
 					await saveProviders(providers);
 				}
@@ -580,6 +599,7 @@
 									<ModelSelect
 										models={p.models}
 										value={p.defaultModel}
+										contextWindows={p.modelContextWindows}
 										discoverable
 										discovering={discovering[p.id] === true}
 										onselect={(m) => onSelectModel(p.id, m)}
@@ -604,6 +624,23 @@
 									</select>
 								{/if}
 							</div>
+							<label class="space-y-1 text-xs text-muted-foreground">
+								<span>Context window (tokens)</span>
+								<input
+									type="number"
+									min="1"
+									step="1"
+									class={inputClass}
+									value={p.contextWindow ?? ''}
+									oninput={(e) => {
+										const raw = e.currentTarget.value;
+										updateField(p.id, {
+											contextWindow: raw === '' ? undefined : Number(raw)
+										});
+									}}
+									onchange={() => commit(p.id)}
+								/>
+							</label>
 						</div>
 
 						{#if p.discoverable}

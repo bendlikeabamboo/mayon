@@ -47,6 +47,8 @@ Most templates discover their model catalog automatically: Mayon fetches the pro
 6. Paste your **API key** and click **Save key**. The LiteLLM (self-hosted) and Ollama (local) templates need no key. For GitHub Copilot, skip this step and use **Connect GitHub account** as described above.
 7. Click **Set active**.
 
+Optionally, set **Context window (tokens)** on the provider card — when known, the composer shows how much of the model's context remains; without it, the gauge estimates from a built-in model catalog and marks the number as approximate.
+
 After saving, the provider becomes available for new chats. Reload the tab to confirm the configuration persists.
 
 ## Switching providers

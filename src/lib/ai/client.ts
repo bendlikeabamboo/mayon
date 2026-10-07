@@ -11,7 +11,7 @@
 import { repos } from '$lib/db';
 import { buildSdkModel, type ActiveProvider } from './sdk-factory';
 import { createKeyStore } from './keystore/client';
-import { discoverModels } from './model-discovery';
+import { discoverModels, type DiscoveredModel } from './model-discovery';
 import { normalizeProviderConfig, type LegacyProviderConfig } from './registry';
 import { MissingKeyError, type ProviderConfig, type ReasoningEffort } from './types';
 
@@ -86,11 +86,21 @@ export function kindRequiresKey(config: Pick<ProviderConfig, 'kind' | 'requiresK
  * Kilo Gateway, Z.AI) from its `/models` endpoint. Auth is attached only when a
  * key is configured, so public catalogs work pre-key. Throws the same typed
  * provider errors as a chat request on failure — the UI treats this best-effort.
+ * ID projection of `discoverProviderModelEntries`.
  */
 export async function discoverProviderModels(
 	config: ProviderConfig,
 	signal?: AbortSignal
 ): Promise<string[]> {
+	return (await discoverProviderModelEntries(config, signal)).map((model) => model.id);
+}
+
+/** Entry-returning variant of `discoverProviderModels` (includes harvested
+ *  context windows) for capture-to-persist consumers. */
+export function discoverProviderModelEntries(
+	config: ProviderConfig,
+	signal?: AbortSignal
+): Promise<DiscoveredModel[]> {
 	return discoverModels(config, settingsKeyAccessor, signal);
 }
 

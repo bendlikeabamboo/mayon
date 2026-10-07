@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ChevronDown, RefreshCw } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { formatContextWindow } from './format-context-window.svelte';
 	import { filterModels } from './filter-models.svelte';
 	import ModelSelectDialog from './model-select-dialog.svelte';
 	import ModelSelectInput from './model-select-input.svelte';
@@ -12,6 +13,7 @@
 	let {
 		models,
 		value,
+		contextWindows,
 		discoverable = false,
 		discovering = false,
 		onselect,
@@ -19,6 +21,7 @@
 	}: {
 		models: string[];
 		value: string;
+		contextWindows?: Record<string, number>;
 		discoverable?: boolean;
 		discovering?: boolean;
 		onselect?: (model: string) => void;
@@ -75,6 +78,14 @@
 		{#each filtered.items as model (model)}
 			<ModelSelectItem value={model} onselect={() => handleSelect(model)}>
 				<ModelSelectName>{model}</ModelSelectName>
+				{#if contextWindows?.[model] !== undefined}
+					<span
+						class="shrink-0 text-[11px] text-muted-foreground"
+						title="{contextWindows[model]} tokens"
+					>
+						{formatContextWindow(contextWindows[model])}
+					</span>
+				{/if}
 			</ModelSelectItem>
 		{/each}
 		<ModelSelectEmpty>

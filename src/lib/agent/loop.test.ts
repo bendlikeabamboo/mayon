@@ -262,6 +262,47 @@ beforeEach(() => {
 });
 
 describe('runAgentTurn', () => {
+	it('(a0) zeroed usage with real totalUsage merges per-field max into the usage event', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hello' },
+				{
+					type: 'finish',
+					finishReason: 'stop',
+					usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+					totalUsage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }
+				}
+			])
+		} as never);
+
+		const events: Array<{ kind: string; [k: string]: unknown }> = [];
+		const deps = makeDeps({ onTrace: (e) => events.push(e as never) });
+		await runAgentTurn(deps);
+
+		const usageEvent = events.find((e) => e.kind === 'usage');
+		expect(usageEvent).toBeDefined();
+		expect(usageEvent?.usage).toEqual({
+			promptTokens: 1,
+			completionTokens: 1,
+			totalTokens: 2
+		});
+	});
+
+	it('(a1) finish part without any usage emits no usage event', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hello' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const events: Array<{ kind: string; [k: string]: unknown }> = [];
+		const deps = makeDeps({ onTrace: (e) => events.push(e as never) });
+		await runAgentTurn(deps);
+
+		expect(events.find((e) => e.kind === 'usage')).toBeUndefined();
+	});
+
 	it('(a) text-only turn finalizes; one assistant text row persisted; no tool rows; buffer set to full text', async () => {
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([
