@@ -110,7 +110,8 @@
 		deriveContextGauge({
 			...chatStore.contextGaugeInput,
 			activeModelId: activeModelId ?? null,
-			declaredWindow: activeConfig?.contextWindow ?? null
+			declaredWindow: activeConfig?.contextWindow ?? null,
+			listedWindow: activeConfig?.modelContextWindows?.[activeModelId ?? ''] ?? null
 		})
 	);
 

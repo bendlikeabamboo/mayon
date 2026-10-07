@@ -27,9 +27,11 @@
 			? ''
 			: gauge.limitSource === 'provider-declared'
 				? 'declared on provider card'
-				: gauge.limitSource === 'catalog'
-					? 'model catalog'
-					: 'unknown'
+				: gauge.limitSource === 'model-listing'
+					? 'provider model listing'
+					: gauge.limitSource === 'catalog'
+						? 'model catalog'
+						: 'unknown'
 	);
 	const provenanceText = $derived(marked ? 'estimated from context size' : 'reported usage');
 	const modelMismatch = $derived(marked === true && gauge?.anchorModelId != null);

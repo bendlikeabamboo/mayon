@@ -176,6 +176,13 @@ export interface ProviderConfig {
 	 * gauge (feature 023); not a secret.
 	 */
 	contextWindow?: number;
+	/**
+	 * Context windows in tokens as reported by the provider's `/models` listing,
+	 * keyed by model id. Captured automatically on discovery refresh; non-secret
+	 * handle data. Absent when none captured. Never overrides the user-declared
+	 * `contextWindow` — precedence resolves at read time.
+	 */
+	modelContextWindows?: Record<string, number>;
 	requestDefaults?: SamplingRequestDefaults;
 	extraBody?: Record<string, JSONValue>;
 }

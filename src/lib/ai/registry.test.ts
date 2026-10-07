@@ -397,3 +397,51 @@ describe('normalizeProviderConfig contextWindow', () => {
 		expect('contextWindow' in normalized).toBe(false);
 	});
 });
+
+describe('normalizeProviderConfig modelContextWindows', () => {
+	it('keeps a valid map', () => {
+		const normalized = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: { 'test-model': 128000 }
+		});
+		expect(normalized.modelContextWindows).toEqual({ 'test-model': 128000 });
+	});
+
+	it.each([
+		{ 'test-model': 0 },
+		{ 'test-model': -1 },
+		{ 'test-model': -128000 },
+		{ 'test-model': 128000.5 },
+		{ 'test-model': '128000' },
+		{ 'test-model': null },
+		{ 'test-model': NaN },
+		{ 'test-model': Infinity }
+	])('drops invalid value in %p', (bad) => {
+		const normalized = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: bad as Record<string, number>
+		});
+		expect(normalized.modelContextWindows).toEqual({});
+	});
+
+	it('prunes orphaned keys not present in models', () => {
+		const normalized = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: { 'test-model': 128000, ghost: 8192 }
+		});
+		expect(normalized.modelContextWindows).toEqual({ 'test-model': 128000 });
+	});
+
+	it('keeps an absent map absent', () => {
+		const normalized = normalizeProviderConfig(baseConfig);
+		expect('modelContextWindows' in normalized).toBe(false);
+	});
+
+	it('passes a normalized map through unchanged', () => {
+		const once = normalizeProviderConfig({
+			...baseConfig,
+			modelContextWindows: { 'test-model': 4096 }
+		});
+		expect(normalizeProviderConfig(once)).toEqual(once);
+	});
+});

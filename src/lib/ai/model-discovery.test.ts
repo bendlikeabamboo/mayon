@@ -5,6 +5,9 @@ import type { BrowserKeyStore } from './keystore/browser';
 import {
 	discoverModels,
 	MODEL_DISCOVERY_TIMEOUT_MS,
+	mergeModelContextWindows,
+	parseCopilotModelEntries,
+	parseModelEntries,
 	parseModelIds,
 	readAll
 } from './model-discovery';
@@ -177,6 +180,143 @@ describe('parseModelIds', () => {
 	});
 });
 
+describe('parseModelEntries', () => {
+	it('harvests context_length', () => {
+		expect(
+			parseModelEntries(JSON.stringify({ data: [{ id: 'a', context_length: 128000 }] }))
+		).toEqual([{ id: 'a', contextWindow: 128000 }]);
+	});
+
+	it('harvests context_window', () => {
+		expect(
+			parseModelEntries(JSON.stringify({ data: [{ id: 'a', context_window: 4096 }] }))
+		).toEqual([{ id: 'a', contextWindow: 4096 }]);
+	});
+
+	it('harvests max_context_length (Mistral spelling)', () => {
+		expect(
+			parseModelEntries(JSON.stringify({ data: [{ id: 'a', max_context_length: 231071 }] }))
+		).toEqual([{ id: 'a', contextWindow: 231071 }]);
+	});
+
+	it('prefers context_length and context_window over max_context_length', () => {
+		const body = JSON.stringify({
+			data: [
+				{ id: 'a', context_length: 128000, max_context_length: 1 },
+				{ id: 'b', context_window: 64000, max_context_length: 1 }
+			]
+		});
+		expect(parseModelEntries(body)).toEqual([
+			{ id: 'a', contextWindow: 128000 },
+			{ id: 'b', contextWindow: 64000 }
+		]);
+	});
+
+	it('prefers context_length when both spellings are present', () => {
+		const body = JSON.stringify({
+			data: [{ id: 'a', context_length: 128000, context_window: 1 }]
+		});
+		expect(parseModelEntries(body)).toEqual([{ id: 'a', contextWindow: 128000 }]);
+	});
+
+	it.each([
+		['zero', { id: 'a', context_length: 0 }],
+		['negative', { id: 'a', context_length: -128000 }],
+		['float', { id: 'a', context_length: 128000.5 }],
+		['numeric string', { id: 'a', context_length: '128000' }],
+		['nested only', { id: 'a', top_provider: { context_length: 128000 } }],
+		['absent', { id: 'a' }],
+		['null', { id: 'a', context_length: null }]
+	])('treats %s as not reported', (_label, entry) => {
+		expect(parseModelEntries(JSON.stringify({ data: [entry] }))).toEqual([{ id: 'a' }]);
+	});
+
+	it('ignores unrecognized extra fields and reports no window', () => {
+		expect(
+			parseModelEntries(JSON.stringify({ data: [{ id: 'a', created: 1, owned_by: 'x' }] }))
+		).toEqual([{ id: 'a' }]);
+	});
+
+	it('keeps the first entry for duplicate ids with conflicting windows', () => {
+		const body = JSON.stringify({
+			data: [
+				{ id: 'a', context_length: 128000 },
+				{ id: 'a', context_length: 999 }
+			]
+		});
+		expect(parseModelEntries(body)).toEqual([{ id: 'a', contextWindow: 128000 }]);
+	});
+
+	it('drops embedding entries even when they carry windows', () => {
+		const body = JSON.stringify({
+			data: [
+				{ id: 'e', type: 'embedding', context_length: 8192 },
+				{ id: 'c', context_length: 4096 }
+			]
+		});
+		expect(parseModelEntries(body)).toEqual([{ id: 'c', contextWindow: 4096 }]);
+	});
+
+	it('reports no window for bare string entries', () => {
+		expect(parseModelEntries(JSON.stringify(['m1']))).toEqual([{ id: 'm1' }]);
+	});
+
+	it('returns [] for unrecognized shapes', () => {
+		expect(parseModelEntries(JSON.stringify({ objects: [] }))).toEqual([]);
+	});
+
+	it('wrapper still returns deduped sorted ids', () => {
+		const body = JSON.stringify({
+			data: [{ id: 'b', context_length: 1 }, { id: 'a', context_length: 2 }, { id: 'b' }]
+		});
+		expect(parseModelIds(body)).toEqual(['a', 'b']);
+	});
+});
+
+describe('parseCopilotModelEntries', () => {
+	it('harvests windows for chat-capable, policy-enabled entries only', () => {
+		const body = JSON.stringify({
+			data: [
+				{ id: 'gpt-5', object: 'model', capabilities: { type: 'chat' }, context_length: 128000 },
+				{ id: 'embed', object: 'model', capabilities: { type: 'embedding' }, context_length: 8192 },
+				{
+					id: 'blocked',
+					object: 'model',
+					capabilities: { type: 'chat' },
+					policy: { state: 'disabled' },
+					context_length: 100
+				},
+				{
+					id: 'router',
+					object: 'model_listing',
+					capabilities: { type: 'chat' },
+					context_window: 50
+				}
+			]
+		});
+		expect(parseCopilotModelEntries(body)).toEqual([{ id: 'gpt-5', contextWindow: 128000 }]);
+	});
+
+	it('yields entries without windows when nothing is reported', () => {
+		const body = JSON.stringify({
+			data: [
+				{ id: 'gpt-5', object: 'model', capabilities: { type: 'chat' }, context_length: 'big' },
+				{
+					id: 'claude-4',
+					object: 'model',
+					capabilities: { type: 'chat' },
+					top_provider: { context_length: 200000 }
+				}
+			]
+		});
+		expect(parseCopilotModelEntries(body)).toEqual([{ id: 'claude-4' }, { id: 'gpt-5' }]);
+	});
+
+	it('returns [] for unparseable bodies', () => {
+		expect(parseCopilotModelEntries('not json')).toEqual([]);
+	});
+});
+
 describe('readAll', () => {
 	it('drains a chunked stream into a single UTF-8 string', async () => {
 		const enc = new TextEncoder();
@@ -188,6 +328,47 @@ describe('readAll', () => {
 			}
 		});
 		expect(await readAll(stream)).toBe('hello');
+	});
+});
+
+describe('mergeModelContextWindows', () => {
+	it('overwrites with the latest reported value', () => {
+		expect(mergeModelContextWindows({ a: 128000 }, [{ id: 'a', contextWindow: 200000 }])).toEqual({
+			a: 200000
+		});
+	});
+
+	it('drops previous values for ids reported without a window', () => {
+		expect(mergeModelContextWindows({ a: 1, b: 2 }, [{ id: 'a' }])).toEqual({ b: 2 });
+	});
+
+	it('retains last-known values for ids absent from the response', () => {
+		expect(mergeModelContextWindows({ a: 1, b: 2 }, [{ id: 'a', contextWindow: 5 }])).toEqual({
+			a: 5,
+			b: 2
+		});
+	});
+
+	it('entries without windows empty the reported keys and add nothing', () => {
+		expect(mergeModelContextWindows({ a: 1, b: 2 }, [{ id: 'a' }, { id: 'b' }])).toEqual({});
+	});
+
+	it('an empty response retains every last-known value', () => {
+		expect(mergeModelContextWindows({ a: 1, b: 2 }, [])).toEqual({ a: 1, b: 2 });
+	});
+
+	it('an undefined previous map starts empty', () => {
+		expect(
+			mergeModelContextWindows(undefined, [{ id: 'a', contextWindow: 1 }, { id: 'b' }])
+		).toEqual({ a: 1 });
+	});
+
+	it('returns a fresh object — mutating it does not affect the input', () => {
+		const previous = { a: 1 };
+		const merged = mergeModelContextWindows(previous, [{ id: 'b', contextWindow: 2 }]);
+		merged['a'] = 99;
+		delete merged['b'];
+		expect(previous).toEqual({ a: 1 });
 	});
 });
 
@@ -218,9 +399,9 @@ describe('discoverModels', () => {
 			)
 		);
 
-		const ids = await discoverModels(config, { hasKey: (id) => fakeKeyStore.has(id) });
+		const entries = await discoverModels(config, { hasKey: (id) => fakeKeyStore.has(id) });
 
-		expect(ids).toEqual(['openai/gpt-4o', 'openai/gpt-4o-mini']);
+		expect(entries).toEqual([{ id: 'openai/gpt-4o' }, { id: 'openai/gpt-4o-mini' }]);
 		expect(globalThis.fetch).toHaveBeenCalledOnce();
 		const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
 		expect(url).toBe('https://openrouter.ai/api/v1/models');
@@ -302,9 +483,9 @@ describe('discoverModels', () => {
 				})
 			);
 
-			const ids = await discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) });
+			const entries = await discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) });
 
-			expect(ids).toEqual(['gpt-5']);
+			expect(entries).toEqual([{ id: 'gpt-5' }]);
 			expect(tokenCalls).toEqual([
 				{ url: '/api/llm/copilot/token', method: 'POST', body: { githubToken: 'ghu_grant' } }
 			]);
@@ -346,9 +527,9 @@ describe('discoverModels', () => {
 				})
 			);
 
-			const ids = await discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) });
+			const entries = await discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) });
 
-			expect(ids).toEqual(['claude-sonnet-4', 'gpt-5']);
+			expect(entries).toEqual([{ id: 'claude-sonnet-4' }, { id: 'gpt-5' }]);
 		});
 
 		it('throws MissingKeyError before any request when no grant is stored', async () => {

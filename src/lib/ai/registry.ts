@@ -348,7 +348,9 @@ function inferGroup(config: Pick<ProviderConfig, 'kind' | 'baseUrl'>): ProviderG
  * `'auto'`/absent `toolCapability` maps through `legacyToolDefault` (prior
  * effective behavior preserved exactly), `group` defaults via kind + baseUrl
  * template match (else `'custom'`), `requiresKey` defaults via the kind rule
- * (`kind !== 'ollama'`), and a non-positive-integer `contextWindow` is dropped. Pure and idempotent — normalized configs pass through
+ * (`kind !== 'ollama'`), a non-positive-integer `contextWindow` is dropped, and
+ * `modelContextWindows` drops non-positive-integer values (never clamped) and
+ * keys not present in the same config's `models`. Pure and idempotent — normalized configs pass through
  * unchanged; the result becomes durable on the next user save.
  */
 export function normalizeProviderConfig(raw: LegacyProviderConfig): ProviderConfig {
@@ -363,6 +365,16 @@ export function normalizeProviderConfig(raw: LegacyProviderConfig): ProviderConf
 		!(Number.isInteger(normalized.contextWindow) && normalized.contextWindow >= 1)
 	) {
 		delete normalized.contextWindow;
+	}
+	if (normalized.modelContextWindows !== undefined) {
+		const modelIds = new Set(normalized.models);
+		const entries = Object.entries(normalized.modelContextWindows as Record<string, unknown>);
+		normalized.modelContextWindows = Object.fromEntries(
+			entries.filter(([model, window]) => {
+				if (!modelIds.has(model)) return false;
+				return typeof window === 'number' && Number.isInteger(window) && window >= 1;
+			}) as [string, number][]
+		);
 	}
 	return normalized;
 }

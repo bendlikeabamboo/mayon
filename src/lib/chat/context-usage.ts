@@ -22,7 +22,7 @@ export type ContextGauge = {
 	anchorModelId: string | null;
 	anchorUsage: ContextUsageTriple | null;
 	limit: number | null;
-	limitSource: 'provider-declared' | 'catalog' | 'unknown';
+	limitSource: 'provider-declared' | 'model-listing' | 'catalog' | 'unknown';
 	remainingPct: number | null;
 	state: 'normal' | 'low' | 'critical' | 'no-limit';
 };
@@ -40,11 +40,17 @@ function usedOf(candidate: ContextGaugeCandidate): number {
 	return tokens ?? 0;
 }
 
+function positiveInt(value: number | null | undefined): value is number {
+	return Number.isInteger(value) && (value as number) > 0;
+}
+
 export function deriveContextGauge(input: {
 	candidates: ContextGaugeCandidate[];
 	assembledChars: number;
 	activeModelId: string | null;
 	declaredWindow: number | null;
+	// Provider-listed context window for the active model; positive integer or null/absent.
+	listedWindow?: number | null;
 }): ContextGauge {
 	const eligible = input.candidates.filter(
 		(c) => c.kind === 'assistant_message' && (c.usage != null || c.tokens != null)
@@ -70,9 +76,12 @@ export function deriveContextGauge(input: {
 
 	let limit: number | null = null;
 	let limitSource: ContextGauge['limitSource'] = 'unknown';
-	if (Number.isInteger(input.declaredWindow) && (input.declaredWindow as number) > 0) {
+	if (positiveInt(input.declaredWindow)) {
 		limit = input.declaredWindow;
 		limitSource = 'provider-declared';
+	} else if (positiveInt(input.listedWindow)) {
+		limit = input.listedWindow;
+		limitSource = 'model-listing';
 	} else {
 		const catalog = estimateContextLimit(input.activeModelId ?? undefined);
 		if (catalog != null) {

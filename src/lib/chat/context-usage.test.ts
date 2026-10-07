@@ -165,7 +165,7 @@ describe('deriveContextGauge', () => {
 			activeModelId: 'z-ai/glm-5.2',
 			candidates: []
 		});
-		expect(gauge.limit).toBe(128000);
+		expect(gauge.limit).toBe(1000000);
 		expect(gauge.limitSource).toBe('catalog');
 	});
 
@@ -188,6 +188,66 @@ describe('deriveContextGauge', () => {
 			expect(gauge.limit).toBe(128000);
 			expect(gauge.limitSource).toBe('catalog');
 		}
+	});
+
+	it('uses listed window with limitSource model-listing when declared window is absent', () => {
+		const gauge = deriveContextGauge({ ...base, listedWindow: 64000, candidates: [] });
+		expect(gauge.limit).toBe(64000);
+		expect(gauge.limitSource).toBe('model-listing');
+	});
+
+	it('declared window beats listed window', () => {
+		const gauge = deriveContextGauge({
+			...base,
+			activeModelId: 'gpt-4o',
+			declaredWindow: 50000,
+			listedWindow: 64000,
+			candidates: []
+		});
+		expect(gauge.limit).toBe(50000);
+		expect(gauge.limitSource).toBe('provider-declared');
+	});
+
+	it('listed window beats catalog', () => {
+		const gauge = deriveContextGauge({
+			...base,
+			activeModelId: 'gpt-4o',
+			listedWindow: 64000,
+			candidates: []
+		});
+		expect(gauge.limit).toBe(64000);
+		expect(gauge.limitSource).toBe('model-listing');
+	});
+
+	it('ignores invalid listed windows (zero, negative, non-integer, null) and falls through', () => {
+		for (const listedWindow of [0, -1000, 2.5, null]) {
+			const gauge = deriveContextGauge({
+				...base,
+				activeModelId: 'gpt-4o',
+				listedWindow,
+				candidates: []
+			});
+			expect(gauge.limit).toBe(128000);
+			expect(gauge.limitSource).toBe('catalog');
+		}
+
+		const unknown = deriveContextGauge({ ...base, listedWindow: 2.5, candidates: [] });
+		expect(unknown.limit).toBe(null);
+		expect(unknown.limitSource).toBe('unknown');
+		expect(unknown.remainingPct).toBe(null);
+		expect(unknown.state).toBe('no-limit');
+	});
+
+	it('falls through to listed window when declared window is invalid', () => {
+		const gauge = deriveContextGauge({
+			...base,
+			activeModelId: 'gpt-4o',
+			declaredWindow: 0,
+			listedWindow: 64000,
+			candidates: []
+		});
+		expect(gauge.limit).toBe(64000);
+		expect(gauge.limitSource).toBe('model-listing');
 	});
 
 	it('classifies thresholds: exactly 25% remaining is low, just above is normal', () => {

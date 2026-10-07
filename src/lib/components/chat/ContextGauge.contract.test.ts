@@ -99,6 +99,22 @@ describe('ContextGauge detail popover (023 US4)', () => {
 		expect(gauge).toContain('unknown — set "Context window" on the provider card');
 	});
 
+	it("maps 'model-listing' to the humanized 'provider model listing' label", () => {
+		expect(gauge).toContain("'model-listing'");
+		expect(gauge).toContain('provider model listing');
+	});
+
+	it('Window row renders the humanized label through the limitSourceText map', () => {
+		expect(content).toContain('limitSourceText');
+	});
+
+	it('unknown-window copy unchanged (trigger title and popover hint)', () => {
+		expect(gauge).toContain(
+			'— set "Context window" on the provider settings card to show the limit'
+		);
+		expect(gauge).toContain('unknown — set "Context window" on the provider card');
+	});
+
 	it('content shows provenance and the anchor model with mismatch note', () => {
 		expect(gauge).toContain('estimated from context size');
 		expect(gauge).toContain("'reported usage'");

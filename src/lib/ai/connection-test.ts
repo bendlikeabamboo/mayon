@@ -76,12 +76,12 @@ export async function testProviderConnection(
 	}
 
 	try {
-		const models = await discoverModels(
+		const entries = await discoverModels(
 			config,
 			{ hasKey: hasProviderKey },
 			AbortSignal.timeout(timeoutMs)
 		);
-		return { ok: true, models };
+		return { ok: true, models: entries.map((model) => model.id) };
 	} catch (err) {
 		return classify(err, config, timeoutMs);
 	}
