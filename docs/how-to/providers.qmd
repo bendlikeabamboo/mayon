@@ -8,6 +8,8 @@ aliases:
 
 Mayon talks to AI models through configurable providers. Each provider is an adapter that implements a common streaming interface. The app ships with templates for popular providers and supports any OpenAI-compatible endpoint.
 
+Setting up your first provider? The [getting started guide](../tutorials/getting-started.qmd) walks through the two recommended starting points — **OpenRouter** (one account, pay-as-you-go) or **Ollama** (free and local) — including how to get a key. The full list below covers the rest; every template is configured the same way.
+
 ## Provider templates
 
 Clicking **Add provider** in Settings opens a picker with eighteen built-in templates, listed below in the order they appear. No template is a default — **DeepSeek** simply leads the list. Each template prefills a base URL and a starter model list, and you can edit the base URL before saving.

@@ -32,40 +32,116 @@ telemetry.
 
 ## Get Mayon
 
-### Web demo
+### Before you start
 
-Try the live demo at
-[bendlikeabamboo.github.io/mayon](https://bendlikeabamboo.github.io/mayon).
+You'll need three things in place before installing:
 
-### Docker / Podman (self-host)
+- **A container engine.** Mayon ships as three small programs (web app, helper
+  server, database) bundled into _containers_, and a **container engine** is
+  the app that downloads and runs them for you. Install
+  [Docker Desktop](https://docs.docker.com/get-docker/) on macOS or Windows —
+  a ~2–3 GB download, free for personal use (larger businesses need a
+  [paid plan](https://www.docker.com/pricing)). On Linux, install
+  [Docker Engine](https://docs.docker.com/get-docker/) or
+  [Podman](https://podman.io/docs/installation) instead.
+- **An AI provider.** Chat runs through an AI service of your choice, so you
+  will need a key from one. Easiest is
+  [OpenRouter](https://openrouter.ai/settings/keys) — one account, many
+  models, pay-as-you-go with per-key spend caps. The free option is
+  [Ollama](https://ollama.com/download), which runs models on your own
+  machine. Both are walked through step by step in the
+  [beginner guide](https://bendlikeabamboo.github.io/mayon/tutorials/getting-started.html).
+- **A terminal.** The install step is one command typed into a terminal — the
+  text window where commands are entered. macOS: the built-in
+  [Terminal](https://support.apple.com/guide/terminal/welcome/mac). Windows:
+  the Ubuntu terminal inside WSL2 (see
+  [Windows: install inside WSL2](#windows-install-inside-wsl2) below). Linux:
+  your distro's terminal.
 
-Mayon runs as three containers (web SPA, server, Postgres) on Docker or Podman
-with identical behavior; Docker is the default when both are installed. The
-quickest way to run it — a single command that detects the engine, generates a
-secure Postgres password, writes the files to `~/.mayon`, and starts the stack:
+### Install in three steps
 
-```bash
-curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/install.sh | bash
-```
+1. Install [Docker Desktop](https://docs.docker.com/get-docker/) and open it
+   once so it is running.
+2. Paste this into a terminal:
 
-Then open http://localhost:8080. Files land in `~/.mayon`; use
-`~/.mayon/install.sh` to manage the stack afterwards (`stop`, `start`,
-`restart`, `logs`, `status`, `upgrade`, `uninstall`).
+   ```bash
+   curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/install.sh | bash
+   ```
+
+   The first run downloads Mayon's images, so expect a few minutes. The
+   command detects your engine, generates a secure Postgres password, writes
+   the files to `~/.mayon`, and starts the stack; afterwards
+   `~/.mayon/install.sh` manages it (`stop`, `start`, `restart`, `logs`,
+   `status`, `upgrade`, `uninstall`).
+
+   > What that command does: it downloads Mayon's install script and runs it.
+   > The script writes its settings to `~/.mayon`, generates a random
+   > database password, and starts three containers on your machine —
+   > nothing else.
+
+3. Open http://localhost:8080 in your browser. Then connect an AI provider —
+   required before chat works — by following
+   [Getting started](https://bendlikeabamboo.github.io/mayon/tutorials/getting-started.html),
+   the beginner guide that covers first run, provider setup, and your first
+   chat step by step.
+
+#### Windows: install inside WSL2
+
+The installer is a bash script, so on Windows it runs inside
+[WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) (a Windows
+feature that provides an Ubuntu terminal), not PowerShell. This path has
+been tested end to end on Windows 11 with Docker Desktop:
+
+1. Install WSL2: in an administrator PowerShell run `wsl --install`, then
+   restart. Current Docker Desktop needs WSL ≥ 2.1.5 — check with
+   `wsl --version`, run `wsl --update` if older.
+2. Install [Docker Desktop with the WSL 2 backend](https://docs.docker.com/desktop/wsl/)
+   and enable WSL integration for Ubuntu. If you previously installed Docker
+   Engine _inside_ the Ubuntu distro, uninstall that copy first.
+3. Open **Ubuntu** from the Start menu and run the one-line installer above
+   there, then open http://localhost:8080 in your Windows browser — Docker
+   Desktop forwards the port automatically.
+
+#### Podman instead of Docker
 
 **Podman** works out of the box on Podman 4+ (rootless is supported). To force
 Podman on a machine that also has Docker, prefix the install with
 `MAYON_CONTAINER_ENGINE=podman`; the engine is recorded in `~/.mayon/.env`, so
-the saved-installer subcommands keep using it too.
+the saved-installer subcommands keep using it too. Notes and caveats:
+[Podman notes](#podman-notes).
 
-**Pin a release** (recommended for reproducible installs):
+### Optional: Brave Search (self-hosted web search for chats)
+
+Mayon can add live web search to chats so answers can be validated and
+refreshed with current sources. Get an API key at
+[brave.com/search/api](https://brave.com/search/api/), then in the app:
+**Settings → MCP servers → Add Server → Brave Search**, paste the key, and
+complete the trust prompt.
+
+The key is stored with the app's other credentials (browser secret store) —
+never in the connection config, URLs, or logs — and rotating it is just
+editing it in settings; no `.env` changes or stack restarts. The official
+Brave Search MCP server runs on demand inside the Mayon server container, so
+there is nothing to deploy: the feature is available whenever the server is.
+
+## Advanced
+
+Everything above is the recommended path. The sections below are optional or
+for special situations and assume some comfort with the terminal.
+
+### Pin a release
+
+Recommended for reproducible installs:
 
 ```bash
 curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/download/v0.1.0/install.sh | bash
 ```
 
-**Prefer no install script?** Run the compose file directly — but you
-**must** provide `POSTGRES_PASSWORD` in a local `.env` or on the command
-line (the install script generates a secure random password for you):
+### Prefer no install script?
+
+Run the compose file directly — but you **must** provide
+`POSTGRES_PASSWORD` in a local `.env` or on the command line (the install
+script generates a secure random password for you):
 
 ```bash
 docker compose -f https://raw.githubusercontent.com/bendlikeabamboo/mayon/main/docker-compose.yml \
@@ -86,11 +162,13 @@ POSTGRES_PASSWORD=<your-password>
 > password after init requires deleting the volume (`docker compose down
 -v`) and starting fresh (all data is lost).
 
+### Port and version settings
+
 All three paths accept `MAYON_PORT` (web port, default `8080`) and
 `MAYON_VERSION` (image tag) via env. To move off port 8080, set
 `MAYON_PORT=3000` in `~/.mayon/.env` and restart.
 
-#### Podman notes
+### Podman notes
 
 - Image refs in the compose file are fully qualified
   (`docker.io/library/postgres:17-alpine`), so hosts without
@@ -106,20 +184,6 @@ All three paths accept `MAYON_PORT` (web port, default `8080`) and
 - Aliasing `docker` → `podman` helps manual typing only; the installer and
   docs commands use real binaries — pass `MAYON_CONTAINER_ENGINE=podman`
   instead.
-
-#### Optional: Brave Search (self-hosted web search for chats)
-
-Mayon can add live web search to chats so answers can be validated and
-refreshed with current sources. Get an API key at
-[brave.com/search/api](https://brave.com/search/api/), then in the app:
-**Settings → MCP servers → Add Server → Brave Search**, paste the key, and
-complete the trust prompt.
-
-The key is stored with the app's other credentials (browser secret store) —
-never in the connection config, URLs, or logs — and rotating it is just
-editing it in settings; no `.env` changes or stack restarts. The official
-Brave Search MCP server runs on demand inside the Mayon server container, so
-there is nothing to deploy: the feature is available whenever the server is.
 
 ### Upgrading
 
@@ -276,19 +340,9 @@ Exit codes: `0` success, `1` refused/usage, `2` database unreachable. No
 command creates an MFA-less login path. While developing:
 `pnpm --filter @mayon/server auth <command>`.
 
-## Build from source
+### Troubleshooting
 
-**Prerequisites:** Node 22, pnpm 10, and Docker or Podman (the dev engine is
-selectable via `MAYON_DEV_ENGINE`; see [CONTRIBUTING.md](CONTRIBUTING.md)).
-
-```bash
-pnpm install
-pnpm dev          # all-Docker dev stack: web HMR (:5173) + server + db
-```
-
-## Troubleshooting
-
-### `password authentication failed for user "mayon"`
+#### `password authentication failed for user "mayon"`
 
 This means the server container cannot authenticate with Postgres. Common causes:
 
@@ -308,7 +362,7 @@ This means the server container cannot authenticate with Postgres. Common causes
   ~/.mayon/install.sh upgrade
   ```
 
-### Podman: short-name image resolution
+#### Podman: short-name image resolution
 
 If `podman compose up` fails with an error like `short-name "postgres:17-alpine"
 did not resolve to a registry`, the host's registry policy blocks unqualified
@@ -316,11 +370,21 @@ image names. Current releases ship fully-qualified refs (`docker.io/library/...`
 in the compose file, so this is fixed — run `~/.mayon/install.sh upgrade` on an
 older install.
 
-### Podman rootless: web container fails to bind port 80
+#### Podman rootless: web container fails to bind port 80
 
 Older releases had the web container listen on port 80 inside the container,
 which failed under rootless Podman. Current releases listen on 8080 inside
 the container; run `~/.mayon/install.sh upgrade` if you see this.
+
+## Build from source
+
+**Prerequisites:** Node 22, pnpm 10, and Docker or Podman (the dev engine is
+selectable via `MAYON_DEV_ENGINE`; see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+```bash
+pnpm install
+pnpm dev          # all-Docker dev stack: web HMR (:5173) + server + db
+```
 
 ## Documentation
 

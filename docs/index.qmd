@@ -34,12 +34,14 @@ The narrative record of feature decisions and reversals.
 
 ## Quick start
 
+New to Mayon? Read the [beginner guide](tutorials/getting-started.qmd) first — it covers everything you need before installing.
+
 The fastest way to get Mayon running on your own machine is the one-line installer. It detects your container engine, generates a secure database password, writes everything to `~/.mayon`, and starts the whole stack for you:
 
 ```bash
 curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/install.sh | bash
 ```
 
-When the command finishes, open <http://localhost:8080> in your browser and start chatting. The [README](https://github.com/bendlikeabamboo/mayon#readme) covers the other ways to install and run Mayon.
+When the command finishes, open <http://localhost:8080> in your browser — then connect an AI provider (chat needs one) and start exploring; the [beginner guide](tutorials/getting-started.qmd) walks through both. The [README](https://github.com/bendlikeabamboo/mayon#readme) covers the other ways to install and run Mayon.
 
 If you want to work on Mayon itself, `pnpm dev` runs the all-Docker dev stack (web HMR on <http://localhost:5173>).
