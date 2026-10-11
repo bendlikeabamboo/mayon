@@ -5,47 +5,112 @@ aliases: [/getting-started.html]
 
 # Getting Started
 
-Mayon runs as a SvelteKit SPA backed by a Mayon server with Postgres, all orchestrated by Docker Compose.
+Mayon is a learning app you run yourself, on your own computer. This guide takes you from a fresh machine to your first conversation — no programming experience is needed, and every term is explained the first time it appears. (If you want to develop Mayon itself, see [Building from source](../how-to/building.qmd).)
 
-## Docker (primary)
+## What you are setting up
 
-Pull and run with Docker Compose:
+Mayon runs entirely on your own computer, and there is no account to create. That is what keeps your chats, notes, and quiz scores private — [data and privacy](../how-to/data-and-privacy.qmd) has the details.
+
+To make this work, Mayon arrives as three small programs — the web app you open in your browser, a helper server, and a database — bundled into *containers*. A **container engine** is a program that downloads and runs containerized apps for you, so a single engine starts all three pieces and you never have to manage them individually. [Docker](https://docs.docker.com/get-docker/) is the most common engine; it is free for personal use.
+
+Chat also needs an **AI provider**: an AI service that generates the replies. You connect one account — either a cloud service with pay-per-use pricing or a free one that runs on your own machine — and Mayon stores its **API key** (a long password that identifies your account) in your browser, on your computer.
+
+## Prerequisites
+
+You'll need three things in place before installing. Each takes only a few minutes.
+
+### 1. A container engine (~2–3 GB download)
+
+- **macOS and Windows:** install [Docker Desktop](https://docs.docker.com/get-docker/). It is free for personal use; larger businesses need a [paid plan](https://www.docker.com/pricing). After installing, open it once and leave it running.
+- **Linux:** install [Docker Engine](https://docs.docker.com/get-docker/), or [Podman](https://podman.io/docs/installation), which works just as well.
+
+### 2. An AI provider (required for chat)
+
+Pick one to start; you can add more later and switch at any time.
+
+- **[OpenRouter](https://openrouter.ai/settings/keys)** (easiest) — one account gives you access to hundreds of AI models. You add a small amount of credit and are charged only for what you use; some models are free.
+- **[Ollama](https://ollama.com/download)** (free, private) — runs AI models directly on your computer. It costs nothing and works offline, but needs a reasonably capable computer (8 GB of memory or more), and each model download is 1–4 GB.
+
+### 3. A terminal
+
+The **terminal** is a window where you type text commands. You'll use it only once, to run the install command in the next section.
+
+- **macOS:** open the built-in **Terminal** app — [Apple's guide](https://support.apple.com/guide/terminal/welcome/mac) shows how.
+- **Windows:** set up [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install), a Windows feature that gives you an Ubuntu terminal, and use that (see [Windows setup](#windows-setup) below).
+- **Linux:** open your distro's terminal.
+
+## Install Mayon
+
+Open your terminal and paste this one line:
 
 ```bash
-git clone https://github.com/bendlikeabamboo/mayon.git
-cd mayon
-docker compose up
+curl -fsSL https://github.com/bendlikeabamboo/mayon/releases/latest/download/install.sh | bash
 ```
 
-Open `http://localhost:8080` in your browser. Data is stored in Postgres inside the `pg-data` docker volume and persists across restarts.
+> **What this command does:** it downloads Mayon's install script from GitHub and runs it. The script checks that your container engine is installed, generates a secure random password for the database, writes its settings into a new `~/.mayon` folder in your home directory, and starts Mayon's three containers. Nothing else on your system is changed.
 
-## Development
+The first run downloads Mayon's programs (several hundred megabytes), so give it a few minutes — and make sure Docker Desktop is running before you start. When it finishes, you'll see `Mayon is up → http://localhost:8080`. The first page load can take another minute while the database prepares itself.
 
-For active development, bring up the entire stack (web + server + Postgres) in Docker:
+From now on, you manage Mayon with `~/.mayon/install.sh` followed by one of: `stop`, `start`, `restart`, `logs`, `status`, `upgrade`, `uninstall`.
 
-```bash
-pnpm dev   # all-Docker dev stack: web HMR on :5173 + server + Postgres
-```
+### Windows setup
 
-Web changes hot-reload via Vite; the dev container proxies `/api` requests to
-the Dockerized server.
+The installer is a bash script, so on Windows it runs inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) — an Ubuntu terminal environment provided by Windows — rather than in PowerShell. This setup has been tested end to end: WSL2 with Docker Desktop, the installer run inside Ubuntu, and the app opening in the Windows browser.
+
+1. Open PowerShell as administrator and run `wsl --install`, then restart when prompted. That installs the Ubuntu terminal ([Microsoft's guide](https://learn.microsoft.com/en-us/windows/wsl/install)). Current Docker Desktop versions need WSL 2.1.5 or newer — check with `wsl --version`, and run `wsl --update` if yours is older.
+2. Install [Docker Desktop](https://docs.docker.com/get-docker/) with the [WSL 2 backend](https://docs.docker.com/desktop/wsl/), and in Docker Desktop's settings enable WSL integration for Ubuntu. If you previously installed Docker *inside* the Ubuntu terminal, uninstall that copy first.
+3. Open **Ubuntu** from the Start menu and run the install command above inside it.
+4. Open **http://localhost:8080** in your usual Windows browser — Docker Desktop forwards the app there automatically.
 
 ## First run
 
-When you open Mayon for the first time the server boots, connects to Postgres, and runs migrations automatically. Look for the status pill in the header:
+Open **http://localhost:8080** in your browser.
 
-- **DB status pill** — reads "DB ready" once the database is up. The pill's status area also shows a separate "Runtime: …" line telling you where the database is running, along with the result of the boot self-check. In development builds that self-check writes, reads, and deletes a test row to confirm the database is functional.
+The very first screen asks **"Set up security?"** — an offer to protect the app with a password and an authenticator code.
 
-You can also confirm storage is working by switching the theme with the sun/moon icon in the header and reloading the tab — the theme persists.
+- On your own computer, clicking **Skip** is fine: the app stays open with no sign-in, and you can enable security later under **Settings → Security**.
+- If you plan to make Mayon reachable from the internet (for example, on a home server), set up security **before** exposing it.
 
-If the server is unreachable, Mayon shows a full-screen message: "Cannot reach the Mayon server." The screen includes a `docker compose up` hint and a Retry button. Start the stack with `docker compose up`, then click Retry (or simply wait — Mayon keeps checking for the server and recovers on its own).
+After that you land on the home dashboard. In the header, a small **DB ready** pill confirms the database came up (a `Runtime: …` line beside it says where the database is running).
 
-## The home dashboard
+If you instead see **"Cannot reach the Mayon server."**, the stack is not running — it may still be starting, or your machine rebooted since. Wait a moment: Mayon keeps checking and recovers on its own. If it does not, run `~/.mayon/install.sh start` in your terminal.
 
-After boot you land on the home screen, not directly inside a chat. The dashboard greets you and keeps your ongoing work one click away: a **Continue learning** card picks up your most recently touched conversation, and the page also lists your **Recent chats**, **In-progress labs**, and **Recent quizzes** as they accumulate. Below the greeting, a starter prompt ("Explore a new topic") is available: clicking it starts a fresh chat and sends an opening message that asks what you are curious about.
+## Connect an AI provider
 
-One more stop worth making before your first conversation: open **Settings** and find the **Learner profile** section. There you set your default knowledge level and preferred teaching mode, and Mayon pre-fills that context into each new chat's learning brief, so replies start at the right level.
+Open **Settings** (the gear icon in the sidebar) and click **Add provider**. Mayon ships with ready-made settings for many AI services; these two are the recommended starting points.
 
-## Start your first conversation
+### Option A: OpenRouter (cloud, pay per use)
 
-The fastest way in is the starter prompt on the home dashboard: click **Explore a new topic** and Mayon opens a new chat and sends the opening message for you. You can also start from scratch — open the chat list, click **New chat**, and either fill in a short learning brief (what you want to learn and at what level) or skip it and just start chatting. Type a message in the composer and the assistant replies right in the chat, with your topic saved automatically. When you're ready to go deeper, the [chat and branching tutorial](chat-and-branching.qmd) shows how to branch a conversation and explore alternative replies.
+1. Create an account at [openrouter.ai](https://openrouter.ai).
+2. Add a few dollars of credit at [openrouter.ai/credits](https://openrouter.ai/credits). You are charged only for what you actually use.
+3. Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). While creating it, you can set a **spend cap** — a hard limit on how much that key can ever spend. A modest cap is a safe way to start.
+4. In Mayon: **Settings → Add provider → OpenRouter**, pick a model from the list, paste your key, click **Save key**, then click **Set active**.
+
+### Option B: Ollama (free, local, private)
+
+1. Install [Ollama](https://ollama.com/download) on your computer and keep it running.
+2. In a terminal, download a small model, for example `ollama pull llama3.2` (about 2 GB — browse the [model library](https://ollama.com/library) for alternatives).
+3. In Mayon: **Settings → Add provider → Ollama (local)** and pick the model you pulled. No key is needed.
+4. **One required change:** the template prefills the address `http://localhost:11434/api`. Change `localhost` to `host.docker.internal` — that is, use `http://host.docker.internal:11434/api` — because Mayon runs inside a container, where `localhost` does not point at your computer. (Under Podman, use `http://host.containers.internal:11434/api`.) Then click **Set active**.
+
+### What this costs
+
+- **Ollama** is completely free: the model runs on your machine.
+- **OpenRouter** and other cloud providers charge per use — typically a few cents for a long conversation — and a per-key spend cap means you can never be charged more than you allowed.
+- A personal subscription such as ChatGPT Plus or Claude Pro does not include API access — these services bill API usage separately. That is why this guide links to the API key page rather than your subscription.
+
+## Your first chat
+
+Before your first chat, consider filling in **Settings → Learner profile**: it sets your default knowledge level and preferred teaching style, and Mayon starts each new chat from there.
+
+Back on the home dashboard, click the starter prompt **"Explore a new topic"**: Mayon opens a chat and asks what you are curious about — type anything you want to learn. You can also open the chat list, click **New chat**, and simply start typing. The dashboard keeps your ongoing work one click away: a **Continue learning** card reopens your most recent conversation, and recent chats, labs, and quizzes accumulate below.
+
+When a reply touches something you'd like to dig into, highlight that passage and branch a new conversation from it — see [Chat and branching](chat-and-branching.qmd).
+
+## What's next
+
+- [Chat and branching](chat-and-branching.qmd) — highlight any excerpt and fork the conversation.
+- [Labs](../how-to/labs.qmd) — turn any chat into a step-by-step hands-on guide.
+- [Quizzes](../how-to/quizzes.qmd) — generate multiple-choice, flashcard, and short-answer quizzes with AI grading.
+- Something not working? The README's [troubleshooting section](https://github.com/bendlikeabamboo/mayon#troubleshooting) covers the common cases.
+- Curious where your data lives? [Data and privacy](../how-to/data-and-privacy.qmd).
