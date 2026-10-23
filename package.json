@@ -59,7 +59,7 @@
 		"drizzle-orm": "^0.45.2",
 		"hast-util-sanitize": "^5.0.2",
 		"highlight.js": "^11.11.1",
-		"katex": "0.16.47",
+		"katex": "0.18.2",
 		"mermaid": "^11.16.1",
 		"ollama-ai-provider-v2": "^3.6.0",
 		"panzoom": "^9.4.4",
