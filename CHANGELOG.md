@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but the server's outbound TLS (LLM proxy) benefits from the refreshed CA
   bundle, and the exact pins guarantee published images run the patched
   runtime regardless of local cache state.
+- **DOMPurify 3.4.17 (template-expression shadow-root bypass)** — the
+  `pnpm.overrides` security pin moves from `^3.4.16` to `^3.4.17`, lifting
+  the single tree-wide copy (transitive via mermaid) onto the fixed release;
+  Dependabot could not act because the override capped resolution. The flaw
+  lets split template expressions survive sanitization inside attached
+  shadow roots when `SAFE_FOR_TEMPLATES` is combined with a DOM-returning
+  mode. Not exploitable in Mayon: dompurify is reached only through
+  mermaid's `sanitizeText`, which sanitizes plain strings with default
+  string-return config and never enables `SAFE_FOR_TEMPLATES`.
 
 ### Changed
 
