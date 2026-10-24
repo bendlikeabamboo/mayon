@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-24
+
+### Security
+
+- **Node.js 22.23.4 (October 21, 2026 security releases)** — every Node.js
+  pin now targets the patched v22.23.4 instead of a floating `22`:
+  `node:22.23.4-alpine` base images for the web and server images (prod and
+  dev variants) and the mock-LLM fixture container, `node-version` in the
+  CI workflows, and `.nvmrc`. The release covers the c-ares, ca-cert
+  (eMudhra Intermediate CA compromise), OpenSSL, SQLite, and Undici updates
+  plus CVE-2026-105482 (high, `dns.resolve*` NUL-byte truncation). Mayon
+  was not directly exposed — the server resolves the database host via
+  `dns.lookup` and does no allowlist-then-`dns.resolve` hostname handling —
+  but the server's outbound TLS (LLM proxy) benefits from the refreshed CA
+  bundle, and the exact pins guarantee published images run the patched
+  runtime regardless of local cache state.
+
+### Changed
+
+- **Dependencies:** vite (dev) bumped from 8.1.0 to 8.1.6, fastify from
+  5.12.5 to 5.12.6, and katex from 0.16.47 to 0.18.2 via Dependabot.
+
 ## [0.8.1] - 2026-10-02
 
 ### Fixed
