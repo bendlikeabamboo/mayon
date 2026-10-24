@@ -68,7 +68,7 @@ services:
       start_period: 10s
     restart: unless-stopped
   mock-llm:
-    image: docker.io/library/node:22-alpine
+    image: docker.io/library/node:22.23.4-alpine
     working_dir: /fixture
     command: node server.mjs
     environment:

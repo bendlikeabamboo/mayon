@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:22.23.4-alpine AS build
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN pnpm --filter @mayon/server build
 
 RUN pnpm deploy --filter=@mayon/server --prod --legacy /app/deployed
 
-FROM node:22-alpine
+FROM node:22.23.4-alpine
 
 WORKDIR /app
 

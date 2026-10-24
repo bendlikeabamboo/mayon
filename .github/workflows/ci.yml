@@ -16,7 +16,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
       - uses: ./.github/actions/ci
 
@@ -27,7 +27,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
       - name: Audit dependencies (report-only)
         shell: bash
         run: |
@@ -70,7 +70,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @mayon/shared build
