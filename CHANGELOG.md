@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-10-25
+
+### Security
+
+- **zod 4.6.7 (high, memory exhaustion validating oversized constrained
+  collections)** — the direct dependency range moves from `^4.4.3` to
+  `^4.6.6`; the lockfile now resolves zod 4.6.7 across all seven
+  importing files (chat message schemas, provider settings, MCP tool
+  contracts). Validation semantics are unchanged; the full vitest suites
+  and `svelte-check` gate the jump across the two minor versions.
+- **undici 7.30.1 (high, DoS via unhandled error on excessive
+  content-encodings)** — the existing `pnpm.overrides` pin raises from
+  `^7.29.1` to `^7.30.1`, lifting the tree-wide transitive copy (via the
+  LLM proxy and AI SDK fetch stack) onto the patched release.
+- **source-map-js 1.2.2 (high, event-loop DoS via indexed source-map
+  section offsets)** — new `pnpm.overrides` pin `^1.2.2` replaces the
+  vulnerable 1.2.1 resolutions under `@tailwindcss/node`, `css-tree`, and
+  `postcss@8.5.28`; 1.2.2 already coexisted in the tree via
+  `postcss@8.5.31`, and all dependents' ranges already permit it.
+- **@vitest/mocker 4.1.12 (medium, code injection via unauthenticated
+  manual mock registration)** — `vitest` (dev-only) bumped `^4.1.11` →
+  `^4.1.12` in both the root and server manifests, carrying the
+  vulnerable `@vitest/mocker` transitive onto the fixed release; the
+  second advisory (Windows backslash traversal in the redirect allowlist)
+  is covered by the same bump.
+- **postcss-selector-parser 7.1.7 (medium, quadratic flat-selector
+  parsing CPU exhaustion)** — new `pnpm.overrides` pin `^7.1.6`
+  (lockfile resolves 7.1.7) patches the sole dependent
+  `svelte-eslint-parser`, which is dev-tooling only and never ships to
+  users.
+
 ## [0.8.2] - 2026-10-24
 
 ### Security
