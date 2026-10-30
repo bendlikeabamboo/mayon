@@ -43,6 +43,14 @@ topology, and the invariants you must respect when editing.
 
 ## Worktrees
 
+Worktrees are the user's setup for parallel work, and they carry a strict
+workflow assumption: **each worktree is an independent git branch tracked
+against the remote (`origin`)**, created by the user. Worktree work is **not
+destined for `main`** — never merge, rebase, cherry-pick, or open a PR into
+`main` from a worktree unless the user explicitly asks. Commit and push to
+the worktree's own remote branch and leave any integration into `main` to
+the user.
+
 `node_modules/` is gitignored, so every new git worktree starts without
 dependencies and with no built `@mayon/shared`. Before running, checking, or
 testing anything in a fresh worktree:
