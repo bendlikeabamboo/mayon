@@ -203,6 +203,8 @@ summary output. The probe imports at `+layout.svelte:6` but is inert without the
 - **As-is design / architecture:** `docs/explanation/architecture.qmd`, `docs/reference/seams.qmd`.
 - **Agent's map (feature placement, text-first proving, browser allowance):**
   `docs/reference/agent-map.qmd`.
+- **Tool map (agent tool inventory + availability rules):** `docs/reference/tool-map.qmd`.
+  Update it in the same change when touching agent/MCP tools.
 - **Build & test commands (user-facing):** `docs/how-to/building.qmd`, `CONTRIBUTING.md`.
 - **Phase-by-phase build history & past decisions:** `docs/dev-notes/`.
 - **Feature decision history (what/why/reversals/learnings per shipped feature):**
