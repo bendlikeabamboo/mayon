@@ -1,0 +1,96 @@
+---
+title: "Tool Map"
+aliases:
+  - /dev/tool-map.html
+---
+
+# Tool Map
+
+One page for developers and agents: every tool the chat agent can call, how each behaves at runtime, and when each is offered to the model. The storage boundary rules are owned by [Architecture Boundaries](seams.qmd); where feature logic lives is the [Agent's Map](agent-map.qmd); the design rationale is in [Architecture](../explanation/architecture.qmd).
+
+The source files are the authority — this page links rather than copies, so it cannot drift far from the code. If you add, remove, or change a tool, update this page in the same change.
+
+## Tool sources
+
+Every tool is a `Tool` (a `ToolDefinition` plus a `run` function) registered in the in-memory registry in `src/lib/agent/registry.ts`, which also hosts the dispatcher `toolsRun`. Three modules feed the registry at import time; MCP servers add tools dynamically at mount time.
+
+| Group | Source | Tools |
+|---|---|---|
+| Readonly inspection | `src/lib/agent/registry.ts` | `read_checklist`, `list_artifacts`, `read_artifact`, `summarize_progress` |
+| Deterministic | `src/lib/agent/deterministic-tools.ts` | `branch_chat`, `save_brief`, `draft_lab_skeleton`, `draft_quiz_outline`, `toggle_checklist_item`, `present_choices` |
+| Generative | `src/lib/agent/generative-tools.ts` | `create_quiz`, `create_lab` |
+| Dynamic MCP | `src/lib/mcp/mount.ts` + `src/lib/mcp/resources.ts` | `mcp.<serverId>.<toolName>` per enabled server, plus `mcp_read_resource` |
+
+## Inventory
+
+Parameters are listed as each tool's schema defines them; "optional" reflects the tool's own description.
+
+**Readonly inspection** (`src/lib/agent/registry.ts`):
+
+| Tool | Parameters | Risk | Flags | Effect and result |
+|---|---|---|---|---|
+| `read_checklist` | `labId` (string) | readonly | — | Returns a lab's checklist items and completion count (`done/total` in the summary, items in detail). |
+| `list_artifacts` | none | readonly | — | Lists the labs and quizzes attached to the current chat (id, kind, title). |
+| `read_artifact` | `kind` (`lab` or `quiz`), `id` (string) | readonly | — | Returns the full lab (with parsed checklist) or quiz (with parsed question payloads). |
+| `summarize_progress` | none | readonly | — | Rollup across the chat's labs and quizzes: artifact counts plus per-lab `done/total` (no LLM call). |
+
+**Deterministic** (`src/lib/agent/deterministic-tools.ts`):
+
+| Tool | Parameters | Risk | Flags | Effect and result |
+|---|---|---|---|---|
+| `branch_chat` | `topic` (string, optional) | high | — | Creates a child chat off the current chat at the last suitable message; returns `detail.artifact = {kind: 'chat', id}`. |
+| `save_brief` | `goal` (string, required), `context`, `level`, `mode`, `scope` (strings, optional) | high | — | Merges with any existing brief and saves the learning brief on the root chat; returns the merged brief. |
+| `draft_lab_skeleton` | `topic` (string, optional) | low | — | Emits a deterministic markdown lab scaffold (five steps for gated strategies, otherwise four) as `detail.markdown` (no LLM call). |
+| `draft_quiz_outline` | `topic` (string, optional), `questionCount` (number, default 5) | low | — | Emits a deterministic quiz outline markdown as `detail.markdown` (no LLM call). |
+| `toggle_checklist_item` | `labId` (string), `itemId` (string) | low | — | Flips a checklist item's done state; returns the updated checklist. |
+| `present_choices` | `nextUnit` (string), `options` (string array, 2–3 labels), `progress` (string) | readonly | `terminal` | Records pacing choices; the app renders them as tappable reply chips under the composer and the agent turn ends. |
+
+Behavioral notes:
+
+- `save_brief` is offered only while the root chat has no brief — `disabledToolsForBrief` (`src/lib/chat/brief.ts`) disables it the moment a parseable brief exists, and the capabilities preamble further directs the model to use it only on the first turn of a brief-less chat and never to rewrite an existing goal.
+- `present_choices` renders its options as reply chips and ends the turn. The scope strategies' `GATE_INSTRUCTION` (`src/lib/chat/strategies.ts`) forbids emitting the choices as a fenced block or raw JSON — the tool call is the only chip path.
+- `create_quiz` and `create_lab` persist their content as artifacts (quiz rows and lab rows) and never reproduce it as chat text; the capabilities preamble and the tools' own success summaries instruct a one-to-two-sentence acknowledgment plus a link to the artifact.
+
+**Generative** (`src/lib/agent/generative-tools.ts`):
+
+| Tool | Parameters | Risk | Flags | Effect and result |
+|---|---|---|---|---|
+| `create_quiz` | `topic` (string, optional), `questionCount` (number, optional) | high | `generative` | Assembles the chat context, generates a mixed quiz (MCQ, flashcard, short-answer), persists it, and returns `detail.artifact = {kind: 'quiz', id}` with a `/quiz/<id>` link in the summary. |
+| `create_lab` | `topic` (string, optional) | high | `generative` | Assembles the chat context, generates a lab with steps and a checklist, persists it, and returns `detail.artifact = {kind: 'lab', id}` with a `/lab/<id>` link in the summary. |
+
+**Dynamic MCP** (`src/lib/mcp/mount.ts`, `src/lib/mcp/resources.ts`):
+
+| Tool | Parameters | Risk | Flags | Effect and result |
+|---|---|---|---|---|
+| `mcp.<serverId>.<toolName>` | the server's `inputSchema` verbatim (must be a JSON object schema) | derived from annotations, default high | — | Proxies to the server via `tools/call` (30 s default timeout); result text is truncated to the result cap and error results surface the server's own message. |
+| `mcp_read_resource` | `serverId` (string), `uri` (string) | readonly | — | Reads a mounted MCP resource; registered while any resource-capable server is mounted, deregistered when the last one unmounts. |
+
+## Risk classes & runtime behavior
+
+The classes are `ToolRisk` (`src/lib/agent/registry.ts`); the gating and status wiring live in `runAgentTurn` (`src/lib/agent/loop.ts`). Within a turn:
+
+- `readonly` runs silently.
+- `low` runs, then raises a `notifyLowRisk` toast with the tool's summary.
+- `high` raises a `requestApproval` modal before running; a decline is final — the capabilities preamble forbids the model from re-requesting a declined action.
+- `generative` shows a `notifyGenerativeStatus` label ("Creating your quiz…") while running and consumes the per-turn sub-call budget (`{subCalls: 0, maxSubCalls: 1}`); a second generative call in the same turn is refused with "one generative action per turn".
+- `terminal` (only `present_choices`) ends the agent turn once its tool calls complete — no further iteration.
+- If every iteration of the turn loop ends in tool calls (`MAX_ITERATIONS = 6`), the turn exits through the critic phase with "(…tool budget reached; continuing from here.)" appended to the reply.
+
+## When tools are available
+
+The gates apply in this order:
+
+1. **Provider capability** — `resolveToolCapability` (`src/lib/agent/capability.ts`) requires the provider's `toolCapability` to not be `'off'`; legacy stored configs resolve through `legacyToolDefault` (anthropic, gemini, and github-copilot default on; ollama off; openai-compatible only for base URLs on the `KNOWN_GATEWAY_BASEURLS` allowlist). The same function also consults the session-disabled flag from gate 2.
+2. **Session safety net** — if a tools-enabled turn fails with an `APICallError` (HTTP 400, or a message matching `/tool|function/i`), `disableToolsForSession()` trips the flag for the rest of the session and the turn retries without tools (`src/lib/agent/loop.ts`).
+3. **First-turn blackout** — `runAgentTurn` computes the capability as `resolveToolCapability(...) && !firstTurn`: tools are never offered on the first turn of a root chat, and the first-turn orientation preamble tells the model why.
+4. **Per-turn disabled ids** — the chat store (`src/lib/stores/chat.svelte.ts`) passes `disabledToolIds` with the turn: `save_brief` when the root chat already has a brief; `branch_chat` while a manual branch is pending; `mcp.<serverId>.*` for servers the chat disabled or trimmed by a per-tool allowlist; `mcp_read_resource` when no enabled MCP server exposes resources.
+5. **Definition cap** — `buildSdkTools` (`src/lib/agent/loop.ts`) keeps at most 64 tool definitions per request and drops the overflow with a console warning.
+6. **MCP-specific gates** (at mount time, before any MCP tool exists): the server config must be trusted — an `isTrusted` hash comparison in `src/lib/mcp/trust.ts` backed by the user's explicit confirmation; a stdio-transport server additionally requires the Mayon server's `stdio-mcp` capability (`src/lib/mcp/lifecycle.ts`, `src/lib/mcp/server-stdio.ts`); and each tool's risk derives from its MCP annotations with `high` as the default (`src/lib/mcp/risk.ts`).
+7. **Capabilities preamble** — when tools are live, `buildCapabilitiesPreamble()` (`src/lib/chat/brief.ts`) is injected into the system prompt: the model-facing contract covering judicious tool use, approval etiquette, one artifact per turn, and never reproducing artifact content as chat text.
+
+## Lifecycle
+
+1. The model emits a tool-call during a streamed iteration (finish reason `tool-calls`).
+2. The risk gate splits the calls: readonly and low risk run directly; high-risk calls wait on `requestApproval`; generative calls additionally claim the sub-call budget.
+3. Approved and auto calls dispatch through the registry's `toolsRun` (`src/lib/agent/registry.ts`), which returns a `ToolResult` — `{ok, summary, detail?, artifact?}`. Artifact-bearing tools carry the artifact inside `detail.artifact`.
+4. Results persist as message rows through the chat store, and row kinds are classified in `src/lib/chat/kinds.ts`: a `present_choices` call becomes the `choices` kind (its result row is an in-memory stub, never stored); every other call becomes `tool_call` with its `tool_result` companion. Tool results spread `detail` into row metadata, so `detail.artifact` lands in `metadata.artifact` (`{kind, id}`): `branch_chat` → chat, `create_quiz` → quiz, `create_lab` → lab.
