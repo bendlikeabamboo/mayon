@@ -1,0 +1,1 @@
+i'd like to setup an optional, user-defined, telemetry support. First use case is langfuse. I will be using this for prompt improvement and data gathering.
