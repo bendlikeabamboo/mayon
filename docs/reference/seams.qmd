@@ -53,6 +53,7 @@ The `settings` table is a key/value store for non-secret configuration. Provider
 API keys are **never** stored in `settings`. They are stored in:
 
 - **Browser:** IndexedDB under the same origin as the app.
+- **Headless (vitest/node, no IndexedDB):** a read-only, env-backed key store resolves keys from `MAYON_API_KEY_<PROVIDER_ID>` (id uppercased, non-alphanumerics collapsed to `_`) with `MAYON_API_KEY` as a fallback. The key store seam picks it automatically whenever IndexedDB is absent, so the real chat path runs in integration tests without mocking the store; keys still never enter `settings`.
 
 The server persists no reusable provider secrets. When the browser asks the server to spawn a stdio MCP server or proxy an LLM request, it resolves the secret locally and includes it in the same-origin request. Transit is same-origin over the internal docker network / localhost (no key regression vs. the browser-fetch path, which already holds the key in JS).
 

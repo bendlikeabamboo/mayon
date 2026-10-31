@@ -12,8 +12,8 @@ import {
 
 const keys = vi.hoisted(() => ({ current: {} as Record<string, string> }));
 
-vi.mock('./keystore/browser', () => ({
-	createBrowserKeyStore: () => ({
+vi.mock('./keystore/client', () => ({
+	createKeyStore: () => ({
 		get: async (id: string) => keys.current[id] ?? null,
 		has: async (id: string) => id in keys.current,
 		set: async (id: string, key: string) => {

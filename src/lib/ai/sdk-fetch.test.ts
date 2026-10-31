@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // The key store is created inside `createBrowserKeychainFetch`; hoisted mocking
 // keeps the key-presence branching under test without IndexedDB.
 let storedKey: string | null = null;
-vi.mock('./keystore/browser', () => ({
-	createBrowserKeyStore: () => ({
+vi.mock('./keystore/client', () => ({
+	createKeyStore: () => ({
 		get: () => Promise.resolve(storedKey),
 		set: () => Promise.resolve(),
 		delete: () => Promise.resolve(),
