@@ -6,7 +6,7 @@
 	import { repos } from '$lib/db';
 	import RowCard from '$lib/components/RowCard.svelte';
 	import { entry } from '$lib/motion/stagger';
-	import type { Chat, Quiz } from '$lib/db/schema';
+	import type { Chat, Quiz } from '$lib/db';
 
 	/**
 	 * Quizzes index. Lists every quiz grouped by chat (each group shows the

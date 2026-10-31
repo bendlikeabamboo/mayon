@@ -1,5 +1,5 @@
 import type { TraceEvent } from '$lib/agent/trace';
-import type { AgentTrace } from '$lib/db/schema';
+import type { AgentTrace } from '$lib/db';
 import { repos } from '$lib/db';
 
 class DiagnosticsStore {

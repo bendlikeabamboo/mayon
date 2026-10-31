@@ -1,0 +1,44 @@
+---
+title: "Agent's Map"
+aliases:
+  - /dev/agent-map.html
+---
+
+# Agent's Map
+
+One page for implementing agents and new contributors: where feature logic lives, how it is proven, and where the browser is allowed to matter. Mayon is a two-tier system — data and execution logic behind the repository/storage seams, web UI as a thin passenger on top. The boundary rules are owned by [Architecture Boundaries](seams.qmd); the design rationale is in [Architecture](../explanation/architecture.qmd).
+
+## Where features live
+
+If a feature's logic can live behind the repository/driver boundary without much effort, it must. Decisions and their consequences belong behind the seam (repositories, pure logic modules); pixel/animation behavior stays in the UI.
+
+Some features straddle the DOM and the logic tier — streaming render, expound offsets, selection mapping. The policy splits them: the decisions (what to store, how an offset or selection resolves, what the outcome means) live behind the seam where text tests can prove them; only rendering and animation mechanics stay in components. When a feature touches legacy component-entangled logic, walk that logic behind the seam opportunistically — no mass migration.
+
+Per-seam placement detail: [Architecture Boundaries](seams.qmd).
+
+## How features are proven
+
+The default proving path is text-first, with no browser:
+
+1. Set up an ephemeral test database with `useFileTestDb()` (`src/lib/db/driver/pg-test.ts`).
+2. Seed state through the repository seam (`repos` from `$lib/db`).
+3. Call the logic and assert on text outcomes.
+
+The pattern to copy is the chat context assembly test, `src/lib/chat/context.test.ts`. Run with `pnpm test`. This harness is the established testing setup, formalized here as policy — not new tooling.
+
+## Where the browser is allowed to matter
+
+The browser covers only what logic cannot reach:
+
+- UI-only wiring and behavior — the pixel/animation tier the browser is for.
+- Visual checks are camera-style (screenshot plus review) and rare. They confirm appearance; they do not double as behavior tests that logic-layer tests already prove. The browser is demoted from courtroom to camera, not eliminated.
+- Live-stack verification at RC time goes through the existing doors, `/api/health` and `/api/db/query`. No new runtime surface.
+
+## Enforcement & escape hatches
+
+The boundary is machine-enforced:
+
+- Import-boundary rules in `eslint.config.js`, part of `pnpm lint` — a merge-blocking gate.
+- A dependency-direction backstop, `scripts/check-dependency-direction.mjs`, wired into CI (`.github/actions/ci/action.yml`).
+
+A violation fails the gate and names the offending file, the broken rule, and the sanctioned alternative. There are no inline disables: an exception is a file-scoped, justified entry in the escape-hatch block of the enforcement configuration, added through review. When the rules change, they change in the configuration and the seam documents — this page links rather than copies, so the map cannot drift from the rules.

@@ -17,7 +17,7 @@
  * Pure: takes only a chatId and resolves everything through `repos`.
  */
 import { repos } from '$lib/db';
-import type { Chat, Message } from '$lib/db/schema';
+import type { Chat, Message } from '$lib/db';
 import type { ChatMessage } from '$lib/ai/types';
 import { buildBriefSystemNote, parseBrief } from '$lib/chat/brief';
 import { kindOf, type EntryKind, type MessagePart } from '$lib/chat/kinds';

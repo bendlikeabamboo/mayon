@@ -17,7 +17,7 @@ Step-by-step recipes for a specific goal.
 
 ### [Reference ›](reference/seams.qmd)
 
-Technical truth, scannable — contracts, rules, keys.
+Technical truth, scannable — contracts, rules, keys. The [Agent's Map](reference/agent-map.qmd) covers where feature logic lives, how it is proven, and where the browser matters.
 
 ### [Explanation ›](explanation/architecture.qmd)
 

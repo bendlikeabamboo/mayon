@@ -12,6 +12,8 @@ runs:
     - shell: bash
       run: pnpm lint
     - shell: bash
+      run: pnpm check:boundaries
+    - shell: bash
       run: pnpm check
     - shell: bash
       run: pnpm test

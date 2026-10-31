@@ -4,7 +4,7 @@
 	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
 	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 	import type { TraceEvent } from '$lib/agent/trace';
-	import type { AgentTrace } from '$lib/db/schema';
+	import type { AgentTrace } from '$lib/db';
 	import { estimateContextLimit } from '$lib/ai/model-limits';
 
 	let {

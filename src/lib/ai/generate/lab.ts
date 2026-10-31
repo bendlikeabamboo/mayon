@@ -15,8 +15,8 @@
  * in `generate.ts`.
  */
 import { z } from 'zod';
-import { uuid } from '$lib/db/ids';
-import type { LabChecklistItem } from '$lib/db/repositories/labs';
+import { uuid } from '$lib/db';
+import type { LabChecklistItem } from '$lib/db';
 import { extractFencedJson } from './generate-gate';
 
 export { extractFencedJson } from './generate-gate';

@@ -82,6 +82,7 @@ Before submitting a PR, ensure:
 - [ ] `pnpm test` passes (all tests green)
 - [ ] `pnpm build` succeeds
 - [ ] If you changed `src/lib/db/schema.ts`: you ran `pnpm db:generate` and committed the results
+- [ ] Placement: boundary-placeable logic sits behind the repository seam and is proven by text-first logic tests — see the [placement review checklist](docs/how-to/contributing.qmd#placement-review-checklist)
 - [ ] No secrets, API keys, or credentials are committed
 - [ ] Commit messages follow Conventional Commits
 

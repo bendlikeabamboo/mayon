@@ -28,7 +28,7 @@
 	import { testConnection } from '$lib/mcp/lifecycle';
 	import { setMcpSecret, deleteMcpSecret, deleteServerSecrets } from '$lib/mcp/keystore';
 	import { repos } from '$lib/db';
-	import { uuid } from '$lib/db/ids';
+	import { uuid } from '$lib/db';
 	import type { McpServerConfig } from '$lib/mcp/types';
 	import { serverStatus } from '$lib/services/status.svelte';
 

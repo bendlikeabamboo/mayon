@@ -7,7 +7,7 @@
 	import Pagination from '$lib/components/Pagination.svelte';
 	import RowCard from '$lib/components/RowCard.svelte';
 	import { entry } from '$lib/motion/stagger';
-	import type { Chat, Lab } from '$lib/db/schema';
+	import type { Chat, Lab } from '$lib/db';
 
 	const ITEMS_PER_PAGE = 7;
 

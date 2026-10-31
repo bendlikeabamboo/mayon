@@ -15,7 +15,7 @@
  */
 import { browser } from '$app/environment';
 import { repos } from '$lib/db';
-import type { Chat, Message } from '$lib/db/schema';
+import type { Chat, Message } from '$lib/db';
 import { assembleContext } from '$lib/chat/context';
 import type { ResolvedOffsets } from '$lib/chat/selection';
 import {

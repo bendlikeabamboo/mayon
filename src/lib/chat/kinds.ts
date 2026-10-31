@@ -1,4 +1,4 @@
-import type { Message } from '$lib/db/schema';
+import type { Message } from '$lib/db';
 
 export type EntryKind =
 	| 'user_message'

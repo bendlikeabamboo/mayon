@@ -9,7 +9,7 @@
 	import { entry } from '$lib/motion/stagger';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import type { LearningBrief } from '$lib/chat/brief';
-	import type { Chat } from '$lib/db/schema';
+	import type { Chat } from '$lib/db';
 
 	let { data } = $props();
 

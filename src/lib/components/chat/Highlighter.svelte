@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { BranchSource } from '$lib/db/schema';
+	import type { BranchSource } from '$lib/db';
 	import { repos } from '$lib/db';
 	import {
 		alignDomToCanonical,

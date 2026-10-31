@@ -50,6 +50,7 @@ website:
       - section: 'Reference'
         contents:
           - reference/seams.qmd
+          - reference/agent-map.qmd
       - section: 'Explanation'
         contents:
           - explanation/architecture.qmd

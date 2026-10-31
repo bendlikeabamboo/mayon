@@ -18,8 +18,8 @@
  */
 import { z } from 'zod';
 import { extractFencedJson } from './generate-gate';
-import type { QuizQuestionType } from '$lib/db/schema';
-import type { QuizPayload } from '$lib/db/repositories/quizzes';
+import type { QuizQuestionType } from '$lib/db';
+import type { QuizPayload } from '$lib/db';
 
 /**
  * The per-variant payloads we ask the model to emit. These mirror the storage

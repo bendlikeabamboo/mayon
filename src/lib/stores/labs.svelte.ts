@@ -16,7 +16,7 @@
  */
 import { browser } from '$app/environment';
 import { repos } from '$lib/db';
-import type { Lab } from '$lib/db/schema';
+import type { Lab } from '$lib/db';
 import { assembleContext } from '$lib/chat/context';
 import { getActiveSdkProvider, getAmbientEffort } from '$lib/ai/client';
 import { resolveRequestSettings } from '$lib/ai/dialects';

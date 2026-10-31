@@ -9,7 +9,7 @@
 	import { buildSubtreeModel, type SubtreeNode } from '$lib/chat/tree';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import { entry } from '$lib/motion/stagger';
-	import type { Chat } from '$lib/db/schema';
+	import type { Chat } from '$lib/db';
 
 	const ITEMS_PER_PAGE = 7;
 

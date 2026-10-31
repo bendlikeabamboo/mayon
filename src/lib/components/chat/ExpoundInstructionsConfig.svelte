@@ -11,7 +11,7 @@
 		DialogHeader,
 		DialogTitle
 	} from '$lib/components/ui/dialog/index.js';
-	import { uuid } from '$lib/db/ids';
+	import { uuid } from '$lib/db';
 	import {
 		DEFAULT_EXPOUND_INSTRUCTIONS,
 		getExpoundInstructions,

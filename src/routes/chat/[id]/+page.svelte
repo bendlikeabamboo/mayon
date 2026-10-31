@@ -43,7 +43,7 @@
 	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
 	import { isStripEnabled } from '$lib/chat/strip/pref';
 	import { getStreamPreset } from '$lib/chat/streaming/pref';
-	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db/schema';
+	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db';
 	import type { ComposerAttachment } from '$lib/chat/kinds';
 	import { attachmentsOf } from '$lib/chat/kinds';
 	import type { ResolvedOffsets } from '$lib/chat/selection';
