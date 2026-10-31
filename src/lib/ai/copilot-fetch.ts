@@ -11,7 +11,7 @@ import { getCopilotSession } from './copilot-session';
 import { classifyFetchError, httpStatusToError } from './errors';
 import { createKeyStore } from './keystore/client';
 import { MissingKeyError, type ProviderConfig } from './types';
-import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
+import { getLlmFetch } from '#lib/services/llm-proxy-fetch.js';
 
 /** Mandatory Copilot header set (single source of truth — shared with model discovery). */
 export const COPILOT_HEADERS: Record<string, string> = {

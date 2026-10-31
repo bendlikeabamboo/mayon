@@ -63,17 +63,19 @@ const HATCHES = [
 ];
 
 // Keep the app-module prefixes in sync with eslint.config.js (R3 block).
+// SvelteKit 3 specifiers use the #lib subpath import; the legacy $lib form is
+// still matched so the fixtures under tests/fixtures/boundaries stay valid.
 const DB_DIR = join('lib', 'db');
-const DEEP_DB = /\b(?:from|import)\s*['"]\$lib\/db\//;
-const DYNAMIC_DB = /\bimport\s*\(\s*['"]\$lib\/db\//;
+const DEEP_DB = /\b(?:from|import)\s*['"][$#]lib\/db\/(?!index\.js)/;
+const DYNAMIC_DB = /\bimport\s*\(\s*['"][$#]lib\/db\/(?!index\.js)/;
 const APP_IMPORT =
-	/\b(?:from|import)\s*\(?\s*['"]\$lib\/(?:components|stores|services|ai|chat|mcp)(?:\/[^'"]*)?['"]/;
+	/\b(?:from|import)\s*\(?\s*['"][$#]lib\/(?:components|stores|services|ai|chat|mcp)(?:\/[^'"]*)?['"]/;
 const INLINE_DISABLE =
 	/eslint-disable(?:-next-line|-line)?\b.*(?:@typescript-eslint\/)?no-restricted-imports/;
 const EXTS = new Set(['.ts', '.js', '.mjs', '.mts', '.jsx', '.tsx', '.svelte']);
 
 const FACADE_ALT =
-	"app code must import only from '$lib/db' (the repository façade), never '$lib/db/<deep path>'. See docs/reference/seams + docs/reference/agent-map.";
+	"app code must import only from '#lib/db/index.js' (the repository façade), never '#lib/db/<deep path>'. See docs/reference/seams + docs/reference/agent-map.";
 const HATCH_ALT =
 	'inline disables of boundary rules are forbidden; add a scoped entry to the ESCAPE HATCHES block in eslint.config.js (justification required). See docs/reference/seams + docs/reference/agent-map.';
 const ALTS = {
@@ -125,8 +127,8 @@ for (const abs of walk(root)) {
 				violations.push({ file: `${file}:${i + 1}`, rule, reason, alt: ALTS[rule] });
 		};
 		if (!inDb && !isTest) {
-			if (DEEP_DB.test(line)) add('R1', "static/type import of a '$lib/db/<deep path>' internal");
-			if (DYNAMIC_DB.test(line)) add('R2', "dynamic import of a '$lib/db/<deep path>' internal");
+			if (DEEP_DB.test(line)) add('R1', "static/type import of a '#lib/db/<deep path>' internal");
+			if (DYNAMIC_DB.test(line)) add('R2', "dynamic import of a '#lib/db/<deep path>' internal");
 		}
 		if (inDb && !isTest && APP_IMPORT.test(line))
 			add('R3', `'${DB_DIR}' module imports an app module`);

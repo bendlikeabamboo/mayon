@@ -12,8 +12,8 @@
  * filtered here. Orphaned keys after chat deletion are acceptable (matches the
  * `'draft:<chatId>'` precedent — no cascade cleanup).
  */
-import { repos } from '$lib/db';
-import { DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
+import { repos } from '#lib/db/index.js';
+import { DEFAULT_TITLE } from '#lib/ai/generate/generate-title.js';
 
 /** Facet suffix for the consolidated header summary chip's detail panel. */
 const BRIEF_EXPANDED_FACET = ':briefExpanded';

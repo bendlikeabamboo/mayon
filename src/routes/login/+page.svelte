@@ -2,10 +2,10 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Loader2 } from '@lucide/svelte';
-	import { AuthApiError, confirmSetup, enroll, login, startSetup } from '$lib/auth/client';
-	import { authState, refreshAuth } from '$lib/auth/state.svelte';
-	import AuthQr from '$lib/components/AuthQr.svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { AuthApiError, confirmSetup, enroll, login, startSetup } from '#lib/auth/client.js';
+	import { authState, refreshAuth } from '#lib/auth/state.svelte.js';
+	import AuthQr from '#lib/components/AuthQr.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	type View = 'login' | 'setup-credentials' | 'setup-confirm' | 'enroll';
 

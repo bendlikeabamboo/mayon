@@ -9,7 +9,7 @@
  * suppress Svelte-injected keyframes after the fact. Containers are still
  * tagged `.art-stagger` as belt-and-braces for any pure-CSS motion.
  */
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { fly, type TransitionConfig } from 'svelte/transition';
 
 /** Per-child delay increment; contract §4 pins ≈40–60 ms (FR-22). */

@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { chats } from '$lib/db/schema';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
+import { chats } from '#lib/db/schema.js';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 
 let handle: {
-	db: import('$lib/db/driver/proxy').Db;
-	driver: import('$lib/db/driver/types').StorageDriver;
+	db: import('#lib/db/driver/proxy.js').Db;
+	driver: import('#lib/db/driver/types.js').StorageDriver;
 };
 const testDb = useFileTestDb();
 beforeAll(async () => {

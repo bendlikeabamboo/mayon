@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTurn } from '$lib/agent/critic';
+import { validateTurn } from '#lib/agent/critic.js';
 
 describe('validateMermaid', () => {
 	it('flags bad mermaid source', async () => {

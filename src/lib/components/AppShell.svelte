@@ -4,9 +4,9 @@
 	import { goto } from '$app/navigation';
 	import Sidebar from './Sidebar.svelte';
 	import Toaster from './Toaster.svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
-	import { mediaQuery } from '$lib/utils/media.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '#lib/components/ui/sheet/index.js';
+	import { mediaQuery } from '#lib/utils/media.svelte.js';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();

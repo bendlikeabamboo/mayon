@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { ApprovalStateMachine } from './confirmation-context.svelte.js';
-	import { Alert } from '$lib/components/ui/alert/index.js';
+	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { setConfirmationContext } from './confirmation-context.svelte.js';
 
 	let {

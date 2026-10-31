@@ -12,7 +12,7 @@
 		Monitor,
 		Globe
 	} from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		Dialog,
 		DialogContent,
@@ -20,17 +20,17 @@
 		DialogFooter,
 		DialogHeader,
 		DialogTitle
-	} from '$lib/components/ui/dialog/index.js';
-	import { MCP_SERVER_TEMPLATES } from '$lib/mcp/templates';
-	import type { McpServerTemplate } from '$lib/mcp/types';
-	import { isTrusted, trustNow } from '$lib/mcp/trust';
-	import { parseClaudeDesktopConfig } from '$lib/mcp/import';
-	import { testConnection } from '$lib/mcp/lifecycle';
-	import { setMcpSecret, deleteMcpSecret, deleteServerSecrets } from '$lib/mcp/keystore';
-	import { repos } from '$lib/db';
-	import { uuid } from '$lib/db';
-	import type { McpServerConfig } from '$lib/mcp/types';
-	import { serverStatus } from '$lib/services/status.svelte';
+	} from '#lib/components/ui/dialog/index.js';
+	import { MCP_SERVER_TEMPLATES } from '#lib/mcp/templates.js';
+	import type { McpServerTemplate } from '#lib/mcp/types.js';
+	import { isTrusted, trustNow } from '#lib/mcp/trust.js';
+	import { parseClaudeDesktopConfig } from '#lib/mcp/import.js';
+	import { testConnection } from '#lib/mcp/lifecycle.js';
+	import { setMcpSecret, deleteMcpSecret, deleteServerSecrets } from '#lib/mcp/keystore.js';
+	import { repos } from '#lib/db/index.js';
+	import { uuid } from '#lib/db/index.js';
+	import type { McpServerConfig } from '#lib/mcp/types.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
 
 	let servers = $state<McpServerConfig[]>([]);
 	let trustFlags = $state<Record<string, boolean>>({});

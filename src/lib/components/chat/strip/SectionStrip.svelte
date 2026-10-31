@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { Section } from '$lib/markdown/sections';
+	import type { Section } from '#lib/markdown/sections.js';
 	import {
 		dwellTransition,
 		initialDwellState,
 		type DwellResult,
 		type DwellState
-	} from '$lib/chat/strip/dwell';
-	import { incRender } from '$lib/perf/mark';
+	} from '#lib/chat/strip/dwell.js';
+	import { incRender } from '#lib/perf/mark.js';
 
 	let {
 		msgId,

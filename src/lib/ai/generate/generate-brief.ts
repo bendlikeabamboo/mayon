@@ -7,8 +7,8 @@ import {
 	PERSONA_IDS,
 	type LearningBrief,
 	type PersonaId
-} from '$lib/chat/brief';
-import { SCOPE_STRATEGY_IDS } from '$lib/chat/strategies';
+} from '#lib/chat/brief.js';
+import { SCOPE_STRATEGY_IDS } from '#lib/chat/strategies.js';
 import { extractFencedJson } from './generate-gate';
 import { generateObjectViaTool, extractObjectErrorRaw } from './object-tool';
 import { splitContextForGeneration } from './context-split';
@@ -100,7 +100,7 @@ export class BriefGenerationError extends Error {
 }
 
 export async function readBriefPrompt(): Promise<string> {
-	const { repos } = await import('$lib/db');
+	const { repos } = await import('#lib/db/index.js');
 	const override = await repos.settings.get<string>('briefPrompt');
 	return override && override.trim().length > 0 ? override : DEFAULT_BRIEF_PROMPT;
 }
@@ -109,7 +109,7 @@ export interface GenerateBriefOptions {
 	prompt?: string;
 	signal?: AbortSignal;
 	onTrace?: (t: {
-		request: import('$lib/agent/trace').ObjectTraceRequest;
+		request: import('#lib/agent/trace.js').ObjectTraceRequest;
 		result?: { object: unknown };
 		error?: string;
 		raw?: string;

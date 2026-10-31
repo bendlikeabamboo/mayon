@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { cn } from '$lib/utils.js';
-	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
-	import { serverStatus } from '$lib/services/status.svelte.js';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
+	import { cn } from '#lib/utils.js';
+	import { Popover, PopoverContent, PopoverTrigger } from '#lib/components/ui/popover/index.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
+	import { dbStatus } from '#lib/stores/db.svelte.js';
 	import DbStatus from './DbStatus.svelte';
 	import ServerStatus from './ServerStatus.svelte';
 

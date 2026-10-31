@@ -23,7 +23,7 @@ export interface GenerateTitleOptions {
 	signal?: AbortSignal;
 	requestSettings?: ResolvedRequestSettings;
 	onTrace?: (t: {
-		request: import('$lib/agent/trace').ObjectTraceRequest;
+		request: import('#lib/agent/trace.js').ObjectTraceRequest;
 		result?: { object: unknown };
 		error?: string;
 		raw?: string;

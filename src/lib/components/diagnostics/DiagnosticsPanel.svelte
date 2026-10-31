@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { Trash2, Copy, ChevronDown, ChevronRight, AlertTriangle } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
-	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
-	import type { TraceEvent } from '$lib/agent/trace';
-	import type { AgentTrace } from '$lib/db';
-	import { estimateContextLimit } from '$lib/ai/model-limits';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '#lib/components/ui/sheet/index.js';
+	import { diagnosticsStore } from '#lib/stores/diagnostics.svelte.js';
+	import type { TraceEvent } from '#lib/agent/trace.js';
+	import type { AgentTrace } from '#lib/db/index.js';
+	import { estimateContextLimit } from '#lib/ai/model-limits.js';
 
 	let {
 		chatId,

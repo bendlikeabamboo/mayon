@@ -1,6 +1,6 @@
 <script lang="ts">
-	import * as Command from '$lib/components/ui/command/index.js';
-	import { matchSections, type SectionEntry } from '$lib/settings/sections';
+	import * as Command from '#lib/components/ui/command/index.js';
+	import { matchSections, type SectionEntry } from '#lib/settings/sections.js';
 
 	let {
 		sections,

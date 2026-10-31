@@ -1,6 +1,6 @@
 import { serverClient } from './client';
 import { serverStatus } from './status.svelte';
-import { downloadBlob } from '$lib/db';
+import { downloadBlob } from '#lib/db/index.js';
 
 function isSqliteHeader(bytes: Uint8Array): boolean {
 	return (

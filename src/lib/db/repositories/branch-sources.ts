@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
-import { branchSources, type BranchSource } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+import { branchSources, type BranchSource } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 
 async function insert(input: typeof branchSources.$inferInsert): Promise<BranchSource> {
 	const [row] = await (await awaitDb()).insert(branchSources).values(input).returning();

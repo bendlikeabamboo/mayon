@@ -1,35 +1,35 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { bootstrapWithDriver } from '$lib/db/driver/client';
-import { repos } from '$lib/db';
-import { toolsRun } from '$lib/agent/registry';
-import type { ToolContext } from '$lib/agent/registry';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { bootstrapWithDriver } from '#lib/db/driver/client.js';
+import { repos } from '#lib/db/index.js';
+import { toolsRun } from '#lib/agent/registry.js';
+import type { ToolContext } from '#lib/agent/registry.js';
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
-import { QuizGenerationError } from '$lib/ai/generate/generate-quiz';
-import { LabGenerationError } from '$lib/ai/generate/generate';
+import type { ProviderConfig } from '#lib/ai/types.js';
+import { QuizGenerationError } from '#lib/ai/generate/generate-quiz.js';
+import { LabGenerationError } from '#lib/ai/generate/generate.js';
 
-vi.mock('$lib/chat/context', () => ({
+vi.mock('#lib/chat/context.js', () => ({
 	assembleContext: vi.fn(async () => []),
 	toCoreMessages: vi.fn((msgs) => msgs)
 }));
 
-vi.mock('$lib/ai/generate/generate-quiz', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/ai/generate/generate-quiz')>();
+vi.mock('#lib/ai/generate/generate-quiz.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/ai/generate/generate-quiz.js')>();
 	return { ...actual, generateQuiz: vi.fn() };
 });
 
-vi.mock('$lib/ai/generate/generate', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/ai/generate/generate')>();
+vi.mock('#lib/ai/generate/generate.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/ai/generate/generate.js')>();
 	return { ...actual, generateLab: vi.fn() };
 });
 
-import type { GeneratedQuiz } from '$lib/ai/generate/quiz';
+import type { GeneratedQuiz } from '#lib/ai/generate/quiz.js';
 
-const { generateQuiz } = await import('$lib/ai/generate/generate-quiz');
+const { generateQuiz } = await import('#lib/ai/generate/generate-quiz.js');
 const mockedGenerateQuiz = vi.mocked(generateQuiz);
 
-const { generateLab } = await import('$lib/ai/generate/generate');
+const { generateLab } = await import('#lib/ai/generate/generate.js');
 const mockedGenerateLab = vi.mocked(generateLab);
 
 const cannedQuiz: GeneratedQuiz = {

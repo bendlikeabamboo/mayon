@@ -2,7 +2,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import { mark } from '$lib/perf/mark';
+import { mark } from '#lib/perf/mark.js';
 
 export interface Section {
 	index: number;

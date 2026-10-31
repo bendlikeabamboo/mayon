@@ -1,4 +1,4 @@
-import { createKeyStore } from '$lib/ai/keystore/client';
+import { createKeyStore } from '#lib/ai/keystore/client.js';
 
 function ks() {
 	return createKeyStore();

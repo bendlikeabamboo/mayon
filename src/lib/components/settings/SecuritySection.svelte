@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { AlertTriangle } from '@lucide/svelte';
-	import { authState, logout } from '$lib/auth/state.svelte';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import InvitesPanel from '$lib/components/settings/InvitesPanel.svelte';
-	import SessionsPanel from '$lib/components/settings/SessionsPanel.svelte';
-	import ActivityPanel from '$lib/components/settings/ActivityPanel.svelte';
+	import { authState, logout } from '#lib/auth/state.svelte.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import InvitesPanel from '#lib/components/settings/InvitesPanel.svelte';
+	import SessionsPanel from '#lib/components/settings/SessionsPanel.svelte';
+	import ActivityPanel from '#lib/components/settings/ActivityPanel.svelte';
 
 	type Tab = 'invites' | 'sessions' | 'activity';
 

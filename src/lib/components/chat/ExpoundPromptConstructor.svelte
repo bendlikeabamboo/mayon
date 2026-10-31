@@ -2,13 +2,13 @@
 	import { Send, X } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { ExpoundOptions } from '$lib/chat/expound';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import type { ExpoundOptions } from '#lib/chat/expound.js';
 	import {
 		DEFAULT_EXPOUND_INSTRUCTIONS,
 		getExpoundInstructions,
 		type ExpoundInstruction
-	} from '$lib/chat/expound-instructions';
+	} from '#lib/chat/expound-instructions.js';
 
 	/**
 	 * Floating panel that turns a selected excerpt into an expound prompt.

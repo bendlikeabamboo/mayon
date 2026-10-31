@@ -1,6 +1,6 @@
 import type { QueryResult, StorageDriver } from './types';
 import { createDb, type Db } from './proxy';
-import { dbStatus, type DbRuntime } from '$lib/stores/db.svelte';
+import { dbStatus, type DbRuntime } from '#lib/stores/db.svelte.js';
 
 /** Browser primary: Postgres over the server (RemotePgDriver). */
 import { createRemotePgDriver } from './pg';
@@ -34,8 +34,8 @@ export async function bootstrapDb(): Promise<Db> {
 	dbStatus.status = 'initializing';
 	driverPromise = (async () => {
 		try {
-			const { waitForServerPg } = await import('$lib/services/detect');
-			const { serverStatus } = await import('$lib/services/status.svelte');
+			const { waitForServerPg } = await import('#lib/services/detect.js');
+			const { serverStatus } = await import('#lib/services/status.svelte.js');
 			const health = await waitForServerPg();
 			if (!health) {
 				const msg = 'Cannot reach the Mayon server. Start it with `docker compose up`, then retry.';

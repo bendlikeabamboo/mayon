@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import LazyMount from './LazyMount.svelte';
-	import type { ResolvedOffsets } from '$lib/chat/selection';
-	import type { ExpoundOptions } from '$lib/chat/expound';
+	import type { ResolvedOffsets } from '#lib/chat/selection.js';
+	import type { ExpoundOptions } from '#lib/chat/expound.js';
 	import {
 		assembleTimeline,
 		type TimelineItem,
@@ -11,7 +11,7 @@
 		isToolGroup,
 		isOrphanToolResult,
 		isLiveEntry
-	} from '$lib/chat/entries';
+	} from '#lib/chat/entries.js';
 	import UserMessage from './rows/UserMessage.svelte';
 	import AssistantMessage from './rows/AssistantMessage.svelte';
 	import ReasoningEntry from './rows/ReasoningEntry.svelte';
@@ -21,11 +21,16 @@
 	import ChoicesOffer from './rows/ChoicesOffer.svelte';
 	import PropagatedArtifact from './PropagatedArtifact.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { parseMetadata, textOf, type UserMessageMeta, type ChoicesMeta } from '$lib/chat/kinds';
-	import type { LiveAskPayload } from '$lib/chat/entries';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { summarizeToolCall } from '$lib/agent/tool-summary';
-	import { findGateFromMessages } from '$lib/ai/generate/generate-gate';
+	import {
+		parseMetadata,
+		textOf,
+		type UserMessageMeta,
+		type ChoicesMeta
+	} from '#lib/chat/kinds.js';
+	import type { LiveAskPayload } from '#lib/chat/entries.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
+	import { summarizeToolCall } from '#lib/agent/tool-summary.js';
+	import { findGateFromMessages } from '#lib/ai/generate/generate-gate.js';
 
 	let {
 		messages,
@@ -41,7 +46,7 @@
 		failedMessageId = null,
 		streaming = false
 	}: {
-		messages: import('$lib/db').Message[];
+		messages: import('#lib/db/index.js').Message[];
 		liveItems?: LiveEntry[];
 		onExpound: (
 			messageId: string,

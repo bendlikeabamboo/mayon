@@ -1,5 +1,5 @@
 import { TOOL_SUMMARY_THRESHOLD } from './kinds';
-import { scanJsonValues } from '$lib/mcp/sources';
+import { scanJsonValues } from '#lib/mcp/sources.js';
 
 /**
  * Shape classification for expanded tool-result bodies — the single shape

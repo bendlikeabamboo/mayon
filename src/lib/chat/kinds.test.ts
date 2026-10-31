@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '$lib/db/schema';
+import type { Message } from '#lib/db/schema.js';
 import {
 	deriveKindFromColumns,
 	kindOf,

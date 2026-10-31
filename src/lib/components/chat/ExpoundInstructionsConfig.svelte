@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Plus, RotateCcw, Trash2 } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
 	import {
 		Dialog,
 		DialogContent,
@@ -10,15 +10,15 @@
 		DialogFooter,
 		DialogHeader,
 		DialogTitle
-	} from '$lib/components/ui/dialog/index.js';
-	import { uuid } from '$lib/db';
+	} from '#lib/components/ui/dialog/index.js';
+	import { uuid } from '#lib/db/index.js';
 	import {
 		DEFAULT_EXPOUND_INSTRUCTIONS,
 		getExpoundInstructions,
 		saveExpoundInstructions,
 		validateInstruction,
 		type ExpoundInstruction
-	} from '$lib/chat/expound-instructions';
+	} from '#lib/chat/expound-instructions.js';
 
 	let instructions = $state<ExpoundInstruction[]>([]);
 	let loading = $state(true);

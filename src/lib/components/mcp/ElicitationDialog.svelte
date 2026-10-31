@@ -5,8 +5,8 @@
 		DialogHeader,
 		DialogTitle,
 		DialogDescription
-	} from '$lib/components/ui/dialog/index.js';
-	import { serverStatus } from '$lib/services/status.svelte';
+	} from '#lib/components/ui/dialog/index.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
 	import {
 		ConfirmationRequest,
 		ConfirmationActions,
@@ -16,9 +16,9 @@
 		ConfirmationFailed,
 		createApprovalStateMachine,
 		setConfirmationContext
-	} from '$lib/components/mcp/confirmation/index.js';
+	} from '#lib/components/mcp/confirmation/index.js';
 	import ElicitationForm from './ElicitationForm.svelte';
-	import type { PublicElicitationEntry } from '$lib/stores/chat.svelte';
+	import type { PublicElicitationEntry } from '#lib/stores/chat.svelte.js';
 
 	type Props = {
 		entry: PublicElicitationEntry;

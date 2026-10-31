@@ -4,23 +4,23 @@ import type { LanguageModel } from 'ai';
 vi.mock('ai', () => ({
 	generateText: vi.fn()
 }));
-vi.mock('$lib/ai/client', () => ({
+vi.mock('#lib/ai/client.js', () => ({
 	getActiveSdkProvider: vi.fn()
 }));
-vi.mock('$lib/ai/dialects', () => ({
+vi.mock('#lib/ai/dialects.js', () => ({
 	resolveRequestSettings: vi.fn(() => ({
 		callSettings: {},
 		providerOptions: {},
 		droppedExtraKeys: []
 	}))
 }));
-vi.mock('$lib/chat/context', () => ({
+vi.mock('#lib/chat/context.js', () => ({
 	assembleContext: vi.fn(async (chatId: string) => [
 		{ role: 'user' as const, content: `parent context for ${chatId}` },
 		{ role: 'assistant' as const, content: "the branch's big reply" }
 	])
 }));
-vi.mock('$lib/db', () => ({
+vi.mock('#lib/db/index.js', () => ({
 	repos: {
 		agentTraces: {
 			create: vi.fn(async (row: { id: string }) => ({ ...row, id: row.id || 'trace-1' }))
@@ -30,9 +30,9 @@ vi.mock('$lib/db', () => ({
 
 const { generateText } = await import('ai');
 const mockedGenerateText = vi.mocked(generateText);
-const { getActiveSdkProvider } = await import('$lib/ai/client');
+const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
-const { repos } = await import('$lib/db');
+const { repos } = await import('#lib/db/index.js');
 
 describe('generateBranchArtifactSummary', () => {
 	beforeEach(() => {

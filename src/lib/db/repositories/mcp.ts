@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
-import { chats } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
+import { chats } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
 import { settingsRepo } from './settings';
-import { now } from '$lib/db/ids';
-import type { McpServerConfig, ChatMcpConfig, McpAttachedResource } from '$lib/mcp/types';
+import { now } from '#lib/db/ids.js';
+import type { McpServerConfig, ChatMcpConfig, McpAttachedResource } from '#lib/mcp/types.js';
 
 const KEY = 'mcpServers';
 

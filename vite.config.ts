@@ -1,5 +1,7 @@
 /// <reference types="vitest/config" />
+import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 
 import { defineConfig, loadEnv } from 'vite';
@@ -22,11 +24,31 @@ function envBoolean(env: Record<string, string>, name: string, fallback: boolean
 	throw new Error(`${name} must be true or false, received '${value}'`);
 }
 
+// kit.paths.base must be '' or '/…' (e.g. BASE_PATH=/mayon/ for GitHub Pages).
+function basePathFromEnv(): '' | `/${string}` {
+	const value = process.env.BASE_PATH;
+	if (!value) return '';
+	return value.startsWith('/') ? (value as `/${string}`) : `/${value}`;
+}
+
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '');
 
 	return {
-		plugins: [tailwindcss(), sveltekit()],
+		plugins: [
+			tailwindcss(),
+			sveltekit({
+				preprocess: vitePreprocess(),
+				adapter: adapterStatic({
+					fallback: 'index.html',
+					precompress: false,
+					strict: false
+				}),
+				paths: {
+					base: basePathFromEnv()
+				}
+			})
+		],
 		server: {
 			host: true,
 			proxy: {

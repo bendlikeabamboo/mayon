@@ -20,7 +20,7 @@
  * wrapper element, never mixed back into the sanitized prose tree.
  */
 import type { Mermaid } from 'mermaid';
-import { themeState } from '$lib/stores/theme.svelte.js';
+import { themeState } from '#lib/stores/theme.svelte.js';
 
 let mermaidPromise: Promise<Mermaid> | null = null;
 let initializedTheme: 'light' | 'dark' | null = null;

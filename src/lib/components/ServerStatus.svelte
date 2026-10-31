@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CheckCircle2, Unplug } from '@lucide/svelte';
-	import { serverStatus } from '$lib/services/status.svelte.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
 
 	// Readout fragment: rendered INSIDE the StatusIndicator popover body.
 	// Outer pill chrome lives on the StatusIndicator trigger instead.

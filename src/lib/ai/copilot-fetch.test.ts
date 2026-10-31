@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MissingKeyError, type ProviderConfig } from './types';
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(false),
 		connected: false,
@@ -31,7 +31,7 @@ vi.mock('./keystore/client', () => ({
 import { createCopilotFetch } from './copilot-fetch';
 import { invalidateCopilotSession } from './copilot-session';
 import { RateLimitError } from './types';
-import { serverStatus } from '$lib/services/status.svelte';
+import { serverStatus } from '#lib/services/status.svelte.js';
 
 const config: ProviderConfig = {
 	id: 'cop-1',

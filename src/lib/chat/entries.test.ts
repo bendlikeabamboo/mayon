@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from 'vitest';
-import type { Message } from '$lib/db/schema';
+import type { Message } from '#lib/db/schema.js';
 import {
 	assembleTimeline,
 	isDurableEntry,
@@ -7,7 +7,7 @@ import {
 	isToolGroup,
 	type TimelineItem
 } from './entries';
-import { registerTool, deregisterTool } from '$lib/agent/registry';
+import { registerTool, deregisterTool } from '#lib/agent/registry.js';
 
 function msg(overrides: Partial<Message> & { id: string; role: Message['role'] }): Message {
 	return {

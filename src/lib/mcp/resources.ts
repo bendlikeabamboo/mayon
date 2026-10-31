@@ -1,7 +1,7 @@
 import type { McpClient } from './client';
 import type { McpResource } from './types';
-import { registerTool, deregisterTool, getToolDefinition } from '$lib/agent/registry';
-import type { ToolDefinition, ToolResult, ToolContext } from '$lib/agent/registry';
+import { registerTool, deregisterTool, getToolDefinition } from '#lib/agent/registry.js';
+import type { ToolDefinition, ToolResult, ToolContext } from '#lib/agent/registry.js';
 import { truncateResult, withTimeout } from './caps';
 
 interface ResourceServerEntry {

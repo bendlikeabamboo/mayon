@@ -1,6 +1,6 @@
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
-import { repos } from '$lib/db';
+import type { ProviderConfig } from '#lib/ai/types.js';
+import { repos } from '#lib/db/index.js';
 
 // ── Types (design §4.1) ──────────────────────────────────────────
 

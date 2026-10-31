@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -13,7 +13,7 @@ vi.mock('$lib/services/status.svelte', () => ({
 	}
 }));
 
-vi.mock('$lib/db/backup', () => ({
+vi.mock('#lib/db/backup.js', () => ({
 	downloadBlob: vi.fn(),
 	isSqliteHeader: (bytes: Uint8Array) => {
 		if (bytes.length < 16) return false;
@@ -23,9 +23,9 @@ vi.mock('$lib/db/backup', () => ({
 	parseContentDispositionFilename: (_res: Response, fallback: string) => fallback
 }));
 
-import { serverStatus } from '$lib/services/status.svelte';
-import { downloadBlob } from '$lib/db/backup';
-import { dryRunImport, importFromSqlite } from '$lib/services/db-import';
+import { serverStatus } from '#lib/services/status.svelte.js';
+import { downloadBlob } from '#lib/db/backup.js';
+import { dryRunImport, importFromSqlite } from '#lib/services/db-import.js';
 
 const SQLITE_HEADER = new Uint8Array(Buffer.from('SQLite format 3\x00', 'binary'));
 

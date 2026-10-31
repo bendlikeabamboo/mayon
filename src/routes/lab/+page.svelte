@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { FlaskConical } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { labsStore } from '$lib/stores/labs.svelte';
-	import { repos } from '$lib/db';
-	import Pagination from '$lib/components/Pagination.svelte';
-	import RowCard from '$lib/components/RowCard.svelte';
-	import { entry } from '$lib/motion/stagger';
-	import type { Chat, Lab } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { labsStore } from '#lib/stores/labs.svelte.js';
+	import { repos } from '#lib/db/index.js';
+	import Pagination from '#lib/components/Pagination.svelte';
+	import RowCard from '#lib/components/RowCard.svelte';
+	import { entry } from '#lib/motion/stagger.js';
+	import type { Chat, Lab } from '#lib/db/index.js';
 
 	const ITEMS_PER_PAGE = 7;
 

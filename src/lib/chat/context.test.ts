@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { modelMessageSchema } from 'ai';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import type { Message } from '$lib/db/schema';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import type { Message } from '#lib/db/schema.js';
 import { assembleContext } from './context';
 import { projectEntries, type ProjectableRow } from './projection';
 import type { LearningBrief } from './brief';

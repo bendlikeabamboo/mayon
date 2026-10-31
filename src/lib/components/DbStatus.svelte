@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { AlertCircle, CheckCircle2, Loader2 } from '@lucide/svelte';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
-	import { runtimeLabel } from '$lib/utils/runtime.js';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { dbStatus } from '#lib/stores/db.svelte.js';
+	import { runtimeLabel } from '#lib/utils/runtime.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	// Readout fragment: rendered INSIDE the StatusIndicator popover body.
 	// Outer pill chrome lives on the StatusIndicator trigger instead.

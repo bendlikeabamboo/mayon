@@ -86,12 +86,12 @@ export function validateInstruction(
 
 /** Read the instruction list from settings, sanitized on read. */
 export async function getExpoundInstructions(): Promise<ExpoundInstruction[]> {
-	const { repos } = await import('$lib/db');
+	const { repos } = await import('#lib/db/index.js');
 	return sanitizeInstructions(await repos.settings.get('expoundInstructions'));
 }
 
 /** Persist the whole instruction list (replace-on-write). */
 export async function saveExpoundInstructions(list: ExpoundInstruction[]): Promise<void> {
-	const { repos } = await import('$lib/db');
+	const { repos } = await import('#lib/db/index.js');
 	await repos.settings.set('expoundInstructions', list);
 }

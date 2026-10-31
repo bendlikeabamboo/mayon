@@ -12,7 +12,7 @@ describe('T021: composer paperclip vision gate (specs/018 FR-006)', () => {
 
 	it('derives the vision gate from the active config/model via supportsVision', () => {
 		expect(source).toContain('supportsVision(activeConfig, activeModelId)');
-		expect(source).toContain("import { supportsVision } from '$lib/ai/vision-capability'");
+		expect(source).toContain("import { supportsVision } from '#lib/ai/vision-capability.js'");
 	});
 
 	it('passes the gate to the Composer as a prop alongside supportsDeep', () => {

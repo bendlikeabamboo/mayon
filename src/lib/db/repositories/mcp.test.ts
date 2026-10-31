@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import type { McpServerConfig, ChatMcpConfig, McpAttachedResource } from '$lib/mcp/types';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import type { McpServerConfig, ChatMcpConfig, McpAttachedResource } from '#lib/mcp/types.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());

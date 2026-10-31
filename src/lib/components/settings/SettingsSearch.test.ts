@@ -17,7 +17,7 @@ describe('SettingsSearch source contract', () => {
 	it('disables cmdk filtering in favor of matchSections', () => {
 		expect(searchSource).toContain('shouldFilter={false}');
 		expect(searchSource).toMatch(
-			/import \{[^}]*matchSections[^}]*\} from '\$lib\/settings\/sections'/
+			/import \{[^}]*matchSections[^}]*\} from '#lib\/settings\/sections\.js'/
 		);
 		expect(searchSource).toMatch(/matchSections\(query, sections\)/);
 	});

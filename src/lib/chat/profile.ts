@@ -6,7 +6,7 @@ const PROFILE_KEY = 'learnerProfile';
 
 /** Read the learner profile, validating enums and falling back to DEFAULT_PROFILE. */
 export async function getLearnerProfile(): Promise<LearnerProfile> {
-	const { repos } = await import('$lib/db');
+	const { repos } = await import('#lib/db/index.js');
 	const raw = await repos.settings.get<LearnerProfile>(PROFILE_KEY);
 	if (!raw || typeof raw !== 'object') return { ...DEFAULT_PROFILE };
 	const profile: LearnerProfile = {};
@@ -21,6 +21,6 @@ export async function getLearnerProfile(): Promise<LearnerProfile> {
 
 /** Persist the learner profile (overwrite). */
 export async function setLearnerProfile(profile: LearnerProfile): Promise<void> {
-	const { repos } = await import('$lib/db');
+	const { repos } = await import('#lib/db/index.js');
 	await repos.settings.set(PROFILE_KEY, profile);
 }

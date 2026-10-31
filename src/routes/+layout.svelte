@@ -1,17 +1,22 @@
 <script lang="ts">
 	import '../app.css';
-	import '$lib/perf/probe';
+	import '#lib/perf/probe.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { RefreshCw, Lock, ShieldCheck } from '@lucide/svelte';
-	import { migrateLegacyKeys } from '$lib/ai/keystore/migrate';
-	import { authState, dismissSetup, isSetupDismissed, refreshAuth } from '$lib/auth/state.svelte';
-	import AppShell from '$lib/components/AppShell.svelte';
-	import BootGate from '$lib/components/BootGate.svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { bootstrapDb, repos, runSelfCheck } from '$lib/db';
-	import { bindThemePersistence, themeState, type Theme } from '$lib/stores/theme.svelte';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
+	import { migrateLegacyKeys } from '#lib/ai/keystore/migrate.js';
+	import {
+		authState,
+		dismissSetup,
+		isSetupDismissed,
+		refreshAuth
+	} from '#lib/auth/state.svelte.js';
+	import AppShell from '#lib/components/AppShell.svelte';
+	import BootGate from '#lib/components/BootGate.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { bootstrapDb, repos, runSelfCheck } from '#lib/db/index.js';
+	import { bindThemePersistence, themeState, type Theme } from '#lib/stores/theme.svelte.js';
+	import { dbStatus } from '#lib/stores/db.svelte.js';
 
 	let { children } = $props();
 
@@ -46,7 +51,7 @@
 				if (stored) themeState.hydrate(stored);
 				bindThemePersistence((t) => repos.settings.set('theme', t));
 				if (import.meta.env.DEV) void runSelfCheck();
-				if (import.meta.env.DEV) import('$lib/perf/longtask-warn');
+				if (import.meta.env.DEV) import('#lib/perf/longtask-warn.js');
 			})
 			.catch(() => {
 				// Error already surfaced via the dbStatus store -> BootGate or DbStatus badge.

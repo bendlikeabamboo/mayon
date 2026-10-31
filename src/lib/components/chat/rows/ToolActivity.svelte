@@ -11,18 +11,18 @@
 	import ToolSources from '../ToolSources.svelte';
 	import ToolResultBody from './ToolResultBody.svelte';
 	import { deriveToolStatus } from './tool-status';
-	import type { ToolGroup, OrphanToolResult } from '$lib/chat/entries';
-	import { parseMetadata, type ToolResultMeta, type SharedMetadata } from '$lib/chat/kinds';
-	import { classifyResult } from '$lib/chat/result-shape';
-	import { extractSources } from '$lib/mcp/sources';
-	import { getToolDefinition } from '$lib/agent/registry';
-	import { incRender } from '$lib/perf/mark';
+	import type { ToolGroup, OrphanToolResult } from '#lib/chat/entries.js';
+	import { parseMetadata, type ToolResultMeta, type SharedMetadata } from '#lib/chat/kinds.js';
+	import { classifyResult } from '#lib/chat/result-shape.js';
+	import { extractSources } from '#lib/mcp/sources.js';
+	import { getToolDefinition } from '#lib/agent/registry.js';
+	import { incRender } from '#lib/perf/mark.js';
 	import {
 		Collapsible,
 		CollapsibleTrigger,
 		CollapsibleContent
-	} from '$lib/components/ui/collapsible/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
+	} from '#lib/components/ui/collapsible/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
 
 	let { item }: { item: ToolGroup | OrphanToolResult } = $props();
 

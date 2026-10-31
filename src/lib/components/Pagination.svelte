@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let { page = $bindable(1), totalPages = 1 }: { page?: number; totalPages?: number } = $props();
 </script>

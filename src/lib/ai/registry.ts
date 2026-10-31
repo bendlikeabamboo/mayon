@@ -7,7 +7,7 @@
  * and is served by the same `openai-compatible` adapter as OpenAI.
  */
 import type { ProviderConfig, ProviderGroup, ProviderKind } from './types';
-import { legacyToolDefault } from '$lib/agent/capability';
+import { legacyToolDefault } from '#lib/agent/capability.js';
 
 /** The set of kinds selectable in the Settings UI. */
 export function listProviderKinds(): ProviderKind[] {

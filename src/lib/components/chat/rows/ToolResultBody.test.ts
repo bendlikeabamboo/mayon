@@ -8,7 +8,7 @@ describe('ToolResultBody: records rendering (source-inspection)', () => {
 	const source = fs.readFileSync(BODY, 'utf-8');
 
 	it('exists and consumes the ResultShape union', () => {
-		expect(source).toContain("from '$lib/chat/result-shape'");
+		expect(source).toContain("from '#lib/chat/result-shape.js'");
 	});
 
 	it('renders card titles as external links', () => {
@@ -17,7 +17,7 @@ describe('ToolResultBody: records rendering (source-inspection)', () => {
 	});
 
 	it('derives cards via collectCards from the shared sources module', () => {
-		expect(source).toContain("from '$lib/mcp/sources'");
+		expect(source).toContain("from '#lib/mcp/sources.js'");
 		expect(source).toContain('collectCards');
 	});
 

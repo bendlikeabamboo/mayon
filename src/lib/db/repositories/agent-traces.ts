@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, type SQL } from 'drizzle-orm';
-import { agentTraces, type AgentTrace } from '$lib/db/schema';
-import { awaitDb, getDriver } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+import { agentTraces, type AgentTrace } from '#lib/db/schema.js';
+import { awaitDb, getDriver } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 
 export const agentTracesRepo = {
 	async listByChat(chatId: string, kinds?: string[] | null): Promise<AgentTrace[]> {

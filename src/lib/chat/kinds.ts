@@ -1,4 +1,4 @@
-import type { Message } from '$lib/db';
+import type { Message } from '#lib/db/index.js';
 
 export type EntryKind =
 	| 'user_message'

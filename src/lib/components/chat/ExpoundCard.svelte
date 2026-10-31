@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ArrowLeft, FileText } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let {
 		excerpt,

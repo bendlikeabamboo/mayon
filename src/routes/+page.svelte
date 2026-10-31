@@ -2,21 +2,21 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { ArrowRight } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import Composer from '$lib/components/chat/Composer.svelte';
-	import { listProviders } from '$lib/ai/client';
-	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
-	import { repos } from '$lib/db';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { quizzesStore } from '$lib/stores/quizzes.svelte';
-	import { labsStore } from '$lib/stores/labs.svelte';
-	import { timeAgo } from '$lib/utils/time';
-	import { parseBrief } from '$lib/chat/brief';
-	import { deriveStarters, type Starter } from '$lib/chat/starters';
-	import RowCard from '$lib/components/RowCard.svelte';
-	import { entry } from '$lib/motion/stagger';
-	import type { LabChecklistItem } from '$lib/db';
-	import type { Chat, Quiz } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import Composer from '#lib/components/chat/Composer.svelte';
+	import { listProviders } from '#lib/ai/client.js';
+	import type { ProviderConfig, ReasoningEffort } from '#lib/ai/types.js';
+	import { repos } from '#lib/db/index.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
+	import { quizzesStore } from '#lib/stores/quizzes.svelte.js';
+	import { labsStore } from '#lib/stores/labs.svelte.js';
+	import { timeAgo } from '#lib/utils/time.js';
+	import { parseBrief } from '#lib/chat/brief.js';
+	import { deriveStarters, type Starter } from '#lib/chat/starters.js';
+	import RowCard from '#lib/components/RowCard.svelte';
+	import { entry } from '#lib/motion/stagger.js';
+	import type { LabChecklistItem } from '#lib/db/index.js';
+	import type { Chat, Quiz } from '#lib/db/index.js';
 
 	interface InProgressLab {
 		id: string;

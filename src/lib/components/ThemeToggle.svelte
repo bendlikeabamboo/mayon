@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Monitor, Moon, Sun } from '@lucide/svelte';
-	import { themeState, type Theme } from '$lib/stores/theme.svelte.js';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { themeState, type Theme } from '#lib/stores/theme.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 

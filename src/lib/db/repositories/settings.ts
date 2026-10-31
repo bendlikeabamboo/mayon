@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { settings } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { DEFAULT_PROFILE } from '$lib/chat/brief';
-import { DEFAULT_EXPOUND_INSTRUCTIONS } from '$lib/chat/expound-instructions';
+import { settings } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { DEFAULT_PROFILE } from '#lib/chat/brief.js';
+import { DEFAULT_EXPOUND_INSTRUCTIONS } from '#lib/chat/expound-instructions.js';
 
 /**
  * Key/value store with JSON values. The ONLY way app code reads/writes settings.

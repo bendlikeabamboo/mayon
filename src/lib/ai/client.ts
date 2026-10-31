@@ -8,7 +8,7 @@
  * lazily per request, so a key saved after the adapter was built is picked up
  * without re-fetching the provider object.
  */
-import { repos } from '$lib/db';
+import { repos } from '#lib/db/index.js';
 import { buildSdkModel, type ActiveProvider } from './sdk-factory';
 import { createKeyStore } from './keystore/client';
 import { discoverModels, type DiscoveredModel } from './model-discovery';

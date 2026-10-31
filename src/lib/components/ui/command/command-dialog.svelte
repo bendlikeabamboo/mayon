@@ -8,8 +8,8 @@
 		DialogHeader,
 		DialogTitle,
 		DialogDescription
-	} from '$lib/components/ui/dialog/index.js';
-	import type { WithoutChildrenOrChild } from '$lib/utils.js';
+	} from '#lib/components/ui/dialog/index.js';
+	import type { WithoutChildrenOrChild } from '#lib/utils.js';
 
 	let {
 		open = $bindable(false),

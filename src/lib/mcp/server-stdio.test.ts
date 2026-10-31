@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/ai/keystore/browser', () => ({
+vi.mock('#lib/ai/keystore/browser.js', () => ({
 	createBrowserKeyStore: vi.fn().mockReturnValue({
 		get: vi.fn().mockResolvedValue('secret-value'),
 		has: vi.fn(),
@@ -9,7 +9,7 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -21,9 +21,9 @@ vi.mock('$lib/services/status.svelte', () => ({
 }));
 
 import { ServerStdioMcpTransport } from './server-stdio';
-import { createBrowserKeyStore } from '$lib/ai/keystore/browser';
-import { serverStatus } from '$lib/services/status.svelte';
-import { MissingKeyError } from '$lib/ai/types';
+import { createBrowserKeyStore } from '#lib/ai/keystore/browser.js';
+import { serverStatus } from '#lib/services/status.svelte.js';
+import { MissingKeyError } from '#lib/ai/types.js';
 
 class FakeWS extends EventTarget {
 	readyState = 0; // 0 = CONNECTING, 1 = OPEN — mirrors the browser contract

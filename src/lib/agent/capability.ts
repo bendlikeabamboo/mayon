@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '$lib/ai/types';
+import type { ProviderConfig } from '#lib/ai/types.js';
 
 const KNOWN_GATEWAY_BASEURLS: ReadonlySet<string> = new Set([
 	'https://api.deepseek.com',

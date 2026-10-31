@@ -1,14 +1,14 @@
 import { and, asc, desc, eq, lte } from 'drizzle-orm';
-import { messages, type Message, type MessageRole } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+import { messages, type Message, type MessageRole } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 import {
 	deriveKindFromColumns,
 	type BranchArtifactMetadata,
 	type EntryKind,
 	type MessagePart,
 	type TextPart
-} from '$lib/chat/kinds';
+} from '#lib/chat/kinds.js';
 
 async function insertMessage(input: typeof messages.$inferInsert): Promise<Message> {
 	const [row] = await (await awaitDb()).insert(messages).values(input).returning();

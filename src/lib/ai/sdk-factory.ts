@@ -6,7 +6,7 @@ import type { LanguageModel } from 'ai';
 import { createKeychainFetch } from './sdk-fetch';
 import { createCopilotFetch } from './copilot-fetch';
 import type { ProviderConfig } from './types';
-import { resolveToolCapability } from '$lib/agent/capability';
+import { resolveToolCapability } from '#lib/agent/capability.js';
 
 export interface ActiveProvider {
 	model: LanguageModel;

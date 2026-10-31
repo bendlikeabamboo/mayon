@@ -15,13 +15,17 @@
  */
 import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
-import { getActiveSdkProvider } from '$lib/ai/client';
-import { resolveRequestSettings } from '$lib/ai/dialects';
-import { assembleContext } from '$lib/chat/context';
+import type { ProviderConfig } from '#lib/ai/types.js';
+import { getActiveSdkProvider } from '#lib/ai/client.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import { assembleContext } from '#lib/chat/context.js';
 import { splitContextForGeneration } from './context-split';
-import { buildObjectTrace, type ObjectTraceInput, type ObjectTraceRequest } from '$lib/agent/trace';
-import { repos } from '$lib/db';
+import {
+	buildObjectTrace,
+	type ObjectTraceInput,
+	type ObjectTraceRequest
+} from '#lib/agent/trace.js';
+import { repos } from '#lib/db/index.js';
 
 export const BRANCH_SUMMARY_TRACE_KIND = 'branch_artifact_summary';
 

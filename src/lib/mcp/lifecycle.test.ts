@@ -13,11 +13,11 @@ vi.mock('./client-factory', () => ({
 	createMcpTransport: (...args: unknown[]) => createMcpTransportMock(...args)
 }));
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: { has: vi.fn(() => true) }
 }));
 
-vi.mock('$lib/db', () => ({
+vi.mock('#lib/db/index.js', () => ({
 	repos: {}
 }));
 

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { ArrowLeft, SquareTerminal } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { quizzesStore } from '$lib/stores/quizzes.svelte';
-	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
-	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { quizzesStore } from '#lib/stores/quizzes.svelte.js';
+	import DiagnosticsPanel from '#lib/components/diagnostics/DiagnosticsPanel.svelte';
+	import { diagnosticsStore } from '#lib/stores/diagnostics.svelte.js';
 	import McqQuestion from './McqQuestion.svelte';
 	import FlashcardQuestion from './FlashcardQuestion.svelte';
 	import ShortQuestion from './ShortQuestion.svelte';

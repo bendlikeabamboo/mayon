@@ -1,10 +1,10 @@
-import { repos } from '$lib/db';
-import type { ToolResult, Tool } from '$lib/agent/registry';
-import { assembleContext } from '$lib/chat/context';
-import { generateQuiz, QuizGenerationError } from '$lib/ai/generate/generate-quiz';
-import { toQuizQuestions } from '$lib/ai/generate/quiz';
-import { generateLab, LabGenerationError } from '$lib/ai/generate/generate';
-import { toLabContent } from '$lib/ai/generate/lab';
+import { repos } from '#lib/db/index.js';
+import type { ToolResult, Tool } from '#lib/agent/registry.js';
+import { assembleContext } from '#lib/chat/context.js';
+import { generateQuiz, QuizGenerationError } from '#lib/ai/generate/generate-quiz.js';
+import { toQuizQuestions } from '#lib/ai/generate/quiz.js';
+import { generateLab, LabGenerationError } from '#lib/ai/generate/generate.js';
+import { toLabContent } from '#lib/ai/generate/lab.js';
 
 function toolSchema(properties: Record<string, unknown>): Record<string, unknown> {
 	return {

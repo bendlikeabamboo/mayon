@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LanguageModel } from 'ai';
-import type { Message } from '$lib/db/schema';
-import type { ProviderConfig } from '$lib/ai/types';
+import type { Message } from '#lib/db/schema.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
 import type { AgentTurnDeps } from './loop';
 
 vi.mock('ai', () => {
@@ -33,7 +33,7 @@ vi.mock('ai', () => {
 	};
 });
 
-vi.mock('$lib/agent/capability', () => {
+vi.mock('#lib/agent/capability.js', () => {
 	const isSessionDisabled = vi.fn(() => false);
 	const disableToolsForSession = vi.fn(() => {
 		isSessionDisabled.mockReturnValue(true);
@@ -48,7 +48,7 @@ vi.mock('$lib/agent/capability', () => {
 	};
 });
 
-vi.mock('$lib/agent/registry', () => {
+vi.mock('#lib/agent/registry.js', () => {
 	const toolDefs = [
 		{
 			id: 'read_checklist',
@@ -101,21 +101,21 @@ vi.mock('$lib/agent/registry', () => {
 	};
 });
 
-vi.mock('$lib/agent/critic', () => ({
+vi.mock('#lib/agent/critic.js', () => ({
 	validateTurn: vi.fn()
 }));
 
-vi.mock('$lib/chat/projection', () => ({
+vi.mock('#lib/chat/projection.js', () => ({
 	projectEntries: vi.fn((msgs) => msgs)
 }));
 
-vi.mock('$lib/chat/brief', () => ({
+vi.mock('#lib/chat/brief.js', () => ({
 	buildCapabilitiesPreamble: vi.fn(() => 'preamble'),
 	buildFirstTurnOrientationPreamble: vi.fn(() => 'orientation'),
 	buildReplyTiersPreamble: vi.fn(() => 'tiers')
 }));
 
-vi.mock('$lib/ai/dialects', () => ({
+vi.mock('#lib/ai/dialects.js', () => ({
 	resolveRequestSettings: vi.fn(() => ({
 		callSettings: {},
 		providerOptions: {},
@@ -133,26 +133,26 @@ function newApiError(message: string, statusCode: number) {
 	);
 }
 
-const { isSessionDisabled, disableToolsForSession } = await import('$lib/agent/capability');
+const { isSessionDisabled, disableToolsForSession } = await import('#lib/agent/capability.js');
 const mockedIsSessionDisabled = vi.mocked(isSessionDisabled);
 const mockedDisableToolsForSession = vi.mocked(disableToolsForSession);
 
-const { toolsRun, getToolDefinition } = await import('$lib/agent/registry');
+const { toolsRun, getToolDefinition } = await import('#lib/agent/registry.js');
 const mockedToolsRun = vi.mocked(toolsRun);
 void getToolDefinition;
 
-const { validateTurn } = await import('$lib/agent/critic');
+const { validateTurn } = await import('#lib/agent/critic.js');
 const mockedValidateTurn = vi.mocked(validateTurn);
 
-const { projectEntries } = await import('$lib/chat/projection');
+const { projectEntries } = await import('#lib/chat/projection.js');
 const mockedProjectEntries = vi.mocked(projectEntries);
 
-const { buildCapabilitiesPreamble } = await import('$lib/chat/brief');
+const { buildCapabilitiesPreamble } = await import('#lib/chat/brief.js');
 const mockedBuildCapabilitiesPreamble = vi.mocked(buildCapabilitiesPreamble);
-const { buildFirstTurnOrientationPreamble } = await import('$lib/chat/brief');
+const { buildFirstTurnOrientationPreamble } = await import('#lib/chat/brief.js');
 const mockedBuildFirstTurnOrientationPreamble = vi.mocked(buildFirstTurnOrientationPreamble);
 
-const { resolveRequestSettings } = await import('$lib/ai/dialects');
+const { resolveRequestSettings } = await import('#lib/ai/dialects.js');
 const mockedResolveRequestSettings = vi.mocked(resolveRequestSettings);
 
 const { runAgentTurn } = await import('./loop');

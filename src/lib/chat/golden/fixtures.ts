@@ -16,7 +16,7 @@
  *   everything else (including non-object JSON) → `{type:'text',value}`.
  * - Tool row with NULL metadata falls back to `content` for toolResult.
  */
-import type { ChatMessage } from '$lib/ai/types';
+import type { ChatMessage } from '#lib/ai/types.js';
 import type { ModelMessage } from 'ai';
 
 export interface LegacyRow {

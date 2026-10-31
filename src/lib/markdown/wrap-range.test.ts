@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { wrapRange } from './wrap-range';
-import type { AlignmentTable, AlignmentEntry } from '$lib/chat/selection';
-import type { SegmentKind } from '$lib/markdown/sourcemap';
+import type { AlignmentTable, AlignmentEntry } from '#lib/chat/selection.js';
+import type { SegmentKind } from '#lib/markdown/sourcemap.js';
 
 function setupJSDOM(html: string): { doc: Document; root: HTMLElement } {
 	const dom = new JSDOM(`<!DOCTYPE html><div id="root">${html}</div>`);

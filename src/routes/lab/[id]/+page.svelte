@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { labsStore } from '$lib/stores/labs.svelte';
-	import LabRunner from '$lib/components/labs/LabRunner.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { labsStore } from '#lib/stores/labs.svelte.js';
+	import LabRunner from '#lib/components/labs/LabRunner.svelte';
 
 	/**
 	 * Lab runner route. Loads the lab into `labsStore.current` on mount and on

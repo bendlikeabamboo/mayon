@@ -1,4 +1,4 @@
-import type { SourceMap, SegmentKind } from '$lib/markdown/sourcemap';
+import type { SourceMap, SegmentKind } from '#lib/markdown/sourcemap.js';
 
 export interface ResolvedOffsets {
 	startChar: number;

@@ -1,7 +1,7 @@
 import { asc, desc, eq } from 'drizzle-orm';
-import { quizAnswers, quizAttempts, type QuizAnswer, type QuizAttempt } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+import { quizAnswers, quizAttempts, type QuizAnswer, type QuizAttempt } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 
 export const quizAttemptsRepo = {
 	/** Start a new attempt (ungraded until `finish`). */

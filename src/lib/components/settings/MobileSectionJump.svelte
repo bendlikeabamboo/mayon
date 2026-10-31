@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { List } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
-	import { mediaQuery } from '$lib/utils/media.svelte.js';
-	import type { SectionEntry } from '$lib/settings/sections';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '#lib/components/ui/sheet/index.js';
+	import { mediaQuery } from '#lib/utils/media.svelte.js';
+	import type { SectionEntry } from '#lib/settings/sections.js';
 
 	let { sections, onJump }: { sections: SectionEntry[]; onJump: (id: string) => void } = $props();
 

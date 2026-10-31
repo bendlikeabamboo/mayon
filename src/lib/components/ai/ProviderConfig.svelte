@@ -2,18 +2,18 @@
 	import { onMount } from 'svelte';
 	import { CheckCircle2, ChevronRight, KeyRound, Plus, Trash2 } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		Collapsible,
 		CollapsibleContent,
 		CollapsibleTrigger
-	} from '$lib/components/ui/collapsible/index.js';
-	import { ModelSelect } from '$lib/components/ai/model-select/index.js';
-	import CopilotAuthDialog from '$lib/components/ai/copilot-auth-dialog.svelte';
-	import { type ProviderTemplate } from '$lib/ai/registry';
-	import ProviderTemplatePicker from '$lib/components/ai/provider-template-picker.svelte';
-	import { describeDialect, resolveRequestSettings, validateExtraBody } from '$lib/ai/dialects';
-	import { testProviderConnection } from '$lib/ai/connection-test';
+	} from '#lib/components/ui/collapsible/index.js';
+	import { ModelSelect } from '#lib/components/ai/model-select/index.js';
+	import CopilotAuthDialog from '#lib/components/ai/copilot-auth-dialog.svelte';
+	import { type ProviderTemplate } from '#lib/ai/registry.js';
+	import ProviderTemplatePicker from '#lib/components/ai/provider-template-picker.svelte';
+	import { describeDialect, resolveRequestSettings, validateExtraBody } from '#lib/ai/dialects.js';
+	import { testProviderConnection } from '#lib/ai/connection-test.js';
 	import {
 		deleteProviderKey,
 		discoverProviderModelEntries,
@@ -24,17 +24,17 @@
 		saveProviders,
 		setActiveProvider,
 		setProviderKey
-	} from '$lib/ai/client';
-	import { mergeModelContextWindows } from '$lib/ai/model-discovery';
+	} from '#lib/ai/client.js';
+	import { mergeModelContextWindows } from '#lib/ai/model-discovery.js';
 	import type {
 		HazardId,
 		ProviderConfig,
 		ReasoningEffort,
 		SamplingRequestDefaults
-	} from '$lib/ai/types';
-	import { CopilotAuthRequiredError } from '$lib/ai/types';
-	import { uuid } from '$lib/db';
-	import { chatStore } from '$lib/stores/chat.svelte';
+	} from '#lib/ai/types.js';
+	import { CopilotAuthRequiredError } from '#lib/ai/types.js';
+	import { uuid } from '#lib/db/index.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
 
 	// API keys live in the runtime KeyStore (IndexedDB) — not the local settings store.
 	// The "replace key" affordance below never echoes a stored key back; it only

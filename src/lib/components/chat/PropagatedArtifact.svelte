@@ -8,12 +8,12 @@
 		RefreshCw,
 		Trash2
 	} from '@lucide/svelte';
-	import type { Message } from '$lib/db';
-	import { parseMetadata, type BranchArtifactMetadata } from '$lib/chat/kinds';
-	import { incRender } from '$lib/perf/mark';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { chatStore } from '$lib/stores/chat.svelte';
+	import type { Message } from '#lib/db/index.js';
+	import { parseMetadata, type BranchArtifactMetadata } from '#lib/chat/kinds.js';
+	import { incRender } from '#lib/perf/mark.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
 
 	/**
 	 * Collapsible timeline entry for a `branch_artifact` row (020 US1/US3): a

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { resolveEdgeTarget, type EdgeEffect } from '$lib/chat/streaming/edge-target';
-	import { incRender } from '$lib/perf/mark';
+	import { resolveEdgeTarget, type EdgeEffect } from '#lib/chat/streaming/edge-target.js';
+	import { incRender } from '#lib/perf/mark.js';
 
 	let {
 		variant,

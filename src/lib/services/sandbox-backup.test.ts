@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -13,7 +13,7 @@ vi.mock('$lib/services/status.svelte', () => ({
 	}
 }));
 
-vi.mock('$lib/db/backup', () => ({
+vi.mock('#lib/db/backup.js', () => ({
 	downloadBlob: vi.fn(),
 	isSqliteHeader: (bytes: Uint8Array) =>
 		bytes.length >= 16 &&
@@ -23,9 +23,9 @@ vi.mock('$lib/db/backup', () => ({
 		bytes[3] === 0x69
 }));
 
-import { serverStatus } from '$lib/services/status.svelte';
-import { downloadBlob } from '$lib/db/backup';
-import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/services/sandbox-backup';
+import { serverStatus } from '#lib/services/status.svelte.js';
+import { downloadBlob } from '#lib/db/backup.js';
+import { downloadSandboxBackup, restoreSandboxBackup } from '#lib/services/sandbox-backup.js';
 
 describe('downloadSandboxBackup', () => {
 	const originalFetch = globalThis.fetch;

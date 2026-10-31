@@ -32,7 +32,7 @@ describe('ContextGauge wiring (023 US1)', () => {
 	});
 
 	it('Composer stays presentational: no store import or derivation for the gauge', () => {
-		expect(composer).not.toContain('$lib/stores');
+		expect(composer).not.toContain('#lib/stores');
 		expect(composer).not.toContain('deriveContextGauge');
 	});
 });
@@ -58,7 +58,7 @@ describe('ContextGauge escalation (023 US3)', () => {
 
 describe('ContextGauge detail popover (023 US4)', () => {
 	it('wraps the gauge in the repo popover parts', () => {
-		expect(gauge).toContain("from '$lib/components/ui/popover/index.js'");
+		expect(gauge).toContain("from '#lib/components/ui/popover/index.js'");
 		expect(gauge).toContain('<Popover>');
 		expect(gauge).toContain('<PopoverTrigger');
 		expect(gauge).toContain('<PopoverContent');

@@ -1,4 +1,4 @@
-import { authState } from '$lib/auth/state.svelte';
+import { authState } from '#lib/auth/state.svelte.js';
 
 export class ServerClient {
 	async http(path: string, init?: RequestInit): Promise<Response> {

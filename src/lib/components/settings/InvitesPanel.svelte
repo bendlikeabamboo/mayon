@@ -2,10 +2,10 @@
 	import { onMount } from 'svelte';
 	import { Loader2 } from '@lucide/svelte';
 	import type { InviteDTO } from '@mayon/shared';
-	import { AuthApiError, createInvite, listInvites, revokeInvite } from '$lib/auth/client';
+	import { AuthApiError, createInvite, listInvites, revokeInvite } from '#lib/auth/client.js';
 	import type { InviteCreateResponse } from '@mayon/shared';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let invites = $state<InviteDTO[]>([]);
 	let loaded = $state(false);

@@ -1,6 +1,6 @@
 import type { McpClient } from './client';
-import { registerTool, deregisterTool, getToolDefinition } from '$lib/agent/registry';
-import type { ToolDefinition, ToolResult, ToolContext } from '$lib/agent/registry';
+import { registerTool, deregisterTool, getToolDefinition } from '#lib/agent/registry.js';
+import type { ToolDefinition, ToolResult, ToolContext } from '#lib/agent/registry.js';
 import { annotationsToRisk } from './risk';
 import { truncateResult, withTimeout } from './caps';
 import { mountResources, unmountResources } from './resources';

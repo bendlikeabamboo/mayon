@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { AttemptDTO } from '@mayon/shared';
-	import { AuthApiError, listAttempts } from '$lib/auth/client';
-	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { AuthApiError, listAttempts } from '#lib/auth/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
 
 	let attempts = $state<AttemptDTO[]>([]);
 	let loaded = $state(false);

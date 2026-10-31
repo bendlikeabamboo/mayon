@@ -6,7 +6,7 @@
  * Reads are defensive (contracts §2): a missing key, corrupt JSON, or a
  * wrong-typed value falls back to `true` (strip on) without throwing.
  */
-import { repos } from '$lib/db';
+import { repos } from '#lib/db/index.js';
 
 export const STRIP_ENABLED_KEY = 'sectionStripEnabled';
 

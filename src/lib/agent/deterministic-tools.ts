@@ -1,7 +1,7 @@
-import { repos } from '$lib/db';
-import type { ToolResult, Tool } from '$lib/agent/registry';
-import { parseBrief, summarizeBrief, strategyForBrief } from '$lib/chat/brief';
-import type { LearningBrief } from '$lib/chat/brief';
+import { repos } from '#lib/db/index.js';
+import type { ToolResult, Tool } from '#lib/agent/registry.js';
+import { parseBrief, summarizeBrief, strategyForBrief } from '#lib/chat/brief.js';
+import type { LearningBrief } from '#lib/chat/brief.js';
 
 function toolSchema(properties: Record<string, unknown>): Record<string, unknown> {
 	return {

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { canonicalize, alignDomToCanonical, resolveSelection } from './selection';
 import type { AlignmentTable, AlignmentEntry } from './selection';
-import { buildSourceMap } from '$lib/markdown/sourcemap';
-import type { SourceMap } from '$lib/markdown/sourcemap';
-import { renderMarkdown } from '$lib/markdown/render';
+import { buildSourceMap } from '#lib/markdown/sourcemap.js';
+import type { SourceMap } from '#lib/markdown/sourcemap.js';
+import { renderMarkdown } from '#lib/markdown/render.js';
 
 describe('canonicalize', () => {
 	it('collapses runs of whitespace to a single space and trims', () => {

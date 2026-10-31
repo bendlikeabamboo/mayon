@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { ButtonVariant } from '$lib/components/ui/button/button.svelte';
-	import type { ButtonSize } from '$lib/components/ui/button/button.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import type { ButtonVariant } from '#lib/components/ui/button/button.svelte';
+	import type { ButtonSize } from '#lib/components/ui/button/button.svelte';
 
 	let {
 		class: className,

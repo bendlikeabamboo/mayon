@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -13,7 +13,7 @@ vi.mock('$lib/services/status.svelte', () => ({
 	}
 }));
 
-vi.mock('$lib/db/backup', () => ({
+vi.mock('#lib/db/backup.js', () => ({
 	downloadBlob: vi.fn(),
 	isPgDumpHeader: (bytes: Uint8Array) =>
 		bytes.length >= 5 &&
@@ -25,14 +25,14 @@ vi.mock('$lib/db/backup', () => ({
 	parseContentDispositionFilename: (_res: Response, fallback: string) => fallback
 }));
 
-import { serverStatus } from '$lib/services/status.svelte';
-import { downloadBlob } from '$lib/db/backup';
+import { serverStatus } from '#lib/services/status.svelte.js';
+import { downloadBlob } from '#lib/db/backup.js';
 import {
 	downloadDbBackup,
 	restoreDbBackup,
 	downloadSafetyBackup,
 	type RestoreResult
-} from '$lib/services/db-backup';
+} from '#lib/services/db-backup.js';
 
 const PGDMP_BYTES = new Uint8Array([0x50, 0x47, 0x44, 0x4d, 0x50, 0x00, 0x00, 0x00]);
 

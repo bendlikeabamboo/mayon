@@ -15,7 +15,7 @@ describe('US1: AssistantMessage strip integration contract', () => {
 	});
 
 	it('derives sections from the displayed reply markdown via the shared extractor', () => {
-		expect(source).toContain("from '$lib/markdown/sections'");
+		expect(source).toContain("from '#lib/markdown/sections.js'");
 		expect(source).toContain('extractSections');
 		expect(source).toContain('extractSections(visible)');
 	});

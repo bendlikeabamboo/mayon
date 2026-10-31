@@ -66,7 +66,7 @@ describe('US1: SectionStrip pointer-discipline, motion, and touch source contrac
 	});
 
 	it('drives the dwell preview through the pure transition module and a component-held timer', () => {
-		expect(source).toContain("from '$lib/chat/strip/dwell'");
+		expect(source).toContain("from '#lib/chat/strip/dwell.js'");
 		expect(source).toContain('dwellTransition');
 		expect(source).toContain('setTimeout');
 		expect(source).toContain('clearTimeout');

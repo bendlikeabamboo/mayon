@@ -1,4 +1,4 @@
-import type { AlignmentTable } from '$lib/chat/selection';
+import type { AlignmentTable } from '#lib/chat/selection.js';
 
 export interface WrapAttrs {
 	'data-branch-chat': string;

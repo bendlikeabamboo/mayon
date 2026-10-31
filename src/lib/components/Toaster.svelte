@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { toastState } from '$lib/stores/toasts.svelte';
+	import { toastState } from '#lib/stores/toasts.svelte.js';
 
 	function dismiss(id: string) {
 		toastState.dismiss(id);

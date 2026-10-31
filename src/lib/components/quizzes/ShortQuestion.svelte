@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { LoaderCircle } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import Markdown from '$lib/components/chat/Markdown.svelte';
-	import { repos } from '$lib/db';
-	import type { ShortPayload } from '$lib/db';
-	import type { QuizAnswer, QuizQuestion } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import Markdown from '#lib/components/chat/Markdown.svelte';
+	import { repos } from '#lib/db/index.js';
+	import type { ShortPayload } from '#lib/db/index.js';
+	import type { QuizAnswer, QuizQuestion } from '#lib/db/index.js';
 
 	/**
 	 * Short-answer question. Submits the typed text for AI grading; while

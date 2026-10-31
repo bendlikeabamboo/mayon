@@ -1,5 +1,5 @@
-import { SCOPE_STRATEGIES, type ScopeStrategyId } from '$lib/chat/strategies';
-import { stripGateFence } from '$lib/ai/generate/generate-gate';
+import { SCOPE_STRATEGIES, type ScopeStrategyId } from '#lib/chat/strategies.js';
+import { stripGateFence } from '#lib/ai/generate/generate-gate.js';
 
 export interface LintCheck {
 	name: string;

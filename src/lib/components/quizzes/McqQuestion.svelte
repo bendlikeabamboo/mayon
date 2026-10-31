@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { repos } from '$lib/db';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { McqPayload } from '$lib/db';
-	import type { QuizAnswer, QuizQuestion } from '$lib/db';
+	import { repos } from '#lib/db/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import type { McqPayload } from '#lib/db/index.js';
+	import type { QuizAnswer, QuizQuestion } from '#lib/db/index.js';
 
 	/**
 	 * MCQ question. Radio options lock on submit (an `answer` row existing or

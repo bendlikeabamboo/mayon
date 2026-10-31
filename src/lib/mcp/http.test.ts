@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpMcpTransport } from './http';
-import { classifyFetchError, httpStatusToError } from '$lib/ai/errors';
-import { MissingKeyError, CorsBlockedError, NetworkError } from '$lib/ai/types';
+import { classifyFetchError, httpStatusToError } from '#lib/ai/errors.js';
+import { MissingKeyError, CorsBlockedError, NetworkError } from '#lib/ai/types.js';
 
-vi.mock('$lib/ai/errors', () => ({
+vi.mock('#lib/ai/errors.js', () => ({
 	classifyFetchError: vi.fn((err: unknown) => err),
 	httpStatusToError: vi.fn(async (res: Response) => new Error(`HTTP ${res.status}`))
 }));

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
-	import type { ContextGauge } from '$lib/chat/context-usage';
+	import { Popover, PopoverContent, PopoverTrigger } from '#lib/components/ui/popover/index.js';
+	import type { ContextGauge } from '#lib/chat/context-usage.js';
 
 	let { gauge }: { gauge: ContextGauge | null } = $props();
 

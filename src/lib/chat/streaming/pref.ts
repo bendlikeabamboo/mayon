@@ -7,7 +7,7 @@
  * corrupt JSON, or a value outside the union falls back to `'standard'`
  * (today's behavior) without throwing.
  */
-import { repos } from '$lib/db';
+import { repos } from '#lib/db/index.js';
 
 export type StreamPreset = 'calm' | 'standard' | 'expressive';
 

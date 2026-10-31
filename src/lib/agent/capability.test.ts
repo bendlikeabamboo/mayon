@@ -4,8 +4,8 @@ import {
 	legacyToolDefault,
 	disableToolsForSession,
 	isSessionDisabled
-} from '$lib/agent/capability';
-import type { ProviderConfig } from '$lib/ai/types';
+} from '#lib/agent/capability.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
 
 function makeConfig(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
 	return {

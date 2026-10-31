@@ -14,16 +14,16 @@
  * Abort + error handling mirror `chatStore.send`: `AbortError` is swallowed;
  * transport errors go through `formatProviderError` into `error`.
  */
-import { browser } from '$app/environment';
-import { repos } from '$lib/db';
-import type { Lab } from '$lib/db';
-import { assembleContext } from '$lib/chat/context';
-import { getActiveSdkProvider, getAmbientEffort } from '$lib/ai/client';
-import { resolveRequestSettings } from '$lib/ai/dialects';
-import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
-import { generateLab, LabGenerationError } from '$lib/ai/generate/generate';
-import { toLabContent } from '$lib/ai/generate/lab';
-import { buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
+import { browser } from '$app/env';
+import { repos } from '#lib/db/index.js';
+import type { Lab } from '#lib/db/index.js';
+import { assembleContext } from '#lib/chat/context.js';
+import { getActiveSdkProvider, getAmbientEffort } from '#lib/ai/client.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import { formatProviderError, type FormattedProviderError } from '#lib/ai/errors.js';
+import { generateLab, LabGenerationError } from '#lib/ai/generate/generate.js';
+import { toLabContent } from '#lib/ai/generate/lab.js';
+import { buildObjectTrace, type ObjectTraceInput } from '#lib/agent/trace.js';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';

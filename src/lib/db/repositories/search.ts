@@ -1,4 +1,4 @@
-import { getDriver } from '$lib/db/driver/client';
+import { getDriver } from '#lib/db/driver/client.js';
 
 export type SearchKind = 'message' | 'chat' | 'lab' | 'quiz_question';
 

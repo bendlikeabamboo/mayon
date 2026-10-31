@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { McpTool, McpResource, McpPrompt } from './types';
 import { McpClient } from './client';
 import { FakeMcpTransport } from './fake-transport';
-import { ProviderHttpError } from '$lib/ai/types';
+import { ProviderHttpError } from '#lib/ai/types.js';
 
 const fakeServerInfo = { name: 'test-server', version: '1.0.0' };
 const fakeTools: McpTool[] = [

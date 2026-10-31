@@ -1,4 +1,4 @@
-import type { ToolRisk } from '$lib/agent/registry';
+import type { ToolRisk } from '#lib/agent/registry.js';
 import type { McpToolAnnotations } from './types';
 
 export function annotationsToRisk(annotations?: McpToolAnnotations): ToolRisk {

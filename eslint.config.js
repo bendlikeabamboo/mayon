@@ -6,23 +6,24 @@ import globals from 'globals';
 
 // ─── $lib/db boundary (specs/025-text-first-runtime/contracts/enforcement.md) ───
 // R1: app tier imports the data tier only through the '$lib/db' façade, never a
-// deep path (static, type-only, or export-from). R3: '$lib/db/**' never imports
+// deep path (static, type-only, or export-from). R3: '#lib/db/**' never imports
 // app modules. See docs/reference/seams + docs/reference/agent-map.
 const r1Message =
-	"Boundary violation (R1): app code must import only from '$lib/db' (the repository façade), never '$lib/db/<deep path>'. See docs/reference/seams + docs/reference/agent-map.";
+	"Boundary violation (R1): app code must import only from '#lib/db/index.js' (the repository façade), never '#lib/db/<deep path>'. See docs/reference/seams + docs/reference/agent-map.";
 const r3Message =
-	"Boundary violation (R3): '$lib/db/**' must not import app modules (no upward imports). See docs/reference/seams + docs/reference/agent-map.";
-// '$lib/db/*' catches one segment, '$lib/db/*/**' the rest: together every deep
-// path matches while the bare '$lib/db' façade stays allowed.
-const dbDeepPaths = ['$lib/db/*', '$lib/db/*/**'];
+	"Boundary violation (R3): '#lib/db/**' must not import app modules (no upward imports). See docs/reference/seams + docs/reference/agent-map.";
+// '#lib/db/*' catches one segment, '#lib/db/*/**' the rest: together every deep
+// path matches while the '#lib/db/index.js' façade stays allowed (SvelteKit 3
+// resolves the façade through the #lib subpath import, so the bare alias is gone).
+const dbDeepPaths = ['#lib/db/*', '#lib/db/*/**', '!#lib/db/index.js'];
 // db internals still read a few app-tier modules by design today (boot state,
 // server transport, mcp types); each such file is baselined as an escape hatch
 // below (R3 baseline stragglers) and migrates opportunistically when touched.
 // Extend this list only together with the changes that empty each new area of db imports.
 const appTierAreas = ['components', 'stores', 'services', 'ai', 'chat', 'mcp'].flatMap((area) => [
-	`$lib/${area}`,
-	`$lib/${area}/*`,
-	`$lib/${area}/*/**`
+	`#lib/${area}`,
+	`#lib/${area}/*`,
+	`#lib/${area}/*/**`
 ]);
 
 export default ts.config(
