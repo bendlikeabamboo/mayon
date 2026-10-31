@@ -11,7 +11,7 @@ import {
 } from '$lib/chat/brief';
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
 import { resolveRequestSettings } from '$lib/ai/dialects';
-import type { Message } from '$lib/db/schema';
+import type { Message } from '$lib/db';
 import type { TraceEvent, TracedRequestMessage } from './trace';
 
 const MAX_ITERATIONS = 6;

@@ -12,7 +12,7 @@
  * No truncation, ever.
  */
 import { repos } from '$lib/db';
-import type { Chat, Message } from '$lib/db/schema';
+import type { Chat, Message } from '$lib/db';
 import type { BranchArtifactMetadata } from '$lib/chat/kinds';
 
 /** Placement accepted by `messagesRepo.insertAnchored`. */

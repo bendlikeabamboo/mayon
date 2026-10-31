@@ -34,6 +34,7 @@
 		"check": "svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "eslint . && prettier --check .",
+		"check:boundaries": "node scripts/check-dependency-direction.mjs",
 		"format": "prettier --write .",
 		"test": "vitest run",
 		"test:e2e": "playwright test",

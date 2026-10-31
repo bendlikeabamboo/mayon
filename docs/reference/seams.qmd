@@ -14,7 +14,9 @@ Do not violate these boundaries.
 
 Application code (Svelte components, SvelteKit routes, stores) must interact with data exclusively through the repository layer in `src/lib/db/`. They must never import the `db` object or drizzle query builders directly.
 
-The drizzle `db` object is private to `src/lib/db/`. It is exposed to the rest of the app through `getDb()` and the repository functions in `src/lib/db/repos/`.
+The drizzle `db` object is private to `src/lib/db/`. It is exposed to the rest of the app through `getDb()` and the repository functions in `src/lib/db/repositories/`.
+
+These rules are machine-enforced: import-boundary lint rules in `eslint.config.js` and a dependency-direction check in `scripts/check-dependency-direction.mjs` (run in CI). The [Agent's Map](agent-map.qmd) summarizes where feature logic goes and how it is proven.
 
 This rule exists because the `db` object is tied to a specific driver. If a component imported it directly, that component would be coupled to whichever driver is active at import time, making it impossible to test against the test driver or to swap runtimes.
 

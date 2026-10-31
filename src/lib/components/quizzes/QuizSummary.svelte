@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { quizzesStore } from '$lib/stores/quizzes.svelte';
-	import type { QuizQuestionType } from '$lib/db/schema';
+	import type { QuizQuestionType } from '$lib/db';
 
 	/**
 	 * End-of-attempt summary: the aggregate score + percentage, a per-type

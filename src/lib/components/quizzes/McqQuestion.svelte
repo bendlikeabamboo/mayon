@@ -2,7 +2,7 @@
 	import { repos } from '$lib/db';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { McqPayload } from '$lib/db';
-	import type { QuizAnswer, QuizQuestion } from '$lib/db/schema';
+	import type { QuizAnswer, QuizQuestion } from '$lib/db';
 
 	/**
 	 * MCQ question. Radio options lock on submit (an `answer` row existing or

@@ -29,7 +29,7 @@
 import { browser } from '$app/environment';
 import { repos } from '$lib/db';
 import type { McqPayload, ShortPayload } from '$lib/db';
-import type { Quiz, QuizAnswer, QuizAttempt, QuizQuestion } from '$lib/db/schema';
+import type { Quiz, QuizAnswer, QuizAttempt, QuizQuestion } from '$lib/db';
 import { assembleContext } from '$lib/chat/context';
 import { getActiveSdkProvider, getAmbientEffort } from '$lib/ai/client';
 import { resolveRequestSettings } from '$lib/ai/dialects';

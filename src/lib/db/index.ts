@@ -3,6 +3,15 @@
 // The drizzle `db` object stays private to this directory.
 export { bootstrapDb, getDb, getDriver, rebootstrapWith } from './driver/client';
 export type { StorageDriver } from './driver/types';
+export { runSelfCheck } from './self-check';
+export {
+	downloadBlob,
+	isPgDumpHeader,
+	isSqliteHeader,
+	parseContentDispositionFilename
+} from './backup';
+export type * from './schema';
+export { uuid } from './ids';
 
 import { settingsRepo } from './repositories/settings';
 import { chatsRepo } from './repositories/chats';

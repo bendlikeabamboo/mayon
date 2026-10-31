@@ -1,6 +1,6 @@
 import { serverClient } from './client';
 import { serverStatus } from './status.svelte';
-import { downloadBlob, isPgDumpHeader } from '$lib/db/backup';
+import { downloadBlob, isPgDumpHeader } from '$lib/db';
 
 function formatDate(): string {
 	const d = new Date();

@@ -3,7 +3,7 @@
 	import Markdown from '$lib/components/chat/Markdown.svelte';
 	import { repos } from '$lib/db';
 	import type { FlashcardPayload } from '$lib/db';
-	import type { QuizAnswer, QuizQuestion } from '$lib/db/schema';
+	import type { QuizAnswer, QuizQuestion } from '$lib/db';
 
 	/**
 	 * Flashcard question. "Reveal" flips the back into view (allowed in review);

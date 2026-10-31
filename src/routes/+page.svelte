@@ -16,7 +16,7 @@
 	import RowCard from '$lib/components/RowCard.svelte';
 	import { entry } from '$lib/motion/stagger';
 	import type { LabChecklistItem } from '$lib/db';
-	import type { Chat, Quiz } from '$lib/db/schema';
+	import type { Chat, Quiz } from '$lib/db';
 
 	interface InProgressLab {
 		id: string;

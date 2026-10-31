@@ -9,9 +9,7 @@
 	import AppShell from '$lib/components/AppShell.svelte';
 	import BootGate from '$lib/components/BootGate.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { bootstrapDb } from '$lib/db/driver/client';
-	import { repos } from '$lib/db';
-	import { runSelfCheck } from '$lib/db/self-check';
+	import { bootstrapDb, repos, runSelfCheck } from '$lib/db';
 	import { bindThemePersistence, themeState, type Theme } from '$lib/stores/theme.svelte';
 	import { dbStatus } from '$lib/stores/db.svelte.js';
 

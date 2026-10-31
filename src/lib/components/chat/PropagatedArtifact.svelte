@@ -8,7 +8,7 @@
 		RefreshCw,
 		Trash2
 	} from '@lucide/svelte';
-	import type { Message } from '$lib/db/schema';
+	import type { Message } from '$lib/db';
 	import { parseMetadata, type BranchArtifactMetadata } from '$lib/chat/kinds';
 	import { incRender } from '$lib/perf/mark';
 	import { Badge } from '$lib/components/ui/badge/index.js';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ChevronRight } from '@lucide/svelte';
-	import type { Chat } from '$lib/db/schema';
+	import type { Chat } from '$lib/db';
 	import { mediaQuery } from '$lib/utils/media.svelte.js';
 
 	/**

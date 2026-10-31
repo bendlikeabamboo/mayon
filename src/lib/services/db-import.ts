@@ -1,6 +1,6 @@
 import { serverClient } from './client';
 import { serverStatus } from './status.svelte';
-import { downloadBlob, isSqliteHeader, parseContentDispositionFilename } from '$lib/db/backup';
+import { downloadBlob, isSqliteHeader, parseContentDispositionFilename } from '$lib/db';
 
 export interface ImportPreview {
 	summary: Record<string, number>;

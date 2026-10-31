@@ -57,6 +57,16 @@ This runs `svelte-check` across the entire codebase.
 4. Open a pull request against `main`.
 5. Address review feedback and update the branch.
 
+## Placement review checklist
+
+When reviewing a change, check where the logic lives and how it is proven:
+
+- [ ] Boundary-placeable logic sits behind the repository/driver seam — application code imports the façade (repositories), not storage internals.
+- [ ] The behavior is proven by logic-layer text tests: set up `useFileTestDb()`, seed state through `repos`, and assert on text outcomes.
+- [ ] Browser/e2e tests cover only UI-only behavior; camera-style visual checks (screenshot plus review) stay occasional.
+
+The full placement and proving rules are owned by two reference pages — [Agent's Map](../reference/agent-map.qmd) and [Architecture Boundaries](../reference/seams.qmd). Follow those links rather than restating rules in review comments.
+
 ## Testing
 
 Tests run against a pglite (Postgres-compatible) test driver.

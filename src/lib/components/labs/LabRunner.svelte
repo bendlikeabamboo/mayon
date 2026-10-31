@@ -3,8 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Markdown from '$lib/components/chat/Markdown.svelte';
 	import { labsStore } from '$lib/stores/labs.svelte';
-	import { labsRepo, type LabChecklistItem } from '$lib/db/repositories/labs';
-	import type { Lab } from '$lib/db/schema';
+	import { repos, type LabChecklistItem, type Lab } from '$lib/db';
 	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
 	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
 
@@ -17,7 +16,7 @@
 
 	// Parse the checklist reactively from the lab row. The store updates
 	// `labsStore.current.checklist` on a successful toggle, so this stays live.
-	const items = $derived<LabChecklistItem[]>(labsRepo.parseChecklist(lab.checklist));
+	const items = $derived<LabChecklistItem[]>(repos.labs.parseChecklist(lab.checklist));
 	const doneCount = $derived(items.filter((i) => i.done).length);
 </script>
 

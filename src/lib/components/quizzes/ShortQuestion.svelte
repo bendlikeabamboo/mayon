@@ -4,7 +4,7 @@
 	import Markdown from '$lib/components/chat/Markdown.svelte';
 	import { repos } from '$lib/db';
 	import type { ShortPayload } from '$lib/db';
-	import type { QuizAnswer, QuizQuestion } from '$lib/db/schema';
+	import type { QuizAnswer, QuizQuestion } from '$lib/db';
 
 	/**
 	 * Short-answer question. Submits the typed text for AI grading; while

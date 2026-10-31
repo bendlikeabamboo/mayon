@@ -41,7 +41,7 @@
 		failedMessageId = null,
 		streaming = false
 	}: {
-		messages: import('$lib/db/schema').Message[];
+		messages: import('$lib/db').Message[];
 		liveItems?: LiveEntry[];
 		onExpound: (
 			messageId: string,

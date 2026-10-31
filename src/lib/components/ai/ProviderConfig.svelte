@@ -33,7 +33,7 @@
 		SamplingRequestDefaults
 	} from '$lib/ai/types';
 	import { CopilotAuthRequiredError } from '$lib/ai/types';
-	import { uuid } from '$lib/db/ids';
+	import { uuid } from '$lib/db';
 	import { chatStore } from '$lib/stores/chat.svelte';
 
 	// API keys live in the runtime KeyStore (IndexedDB) — not the local settings store.
