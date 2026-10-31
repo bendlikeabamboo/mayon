@@ -2,6 +2,7 @@ import { generateText } from 'ai';
 import type { McpClient } from './client';
 import type { McpServerConfig } from './types';
 import { withTimeout } from './caps';
+import { captureGenerator } from '#lib/telemetry/capture.js';
 
 export interface SamplingTurnState {
 	callCount: number;
@@ -79,22 +80,49 @@ export function registerSamplingHandler(
 
 		turnState.callCount++;
 
-		const { text, usage } = await withTimeout(
-			generateText({
-				model: ctx.model,
-				messages: (p?.messages ?? []).map((m) => ({
-					role: m.role as 'user' | 'assistant',
-					content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-				})),
-				abortSignal: ctx.signal
-			}),
-			30000,
-			ctx.signal
-		);
+		const startedAt = Date.now();
+		const sampledMessages = (p?.messages ?? []).map((m) => ({
+			role: m.role as 'user' | 'assistant',
+			content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+		}));
+		let sampled: Awaited<ReturnType<typeof generateText>>;
+		try {
+			sampled = await withTimeout(
+				generateText({
+					model: ctx.model,
+					messages: sampledMessages,
+					abortSignal: ctx.signal
+				}),
+				30000,
+				ctx.signal
+			);
+		} catch (err) {
+			captureGenerator('mcp-sampling', {
+				chatId: ctx.chatId,
+				model: (ctx.model as { modelId?: string }).modelId ?? '',
+				provider: ctx.config.kind,
+				startedAt,
+				input: { messages: sampledMessages },
+				error: err instanceof Error ? err.message : String(err),
+				aborted: ctx.signal?.aborted === true
+			});
+			throw err;
+		}
+		const { text, usage } = sampled;
 
 		if (usage) {
 			turnState.tokensUsed += usage.totalTokens ?? 0;
 		}
+
+		captureGenerator('mcp-sampling', {
+			chatId: ctx.chatId,
+			model: (ctx.model as { modelId?: string }).modelId ?? '',
+			provider: ctx.config.kind,
+			startedAt,
+			input: { messages: sampledMessages },
+			output: text ?? '',
+			usage
+		});
 
 		ctx.onTrace?.({
 			kind: 'mcp-sampling',

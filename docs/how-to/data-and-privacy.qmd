@@ -22,9 +22,9 @@ API keys are never written to the `settings` table. The settings table holds onl
 
 **Browser:** Keys are stored in IndexedDB, which is scoped to the same origin as the app. The key is never transmitted anywhere except the provider's API endpoint during streaming (or the Mayon server's CORS proxy, which is same-origin and transient).
 
-## No telemetry
+## No telemetry by default
 
-Mayon does not collect, transmit, or report any telemetry. There are no analytics, no usage tracking, and no phone-home mechanisms. The app does not make any network requests except to the AI providers you explicitly configure.
+Mayon does not collect, transmit, or report any telemetry unless you explicitly turn it on and point it at your own Langfuse project. There are no analytics, no usage tracking, and no phone-home mechanisms. The app does not make any network requests except to the AI providers you explicitly configure (and, if you opt in, your own telemetry destination). See [Optional Telemetry](telemetry.qmd).
 
 ## Offline capability
 

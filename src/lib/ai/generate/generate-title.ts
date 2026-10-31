@@ -27,6 +27,7 @@ export interface GenerateTitleOptions {
 		result?: { object: unknown };
 		error?: string;
 		raw?: string;
+		usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
 	}) => void;
 }
 
@@ -54,7 +55,7 @@ export async function generateTitle(
 			...opts?.requestSettings?.callSettings
 		});
 		const title = cleanTitle(result.text);
-		opts?.onTrace?.({ request, result: { object: title } });
+		opts?.onTrace?.({ request, result: { object: title }, usage: result.usage });
 		return title;
 	} catch (err) {
 		opts?.onTrace?.({ request, error: err instanceof Error ? err.message : String(err) });

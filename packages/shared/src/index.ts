@@ -26,7 +26,15 @@ export type {
 	DbQueryRequest,
 	DbQueryResult,
 	DbQueryResponse,
-	DbErrorResponse
+	DbErrorResponse,
+	TelemetryCaptureMode,
+	TelemetryConfig,
+	TelemetryConfigInput,
+	TelemetryEventKind,
+	TelemetryUsage,
+	TelemetryEventRecord,
+	TelemetryEventsRequest,
+	TelemetryStatus
 } from './protocol';
 export type {
 	AuthMode,

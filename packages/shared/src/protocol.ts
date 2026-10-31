@@ -98,3 +98,61 @@ export interface McpFrame {
 	code?: number;
 	spawn?: McpSpawn;
 }
+
+/**
+ * Optional user-defined telemetry (026): Langfuse export config, the normalized
+ * capture record, and delivery-health status. Config is the non-secret
+ * `telemetry` settings KV row; the Langfuse secret key stays server-side in
+ * `MAYON_LANGFUSE_SECRET_KEY` and never appears in these types.
+ * See `specs/026-optional-telemetry/`.
+ */
+export type TelemetryCaptureMode = 'content' | 'metadata';
+export interface TelemetryConfig {
+	enabled: boolean;
+	host: string;
+	publicKey: string;
+	captureMode: TelemetryCaptureMode;
+	updatedAt: string;
+}
+export type TelemetryConfigInput = Omit<TelemetryConfig, 'updatedAt'>;
+export type TelemetryEventKind =
+	| 'chat-turn'
+	| 'title'
+	| 'brief'
+	| 'quiz'
+	| 'grading'
+	| 'lab'
+	| 'branch-summary'
+	| 'mcp-sampling';
+export interface TelemetryUsage {
+	input?: number;
+	output?: number;
+	total?: number;
+}
+export interface TelemetryEventRecord {
+	id: string;
+	kind: TelemetryEventKind;
+	chatId: string;
+	model: string;
+	provider: string;
+	startedAt: string;
+	durationMs: number;
+	outcome: 'success' | 'error' | 'aborted';
+	errorDetail?: string;
+	input?: unknown;
+	output?: string;
+	usage?: TelemetryUsage;
+	truncated?: boolean;
+}
+export interface TelemetryEventsRequest {
+	records: TelemetryEventRecord[];
+}
+export interface TelemetryStatus {
+	configured: boolean;
+	enabled: boolean;
+	captureMode: TelemetryCaptureMode;
+	secretPresent: boolean;
+	queueDepth: number;
+	lastDeliveredAt?: string | null;
+	lastError?: { at: string; summary: string } | null;
+}

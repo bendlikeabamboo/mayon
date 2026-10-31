@@ -25,6 +25,7 @@ import {
 	type ObjectTraceInput,
 	type ObjectTraceRequest
 } from '#lib/agent/trace.js';
+import { captureGenerator } from '#lib/telemetry/capture.js';
 import { repos } from '#lib/db/index.js';
 
 export const BRANCH_SUMMARY_TRACE_KIND = 'branch_artifact_summary';
@@ -114,6 +115,7 @@ export async function generateBranchArtifactSummary(
 		callSettings: requestSettings.callSettings
 	};
 	const startTime = Date.now();
+	const modelId = (model as { modelId?: string }).modelId ?? '';
 	try {
 		const result = await generateText({
 			model,
@@ -124,6 +126,15 @@ export async function generateBranchArtifactSummary(
 			providerOptions: requestSettings.providerOptions as never,
 			...requestSettings.callSettings
 		});
+		captureGenerator('branch-summary', {
+			chatId: branchChatId,
+			model: modelId,
+			provider: config.kind,
+			startedAt: startTime,
+			input: request,
+			output: result.text,
+			usage: result.usage
+		});
 		const traceInput: ObjectTraceInput = {
 			kind: BRANCH_SUMMARY_TRACE_KIND,
 			request,
@@ -132,6 +143,15 @@ export async function generateBranchArtifactSummary(
 		const traceId = await persistTrace(branchChatId, model, config, traceInput, startTime);
 		return { summary: result.text, traceId };
 	} catch (err) {
+		captureGenerator('branch-summary', {
+			chatId: branchChatId,
+			model: modelId,
+			provider: config.kind,
+			startedAt: startTime,
+			input: request,
+			error: err instanceof Error ? err.message : String(err),
+			aborted: signal?.aborted === true
+		});
 		await persistTrace(
 			branchChatId,
 			model,

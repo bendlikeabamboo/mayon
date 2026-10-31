@@ -88,7 +88,10 @@ const ALL_ROUTES: readonly RouteRef[] = [
 	{ method: 'POST', url: '/api/sandbox/query' },
 	{ method: 'POST', url: '/api/db/query' },
 	{ method: 'GET', url: '/ws/mcp' },
-	{ method: 'POST', url: '/api/llm/proxy' }
+	{ method: 'POST', url: '/api/llm/proxy' },
+	{ method: 'PUT', url: '/api/telemetry/config' },
+	{ method: 'POST', url: '/api/telemetry/events' },
+	{ method: 'GET', url: '/api/telemetry/status' }
 ];
 
 function normalizeRoutes(routes: readonly RouteRef[]): string[] {

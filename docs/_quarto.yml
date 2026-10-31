@@ -43,6 +43,7 @@ website:
         contents:
           - how-to/providers.qmd
           - how-to/data-and-privacy.qmd
+          - how-to/telemetry.qmd
           - how-to/labs.qmd
           - how-to/quizzes.qmd
           - how-to/building.qmd

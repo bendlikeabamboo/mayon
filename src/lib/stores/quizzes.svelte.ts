@@ -40,7 +40,12 @@ import {
 	gradeShortAnswer
 } from '#lib/ai/generate/generate-quiz.js';
 import { toQuizQuestions } from '#lib/ai/generate/quiz.js';
-import { buildObjectTrace, type ObjectTraceInput } from '#lib/agent/trace.js';
+import {
+	buildObjectTrace,
+	type ObjectTraceInput,
+	type ObjectTraceRequest
+} from '#lib/agent/trace.js';
+import { captureGenerator } from '#lib/telemetry/capture.js';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -166,8 +171,12 @@ class QuizzesState {
 		this.generating = true;
 		this.error = null;
 		this.controller = new AbortController();
+		const signal = this.controller.signal;
 
 		let traceInput: ObjectTraceInput | null = null;
+		let traceRequest: ObjectTraceRequest | undefined;
+		let traceResult: { object: unknown } | undefined;
+		let traceError: string | undefined;
 		let createdQuizId: string | undefined;
 		const startTime = Date.now();
 
@@ -179,9 +188,12 @@ class QuizzesState {
 			const effort = await getAmbientEffort();
 			const requestSettings = resolveRequestSettings(config, config.defaultModel, effort);
 			const generated = await generateQuiz(model, ctx, {
-				signal: this.controller!.signal,
+				signal,
 				requestSettings,
 				onTrace: (t) => {
+					traceRequest = t.request;
+					traceResult = t.result;
+					traceError = t.error;
 					traceInput = {
 						kind: 'quiz',
 						request: t.request,
@@ -224,6 +236,16 @@ class QuizzesState {
 			if (traceInput) {
 				try {
 					const { config } = await getActiveSdkProvider();
+					captureGenerator('quiz', {
+						chatId,
+						model: config.defaultModel,
+						provider: config.kind,
+						startedAt: startTime,
+						input: traceRequest,
+						result: traceResult,
+						error: traceError,
+						aborted: signal.aborted
+					});
 					await repos.agentTraces.create({
 						id: '',
 						createdAt: startTime,
@@ -400,12 +422,17 @@ class QuizzesState {
 		if (!this.current || !this.activeAttempt) return;
 		const attemptId = this.activeAttempt.id;
 		let traceInput: ObjectTraceInput | null = null;
+		let traceRequest: ObjectTraceRequest | undefined;
+		let traceResult: { object: unknown } | undefined;
+		let traceError: string | undefined;
 		let configKind: string = 'openai-compatible';
+		let modelId = '';
 		const startTime = Date.now();
 		try {
 			const ctx = await assembleContext(this.current!.chatId);
 			const { model, config } = await getActiveSdkProvider();
 			configKind = config.kind;
+			modelId = (model as { modelId?: string }).modelId ?? '';
 			const question = this.questions.find((q) => q.id === questionId);
 			if (!question) return;
 			const payload = repos.quizQuestions.parsePayload<ShortPayload>(question.payload);
@@ -419,6 +446,9 @@ class QuizzesState {
 				},
 				{
 					onTrace: (t) => {
+						traceRequest = t.request;
+						traceResult = t.result;
+						traceError = t.error;
 						traceInput = {
 							kind: 'grade',
 							request: t.request,
@@ -464,6 +494,15 @@ class QuizzesState {
 		} finally {
 			if (traceInput) {
 				try {
+					captureGenerator('grading', {
+						chatId: this.current!.chatId,
+						model: modelId,
+						provider: configKind,
+						startedAt: startTime,
+						input: traceRequest,
+						result: traceResult,
+						error: traceError
+					});
 					await repos.agentTraces.create({
 						id: '',
 						createdAt: startTime,

@@ -142,6 +142,19 @@ Restore uses PG-native `pg_restore --data-only --single-transaction`. Post-load,
 
 While restoring, `/api/db/query` returns 503 and `/api/health` reports `restoring: true` — no server restart, no downtime.
 
+## Optional telemetry rides one opt-in sink
+
+Telemetry (026) is strictly off by default, and the off state is network-verifiable: nothing buffers, nothing dials out (FR-002). The whole feature is one sink with four parts:
+
+- **Capture tap**: `emitTelemetry` (`src/lib/telemetry/capture.ts`) is the single entry point. Its disabled check is synchronous and first. Chat turns (`src/lib/agent/loop.ts` + `src/lib/stores/chat.svelte.ts`) and every side generator (title, brief, quiz, grading, lab, branch summary, MCP sampling) emit through it at the agent trace seam; nothing else may build a `TelemetryEventRecord` or POST to the relay. Records assemble per capture mode: `metadata` omits input/output at assembly (omitted, never empty — FR-009), fields cap at ~128 KiB with a truncation marker.
+- **Relay**: `src/lib/telemetry/relay.ts` buffers ≤50 records / ≤5s (drop-oldest) and fire-and-forgets them to the same-origin `POST /api/telemetry/events`. It never blocks or throws into the chat path.
+- **Server pipeline**: `server/src/telemetry-ingest.ts` — bounded queue (500, drop-oldest), flush cadence ≤5s / ≤20 records, exponential backoff capped at 60s. `reset()` drops the queue synchronously inside the disable request (FR-003), and the pipeline dials Langfuse only while enabled with a secret.
+- **Outbound client**: probe `GET {host}/api/public/projects` (5s timeout, classified failures) runs server-side before any enable/destination change persists; delivery batches `POST /api/public/ingestion` with Basic auth. Langfuse is the first connector of a generic opt-in sink — adding a destination must not redesign capture or consent.
+
+Config is one `settings` KV row (`telemetry`) holding non-secret fields only (host, public key, capture mode, enabled). The Langfuse secret key lives only in the `MAYON_LANGFUSE_SECRET_KEY` env var on the server — never in settings, never in an API response (`GET /api/telemetry/status` reports `secretPresent` as a boolean, no material). Delivery health is projected through the same status route; telemetry faults never fail chats.
+
+Rules: no second capture path; the metadata-mode server gate rejects records carrying content fields while the active config says metadata (defense-in-depth behind the browser-side strip).
+
 ## Presentation seams (feature 004)
 
 ### Compose area is input-only
