@@ -9,7 +9,7 @@
  */
 import { getCopilotSession } from './copilot-session';
 import { classifyFetchError, httpStatusToError } from './errors';
-import { createBrowserKeyStore } from './keystore/browser';
+import { createKeyStore } from './keystore/client';
 import { MissingKeyError, type ProviderConfig } from './types';
 import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
 
@@ -23,7 +23,7 @@ export const COPILOT_HEADERS: Record<string, string> = {
 };
 
 export function createCopilotFetch(config: ProviderConfig): typeof globalThis.fetch {
-	const store = createBrowserKeyStore();
+	const store = createKeyStore();
 	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 		const grant = await store.get(config.id);

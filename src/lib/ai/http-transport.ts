@@ -3,10 +3,12 @@
  * headers + body + an `auth` descriptor; the transport owns the fetch handshake
  * and resolves the secret into the request header itself.
  *
- * Browser only: fetch with secrets read from the `BrowserKeyStore` (IndexedDB).
+ * Browser only: fetch with secrets read from the `BrowserKeyStore`
+ * (IndexedDB; the env-backed headless store when IndexedDB is absent).
  */
 import { classifyFetchError, httpStatusToError } from './errors';
-import { createBrowserKeyStore, type BrowserKeyStore } from './keystore/browser';
+import { createKeyStore } from './keystore/client';
+import type { BrowserKeyStore } from './keystore/browser';
 import { MissingKeyError } from './types';
 import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
 
@@ -62,13 +64,14 @@ export function createFetchTransport(store: BrowserKeyStore): HttpStreamTranspor
 let cached: HttpStreamTransport | null = null;
 
 /**
- * Lazy singleton transport. Browser → `createFetchTransport` over the
- * IndexedDB `BrowserKeyStore`. `setHttpTransport` overrides it (tests inject a
+ * Lazy singleton transport. Browser → `createFetchTransport` over the runtime
+ * `BrowserKeyStore` (IndexedDB in the browser; the env-backed headless store
+ * without IndexedDB). `setHttpTransport` overrides it (tests inject a
  * fake transport; pass `null` to reset to the runtime default).
  */
 export function getHttpTransport(): HttpStreamTransport {
 	if (cached) return cached;
-	cached = createFetchTransport(createBrowserKeyStore());
+	cached = createFetchTransport(createKeyStore());
 	return cached;
 }
 
