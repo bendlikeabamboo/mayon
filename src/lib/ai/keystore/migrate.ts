@@ -11,7 +11,7 @@
  * (`+layout.svelte`) rather than the data-layer `bootstrapDb`, keeping the
  * keystore (an AI-layer concern) out of the `src/lib/db` import graph.
  */
-import { repos } from '$lib/db';
+import { repos } from '#lib/db/index.js';
 import { createKeyStore } from './client';
 
 const LEGACY_PREFIX = 'providerKey:';

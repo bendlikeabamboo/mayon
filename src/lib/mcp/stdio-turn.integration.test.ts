@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { LanguageModel } from 'ai';
 import { fileURLToPath } from 'node:url';
-import type { Message } from '$lib/db/schema';
-import type { ProviderConfig } from '$lib/ai/types';
-import type { TraceEvent } from '$lib/agent/trace';
+import type { Message } from '#lib/db/schema.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
+import type { TraceEvent } from '#lib/agent/trace.js';
 import type { McpServerConfig } from './types';
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(true),
 		connected: true,
@@ -17,7 +17,7 @@ vi.mock('$lib/services/status.svelte', () => ({
 	}
 }));
 
-vi.mock('$lib/ai/keystore/browser', () => ({
+vi.mock('#lib/ai/keystore/browser.js', () => ({
 	createBrowserKeyStore: vi.fn().mockReturnValue({
 		get: vi.fn().mockResolvedValue('secret-value'),
 		has: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 
 const wsState: { url: string } = { url: 'ws://127.0.0.1:1/ws/mcp' };
 
-vi.mock('$lib/services/client', () => ({
+vi.mock('#lib/services/client.js', () => ({
 	serverClient: {
 		http: vi.fn(),
 		ws: (): WebSocket => new WebSocket(wsState.url)
@@ -54,8 +54,8 @@ const { streamText } = await import('ai');
 const mockedStreamText = vi.mocked(streamText);
 
 const { connectSession } = await import('./lifecycle');
-const { getToolDefinitions } = await import('$lib/agent/registry');
-const { runAgentTurn } = await import('$lib/agent/loop');
+const { getToolDefinitions } = await import('#lib/agent/registry.js');
+const { runAgentTurn } = await import('#lib/agent/loop.js');
 const { trustNow } = await import('./trust');
 
 // Server-package modules: outside the app tsconfig root, so svelte-check
@@ -131,7 +131,7 @@ interface RecordedTurn {
 }
 
 function turnDeps(chatId: string): {
-	deps: import('$lib/agent/loop').AgentTurnDeps;
+	deps: import('#lib/agent/loop.js').AgentTurnDeps;
 	rec: RecordedTurn;
 } {
 	const rec: RecordedTurn = { messages: [], traces: [] };
@@ -152,7 +152,7 @@ function turnDeps(chatId: string): {
 			...partial
 		} as unknown as Message;
 	}
-	const deps: import('$lib/agent/loop').AgentTurnDeps = {
+	const deps: import('#lib/agent/loop.js').AgentTurnDeps = {
 		model: {} as LanguageModel,
 		config: {
 			id: 'test',

@@ -9,14 +9,14 @@
 		ConfirmationRejected,
 		ConfirmationFailed,
 		createApprovalStateMachine
-	} from '$lib/components/mcp/confirmation/index.js';
+	} from '#lib/components/mcp/confirmation/index.js';
 	import {
 		Collapsible,
 		CollapsibleContent,
 		CollapsibleTrigger
-	} from '$lib/components/ui/collapsible/index.js';
-	import type { PublicMcpSamplingEntry } from '$lib/stores/chat.svelte';
-	import { serverStatus } from '$lib/services/status.svelte';
+	} from '#lib/components/ui/collapsible/index.js';
+	import type { PublicMcpSamplingEntry } from '#lib/stores/chat.svelte.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
 
 	type Props = {
 		entry: PublicMcpSamplingEntry;

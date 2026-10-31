@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { deriveToolStatus, type ToolStatus } from './tool-status';
-import type { ToolGroup, OrphanToolResult } from '$lib/chat/entries';
+import type { ToolGroup, OrphanToolResult } from '#lib/chat/entries.js';
 
 describe('deriveToolStatus', () => {
 	const baseCall = {

@@ -4,12 +4,12 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ChevronRight, Trash2 } from '@lucide/svelte';
-	import { repos } from '$lib/db';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { buildSubtreeModel, type SubtreeNode } from '$lib/chat/tree';
-	import Pagination from '$lib/components/Pagination.svelte';
-	import { entry } from '$lib/motion/stagger';
-	import type { Chat } from '$lib/db';
+	import { repos } from '#lib/db/index.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
+	import { buildSubtreeModel, type SubtreeNode } from '#lib/chat/tree.js';
+	import Pagination from '#lib/components/Pagination.svelte';
+	import { entry } from '#lib/motion/stagger.js';
+	import type { Chat } from '#lib/db/index.js';
 
 	const ITEMS_PER_PAGE = 7;
 

@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { Plus, Trash2 } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { chatStore, listRootChats } from '$lib/stores/chat.svelte';
-	import { timeAgo } from '$lib/utils/time';
-	import BriefCard from '$lib/components/chat/BriefCard.svelte';
-	import RowCard from '$lib/components/RowCard.svelte';
-	import { entry } from '$lib/motion/stagger';
-	import Pagination from '$lib/components/Pagination.svelte';
-	import type { LearningBrief } from '$lib/chat/brief';
-	import type { Chat } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { chatStore, listRootChats } from '#lib/stores/chat.svelte.js';
+	import { timeAgo } from '#lib/utils/time.js';
+	import BriefCard from '#lib/components/chat/BriefCard.svelte';
+	import RowCard from '#lib/components/RowCard.svelte';
+	import { entry } from '#lib/motion/stagger.js';
+	import Pagination from '#lib/components/Pagination.svelte';
+	import type { LearningBrief } from '#lib/chat/brief.js';
+	import type { Chat } from '#lib/db/index.js';
 
 	let { data } = $props();
 

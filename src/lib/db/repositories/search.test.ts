@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { repos } from '$lib/db';
-import { renderSnippet, stripIndexNoise, buildMatchQuery, deepLink } from '$lib/db';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import type { BranchArtifactMetadata } from '$lib/chat/kinds';
+import { repos } from '#lib/db/index.js';
+import { renderSnippet, stripIndexNoise, buildMatchQuery, deepLink } from '#lib/db/index.js';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());

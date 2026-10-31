@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { downloadDbBackup, restoreDbBackup, downloadSafetyBackup } from '$lib/services/db-backup';
-	import type { RestoreResult } from '$lib/services/db-backup';
-	import { chatStore } from '$lib/stores/chat.svelte';
-	import { serverStatus } from '$lib/services/status.svelte';
-	import { downloadSandboxBackup, restoreSandboxBackup } from '$lib/services/sandbox-backup';
-	import { dryRunImport, importFromSqlite } from '$lib/services/db-import';
-	import type { ImportPreview } from '$lib/services/db-import';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import {
+		downloadDbBackup,
+		restoreDbBackup,
+		downloadSafetyBackup
+	} from '#lib/services/db-backup.js';
+	import type { RestoreResult } from '#lib/services/db-backup.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
+	import { downloadSandboxBackup, restoreSandboxBackup } from '#lib/services/sandbox-backup.js';
+	import { dryRunImport, importFromSqlite } from '#lib/services/db-import.js';
+	import type { ImportPreview } from '#lib/services/db-import.js';
 
 	const RESTORE_RESULT_KEY = 'mayon:restoreResult';
 

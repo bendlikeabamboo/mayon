@@ -1,15 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import {
 	getToolDefinitions,
 	getToolDefinition,
 	registerTool,
 	deregisterTool,
 	toolsRun
-} from '$lib/agent/registry';
-import type { ToolContext } from '$lib/agent/registry';
+} from '#lib/agent/registry.js';
+import type { ToolContext } from '#lib/agent/registry.js';
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
+import type { ProviderConfig } from '#lib/ai/types.js';
 import type { McpNotification, McpTool, McpToolCallResult, McpResource, McpPrompt } from './types';
 import { truncateResult } from './caps';
 import { annotationsToRisk } from './risk';

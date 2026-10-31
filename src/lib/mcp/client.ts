@@ -11,8 +11,8 @@ import type {
 	McpToolCallResult
 } from './types';
 import type { McpServerRequest, McpTransport } from './transport';
-import { ProviderHttpError } from '$lib/ai/types';
-import type { ToolContext } from '$lib/agent/registry';
+import { ProviderHttpError } from '#lib/ai/types.js';
+import type { ToolContext } from '#lib/agent/registry.js';
 
 const CLIENT_INFO = { name: 'mayon', version: '0.1.0' };
 

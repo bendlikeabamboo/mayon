@@ -10,7 +10,7 @@ describe('US4: ToolActivity terminal presentation (registry-driven)', () => {
 	it('imports terminal classification from the tool registry', () => {
 		expect(
 			source.match(
-				/import\s*\{[^}]*getToolDefinition[^}]*\}\s*from\s*['"]\$lib\/agent\/registry['"]/
+				/import\s*\{[^}]*getToolDefinition[^}]*\}\s*from\s*['"]#lib\/agent\/registry\.js['"]/
 			)
 		).not.toBeNull();
 	});

@@ -21,7 +21,7 @@ Per-seam placement detail: [Architecture Boundaries](seams.qmd).
 The default proving path is text-first, with no browser:
 
 1. Set up an ephemeral test database with `useFileTestDb()` (`src/lib/db/driver/pg-test.ts`).
-2. Seed state through the repository seam (`repos` from `$lib/db`).
+2. Seed state through the repository seam (`repos` from `#lib/db/index.js`).
 3. Call the logic and assert on text outcomes.
 
 The pattern to copy is the chat context assembly test, `src/lib/chat/context.test.ts`. Run with `pnpm test`. This harness is the established testing setup, formalized here as policy — not new tooling.

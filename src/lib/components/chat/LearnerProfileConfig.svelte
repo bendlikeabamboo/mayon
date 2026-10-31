@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		DEFAULT_PROFILE,
 		LEVEL_LABELS,
@@ -14,8 +14,8 @@
 		type LearnerProfile,
 		type PersonaId,
 		type ScopeStrategyId
-	} from '$lib/chat/brief';
-	import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
+	} from '#lib/chat/brief.js';
+	import { getLearnerProfile, setLearnerProfile } from '#lib/chat/profile.js';
 
 	let context = $state('');
 	let level = $state<BriefLevel>(DEFAULT_PROFILE.level!);

@@ -8,9 +8,9 @@
 		DialogFooter,
 		DialogHeader,
 		DialogTitle
-	} from '$lib/components/ui/dialog/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { setProviderKey } from '$lib/ai/client';
+	} from '#lib/components/ui/dialog/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { setProviderKey } from '#lib/ai/client.js';
 	import type {
 		CopilotAuthPollRequest,
 		CopilotAuthPollResponse,

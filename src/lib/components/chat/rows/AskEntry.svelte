@@ -7,16 +7,16 @@
 		ShieldAlert,
 		MessageCircleQuestion
 	} from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { DurableEntry, LiveAskPayload } from '$lib/chat/entries';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import type { DurableEntry, LiveAskPayload } from '#lib/chat/entries.js';
 	import {
 		parseMetadata,
 		type ApprovalMeta,
 		type SamplingMeta,
 		type ElicitationMeta
-	} from '$lib/chat/kinds';
-	import { incRender } from '$lib/perf/mark';
-	import ElicitationForm from '$lib/components/mcp/ElicitationForm.svelte';
+	} from '#lib/chat/kinds.js';
+	import { incRender } from '#lib/perf/mark.js';
+	import ElicitationForm from '#lib/components/mcp/ElicitationForm.svelte';
 
 	type AskKind = 'approval' | 'sampling' | 'elicitation';
 

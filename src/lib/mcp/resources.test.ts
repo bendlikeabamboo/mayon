@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
 beforeEach(() => testDb.reset());
 afterAll(() => testDb.teardown());
-import { getToolDefinition, deregisterTool, toolsRun } from '$lib/agent/registry';
-import type { ToolContext } from '$lib/agent/registry';
+import { getToolDefinition, deregisterTool, toolsRun } from '#lib/agent/registry.js';
+import type { ToolContext } from '#lib/agent/registry.js';
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
+import type { ProviderConfig } from '#lib/ai/types.js';
 import type { McpNotification, McpResource } from './types';
 import { McpClient } from './client';
 import type { McpTransport } from './transport';

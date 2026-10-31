@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ChevronDown, RefreshCw } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatContextWindow } from './format-context-window.svelte';
 	import { filterModels } from './filter-models.svelte';
 	import ModelSelectDialog from './model-select-dialog.svelte';

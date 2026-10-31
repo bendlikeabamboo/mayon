@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import type { McqPayload, FlashcardPayload, ShortPayload } from '$lib/db';
-import type { ProviderConfig } from '$lib/ai/types';
-import type { GeneratedQuiz, GradedAnswer } from '$lib/ai/generate/quiz';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import type { McqPayload, FlashcardPayload, ShortPayload } from '#lib/db/index.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
+import type { GeneratedQuiz, GradedAnswer } from '#lib/ai/generate/quiz.js';
 import type { LanguageModel } from 'ai';
 
 const testDb = useFileTestDb();
@@ -28,7 +28,7 @@ beforeEach(async () => {
 	quizzesStore.error = null;
 });
 
-vi.mock('$lib/ai/client', () => ({
+vi.mock('#lib/ai/client.js', () => ({
 	getActiveSdkProvider: vi.fn(),
 	getAmbientEffort: vi.fn()
 }));
@@ -54,7 +54,7 @@ vi.mock('ai', () => ({
 	}
 }));
 
-const { getActiveSdkProvider, getAmbientEffort } = await import('$lib/ai/client');
+const { getActiveSdkProvider, getAmbientEffort } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 const mockedGetAmbientEffort = vi.mocked(getAmbientEffort);
 
@@ -158,7 +158,7 @@ describe('quizzesStore.generate', () => {
 	});
 
 	it('surfaces a formatted error when there is no active provider', async () => {
-		const { MissingKeyError } = await import('$lib/ai/types');
+		const { MissingKeyError } = await import('#lib/ai/types.js');
 		mockedGetActiveSdkProvider.mockRejectedValue(new MissingKeyError('no provider'));
 		const chatId = await seedChat();
 
@@ -523,7 +523,7 @@ describe('quizzesStore.answerShort grading buckets (mock-llm fixture payloads)',
 		await generateFixtureQuizAndStartAttempt({
 			questions: [fixtureQuiz.questions[2]]
 		});
-		const { GradeError } = await import('$lib/ai/generate/generate-quiz');
+		const { GradeError } = await import('#lib/ai/generate/generate-quiz.js');
 		mockedGenerateText
 			.mockRejectedValueOnce(new GradeError('Grading failed.', 'model said nothing useful'))
 			.mockResolvedValueOnce({

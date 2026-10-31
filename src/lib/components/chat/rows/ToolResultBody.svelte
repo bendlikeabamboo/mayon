@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { ResultShape } from '$lib/chat/result-shape';
-	import { collectCards } from '$lib/mcp/sources';
+	import type { ResultShape } from '#lib/chat/result-shape.js';
+	import { collectCards } from '#lib/mcp/sources.js';
 	import Markdown from '../Markdown.svelte';
 
 	/**

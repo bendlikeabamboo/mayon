@@ -1,9 +1,9 @@
 import { asc, desc, eq, isNull } from 'drizzle-orm';
-import { chats, type Chat, type NewChat } from '$lib/db/schema';
-import { awaitDb, getDriver } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
-import type { LearningBrief } from '$lib/chat/brief';
-import type { BatchStatement } from '$lib/db/driver/types';
+import { chats, type Chat, type NewChat } from '#lib/db/schema.js';
+import { awaitDb, getDriver } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
+import type { LearningBrief } from '#lib/chat/brief.js';
+import type { BatchStatement } from '#lib/db/driver/types.js';
 
 function cascadeStatements(cs: { sql: string; params?: unknown[] }): BatchStatement[] {
 	const p = cs.params ?? [];

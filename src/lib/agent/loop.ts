@@ -1,17 +1,17 @@
 import { streamText, tool, jsonSchema, APICallError } from 'ai';
 import type { LanguageModel, ToolSet } from 'ai';
-import { getToolDefinitions, getToolDefinition, toolsRun } from '$lib/agent/registry';
-import { resolveToolCapability, disableToolsForSession } from '$lib/agent/capability';
-import { validateTurn, type CriticIssue } from '$lib/agent/critic';
-import { projectEntries } from '$lib/chat/projection';
+import { getToolDefinitions, getToolDefinition, toolsRun } from '#lib/agent/registry.js';
+import { resolveToolCapability, disableToolsForSession } from '#lib/agent/capability.js';
+import { validateTurn, type CriticIssue } from '#lib/agent/critic.js';
+import { projectEntries } from '#lib/chat/projection.js';
 import {
 	buildCapabilitiesPreamble,
 	buildFirstTurnOrientationPreamble,
 	buildReplyTiersPreamble
-} from '$lib/chat/brief';
-import type { ChatMessage, ReasoningEffort, ProviderConfig } from '$lib/ai/types';
-import { resolveRequestSettings } from '$lib/ai/dialects';
-import type { Message } from '$lib/db';
+} from '#lib/chat/brief.js';
+import type { ChatMessage, ReasoningEffort, ProviderConfig } from '#lib/ai/types.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import type { Message } from '#lib/db/index.js';
 import type { TraceEvent, TracedRequestMessage } from './trace';
 
 const MAX_ITERATIONS = 6;

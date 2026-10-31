@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { repos } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { repos } from '#lib/db/index.js';
 
 	/**
 	 * Shared generation-prompt settings panel (feature 020, prompt-settings

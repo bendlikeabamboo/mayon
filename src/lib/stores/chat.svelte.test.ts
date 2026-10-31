@@ -1,18 +1,18 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import type { ProviderConfig } from '$lib/ai/types';
-import { MissingKeyError, ProviderHttpError } from '$lib/ai/types';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
+import { MissingKeyError, ProviderHttpError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
-import { assembleContext } from '$lib/chat/context';
-import { deriveContextGauge } from '$lib/chat/context-usage';
-import { projectEntries } from '$lib/chat/projection';
-import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '$lib/chat/expound';
-import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
-import type { LearningBrief } from '$lib/chat/brief';
-import type { ComposerAttachment, ImagePart, BranchArtifactMetadata } from '$lib/chat/kinds';
-import { attachmentsOf } from '$lib/chat/kinds';
+import { assembleContext } from '#lib/chat/context.js';
+import { deriveContextGauge } from '#lib/chat/context-usage.js';
+import { projectEntries } from '#lib/chat/projection.js';
+import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
+import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
+import type { LearningBrief } from '#lib/chat/brief.js';
+import type { ComposerAttachment, ImagePart, BranchArtifactMetadata } from '#lib/chat/kinds.js';
+import { attachmentsOf } from '#lib/chat/kinds.js';
 
 if (typeof requestAnimationFrame === 'undefined') {
 	globalThis.requestAnimationFrame = (cb: FrameRequestCallback) =>
@@ -20,19 +20,19 @@ if (typeof requestAnimationFrame === 'undefined') {
 	globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
 }
 
-vi.mock('$lib/ai/client', () => ({
+vi.mock('#lib/ai/client.js', () => ({
 	getActiveSdkProvider: vi.fn()
 }));
 
 // Real lifecycle module except connectSession, which tests override to emit
 // mcp-lifecycle events (or stay benign with no servers).
-type ConnectSession = (typeof import('$lib/mcp/lifecycle'))['connectSession'];
+type ConnectSession = (typeof import('#lib/mcp/lifecycle.js'))['connectSession'];
 const connectSessionMock = vi.fn<ConnectSession>(async () => ({
 	clients: new Map(),
 	unmountAll: () => {}
 }));
-vi.mock('$lib/mcp/lifecycle', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/mcp/lifecycle')>();
+vi.mock('#lib/mcp/lifecycle.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/mcp/lifecycle.js')>();
 	return {
 		...actual,
 		connectSession: (...args: Parameters<ConnectSession>) => connectSessionMock(...args)
@@ -61,8 +61,8 @@ vi.mock('ai', () => ({
 }));
 
 let lastDisabledToolIds: string[] | undefined;
-vi.mock('$lib/agent/loop', async (importOriginal) => {
-	const real = await importOriginal<typeof import('$lib/agent/loop')>();
+vi.mock('#lib/agent/loop.js', async (importOriginal) => {
+	const real = await importOriginal<typeof import('#lib/agent/loop.js')>();
 	return {
 		...real,
 		runAgentTurn: vi.fn(async (deps) => {
@@ -72,7 +72,7 @@ vi.mock('$lib/agent/loop', async (importOriginal) => {
 	};
 });
 
-const { getActiveSdkProvider } = await import('$lib/ai/client');
+const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
 const { generateText, generateObject, streamText } = await import('ai');
@@ -83,7 +83,7 @@ const mockedStreamText = vi.mocked(streamText);
 // Factory implementation of the mocked runAgentTurn, captured before any test
 // can clobber it. Some describes (UJ16) mockImplementation without restoring;
 // the attachments describe reinstalls this so its turns actually stream.
-const { runAgentTurn } = await import('$lib/agent/loop');
+const { runAgentTurn } = await import('#lib/agent/loop.js');
 const baseRunAgentTurnImpl = vi.mocked(runAgentTurn).getMockImplementation();
 
 const testDb = useFileTestDb();
@@ -1232,7 +1232,7 @@ describe('FR-001 boundary persist clears live buffers (T004)', () => {
 	let originalImpl: ((...args: unknown[]) => unknown) | undefined;
 
 	beforeEach(async () => {
-		const loop = await import('$lib/agent/loop');
+		const loop = await import('#lib/agent/loop.js');
 		originalImpl = (
 			vi.mocked(loop.runAgentTurn) as unknown as {
 				getMockImplementation(): (...args: unknown[]) => unknown;
@@ -1242,7 +1242,7 @@ describe('FR-001 boundary persist clears live buffers (T004)', () => {
 
 	afterEach(async () => {
 		if (originalImpl) {
-			const loop = await import('$lib/agent/loop');
+			const loop = await import('#lib/agent/loop.js');
 			(
 				vi.mocked(loop.runAgentTurn) as unknown as {
 					mockImplementation(fn: (...args: unknown[]) => unknown): unknown;
@@ -1261,7 +1261,7 @@ describe('FR-001 boundary persist clears live buffers (T004)', () => {
 			toolCapability: true
 		});
 
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			deps.updateStreamBuffer('pre-tool text');
 			await deps.appendAssistantText('pre-tool text', {});
@@ -1291,7 +1291,7 @@ describe('FR-001 boundary persist clears live buffers (T004)', () => {
 
 describe('buildCapabilitiesPreamble save_brief wording', () => {
 	it('mentions save_brief first-turn-only constraint', async () => {
-		const { buildCapabilitiesPreamble } = await import('$lib/chat/brief');
+		const { buildCapabilitiesPreamble } = await import('#lib/chat/brief.js');
 		const preamble = buildCapabilitiesPreamble();
 		expect(preamble).toContain('save_brief');
 		expect(preamble).toContain('first turn');
@@ -1416,7 +1416,7 @@ describe('chatStore rAF stream throttle (UJ13)', () => {
 		});
 
 		let capturedUpdate: ((n: string) => void) | null = null;
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			capturedUpdate = deps.updateStreamBuffer;
 			await turnBlocked;
@@ -1460,7 +1460,7 @@ describe('chatStore rAF stream throttle (UJ13)', () => {
 			toolCapability: true
 		});
 
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			deps.updateStreamBuffer('content');
 			await turnBlocked;
@@ -1495,7 +1495,7 @@ describe('chatStore interrupted row persistence (UJ16)', () => {
 			toolCapability: true
 		});
 
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			deps.updateStreamBuffer('partial reply');
 			await turnBlocked;
@@ -1545,7 +1545,7 @@ describe('chatStore interrupted row persistence (UJ16)', () => {
 			toolCapability: true
 		});
 
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async () => {
 			await turnBlocked;
 			return { aborted: true };
@@ -2280,7 +2280,7 @@ describe('chatStore paced streaming (022 US1)', () => {
 		let capturedUpdate: ((n: string) => void) | null = null;
 		let resolveTurn!: () => void;
 		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			capturedUpdate = deps.updateStreamBuffer;
 			await turnBlocked;
@@ -2378,7 +2378,7 @@ describe('chatStore paced streaming (022 US1)', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			deps.updateStreamBuffer('partial reply');
 			await turnBlocked;
@@ -2414,7 +2414,7 @@ describe('chatStore paced streaming (022 US1)', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		let capturedUpdate: ((n: string) => void) | null = null;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			capturedUpdate = deps.updateStreamBuffer;
@@ -2450,7 +2450,7 @@ describe('chatStore paced streaming (022 US1)', () => {
 			config: stubConfig,
 			toolCapability: true
 		});
-		const runAgentTurn = (await import('$lib/agent/loop')).runAgentTurn;
+		const runAgentTurn = (await import('#lib/agent/loop.js')).runAgentTurn;
 		let capturedUpdate: ((n: string) => void) | null = null;
 		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
 			capturedUpdate = deps.updateStreamBuffer;

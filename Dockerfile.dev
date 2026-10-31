@@ -19,7 +19,7 @@ RUN pnpm --filter @mayon/shared build
 
 # Root config files Vite/SvelteKit need at dev time (src/ and static/ are
 # bind-mounted for HMR; rebuild the image to pick up config changes).
-COPY vite.config.ts svelte.config.js tsconfig.json ./
+COPY vite.config.ts tsconfig.json ./
 
 EXPOSE 5173
 CMD ["pnpm", "dev:vite"]

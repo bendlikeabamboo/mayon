@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { quizzesStore } from '$lib/stores/quizzes.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { quizzesStore } from '#lib/stores/quizzes.svelte.js';
 
 	/**
 	 * Past attempts for the loaded quiz. Each row shows its score, a relative

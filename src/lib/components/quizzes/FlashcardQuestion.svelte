@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
-	import Markdown from '$lib/components/chat/Markdown.svelte';
-	import { repos } from '$lib/db';
-	import type { FlashcardPayload } from '$lib/db';
-	import type { QuizAnswer, QuizQuestion } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import Markdown from '#lib/components/chat/Markdown.svelte';
+	import { repos } from '#lib/db/index.js';
+	import type { FlashcardPayload } from '#lib/db/index.js';
+	import type { QuizAnswer, QuizQuestion } from '#lib/db/index.js';
 
 	/**
 	 * Flashcard question. "Reveal" flips the back into view (allowed in review);

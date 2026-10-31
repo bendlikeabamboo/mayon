@@ -8,6 +8,9 @@
 	"engines": {
 		"node": ">=22"
 	},
+	"imports": {
+		"#lib/*": "./src/lib/*"
+	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild",
@@ -54,7 +57,7 @@
 		"@ai-sdk/openai-compatible": "^3.0.2",
 		"@fontsource/newsreader": "^5.2.10",
 		"@mayon/shared": "workspace:*",
-		"@sveltejs/kit": "^2.70.2",
+		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"ai": "^7.0.4",
 		"bits-ui": "^2.18.1",
@@ -75,7 +78,7 @@
 		"remark-math": "^6.0.0",
 		"remark-parse": "^11.0.0",
 		"remark-rehype": "^11.1.2",
-		"svelte": "^5.56.4",
+		"svelte": "^5.57.1",
 		"tailwind-merge": "^3.6.0",
 		"tailwind-variants": "^3.2.2",
 		"unified": "^11.0.5",
@@ -88,7 +91,7 @@
 		"@internationalized/date": "^3.12.2",
 		"@lucide/svelte": "^1.23.0",
 		"@playwright/test": "^1.62.1",
-		"@sveltejs/adapter-static": "^3.0.10",
+		"@sveltejs/adapter-static": "^4.0.1",
 		"@tailwindcss/vite": "^4.3.1",
 		"@types/jsdom": "^28.0.3",
 		"@types/katex": "^0.16.8",

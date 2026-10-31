@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { quizzesStore } from '$lib/stores/quizzes.svelte';
-	import QuizRunner from '$lib/components/quizzes/QuizRunner.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { quizzesStore } from '#lib/stores/quizzes.svelte.js';
+	import QuizRunner from '#lib/components/quizzes/QuizRunner.svelte';
 
 	/**
 	 * Quiz runner route. Loads the quiz into `quizzesStore.current` on mount and

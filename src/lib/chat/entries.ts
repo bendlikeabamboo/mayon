@@ -1,4 +1,4 @@
-import type { Message } from '$lib/db';
+import type { Message } from '#lib/db/index.js';
 import type {
 	ApprovalMeta,
 	EntryKind,
@@ -7,7 +7,7 @@ import type {
 	UserMessageMeta
 } from './kinds';
 import { kindOf, laneOf, parseMetadata, type Lane } from './kinds';
-import { getToolDefinition } from '$lib/agent/registry';
+import { getToolDefinition } from '#lib/agent/registry.js';
 
 export interface ToolGroup {
 	source: 'durable';

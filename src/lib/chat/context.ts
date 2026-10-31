@@ -16,12 +16,12 @@
  *
  * Pure: takes only a chatId and resolves everything through `repos`.
  */
-import { repos } from '$lib/db';
-import type { Chat, Message } from '$lib/db';
-import type { ChatMessage } from '$lib/ai/types';
-import { buildBriefSystemNote, parseBrief } from '$lib/chat/brief';
-import { kindOf, type EntryKind, type MessagePart } from '$lib/chat/kinds';
-import { projectEntries } from '$lib/chat/projection';
+import { repos } from '#lib/db/index.js';
+import type { Chat, Message } from '#lib/db/index.js';
+import type { ChatMessage } from '#lib/ai/types.js';
+import { buildBriefSystemNote, parseBrief } from '#lib/chat/brief.js';
+import { kindOf, type EntryKind, type MessagePart } from '#lib/chat/kinds.js';
+import { projectEntries } from '#lib/chat/projection.js';
 
 const PROVIDER_EXCLUDED_KINDS = new Set([
 	'reasoning',

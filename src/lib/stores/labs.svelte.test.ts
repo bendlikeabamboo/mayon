@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import type { ProviderConfig } from '$lib/ai/types';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
-import { GeneratedLabSchema, type GeneratedLab } from '$lib/ai/generate/lab';
+import { GeneratedLabSchema, type GeneratedLab } from '#lib/ai/generate/lab.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
@@ -22,7 +22,7 @@ beforeEach(async () => {
 	labsStore.generating = false;
 });
 
-vi.mock('$lib/ai/client', () => ({
+vi.mock('#lib/ai/client.js', () => ({
 	getActiveSdkProvider: vi.fn(),
 	getAmbientEffort: vi.fn()
 }));
@@ -48,7 +48,7 @@ vi.mock('ai', () => ({
 	}
 }));
 
-const { getActiveSdkProvider, getAmbientEffort } = await import('$lib/ai/client');
+const { getActiveSdkProvider, getAmbientEffort } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 const mockedGetAmbientEffort = vi.mocked(getAmbientEffort);
 
@@ -129,7 +129,7 @@ describe('labsStore.generate', () => {
 	});
 
 	it('surfaces a formatted error when there is no active provider', async () => {
-		const { MissingKeyError } = await import('$lib/ai/types');
+		const { MissingKeyError } = await import('#lib/ai/types.js');
 		mockedGetActiveSdkProvider.mockRejectedValue(new MissingKeyError('no provider'));
 		const chatId = await seedChat();
 
@@ -223,7 +223,7 @@ describe('labsStore rawOffer → saveRaw chain (failure recovery)', () => {
 		// schema-mismatch generation failure would carry.
 		const fixtureRaw =
 			'# Floating Leaf Disc Photosynthesis Lab\n\nMeasure the rate of photosynthesis by timing how fast vacuum-infiltrated leaf discs float.';
-		const { ObjectToolError } = await import('$lib/ai/generate/object-tool');
+		const { ObjectToolError } = await import('#lib/ai/generate/object-tool.js');
 		mockedGenerateText.mockRejectedValue(
 			new ObjectToolError(
 				'Structured result did not match the schema: expected object, received string',

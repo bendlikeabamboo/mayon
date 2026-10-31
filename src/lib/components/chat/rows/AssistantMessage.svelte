@@ -1,22 +1,22 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Copy, GitBranch, RotateCcw } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import Markdown from '../Markdown.svelte';
 	import Reasoning from '../Reasoning.svelte';
 	import GrowthEdge from '../GrowthEdge.svelte';
 	import Highlighter from '../Highlighter.svelte';
 	import Spinner from '../Spinner.svelte';
 	import SectionStrip from '../strip/SectionStrip.svelte';
-	import type { DurableEntry } from '$lib/chat/entries';
-	import type { ResolvedOffsets } from '$lib/chat/selection';
-	import type { ExpoundOptions } from '$lib/chat/expound';
-	import { extractSections, isStripCandidate } from '$lib/markdown/sections';
-	import { stripGateFence } from '$lib/ai/generate/generate-gate';
-	import { parseMetadata } from '$lib/chat/kinds';
-	import type { AssistantMessageMeta } from '$lib/chat/kinds';
-	import { incRender } from '$lib/perf/mark';
-	import { chatStore } from '$lib/stores/chat.svelte';
+	import type { DurableEntry } from '#lib/chat/entries.js';
+	import type { ResolvedOffsets } from '#lib/chat/selection.js';
+	import type { ExpoundOptions } from '#lib/chat/expound.js';
+	import { extractSections, isStripCandidate } from '#lib/markdown/sections.js';
+	import { stripGateFence } from '#lib/ai/generate/generate-gate.js';
+	import { parseMetadata } from '#lib/chat/kinds.js';
+	import type { AssistantMessageMeta } from '#lib/chat/kinds.js';
+	import { incRender } from '#lib/perf/mark.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
 
 	interface SharedCallbacks {
 		onExpound: (

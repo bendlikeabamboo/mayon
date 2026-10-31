@@ -1,4 +1,4 @@
-import { estimateContextLimit } from '$lib/ai/model-limits';
+import { estimateContextLimit } from '#lib/ai/model-limits.js';
 
 export type ContextUsageTriple = {
 	promptTokens?: number;

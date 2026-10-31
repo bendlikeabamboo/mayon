@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb, type FileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
+import { useFileTestDb, type FileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
 import {
 	briefExpandedKey,
 	defaultBriefExpanded,

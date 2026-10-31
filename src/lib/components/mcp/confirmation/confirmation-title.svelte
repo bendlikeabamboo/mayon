@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { AlertDescription } from '$lib/components/ui/alert/index.js';
+	import { AlertDescription } from '#lib/components/ui/alert/index.js';
 
 	let {
 		class: className,

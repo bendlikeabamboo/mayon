@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { isStripEnabled, setStripEnabled } from '$lib/chat/strip/pref';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { isStripEnabled, setStripEnabled } from '#lib/chat/strip/pref.js';
 	import {
 		STREAM_PRESET_OPTIONS,
 		STREAM_PRESET_LABELS,
 		getStreamPreset,
 		setStreamPreset
-	} from '$lib/chat/streaming/pref';
-	import type { StreamPreset } from '$lib/chat/streaming/pref';
+	} from '#lib/chat/streaming/pref.js';
+	import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 
 	let stripEnabled = $state(true);
 	let streamPreset = $state<StreamPreset>('standard');

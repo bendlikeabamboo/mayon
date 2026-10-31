@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { FlaskConical, GitBranch, ListChecks, LoaderCircle } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { Chat, Lab, Quiz } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import type { Chat, Lab, Quiz } from '#lib/db/index.js';
 	import CrossLinks from './CrossLinks.svelte';
 
 	let {

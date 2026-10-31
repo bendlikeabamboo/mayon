@@ -7,7 +7,7 @@ import {
 	type ImagePart,
 	type MessagePart,
 	type TextPart
-} from '$lib/chat/kinds';
+} from '#lib/chat/kinds.js';
 
 const EXCLUDED_KINDS = new Set<EntryKind>([
 	'reasoning',

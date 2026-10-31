@@ -1,5 +1,5 @@
 import { chatsRepo } from './repositories';
-import { dbStatus } from '$lib/stores/db.svelte';
+import { dbStatus } from '#lib/stores/db.svelte.js';
 
 /**
  * Boot-time DB self-check (the "persists across restart" demonstration vehicle).

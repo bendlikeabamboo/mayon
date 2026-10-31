@@ -4,7 +4,7 @@
 		DialogContent,
 		DialogTitle,
 		DialogDescription
-	} from '$lib/components/ui/dialog/index.js';
+	} from '#lib/components/ui/dialog/index.js';
 
 	let {
 		open,

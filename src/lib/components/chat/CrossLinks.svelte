@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Link2, Plus, X } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { repos } from '$lib/db';
-	import type { Chat, CrossLink } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { repos } from '#lib/db/index.js';
+	import type { Chat, CrossLink } from '#lib/db/index.js';
 
 	/**
 	 * Cross-links panel atop a chat. Lists bidirectional references and offers a

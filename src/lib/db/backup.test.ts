@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPgDumpHeader, isSqliteHeader, parseContentDispositionFilename } from '$lib/db/backup';
+import { isPgDumpHeader, isSqliteHeader, parseContentDispositionFilename } from '#lib/db/backup.js';
 
 describe('isPgDumpHeader', () => {
 	it('returns true for PGDMP magic bytes', () => {

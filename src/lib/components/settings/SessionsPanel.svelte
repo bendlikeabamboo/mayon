@@ -8,10 +8,10 @@
 		listSessions,
 		revokeAllSessions,
 		revokeSessionById
-	} from '$lib/auth/client';
-	import { refreshAuth } from '$lib/auth/state.svelte';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
+	} from '#lib/auth/client.js';
+	import { refreshAuth } from '#lib/auth/state.svelte.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let sessions = $state<SessionDTO[]>([]);
 	let loaded = $state(false);

@@ -1,14 +1,14 @@
-import { CorsBlockedError } from '$lib/ai/errors';
-import { serverStatus } from '$lib/services/status.svelte';
+import { CorsBlockedError } from '#lib/ai/errors.js';
+import { serverStatus } from '#lib/services/status.svelte.js';
 import type { McpServerConfig, McpServerInfo, McpTool, McpResource, McpPrompt } from './types';
 import { createMcpTransport } from './client-factory';
 import { McpClient } from './client';
 import { mountMcpServer } from './mount';
 import { isTrusted } from './trust';
-import { getToolDefinitions } from '$lib/agent/registry';
+import { getToolDefinitions } from '#lib/agent/registry.js';
 import { listMountedResources, readResource } from './resources';
 import { listMountedPrompts } from './prompts';
-import { repos } from '$lib/db';
+import { repos } from '#lib/db/index.js';
 
 export interface McpServerStatus {
 	connected: boolean;
@@ -53,7 +53,7 @@ export async function spawnAndMount(config: McpServerConfig): Promise<SpawnResul
 
 export async function connectSession(
 	configs: McpServerConfig[],
-	onTrace?: (e: import('$lib/agent/trace').TraceEvent) => void
+	onTrace?: (e: import('#lib/agent/trace.js').TraceEvent) => void
 ): Promise<SessionConns> {
 	const clients = new Map<string, McpClient>();
 	const unmounts: Array<() => void> = [];

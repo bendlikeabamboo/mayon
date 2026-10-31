@@ -32,12 +32,18 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 			await page.goto('/settings#providers');
 			// First-run security setup gate (skippable): boot does not start until
 			// dismissed, and the prompt renders after the async auth check — wait
-			// for either the gate or the app shell before proceeding.
-			await expect(
-				page
-					.getByRole('button', { name: 'Skip' })
-					.or(page.getByRole('button', { name: 'Add provider' }))
-			).toBeVisible({ timeout: 15_000 });
+			// for either the gate or the app shell before proceeding. Auth
+			// fail-closes boot on a dropped session fetch, so retry boot once
+			// through a reload before giving up.
+			const bootGate = page
+				.getByRole('button', { name: 'Skip' })
+				.or(page.getByRole('button', { name: 'Add provider' }));
+			try {
+				await expect(bootGate).toBeVisible({ timeout: 15_000 });
+			} catch {
+				await page.reload();
+				await expect(bootGate).toBeVisible({ timeout: 15_000 });
+			}
 			const skipSetup = page.getByRole('button', { name: 'Skip' });
 			if (await skipSetup.isVisible()) {
 				await skipSetup.click();

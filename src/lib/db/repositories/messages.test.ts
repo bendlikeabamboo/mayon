@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import type { BranchArtifactMetadata } from '$lib/chat/kinds';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());

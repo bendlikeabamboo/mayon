@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { ListChecks } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { quizzesStore } from '$lib/stores/quizzes.svelte';
-	import { repos } from '$lib/db';
-	import RowCard from '$lib/components/RowCard.svelte';
-	import { entry } from '$lib/motion/stagger';
-	import type { Chat, Quiz } from '$lib/db';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { quizzesStore } from '#lib/stores/quizzes.svelte.js';
+	import { repos } from '#lib/db/index.js';
+	import RowCard from '#lib/components/RowCard.svelte';
+	import { entry } from '#lib/motion/stagger.js';
+	import type { Chat, Quiz } from '#lib/db/index.js';
 
 	/**
 	 * Quizzes index. Lists every quiz grouped by chat (each group shows the

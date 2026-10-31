@@ -62,7 +62,7 @@ describe('model-select context window hint', () => {
 		const scriptSection = selectSource.split('</script>')[0];
 		expect(scriptSection).not.toContain('fetch(');
 		expect(scriptSection).not.toMatch(/from '\$app\//);
-		expect(scriptSection).not.toMatch(/from '\$lib\/stores/);
+		expect(scriptSection).not.toMatch(/from '#lib\/stores/);
 		expect(scriptSection).not.toContain('onMount');
 	});
 });

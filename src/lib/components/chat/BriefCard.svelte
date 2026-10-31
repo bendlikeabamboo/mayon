@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { Check, ChevronDown, MessageSquare } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		applyProfile,
 		DEFAULT_LEVEL,
@@ -17,8 +17,8 @@
 		type PersonaId,
 		type ScopeStrategyId,
 		DEFAULT_PERSONA
-	} from '$lib/chat/brief';
-	import { getLearnerProfile } from '$lib/chat/profile';
+	} from '#lib/chat/brief.js';
+	import { getLearnerProfile } from '#lib/chat/profile.js';
 
 	/**
 	 * Learning Brief intake / edit card.

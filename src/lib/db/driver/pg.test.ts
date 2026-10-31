@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { chats } from '$lib/db/schema';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { createRemotePgDriver } from '$lib/db/driver/pg';
+import { chats } from '#lib/db/schema.js';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { createRemotePgDriver } from '#lib/db/driver/pg.js';
 import { createDb } from './proxy';
-import type { BatchStatement, StorageDriver } from '$lib/db/driver/types';
+import type { BatchStatement, StorageDriver } from '#lib/db/driver/types.js';
 
 function mockFetch(
 	responses: Record<string, Response> & { _default?: Response }

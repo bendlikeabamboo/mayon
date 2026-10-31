@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { breadcrumbToRoot, buildSubtreeModel } from './tree';
-import type { Chat } from '$lib/db/schema';
+import type { Chat } from '#lib/db/schema.js';
 
 function mkChat(opts: Partial<Chat> & { id: string }): Chat {
 	return {

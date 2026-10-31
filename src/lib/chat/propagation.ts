@@ -11,9 +11,9 @@
  * verbatim in `ord` order — `[user] `, `[assistant] `, `[tool: <name>] `.
  * No truncation, ever.
  */
-import { repos } from '$lib/db';
-import type { Chat, Message } from '$lib/db';
-import type { BranchArtifactMetadata } from '$lib/chat/kinds';
+import { repos } from '#lib/db/index.js';
+import type { Chat, Message } from '#lib/db/index.js';
+import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
 
 /** Placement accepted by `messagesRepo.insertAnchored`. */
 export type ArtifactPlacement = { afterOrd: number; beforeOrd: number | null } | 'start';

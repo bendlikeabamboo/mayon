@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Loader2, RefreshCw, WifiOff } from '@lucide/svelte';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
-	import { serverStatus } from '$lib/services/status.svelte.js';
-	import { detectServer } from '$lib/services/detect';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { dbStatus } from '#lib/stores/db.svelte.js';
+	import { serverStatus } from '#lib/services/status.svelte.js';
+	import { detectServer } from '#lib/services/detect.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let { variant }: { variant: 'connecting' | 'unreachable' } = $props();
 

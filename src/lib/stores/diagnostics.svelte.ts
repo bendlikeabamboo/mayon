@@ -1,6 +1,6 @@
-import type { TraceEvent } from '$lib/agent/trace';
-import type { AgentTrace } from '$lib/db';
-import { repos } from '$lib/db';
+import type { TraceEvent } from '#lib/agent/trace.js';
+import type { AgentTrace } from '#lib/db/index.js';
+import { repos } from '#lib/db/index.js';
 
 class DiagnosticsStore {
 	open = $state(false);

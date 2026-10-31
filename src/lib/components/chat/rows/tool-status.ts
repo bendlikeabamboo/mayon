@@ -1,4 +1,4 @@
-import type { ToolGroup, OrphanToolResult } from '$lib/chat/entries';
+import type { ToolGroup, OrphanToolResult } from '#lib/chat/entries.js';
 
 export type ToolStatus =
 	| 'awaiting'

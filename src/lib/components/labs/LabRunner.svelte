@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { ArrowLeft, SquareTerminal } from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import Markdown from '$lib/components/chat/Markdown.svelte';
-	import { labsStore } from '$lib/stores/labs.svelte';
-	import { repos, type LabChecklistItem, type Lab } from '$lib/db';
-	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
-	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import Markdown from '#lib/components/chat/Markdown.svelte';
+	import { labsStore } from '#lib/stores/labs.svelte.js';
+	import { repos, type LabChecklistItem, type Lab } from '#lib/db/index.js';
+	import DiagnosticsPanel from '#lib/components/diagnostics/DiagnosticsPanel.svelte';
+	import { diagnosticsStore } from '#lib/stores/diagnostics.svelte.js';
 
 	/**
 	 * Lab runner: renders the generated markdown body and an interactive

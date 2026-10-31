@@ -16,54 +16,54 @@
 		SquareTerminal,
 		Target
 	} from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		DropdownMenu,
 		DropdownMenuTrigger,
 		DropdownMenuContent,
 		DropdownMenuItem
-	} from '$lib/components/ui/dropdown-menu/index.js';
-	import { chatStore, ExcerptOverlapError } from '$lib/stores/chat.svelte';
-	import { toastState } from '$lib/stores/toasts.svelte';
-	import { labsStore } from '$lib/stores/labs.svelte';
-	import { quizzesStore } from '$lib/stores/quizzes.svelte';
-	import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
-	import { repos } from '$lib/db';
-	import { breadcrumbToRoot } from '$lib/chat/tree';
-	import { buildExpoundPrompt } from '$lib/chat/expound';
+	} from '#lib/components/ui/dropdown-menu/index.js';
+	import { chatStore, ExcerptOverlapError } from '#lib/stores/chat.svelte.js';
+	import { toastState } from '#lib/stores/toasts.svelte.js';
+	import { labsStore } from '#lib/stores/labs.svelte.js';
+	import { quizzesStore } from '#lib/stores/quizzes.svelte.js';
+	import { diagnosticsStore } from '#lib/stores/diagnostics.svelte.js';
+	import { repos } from '#lib/db/index.js';
+	import { breadcrumbToRoot } from '#lib/chat/tree.js';
+	import { buildExpoundPrompt } from '#lib/chat/expound.js';
 	import {
 		parseBrief,
 		summarizeBrief,
 		DEFAULT_PERSONA,
 		personaForId,
 		type LearningBrief
-	} from '$lib/chat/brief';
-	import { parseAddFormats } from '$lib/chat/expound';
-	import BriefCard from '$lib/components/chat/BriefCard.svelte';
-	import { isBriefExpanded, setBriefExpanded } from '$lib/chat/uiState';
-	import { isStripEnabled } from '$lib/chat/strip/pref';
-	import { getStreamPreset } from '$lib/chat/streaming/pref';
-	import type { Chat, Lab, Quiz, BranchSource } from '$lib/db';
-	import type { ComposerAttachment } from '$lib/chat/kinds';
-	import { attachmentsOf } from '$lib/chat/kinds';
-	import type { ResolvedOffsets } from '$lib/chat/selection';
-	import type { ExpoundOptions } from '$lib/chat/expound';
-	import { getActiveSdkProvider } from '$lib/ai/client';
-	import { describeDialect } from '$lib/ai/dialects';
-	import { supportsVision } from '$lib/ai/vision-capability';
-	import { deriveContextGauge } from '$lib/chat/context-usage';
-	import { DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
-	import type { ProviderConfig, ReasoningEffort } from '$lib/ai/types';
-	import MessageList from '$lib/components/chat/MessageList.svelte';
-	import Composer from '$lib/components/chat/Composer.svelte';
-	import ExpoundCard from '$lib/components/chat/ExpoundCard.svelte';
-	import Breadcrumb from '$lib/components/chat/Breadcrumb.svelte';
-	import ChatRail from '$lib/components/chat/ChatRail.svelte';
-	import DiagnosticsPanel from '$lib/components/diagnostics/DiagnosticsPanel.svelte';
-	import { mark } from '$lib/perf/mark';
-	import { entry, prefersReducedMotion } from '$lib/motion/stagger';
-	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '$lib/components/ui/sheet/index.js';
-	import { mediaQuery } from '$lib/utils/media.svelte.js';
+	} from '#lib/chat/brief.js';
+	import { parseAddFormats } from '#lib/chat/expound.js';
+	import BriefCard from '#lib/components/chat/BriefCard.svelte';
+	import { isBriefExpanded, setBriefExpanded } from '#lib/chat/uiState.js';
+	import { isStripEnabled } from '#lib/chat/strip/pref.js';
+	import { getStreamPreset } from '#lib/chat/streaming/pref.js';
+	import type { Chat, Lab, Quiz, BranchSource } from '#lib/db/index.js';
+	import type { ComposerAttachment } from '#lib/chat/kinds.js';
+	import { attachmentsOf } from '#lib/chat/kinds.js';
+	import type { ResolvedOffsets } from '#lib/chat/selection.js';
+	import type { ExpoundOptions } from '#lib/chat/expound.js';
+	import { getActiveSdkProvider } from '#lib/ai/client.js';
+	import { describeDialect } from '#lib/ai/dialects.js';
+	import { supportsVision } from '#lib/ai/vision-capability.js';
+	import { deriveContextGauge } from '#lib/chat/context-usage.js';
+	import { DEFAULT_TITLE } from '#lib/ai/generate/generate-title.js';
+	import type { ProviderConfig, ReasoningEffort } from '#lib/ai/types.js';
+	import MessageList from '#lib/components/chat/MessageList.svelte';
+	import Composer from '#lib/components/chat/Composer.svelte';
+	import ExpoundCard from '#lib/components/chat/ExpoundCard.svelte';
+	import Breadcrumb from '#lib/components/chat/Breadcrumb.svelte';
+	import ChatRail from '#lib/components/chat/ChatRail.svelte';
+	import DiagnosticsPanel from '#lib/components/diagnostics/DiagnosticsPanel.svelte';
+	import { mark } from '#lib/perf/mark.js';
+	import { entry, prefersReducedMotion } from '#lib/motion/stagger.js';
+	import { Sheet, SheetContent, SheetHeader, SheetTitle } from '#lib/components/ui/sheet/index.js';
+	import { mediaQuery } from '#lib/utils/media.svelte.js';
 
 	let breadcrumb = $state<Chat[]>([]);
 	let children = $state<Chat[]>([]);

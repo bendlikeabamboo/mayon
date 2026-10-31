@@ -1,4 +1,4 @@
-import type { DbRuntime } from '$lib/stores/db.svelte.js';
+import type { DbRuntime } from '#lib/stores/db.svelte.js';
 
 export function runtimeLabel(r: DbRuntime): string {
 	switch (r) {

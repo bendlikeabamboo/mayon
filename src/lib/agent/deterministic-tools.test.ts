@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import { toolsRun } from '$lib/agent/registry';
-import type { ToolContext } from '$lib/agent/registry';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import { toolsRun } from '#lib/agent/registry.js';
+import type { ToolContext } from '#lib/agent/registry.js';
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
+import type { ProviderConfig } from '#lib/ai/types.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());

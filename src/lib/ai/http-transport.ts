@@ -10,7 +10,7 @@ import { classifyFetchError, httpStatusToError } from './errors';
 import { createKeyStore } from './keystore/client';
 import type { BrowserKeyStore } from './keystore/browser';
 import { MissingKeyError } from './types';
-import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
+import { getLlmFetch } from '#lib/services/llm-proxy-fetch.js';
 
 export interface HttpStreamRequest {
 	url: string;

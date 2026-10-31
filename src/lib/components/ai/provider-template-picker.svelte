@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '$lib/ai/registry';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { PROVIDER_TEMPLATES, type ProviderTemplate } from '#lib/ai/registry.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let { onselect }: { onselect: (template: ProviderTemplate) => void } = $props();
 

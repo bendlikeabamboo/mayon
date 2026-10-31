@@ -22,6 +22,7 @@ it('reports every violation class with file and rule (violating fixtures)', () =
 	const { code, stdout } = runDirectionCheck('tests/fixtures/boundaries/violating');
 	expect(code).toBe(1);
 	expect(stdout).toMatch(/static-deep-import\.ts:\d+: boundary violation \(R1\)/);
+	expect(stdout).toMatch(/static-deep-import-libsubpath\.ts:\d+: boundary violation \(R1\)/);
 	expect(stdout).toMatch(/type-only-deep-import\.ts:\d+: boundary violation \(R1\)/);
 	expect(stdout).toMatch(/dynamic-deep-import\.ts:\d+: boundary violation \(R2\)/);
 	expect(stdout).toMatch(/db-imports-app\.ts:\d+: boundary violation \(R3\)/);

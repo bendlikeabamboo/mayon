@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ToolSource } from '$lib/mcp/sources';
+	import type { ToolSource } from '#lib/mcp/sources.js';
 
 	let { sources }: { sources: ToolSource[] } = $props();
 </script>

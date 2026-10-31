@@ -4,7 +4,7 @@ import { FakeMcpTransport } from './fake-transport';
 import { registerSamplingHandler, type SamplingTurnState } from './sampling';
 import type { McpServerConfig } from './types';
 import type { LanguageModel } from 'ai';
-import type { ProviderConfig } from '$lib/ai/types';
+import type { ProviderConfig } from '#lib/ai/types.js';
 
 vi.mock('ai', () => ({
 	generateText: vi.fn(),

@@ -8,7 +8,7 @@
  * retry on parse failure).
  */
 
-import type { EntryKind, MessagePart } from '$lib/chat/kinds';
+import type { EntryKind, MessagePart } from '#lib/chat/kinds.js';
 
 /** Provider kinds the registry can build adapters for. */
 export type ProviderKind =

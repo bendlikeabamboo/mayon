@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
-import { labs, type Lab } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+import { labs, type Lab } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 import { agentTracesRepo } from './agent-traces';
 
 export interface LabChecklistItem {

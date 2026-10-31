@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { ChevronRight, ChevronDown, AlertTriangle } from '@lucide/svelte';
-	import type { DurableEntry } from '$lib/chat/entries';
-	import { parseMetadata, type SelfCorrectedMeta } from '$lib/chat/kinds';
-	import { incRender } from '$lib/perf/mark';
+	import type { DurableEntry } from '#lib/chat/entries.js';
+	import { parseMetadata, type SelfCorrectedMeta } from '#lib/chat/kinds.js';
+	import { incRender } from '#lib/perf/mark.js';
 
 	let { item }: { item: DurableEntry } = $props();
 

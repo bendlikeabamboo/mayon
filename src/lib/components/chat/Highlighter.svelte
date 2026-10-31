@@ -1,19 +1,19 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { BranchSource } from '$lib/db';
-	import { repos } from '$lib/db';
+	import type { BranchSource } from '#lib/db/index.js';
+	import { repos } from '#lib/db/index.js';
 	import {
 		alignDomToCanonical,
 		resolveSelection,
 		canonicalize,
 		type ResolvedOffsets
-	} from '$lib/chat/selection';
-	import { wrapRange } from '$lib/markdown/wrap-range';
-	import { selectionOverlapsExisting, type ExpoundOptions } from '$lib/chat/expound';
-	import { buildSourceMap, type SourceMap } from '$lib/markdown/sourcemap';
-	import { locateCanonical } from '$lib/markdown/locate';
-	import { subscribeScroll } from '$lib/chat/scroll-bus';
-	import { mark, incRender } from '$lib/perf/mark';
+	} from '#lib/chat/selection.js';
+	import { wrapRange } from '#lib/markdown/wrap-range.js';
+	import { selectionOverlapsExisting, type ExpoundOptions } from '#lib/chat/expound.js';
+	import { buildSourceMap, type SourceMap } from '#lib/markdown/sourcemap.js';
+	import { locateCanonical } from '#lib/markdown/locate.js';
+	import { subscribeScroll } from '#lib/chat/scroll-bus.js';
+	import { mark, incRender } from '#lib/perf/mark.js';
 	import ContextMenu from './ContextMenu.svelte';
 	import ExpoundMarkPopover from './ExpoundMarkPopover.svelte';
 	import ExpoundPromptConstructor from './ExpoundPromptConstructor.svelte';

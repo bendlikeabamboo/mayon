@@ -33,7 +33,7 @@ export async function readCustomInstructions(
 	instructionsKey: string,
 	legacyKey: string
 ): Promise<string | null> {
-	const { repos } = await import('$lib/db');
+	const { repos } = await import('#lib/db/index.js');
 	const instructions = await repos.settings.get<string>(instructionsKey);
 	if (instructions !== null && instructions.trim().length > 0) return instructions.trim();
 	// Legacy migration: only when the instructions key is absent. If both keys

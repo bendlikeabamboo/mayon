@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { TOOL_SUMMARY_THRESHOLD } from '$lib/chat/kinds';
+import { TOOL_SUMMARY_THRESHOLD } from '#lib/chat/kinds.js';
 
 const TOOL_ACTIVITY = path.resolve(__dirname, 'ToolActivity.svelte');
 

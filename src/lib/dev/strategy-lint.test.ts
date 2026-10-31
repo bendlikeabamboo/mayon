@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { lintTurn } from './strategy-lint';
-import type { ScopeStrategyId } from '$lib/chat/strategies';
+import type { ScopeStrategyId } from '#lib/chat/strategies.js';
 
 const GOOD_CURRICULUM_TURN = `The goal is to understand Makefiles. Makefiles are the backbone of many C and C++ projects, providing a declarative way to specify build rules and dependencies between source files. Understanding Make is essential for any systems programmer.
 

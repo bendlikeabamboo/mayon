@@ -14,15 +14,15 @@
 		FlaskConical,
 		LoaderCircle
 	} from '@lucide/svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		DropdownMenu,
 		DropdownMenuTrigger,
 		DropdownMenuContent,
 		DropdownMenuCheckboxItem,
 		DropdownMenuItem
-	} from '$lib/components/ui/dropdown-menu/index.js';
-	import { repos } from '$lib/db';
+	} from '#lib/components/ui/dropdown-menu/index.js';
+	import { repos } from '#lib/db/index.js';
 	import {
 		buildMcpRuntimeState,
 		getMountedResources,
@@ -30,13 +30,13 @@
 		readResourceForAttach,
 		type MountedResourceInfo,
 		type MountedPromptInfo
-	} from '$lib/mcp/lifecycle';
-	import { renderPrompt } from '$lib/mcp/prompts';
-	import { assertCanAttach, intakeImage } from '$lib/chat/images';
-	import type { ComposerAttachment } from '$lib/chat/kinds';
-	import type { ReasoningEffort } from '$lib/ai/types';
-	import ContextGauge from '$lib/components/chat/ContextGauge.svelte';
-	import type { ContextGauge as ContextGaugeModel } from '$lib/chat/context-usage';
+	} from '#lib/mcp/lifecycle.js';
+	import { renderPrompt } from '#lib/mcp/prompts.js';
+	import { assertCanAttach, intakeImage } from '#lib/chat/images.js';
+	import type { ComposerAttachment } from '#lib/chat/kinds.js';
+	import type { ReasoningEffort } from '#lib/ai/types.js';
+	import ContextGauge from '#lib/components/chat/ContextGauge.svelte';
+	import type { ContextGauge as ContextGaugeModel } from '#lib/chat/context-usage.js';
 
 	/**
 	 * Prompt input rendered as an instrument card: a bordered raised container

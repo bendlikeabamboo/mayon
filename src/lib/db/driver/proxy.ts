@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/pg-proxy';
-import * as schema from '$lib/db/schema';
+import * as schema from '#lib/db/schema.js';
 import type { StorageDriver } from './types';
 
 /**

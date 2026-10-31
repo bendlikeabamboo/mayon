@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
-import { repos } from '$lib/db';
-import { DEFAULT_PROFILE } from '$lib/chat/brief';
-import { getLearnerProfile, setLearnerProfile } from '$lib/chat/profile';
-import { partsOf, textOf, type ImagePart } from '$lib/chat/kinds';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
+import { repos } from '#lib/db/index.js';
+import { DEFAULT_PROFILE } from '#lib/chat/brief.js';
+import { getLearnerProfile, setLearnerProfile } from '#lib/chat/profile.js';
+import { partsOf, textOf, type ImagePart } from '#lib/chat/kinds.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());

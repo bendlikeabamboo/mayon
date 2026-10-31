@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Markdown from '../Markdown.svelte';
-	import type { DurableEntry } from '$lib/chat/entries';
-	import { partsOf, type ImagePart } from '$lib/chat/kinds';
-	import { incRender } from '$lib/perf/mark';
+	import type { DurableEntry } from '#lib/chat/entries.js';
+	import { partsOf, type ImagePart } from '#lib/chat/kinds.js';
+	import { incRender } from '#lib/perf/mark.js';
 
 	let { item }: { item: DurableEntry } = $props();
 

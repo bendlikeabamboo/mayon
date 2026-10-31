@@ -3,11 +3,11 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { MessageSquare, Network, FlaskConical, ListChecks } from '@lucide/svelte';
-	import { repos, renderSnippet, deepLink } from '$lib/db';
-	import type { SearchHit } from '$lib/db';
+	import { repos, renderSnippet, deepLink } from '#lib/db/index.js';
+	import type { SearchHit } from '#lib/db/index.js';
 	import type { Component } from 'svelte';
-	import { dbStatus } from '$lib/stores/db.svelte.js';
-	import Pagination from '$lib/components/Pagination.svelte';
+	import { dbStatus } from '#lib/stores/db.svelte.js';
+	import Pagination from '#lib/components/Pagination.svelte';
 
 	let q = $state(page.url.searchParams.get('q') ?? '');
 	let inputEl: HTMLInputElement | undefined = $state();

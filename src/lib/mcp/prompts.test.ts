@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { useFileTestDb } from '$lib/db/driver/pg-test';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { McpClient } from './client';
 import type { McpNotification, McpPrompt } from './types';
 import type { McpTransport } from './transport';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PROVIDER_TEMPLATES, normalizeProviderConfig } from '$lib/ai/registry';
-import type { LegacyProviderConfig } from '$lib/ai/registry';
+import { PROVIDER_TEMPLATES, normalizeProviderConfig } from '#lib/ai/registry.js';
+import type { LegacyProviderConfig } from '#lib/ai/registry.js';
 
 const baseConfig: LegacyProviderConfig = {
 	id: 'p1',

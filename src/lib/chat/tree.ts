@@ -8,7 +8,7 @@
  *   - `buildSubtreeModel` — nested `{ chat, children[] }` from a flat
  *     `listSubtree` result.
  */
-import type { Chat } from '$lib/db';
+import type { Chat } from '#lib/db/index.js';
 
 export interface SubtreeNode {
 	chat: Chat;

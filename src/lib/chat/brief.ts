@@ -10,7 +10,7 @@
  * in `chats.brief`; every branch inherits it via the root→target walk in
  * `assembleContext` (no re-intake, no per-branch storage).
  */
-import type { ChatMessage } from '$lib/ai/types';
+import type { ChatMessage } from '#lib/ai/types.js';
 import {
 	type ScopeStrategyId,
 	isScopeStrategyId,
@@ -18,8 +18,8 @@ import {
 	strategyForBrief
 } from './strategies';
 import { type PersonaId, DEFAULT_PERSONA, isPersonaId, personaForId } from './personas';
-import { buildMcpRuntimeState } from '$lib/mcp/lifecycle';
-import { listMountedResources } from '$lib/mcp/resources';
+import { buildMcpRuntimeState } from '#lib/mcp/lifecycle.js';
+import { listMountedResources } from '#lib/mcp/resources.js';
 
 export type { ScopeStrategy, ScopeStrategyId } from './strategies';
 export {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SectionEntry } from '$lib/settings/sections';
+	import type { SectionEntry } from '#lib/settings/sections.js';
 
 	let {
 		sections,

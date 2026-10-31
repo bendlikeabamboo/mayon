@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: {
 		has: vi.fn().mockReturnValue(false),
 		connected: false,
@@ -12,9 +12,9 @@ vi.mock('$lib/services/status.svelte', () => ({
 	}
 }));
 
-import { getLlmFetch } from '$lib/services/llm-proxy-fetch';
-import { serverStatus } from '$lib/services/status.svelte';
-import { isLoopbackUrl } from '$lib/ai/llm-target';
+import { getLlmFetch } from '#lib/services/llm-proxy-fetch.js';
+import { serverStatus } from '#lib/services/status.svelte.js';
+import { isLoopbackUrl } from '#lib/ai/llm-target.js';
 
 describe('getLlmFetch', () => {
 	const originalFetch = globalThis.fetch;

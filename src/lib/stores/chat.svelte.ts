@@ -13,55 +13,55 @@
  * Error handling mirrors `StreamDemo`: `AbortError` is swallowed; everything
  * else goes through `formatProviderError` into the `error` state.
  */
-import { browser } from '$app/environment';
-import { repos } from '$lib/db';
-import type { Chat, Message } from '$lib/db';
-import { assembleContext } from '$lib/chat/context';
-import type { ResolvedOffsets } from '$lib/chat/selection';
+import { browser } from '$app/env';
+import { repos } from '#lib/db/index.js';
+import type { Chat, Message } from '#lib/db/index.js';
+import { assembleContext } from '#lib/chat/context.js';
+import type { ResolvedOffsets } from '#lib/chat/selection.js';
 import {
 	selectionOverlapsExisting,
 	serializeAddFormats,
 	type ExpoundOptions
-} from '$lib/chat/expound';
-import type { LearningBrief } from '$lib/chat/brief';
-import { parseBrief, disabledToolsForBrief } from '$lib/chat/brief';
+} from '#lib/chat/expound.js';
+import type { LearningBrief } from '#lib/chat/brief.js';
+import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import {
 	kindOf,
 	parseMetadata,
 	type ComposerAttachment,
 	type BranchArtifactMetadata,
 	type SharedMetadata
-} from '$lib/chat/kinds';
-import type { ContextGaugeCandidate } from '$lib/chat/context-usage';
-import { buildRawDelta, resolveAnchor, branchArtifactMetadata } from '$lib/chat/propagation';
-import { generateBranchArtifactSummary } from '$lib/ai/generate/generate-branch-artifact-summary';
-import { getActiveSdkProvider } from '$lib/ai/client';
-import type { StreamPreset } from '$lib/chat/streaming/pref';
-import { createPacer, type Pacer, type PacerMode } from '$lib/chat/streaming/pacer';
-import { mark, incRender } from '$lib/perf/mark';
-import { resolveRequestSettings } from '$lib/ai/dialects';
-import { mapSdkError } from '$lib/ai/sdk-errors';
+} from '#lib/chat/kinds.js';
+import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
+import { buildRawDelta, resolveAnchor, branchArtifactMetadata } from '#lib/chat/propagation.js';
+import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
+import { getActiveSdkProvider } from '#lib/ai/client.js';
+import type { StreamPreset } from '#lib/chat/streaming/pref.js';
+import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
+import { mark, incRender } from '#lib/perf/mark.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import { mapSdkError } from '#lib/ai/sdk-errors.js';
 import {
 	asImageUnsupported,
 	formatProviderError,
 	type FormattedProviderError
-} from '$lib/ai/errors';
-import type { ChatMessage, ProviderConfig, ReasoningEffort } from '$lib/ai/types';
-import { CopilotAuthRequiredError } from '$lib/ai/types';
+} from '#lib/ai/errors.js';
+import type { ChatMessage, ProviderConfig, ReasoningEffort } from '#lib/ai/types.js';
+import { CopilotAuthRequiredError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
-import { runAgentTurn } from '$lib/agent/loop';
-import { getToolDefinitions } from '$lib/agent/registry';
-import { generateTitle, DEFAULT_TITLE } from '$lib/ai/generate/generate-title';
-import { generateBrief } from '$lib/ai/generate/generate-brief';
-import { toastState } from '$lib/stores/toasts.svelte';
+import { runAgentTurn } from '#lib/agent/loop.js';
+import { getToolDefinitions } from '#lib/agent/registry.js';
+import { generateTitle, DEFAULT_TITLE } from '#lib/ai/generate/generate-title.js';
+import { generateBrief } from '#lib/ai/generate/generate-brief.js';
+import { toastState } from '#lib/stores/toasts.svelte.js';
 import {
 	TraceBuilder,
 	buildObjectTrace,
 	type ObjectTraceInput,
 	type TraceEvent
-} from '$lib/agent/trace';
-import { diagnosticsStore } from '$lib/stores/diagnostics.svelte';
-import type { LiveEntry, LiveAskPayload } from '$lib/chat/entries';
+} from '#lib/agent/trace.js';
+import { diagnosticsStore } from '#lib/stores/diagnostics.svelte.js';
+import type { LiveEntry, LiveAskPayload } from '#lib/chat/entries.js';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -527,7 +527,7 @@ class ChatState {
 			const enabledServers = (await repos.mcp.listServers()).filter((s) => s.enabled);
 			this.mcpNotices = [];
 			try {
-				const { connectSession } = await import('$lib/mcp/lifecycle');
+				const { connectSession } = await import('#lib/mcp/lifecycle.js');
 				mcpSession = await connectSession(enabledServers, (e) => {
 					builder.emit(e);
 					diagnosticsStore.liveEmit(e);
@@ -562,7 +562,7 @@ class ChatState {
 			}
 
 			{
-				const { resourceServerIds } = await import('$lib/mcp/resources');
+				const { resourceServerIds } = await import('#lib/mcp/resources.js');
 				const enabledResourceServers = enabledServers.filter((s) => {
 					if (chatMcpConfig === null || chatMcpConfig[s.id]?.enabled !== false) {
 						return resourceServerIds().has(s.id);
@@ -721,8 +721,8 @@ class ChatState {
 				try {
 					const rootBrief = parseBrief(chat && chat.parentId === null ? chat.brief : null);
 					if (rootBrief) {
-						const { strategyForBrief } = await import('$lib/chat/brief');
-						const { lintTurn } = await import('$lib/dev/strategy-lint');
+						const { strategyForBrief } = await import('#lib/chat/brief.js');
+						const { lintTurn } = await import('#lib/dev/strategy-lint.js');
 						const strat = strategyForBrief(rootBrief);
 						const result = lintTurn(strat.id, finalAssistantText || this.streamBuffer);
 						if (result.pass) {

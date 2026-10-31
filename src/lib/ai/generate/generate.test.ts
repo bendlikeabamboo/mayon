@@ -17,7 +17,7 @@ const settingsStore = vi.hoisted(() => new Map<string, string>());
 // In-memory stand-in for the settings KV repo (same JSON round-trip contract
 // as the real `repos.settings`) so the migration/assembly read path is
 // exercised without a browser db.
-vi.mock('$lib/db', () => ({
+vi.mock('#lib/db/index.js', () => ({
 	repos: {
 		settings: {
 			async get<T>(key: string): Promise<T | null> {

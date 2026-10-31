@@ -1,6 +1,6 @@
 <script lang="ts">
-	import GenerationPromptConfig from '$lib/components/generation/GenerationPromptConfig.svelte';
-	import { LAB_CONTRACT } from '$lib/ai/generate/generate';
+	import GenerationPromptConfig from '#lib/components/generation/GenerationPromptConfig.svelte';
+	import { LAB_CONTRACT } from '#lib/ai/generate/generate.js';
 
 	/**
 	 * Lab surface of the shared generation-prompt settings panel. All behavior

@@ -1,5 +1,5 @@
 import { serverStatus } from './status.svelte';
-import { isLoopbackUrl } from '$lib/ai/llm-target';
+import { isLoopbackUrl } from '#lib/ai/llm-target.js';
 
 function createProxyFetch(): typeof globalThis.fetch {
 	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

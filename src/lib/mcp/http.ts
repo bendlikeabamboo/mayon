@@ -1,5 +1,5 @@
-import { classifyFetchError, httpStatusToError } from '$lib/ai/errors';
-import { MissingKeyError } from '$lib/ai/types';
+import { classifyFetchError, httpStatusToError } from '#lib/ai/errors.js';
+import { MissingKeyError } from '#lib/ai/types.js';
 import { parseSseFrames } from './sse';
 import { MCP_PROTOCOL_VERSION } from './types';
 import type { McpNotification } from './types';

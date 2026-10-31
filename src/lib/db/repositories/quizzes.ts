@@ -5,9 +5,9 @@ import {
 	type Quiz,
 	type QuizQuestion,
 	type QuizQuestionType
-} from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+} from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 import { agentTracesRepo } from './agent-traces';
 
 export interface McqPayload {

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { renderMarkdown, renderMarkdownLive } from '$lib/markdown/render';
-	import { incRender } from '$lib/perf/mark';
-	import { hasMermaid, renderMermaidBlock } from '$lib/markdown/mermaid';
-	import { themeState } from '$lib/stores/theme.svelte.js';
-	import { isExternalLink } from '$lib/markdown/links';
-	import { enhanceFocusable } from '$lib/markdown/focusable';
+	import { renderMarkdown, renderMarkdownLive } from '#lib/markdown/render.js';
+	import { incRender } from '#lib/perf/mark.js';
+	import { hasMermaid, renderMermaidBlock } from '#lib/markdown/mermaid.js';
+	import { themeState } from '#lib/stores/theme.svelte.js';
+	import { isExternalLink } from '#lib/markdown/links.js';
+	import { enhanceFocusable } from '#lib/markdown/focusable.js';
 	import MermaidPreview from './MermaidPreview.svelte';
 	import FocusModal from './FocusModal.svelte';
 

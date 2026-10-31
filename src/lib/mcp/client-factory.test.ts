@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/ai/keystore/browser', () => ({
+vi.mock('#lib/ai/keystore/browser.js', () => ({
 	createBrowserKeyStore: () => ({
 		get: vi.fn(),
 		has: vi.fn(),
@@ -9,14 +9,14 @@ vi.mock('$lib/ai/keystore/browser', () => ({
 	})
 }));
 
-vi.mock('$lib/services/status.svelte', () => ({
+vi.mock('#lib/services/status.svelte.js', () => ({
 	serverStatus: { has: vi.fn().mockReturnValue(false) }
 }));
 
 import { createMcpTransport } from './client-factory';
 import { HttpMcpTransport } from './http';
 import { ServerStdioMcpTransport } from './server-stdio';
-import { serverStatus } from '$lib/services/status.svelte';
+import { serverStatus } from '#lib/services/status.svelte.js';
 
 describe('createMcpTransport', () => {
 	afterEach(() => {

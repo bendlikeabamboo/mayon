@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte';
 	import { ChevronRight, ChevronDown } from '@lucide/svelte';
 	import Markdown from '../Markdown.svelte';
-	import type { DurableEntry } from '$lib/chat/entries';
-	import { incRender } from '$lib/perf/mark';
+	import type { DurableEntry } from '#lib/chat/entries.js';
+	import { incRender } from '#lib/perf/mark.js';
 
 	type DurableProps = { item: DurableEntry; live?: false };
 	type LiveProps = { live: true; buffer: string };

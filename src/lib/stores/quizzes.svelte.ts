@@ -26,21 +26,21 @@
  * swallowed; `QuizGenerationError` sets a typed `error`; everything else goes
  * through `formatProviderError`.
  */
-import { browser } from '$app/environment';
-import { repos } from '$lib/db';
-import type { McqPayload, ShortPayload } from '$lib/db';
-import type { Quiz, QuizAnswer, QuizAttempt, QuizQuestion } from '$lib/db';
-import { assembleContext } from '$lib/chat/context';
-import { getActiveSdkProvider, getAmbientEffort } from '$lib/ai/client';
-import { resolveRequestSettings } from '$lib/ai/dialects';
-import { formatProviderError, type FormattedProviderError } from '$lib/ai/errors';
+import { browser } from '$app/env';
+import { repos } from '#lib/db/index.js';
+import type { McqPayload, ShortPayload } from '#lib/db/index.js';
+import type { Quiz, QuizAnswer, QuizAttempt, QuizQuestion } from '#lib/db/index.js';
+import { assembleContext } from '#lib/chat/context.js';
+import { getActiveSdkProvider, getAmbientEffort } from '#lib/ai/client.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import { formatProviderError, type FormattedProviderError } from '#lib/ai/errors.js';
 import {
 	QuizGenerationError,
 	generateQuiz,
 	gradeShortAnswer
-} from '$lib/ai/generate/generate-quiz';
-import { toQuizQuestions } from '$lib/ai/generate/quiz';
-import { buildObjectTrace, type ObjectTraceInput } from '$lib/agent/trace';
+} from '#lib/ai/generate/generate-quiz.js';
+import { toQuizQuestions } from '#lib/ai/generate/quiz.js';
+import { buildObjectTrace, type ObjectTraceInput } from '#lib/agent/trace.js';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';

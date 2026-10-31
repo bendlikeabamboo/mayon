@@ -1,5 +1,5 @@
 import type { BatchStatement, QueryResult, StorageDriver } from './types';
-import { serverClient } from '$lib/services/client';
+import { serverClient } from '#lib/services/client.js';
 
 export function createRemotePgDriver(): StorageDriver {
 	async function post(body: unknown): Promise<unknown> {

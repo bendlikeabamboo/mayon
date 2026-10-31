@@ -1,7 +1,7 @@
 import { eq, or } from 'drizzle-orm';
-import { crossLinks, type CrossLink } from '$lib/db/schema';
-import { awaitDb } from '$lib/db/driver/client';
-import { now, uuid } from '$lib/db/ids';
+import { crossLinks, type CrossLink } from '#lib/db/schema.js';
+import { awaitDb } from '#lib/db/driver/client.js';
+import { now, uuid } from '#lib/db/ids.js';
 
 async function insert(input: typeof crossLinks.$inferInsert): Promise<CrossLink> {
 	const [row] = await (await awaitDb()).insert(crossLinks).values(input).returning();

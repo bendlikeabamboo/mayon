@@ -26,7 +26,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Schema } from 'hast-util-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import { admonition } from './admonition';
-import { mark } from '$lib/perf/mark';
+import { mark } from '#lib/perf/mark.js';
 
 /**
  * Sanitize schema: GitHub-default, extended to keep the classes the pipeline
