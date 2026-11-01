@@ -181,10 +181,18 @@ function firstSystemText(body) {
 }
 
 	function classifyRequest(body) {
-	if (!hasTools(body)) {
-		return body?.stream === true ? 'chat_stream' : 'chat_plain';
-	}
-	const toolDescription = jsonToolDescription(body);
+		if (!hasTools(body)) {
+			return body?.stream === true ? 'chat_stream' : 'chat_plain';
+		}
+		// Chat turns from the second one on carry the standard tool set (the
+		// agent loop enables tools after the first turn). A tools-bearing
+		// STREAM request is still a chat: answer with the text-only SSE stream
+		// and never call tools. Non-streamed tools requests keep the
+		// fail-loudly contract kinds below (research.md D7).
+		if (body?.stream === true) {
+			return 'chat_stream';
+		}
+		const toolDescription = jsonToolDescription(body);
 	if (toolDescription !== null && toolDescription.includes(GRADING_MARKER)) {
 		return 'short_grading';
 	}

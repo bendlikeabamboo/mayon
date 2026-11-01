@@ -1,0 +1,36 @@
+---
+title: "Optional Telemetry"
+---
+
+# Optional Telemetry
+
+Mayon ships with telemetry switched off. When it is off, nothing is collected and nothing is sent — you can verify this at the network level. If you want to study or improve your prompts, you can point Mayon at **your own** Langfuse project. Data goes to your destination only; it never goes to Mayon's developers.
+
+## What you need
+
+- A Langfuse project (Langfuse cloud or self-hosted) with its **host URL** and **public key**.
+- The project's **secret key** set as the `MAYON_LANGFUSE_SECRET_KEY` environment variable on the Mayon server container. The secret is resolved server-side only — it is never stored in the settings store, never sent to the browser, and never included in an API response.
+
+## Enable it
+
+1. Open **Settings → Telemetry**.
+2. Enter the Langfuse host URL and public key.
+3. Choose a capture mode (see below).
+4. Save. Mayon validates the destination before activating it and tells you in plain language if the host is unreachable or the credentials are rejected. A failed validation changes nothing — the previous configuration stays active.
+
+## Capture modes
+
+| Mode | What leaves your machine | What stays local |
+|---|---|---|
+| **Full content** | Prompts, responses, model identity, token usage, timing, outcome, and the conversation linkage needed to group turns in Langfuse | Everything else: your database, API keys, and the Langfuse secret key |
+| **Metadata only** | Model identity, token usage, timing, outcome, and conversation linkage — **no conversation text** | Prompts and responses, entirely |
+
+Switching modes takes effect immediately — no restart — and applies to everything recorded after the switch. In metadata mode, conversation text is removed before a record leaves your browser, and the server rejects any record that still carries content.
+
+## Delivery health
+
+The Telemetry settings section shows the last successful delivery and any persistent failure. If your Langfuse destination is unreachable, chats continue normally; records queue up in a bounded buffer and delivery resumes automatically when the destination returns. Records are never held open indefinitely — the queue keeps only the most recent entries.
+
+## Turning it off
+
+Toggle telemetry off in the same settings section. Emission stops immediately and any queued-but-unsent records are discarded. If you turn it back on later, the destination is validated again before anything new is sent.

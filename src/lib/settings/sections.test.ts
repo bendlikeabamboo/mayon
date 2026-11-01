@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SETTINGS_SECTIONS, matchSections, visibleSections } from './sections';
 
 describe('SETTINGS_SECTIONS registry', () => {
-	it('holds the 9 sections in frozen page order', () => {
+	it('holds the 10 sections in frozen page order', () => {
 		expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
 			'providers',
 			'mcp',
@@ -13,6 +13,7 @@ describe('SETTINGS_SECTIONS registry', () => {
 			'quiz-prompt',
 			'security',
 			'data',
+			'telemetry',
 			'sandbox-db'
 		]);
 	});
@@ -33,6 +34,7 @@ describe('SETTINGS_SECTIONS registry', () => {
 			'Quiz generation prompt',
 			'Security',
 			'Data',
+			'Telemetry',
 			'Sandbox DB'
 		]);
 	});
@@ -69,7 +71,8 @@ describe('visibleSections', () => {
 			'lab-prompt',
 			'quiz-prompt',
 			'security',
-			'data'
+			'data',
+			'telemetry'
 		]);
 	});
 });

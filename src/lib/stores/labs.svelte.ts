@@ -23,7 +23,12 @@ import { resolveRequestSettings } from '#lib/ai/dialects.js';
 import { formatProviderError, type FormattedProviderError } from '#lib/ai/errors.js';
 import { generateLab, LabGenerationError } from '#lib/ai/generate/generate.js';
 import { toLabContent } from '#lib/ai/generate/lab.js';
-import { buildObjectTrace, type ObjectTraceInput } from '#lib/agent/trace.js';
+import {
+	buildObjectTrace,
+	type ObjectTraceInput,
+	type ObjectTraceRequest
+} from '#lib/agent/trace.js';
+import { captureGenerator } from '#lib/telemetry/capture.js';
 
 function isAbortError(err: unknown): boolean {
 	return err instanceof DOMException && err.name === 'AbortError';
@@ -85,8 +90,12 @@ class LabsState {
 		this.error = null;
 		this.rawOffer = null;
 		this.controller = new AbortController();
+		const signal = this.controller.signal;
 
 		let traceInput: ObjectTraceInput | null = null;
+		let traceRequest: ObjectTraceRequest | undefined;
+		let traceResult: { object: unknown } | undefined;
+		let traceError: string | undefined;
 		let createdLabId: string | undefined;
 		const startTime = Date.now();
 
@@ -98,9 +107,12 @@ class LabsState {
 			const effort = await getAmbientEffort();
 			const requestSettings = resolveRequestSettings(config, config.defaultModel, effort);
 			const generated = await generateLab(model, ctx, {
-				signal: this.controller.signal,
+				signal,
 				requestSettings,
 				onTrace: (t) => {
+					traceRequest = t.request;
+					traceResult = t.result;
+					traceError = t.error;
 					traceInput = {
 						kind: 'lab',
 						request: t.request,
@@ -135,6 +147,16 @@ class LabsState {
 			if (traceInput) {
 				try {
 					const { config } = await getActiveSdkProvider();
+					captureGenerator('lab', {
+						chatId,
+						model: config.defaultModel,
+						provider: config.kind,
+						startedAt: startTime,
+						input: traceRequest,
+						result: traceResult,
+						error: traceError,
+						aborted: signal.aborted
+					});
 					await repos.agentTraces.create({
 						id: '',
 						createdAt: startTime,

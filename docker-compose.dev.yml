@@ -42,6 +42,11 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-mayon}:${POSTGRES_PASSWORD:-mayon}@db:5432/${POSTGRES_DB:-mayon}
       MIGRATIONS_DIR: /app/drizzle
+      # Opt-in telemetry delivery: set MAYON_LANGFUSE_SECRET_KEY in .env for a
+      # real Langfuse destination; the dev default exists so the langfuse-stub
+      # service below can exercise the delivery path out of the box (delivery
+      # itself only starts once telemetry is enabled in settings).
+      MAYON_LANGFUSE_SECRET_KEY: ${MAYON_LANGFUSE_SECRET_KEY:-dev-langfuse-stub-secret}
     depends_on:
       db:
         condition: service_healthy
@@ -79,6 +84,32 @@ services:
       - ./tests/fixtures/mock-llm:/fixture:ro
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:9999/v1/models >/dev/null 2>&1 || exit 1']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+  langfuse-stub:
+    image: docker.io/library/node:22.23.4-alpine
+    working_dir: /fixture
+    command: node server.mjs
+    environment:
+      LANGFUSE_STUB_PORT: '9998'
+    # Host-published so the e2e runner can assert on /__received; the server
+    # reaches the stub via the internal hostname (config host
+    # http://langfuse-stub:9998).
+    ports:
+      - '127.0.0.1:9998:9998'
+    expose:
+      - '9998'
+    volumes:
+      - ./tests/fixtures/langfuse-stub:/fixture:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -qO- http://localhost:9998/api/public/projects >/dev/null 2>&1 || exit 1'
+        ]
       interval: 3s
       timeout: 5s
       retries: 20

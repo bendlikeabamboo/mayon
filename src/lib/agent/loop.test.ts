@@ -288,6 +288,27 @@ describe('runAgentTurn', () => {
 		});
 	});
 
+	it('(a0b) ai@7 finish usage (inputTokens/outputTokens) surfaces non-zero in the usage event', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hello' },
+				{
+					type: 'finish',
+					finishReason: 'stop',
+					usage: { inputTokens: 12, outputTokens: 7, totalTokens: 19 }
+				}
+			])
+		} as never);
+
+		const events: Array<{ kind: string; [k: string]: unknown }> = [];
+		const deps = makeDeps({ onTrace: (e) => events.push(e as never) });
+		await runAgentTurn(deps);
+
+		const usageEvent = events.find((e) => e.kind === 'usage');
+		expect(usageEvent).toBeDefined();
+		expect(usageEvent?.usage).toEqual({ promptTokens: 12, completionTokens: 7, totalTokens: 19 });
+	});
+
 	it('(a1) finish part without any usage emits no usage event', async () => {
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([

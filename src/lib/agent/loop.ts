@@ -180,21 +180,26 @@ async function consumeStream(
 			onReasoningDelta(p.text);
 		} else if (p.type === 'finish') {
 			finishReason = p.finishReason as string;
-			// Prefer the richer of usage / totalUsage per field: chunked-usage
-			// providers can report zeros in `usage` with real counts in `totalUsage`.
-			const u = p.usage as
-				| { promptTokens?: number; completionTokens?: number; totalTokens?: number }
-				| undefined;
-			const t = p.totalUsage as
-				| { promptTokens?: number; completionTokens?: number; totalTokens?: number }
-				| undefined;
+			// ai@7 renamed the finish-part usage fields to inputTokens/outputTokens;
+			// accept both spellings per field. Prefer the richer of usage / totalUsage
+			// per field: chunked-usage providers can report zeros in `usage` with real
+			// counts in `totalUsage`.
+			const read = (x: unknown) => {
+				const u = (x ?? {}) as Record<string, number | undefined>;
+				return {
+					input: u.inputTokens ?? u.promptTokens,
+					output: u.outputTokens ?? u.completionTokens,
+					total: u.totalTokens
+				};
+			};
+			const u = read(p.usage);
+			const t = read(p.totalUsage);
 			usage =
-				u || t
+				p.usage || p.totalUsage
 					? {
-							promptTokens: Math.max(u?.promptTokens ?? 0, t?.promptTokens ?? 0) || undefined,
-							completionTokens:
-								Math.max(u?.completionTokens ?? 0, t?.completionTokens ?? 0) || undefined,
-							totalTokens: Math.max(u?.totalTokens ?? 0, t?.totalTokens ?? 0) || undefined
+							promptTokens: Math.max(u.input ?? 0, t.input ?? 0) || undefined,
+							completionTokens: Math.max(u.output ?? 0, t.output ?? 0) || undefined,
+							totalTokens: Math.max(u.total ?? 0, t.total ?? 0) || undefined
 						}
 					: null;
 		} else if (p.type === 'error') {

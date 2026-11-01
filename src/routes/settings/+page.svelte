@@ -11,6 +11,7 @@
 	import DataSection from '#lib/components/settings/DataSection.svelte';
 	import SandboxDbSection from '#lib/components/settings/SandboxDbSection.svelte';
 	import SecuritySection from '#lib/components/settings/SecuritySection.svelte';
+	import TelemetrySection from '#lib/components/settings/TelemetrySection.svelte';
 	import SettingsRail from '#lib/components/settings/SettingsRail.svelte';
 	import SettingsSearch from '#lib/components/settings/SettingsSearch.svelte';
 	import MobileSectionJump from '#lib/components/settings/MobileSectionJump.svelte';
@@ -196,6 +197,9 @@
 		</div>
 		<div id="data" class="scroll-mt-4">
 			<DataSection />
+		</div>
+		<div id="telemetry" class="scroll-mt-4">
+			<TelemetrySection />
 		</div>
 		{#if serverStatus.has('sandbox-db')}
 			<div id="sandbox-db" class="scroll-mt-4">

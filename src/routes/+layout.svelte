@@ -17,6 +17,7 @@
 	import { bootstrapDb, repos, runSelfCheck } from '#lib/db/index.js';
 	import { bindThemePersistence, themeState, type Theme } from '#lib/stores/theme.svelte.js';
 	import { dbStatus } from '#lib/stores/db.svelte.js';
+	import { telemetryState } from '#lib/telemetry/state.svelte.js';
 
 	let { children } = $props();
 
@@ -50,6 +51,7 @@
 				const stored = await repos.settings.get<Theme>('theme');
 				if (stored) themeState.hydrate(stored);
 				bindThemePersistence((t) => repos.settings.set('theme', t));
+				void telemetryState.init();
 				if (import.meta.env.DEV) void runSelfCheck();
 				if (import.meta.env.DEV) import('#lib/perf/longtask-warn.js');
 			})

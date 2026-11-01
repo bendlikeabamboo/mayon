@@ -27,6 +27,12 @@ export const SETTINGS_SECTIONS: readonly SectionEntry[] = [
 		cap: null
 	},
 	{ id: 'data', label: 'Data', aliases: ['backup', 'restore', 'export', 'import'], cap: null },
+	{
+		id: 'telemetry',
+		label: 'Telemetry',
+		aliases: ['langfuse', 'traces', 'analytics', 'privacy'],
+		cap: null
+	},
 	{ id: 'sandbox-db', label: 'Sandbox DB', aliases: ['sandbox', 'sqlite'], cap: 'sandbox-db' }
 ];
 

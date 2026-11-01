@@ -16,6 +16,7 @@
 import { browser } from '$app/env';
 import { repos } from '#lib/db/index.js';
 import type { Chat, Message } from '#lib/db/index.js';
+import type { TelemetryUsage } from '@mayon/shared';
 import { assembleContext } from '#lib/chat/context.js';
 import type { ResolvedOffsets } from '#lib/chat/selection.js';
 import {
@@ -58,8 +59,16 @@ import {
 	TraceBuilder,
 	buildObjectTrace,
 	type ObjectTraceInput,
-	type TraceEvent
+	type ObjectTraceRequest,
+	type TraceEvent,
+	type TracedRequestMessage
 } from '#lib/agent/trace.js';
+import {
+	captureChatTurn,
+	captureGenerator,
+	type ChatTurnCapture,
+	type GeneratorUsage
+} from '#lib/telemetry/capture.js';
 import { diagnosticsStore } from '#lib/stores/diagnostics.svelte.js';
 import type { LiveEntry, LiveAskPayload } from '#lib/chat/entries.js';
 
@@ -499,6 +508,9 @@ class ChatState {
 		/** Latest provider-reported usage (023); each agent-loop iteration
 		 *  overwrites, so the final iteration wins for the turn persist. */
 		let finalUsage: Extract<TraceEvent, { kind: 'usage' }> | null = null;
+		/** Last assembled request (system + traced messages) — the telemetry
+		 *  input record (research D1); each iteration overwrites. */
+		let lastRequestInput: { system: string; messages: TracedRequestMessage[] } | null = null;
 		/** Local mirror of the final assistant row id (TraceBuilder's
 		 *  assistantMessageId is setter-only, unreadable at runtime). */
 		let assistantMessageId: string | null = null;
@@ -712,6 +724,7 @@ class ChatState {
 				notifyGenerativeStatus: (status) => (this.generativeStatus = status),
 				onTrace: (e) => {
 					if (e.kind === 'usage') finalUsage = e;
+					if (e.kind === 'request') lastRequestInput = { system: e.system, messages: e.messages };
 					builder.emit(e);
 					diagnosticsStore.liveEmit(e);
 				}
@@ -850,6 +863,25 @@ class ChatState {
 					/* best-effort; never surfaces to user */
 				}
 			}
+			// Chat-turn telemetry capture (research D1): synchronous assembly from
+			// values already at hand; never blocks or throws into the chat path.
+			// Usage goes through chatTurnUsageOf — the helper takes the event as a
+			// parameter so no flow-narrowing of `finalUsage` happens here.
+			const turnCapture: ChatTurnCapture = {
+				chatId,
+				model: (model as { modelId?: string } | undefined)?.modelId ?? '',
+				provider: config?.kind ?? 'openai-compatible',
+				startedAt: new Date(startTime).toISOString(),
+				durationMs: Date.now() - startTime,
+				outcome: wasAborted ? 'aborted' : this.error ? 'error' : 'success',
+				input: lastRequestInput ?? undefined,
+				output: finalAssistantText || this.streamBuffer,
+				usage: chatTurnUsageOf(finalUsage)
+			};
+			if (this.error) {
+				turnCapture.errorDetail = this.error.message;
+			}
+			captureChatTurn(turnCapture);
 			if (!this.error) {
 				this.lastFailedPrompt = null;
 				this.lastFailedAttachments = null;
@@ -964,16 +996,27 @@ class ChatState {
 		if (this.titling) return;
 		this.titling = true;
 		this.titleController = new AbortController();
+		const titleSignal = this.titleController.signal;
 		let traceInput: ObjectTraceInput | null = null;
+		let traceRequest: ObjectTraceRequest | undefined;
+		let traceResult: { object: unknown } | undefined;
+		let traceError: string | undefined;
+		let titleUsage: GeneratorUsage | null = null;
+		let provider = '';
 		const startTime = Date.now();
 		try {
 			const ctx: ChatMessage[] = [{ role: 'user', content: firstMessage }];
 			const { config } = await getActiveSdkProvider();
+			provider = config.kind;
 			const requestSettings = resolveRequestSettings(config, config.defaultModel, 'off');
 			const title = await generateTitle(model, ctx, {
 				signal: this.titleController.signal,
 				requestSettings,
 				onTrace: (t) => {
+					traceRequest = t.request;
+					traceResult = t.result;
+					traceError = t.error;
+					titleUsage = t.usage ?? null;
 					traceInput = {
 						kind: 'title',
 						request: t.request,
@@ -992,6 +1035,17 @@ class ChatState {
 			this.titling = false;
 			this.titleController = null;
 			if (traceInput) {
+				captureGenerator('title', {
+					chatId: chat.id,
+					model: (model as { modelId?: string }).modelId ?? '',
+					provider,
+					startedAt: startTime,
+					input: traceRequest,
+					result: traceResult,
+					error: traceError,
+					aborted: titleSignal.aborted,
+					usage: titleUsage
+				});
 				try {
 					const { config } = await getActiveSdkProvider();
 					await repos.agentTraces.create({
@@ -1212,12 +1266,19 @@ class ChatState {
 		if (this.inferring || this.inferDismissed) return;
 		this.inferring = true;
 		this.inferController = new AbortController();
+		const briefSignal = this.inferController.signal;
 		let traceInput: ObjectTraceInput | null = null;
+		let traceRequest: ObjectTraceRequest | undefined;
+		let traceResult: { object: unknown } | undefined;
+		let traceError: string | undefined;
 		const startTime = Date.now();
 		try {
 			const brief = await generateBrief(model, ctx, {
 				signal: this.inferController.signal,
 				onTrace: (t) => {
+					traceRequest = t.request;
+					traceResult = t.result;
+					traceError = t.error;
 					traceInput = {
 						kind: 'brief',
 						request: t.request,
@@ -1238,6 +1299,16 @@ class ChatState {
 			if (traceInput) {
 				try {
 					const { config } = await getActiveSdkProvider();
+					captureGenerator('brief', {
+						chatId: chat.id,
+						model: (model as { modelId?: string }).modelId ?? '',
+						provider: config.kind,
+						startedAt: startTime,
+						input: traceRequest,
+						result: traceResult,
+						error: traceError,
+						aborted: briefSignal.aborted
+					});
 					await repos.agentTraces.create({
 						id: '',
 						createdAt: startTime,
@@ -1478,6 +1549,21 @@ function branchTitle(parentTitle: string, excerpt?: string): string {
 }
 
 /** Singleton — the single active conversation view across the app. */
+/**
+ * Telemetry usage triple from the latest agent-loop usage event, or undefined
+ * when the provider reported none. Takes the event as a parameter so the
+ * caller's `finalUsage` flow analysis is untouched.
+ */
+function chatTurnUsageOf(e: TraceEvent | null): TelemetryUsage | undefined {
+	return e?.kind === 'usage'
+		? {
+				input: e.usage.promptTokens,
+				output: e.usage.completionTokens,
+				total: e.usage.totalTokens
+			}
+		: undefined;
+}
+
 export const chatStore = new ChatState();
 
 /**
