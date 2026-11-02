@@ -23,6 +23,9 @@ services:
       - server-data:/data
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-mayon}:${POSTGRES_PASSWORD:-mayon}@db:5432/${POSTGRES_DB:-mayon}
+      # Passthroughs from the owner's .env; empty default = unset server-side.
+      MAYON_LANGFUSE_SECRET_KEY: ${MAYON_LANGFUSE_SECRET_KEY:-}
+      MAYON_TRUST_PROXY_HOPS: ${MAYON_TRUST_PROXY_HOPS:-1}
     depends_on:
       db:
         condition: service_healthy
