@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-03
+
+### Added
+
+- **Optional user-defined telemetry (Langfuse sink)** — telemetry is
+  strictly opt-in and reports to the user's own Langfuse project:
+  Settings → Telemetry takes the host, public key, and capture mode, while
+  the Langfuse secret key stays server-side in `MAYON_LANGFUSE_SECRET_KEY`
+  (the settings row remains non-secret); nothing is captured unless
+  telemetry is explicitly enabled. Generation events — chat turns, quiz,
+  lab, grading, title, brief, branch-summary, and MCP sampling — are
+  recorded client-side with model/provider/outcome/usage attributes,
+  buffered locally, and relayed through the Mayon server to Langfuse as
+  OTLP/JSON spans on `/api/public/otel/v1/traces`; prompt/completion
+  content is attached only when capture mode is `content`. Delivery is
+  strict: only a clean 2xx counts as delivered, and HTTP 207 partial
+  acceptance or per-event ingestion errors surface their messages in the
+  telemetry status panel instead of silently counting as delivered.
+- **Enforceable text-first runtime tier (025)** — the two-tier boundary
+  (data+logic behind the repository/driver seams, UI as a thin passenger)
+  is now machine-enforced instead of convention: ESLint boundary rules
+  (app-tier files may import only the `$lib/db`/`#lib/db` façade, and
+  `src/lib/db` may not import app modules) plus the
+  `pnpm check:boundaries` script (dynamic-import backstop, inline-disable
+  ban, justified straggler baselines) run in CI, and the façade was
+  extended (schema types, runSelfCheck, backup ops, uuid) so the tree is
+  façade-clean. Ships with the agent placement map
+  (`docs/reference/agent-map.qmd`) codifying the text-first proving path
+  (useFileTestDb + repos) with the browser as camera, not driver.
+- **Headless real-LLM testing via env-backed keystore** — a read-only
+  env-backed key store (`MAYON_API_KEY_<ID>` / `MAYON_API_KEY`) is picked
+  automatically when IndexedDB is absent, so sdk-fetch, http-transport,
+  and copilot-fetch run headless without a browser profile; a zero-mock
+  real-provider integration test exercises the production chat path
+  against a live endpoint when the env keys are present.
+
+### Changed
+
+- **SvelteKit 3** — `@sveltejs/kit` bumped from 2.70.2 to 3.0.0 (svelte
+  `^5.56.4` → `^5.57.1`, `@sveltejs/adapter-static` `^3.0.10` →
+  `^4.0.1`): `svelte.config.js` folds into the `sveltekit()` vite plugin
+  options, `$app/environment` imports rename to `$app/env`, and `$lib`
+  becomes the declared `#lib` subpath import with explicit extensions;
+  the dependency-boundary enforcement (eslint restricted imports +
+  direction-check script) follows the `#lib` specifier form.
+- **`.env.example`** now documents every runtime environment variable,
+  including the new telemetry and keystore entries.
+
 ## [0.8.3] - 2026-10-25
 
 ### Security
