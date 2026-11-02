@@ -2,14 +2,14 @@
 // Minimal Langfuse receiver stub for the telemetry e2e scenarios (026 V2/V3).
 // Dependency-free node:http server in the mock-llm fixture style: serves the
 // two endpoints the Mayon server pipeline speaks (contracts/langfuse-ingestion.md),
-// keeps every received ingestion batch in memory, and exposes them for
+// keeps every received OTLP trace export in memory, and exposes the spans for
 // assertions. NOT a Langfuse implementation — only the contract surface.
 
 import { createServer } from 'node:http';
 
 const PORT = Number(process.env.LANGFUSE_STUB_PORT ?? 9998);
 
-/** Received ingestion calls, oldest first: { authorization, batch: Event[] }. */
+/** Received OTLP exports, oldest first: { authorization, spans: Span[] }. */
 const received = [];
 
 function sendJson(res, status, body) {
@@ -40,29 +40,31 @@ const server = createServer(async (req, res) => {
 		return;
 	}
 
-	// Ingestion: accept every batch, remember it verbatim.
-	if (req.method === 'POST' && url.pathname === '/api/public/ingestion') {
-		let batch = [];
+	// OTLP trace ingestion: accept every export, remember its spans verbatim.
+	if (req.method === 'POST' && url.pathname === '/api/public/otel/v1/traces') {
+		let spans = [];
 		try {
 			const body = JSON.parse(await readBody(req));
-			batch = Array.isArray(body?.batch) ? body.batch : [];
+			spans = (body?.resourceSpans ?? []).flatMap((rs) =>
+				(rs?.scopeSpans ?? []).flatMap((ss) => ss?.spans ?? [])
+			);
 		} catch {
 			sendJson(res, 400, { error: 'malformed JSON body' });
 			return;
 		}
-		received.push({ authorization: req.headers.authorization ?? null, batch });
-		console.log(`[langfuse-stub] ingestion batch #${received.length} (${batch.length} events)`);
-		sendJson(res, 200, { ok: true });
+		received.push({ authorization: req.headers.authorization ?? null, spans });
+		console.log(`[langfuse-stub] otlp export #${received.length} (${spans.length} spans)`);
+		sendJson(res, 200, {});
 		return;
 	}
 
 	// Assertion surface: everything received so far, batches plus a flattened
-	// event list (easier scanning in specs).
+	// span list (easier scanning in specs).
 	if (req.method === 'GET' && url.pathname === '/__received') {
 		sendJson(res, 200, {
 			batches: received.length,
 			received,
-			events: received.flatMap((r) => r.batch)
+			spans: received.flatMap((r) => r.spans)
 		});
 		return;
 	}

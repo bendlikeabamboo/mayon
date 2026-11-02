@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { TelemetryConfig, TelemetryEventRecord } from '@mayon/shared';
 
 const QUEUE_BOUND = 500;
@@ -161,58 +161,127 @@ export async function probeLangfuse(
 	}
 }
 
-export function toLangfuseEvents(
+export interface OtlpAttributeValue {
+	stringValue?: string;
+	intValue?: string;
+}
+
+export interface OtlpAttribute {
+	key: string;
+	value: OtlpAttributeValue;
+}
+
+export interface OtlpSpan {
+	traceId: string;
+	spanId: string;
+	name: string;
+	kind: number;
+	startTimeUnixNano?: string;
+	endTimeUnixNano?: string;
+	attributes: OtlpAttribute[];
+}
+
+function strAttribute(key: string, value: string): OtlpAttribute {
+	return { key, value: { stringValue: value } };
+}
+
+function intAttribute(key: string, value: number): OtlpAttribute {
+	// OTLP/JSON encodes int64 as a decimal string.
+	return { key, value: { intValue: String(value) } };
+}
+
+function nanosOf(ms: number): string {
+	return (BigInt(Math.trunc(ms)) * 1_000_000n).toString();
+}
+
+export function toOtlpSpans(records: TelemetryEventRecord[], captureMode: string): OtlpSpan[] {
+	return records.map((record) => {
+		const startMs = Date.parse(record.startedAt);
+		const attributes: OtlpAttribute[] = [
+			strAttribute('langfuse.observation.type', 'generation'),
+			strAttribute('langfuse.session.id', record.chatId),
+			strAttribute('gen_ai.request.model', record.model),
+			strAttribute('mayon.provider', record.provider),
+			strAttribute('mayon.outcome', record.outcome),
+			strAttribute('mayon.capture_mode', captureMode)
+		];
+		const usage = record.usage;
+		if (usage?.input !== undefined) {
+			attributes.push(intAttribute('gen_ai.usage.input_tokens', usage.input));
+		}
+		if (usage?.output !== undefined) {
+			attributes.push(intAttribute('gen_ai.usage.output_tokens', usage.output));
+		}
+		if (usage?.total !== undefined) {
+			attributes.push(intAttribute('gen_ai.usage.total_tokens', usage.total));
+		}
+		if (record.errorDetail !== undefined) {
+			attributes.push(strAttribute('error.type', record.errorDetail));
+		}
+		// Metadata-mode records never carry input/output (stripped at assembly,
+		// rejected at the relay gate); content ships as span attributes.
+		if (captureMode === 'content') {
+			if (record.input !== undefined) {
+				attributes.push(
+					strAttribute(
+						'gen_ai.prompt',
+						typeof record.input === 'string' ? record.input : JSON.stringify(record.input)
+					)
+				);
+			}
+			if (record.output !== undefined) {
+				attributes.push(strAttribute('gen_ai.completion', record.output));
+			}
+		}
+		return {
+			traceId: record.id.replace(/-/g, ''),
+			spanId: randomBytes(8).toString('hex'),
+			name: record.kind,
+			kind: 1,
+			...(Number.isFinite(startMs)
+				? {
+						startTimeUnixNano: nanosOf(startMs),
+						endTimeUnixNano: nanosOf(startMs + record.durationMs)
+					}
+				: {}),
+			attributes
+		};
+	});
+}
+
+function toOtlpTraceBody(
 	records: TelemetryEventRecord[],
 	captureMode: string
-): Array<Record<string, unknown>> {
-	const events: Array<Record<string, unknown>> = [];
-	for (const record of records) {
-		events.push({
-			id: randomUUID(),
-			type: 'trace-create',
-			timestamp: record.startedAt,
-			body: {
-				id: record.id,
-				name: record.kind,
-				sessionId: record.chatId,
-				tags: [record.kind, record.provider, captureMode],
-				metadata: { app: 'mayon', model: record.model, outcome: record.outcome }
+): { resourceSpans: Array<Record<string, unknown>> } {
+	return {
+		resourceSpans: [
+			{
+				resource: { attributes: [strAttribute('service.name', 'mayon')] },
+				scopeSpans: [{ spans: toOtlpSpans(records, captureMode) }]
 			}
-		});
-		const startMs = Date.parse(record.startedAt);
-		const usage = record.usage;
-		events.push({
-			id: randomUUID(),
-			type: 'observation-create',
-			timestamp: record.startedAt,
-			body: {
-				id: randomUUID(),
-				traceId: record.id,
-				type: 'generation',
-				name: record.kind,
-				startTime: record.startedAt,
-				...(Number.isFinite(startMs)
-					? { endTime: new Date(startMs + record.durationMs).toISOString() }
-					: {}),
-				model: record.model,
-				...(record.input !== undefined ? { input: record.input } : {}),
-				...(record.output !== undefined ? { output: record.output } : {}),
-				...(usage
-					? {
-							usage: {
-								...(usage.input !== undefined ? { input: usage.input } : {}),
-								...(usage.output !== undefined ? { output: usage.output } : {}),
-								...(usage.total !== undefined ? { total: usage.total } : {}),
-								unit: 'TOKENS'
-							}
-						}
-					: {}),
-				level: record.outcome === 'error' ? 'ERROR' : 'DEFAULT',
-				...(record.errorDetail !== undefined ? { statusMessage: record.errorDetail } : {})
-			}
-		});
+		]
+	};
+}
+
+function ingestionErrorMessage(body: string): string | undefined {
+	let parsed: {
+		errors?: Array<{ message?: unknown }>;
+		partialSuccess?: { errorMessage?: unknown };
+	};
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return undefined;
 	}
-	return events;
+	const legacy = parsed.errors?.[0]?.message;
+	if (typeof legacy === 'string' && legacy) return legacy;
+	const partial = parsed.partialSuccess?.errorMessage;
+	if (typeof partial === 'string' && partial) return partial;
+	return undefined;
+}
+
+function truncateSummary(summary: string, max = 300): string {
+	return summary.length > max ? `${summary.slice(0, max - 3)}...` : summary;
 }
 
 export interface LangfuseDestination {
@@ -229,19 +298,32 @@ export async function deliverBatch(
 	records: TelemetryEventRecord[]
 ): Promise<DeliveryResult> {
 	try {
-		const res = await fetch(new URL('/api/public/ingestion', destination.host), {
+		const res = await fetch(new URL('/api/public/otel/v1/traces', destination.host), {
 			method: 'POST',
 			headers: {
 				authorization: basicAuth(destination.publicKey, secret),
-				'content-type': 'application/json'
+				'content-type': 'application/json',
+				'x-langfuse-ingestion-version': '4'
 			},
-			body: JSON.stringify({ batch: toLangfuseEvents(records, destination.captureMode) })
+			body: JSON.stringify(toOtlpTraceBody(records, destination.captureMode))
 		});
-		if (res.ok) return { ok: true };
+		const body = await res.text();
 		if (res.status === 401 || res.status === 403) {
 			return { ok: false, summary: 'credentials rejected' };
 		}
-		return { ok: false, summary: `ingestion failed (HTTP ${res.status})` };
+		const message = ingestionErrorMessage(body);
+		// Only a clean 2xx is delivered: 207 carries per-event rejections and a
+		// populated partialSuccess.errorMessage means spans were dropped.
+		if (res.status === 207) {
+			return { ok: false, summary: truncateSummary(message ?? 'ingestion failed (HTTP 207)') };
+		}
+		if (res.ok) {
+			return message ? { ok: false, summary: truncateSummary(message) } : { ok: true };
+		}
+		return {
+			ok: false,
+			summary: truncateSummary(message ?? `ingestion failed (HTTP ${res.status})`)
+		};
 	} catch {
 		return { ok: false, summary: 'destination not reachable' };
 	}

@@ -7,10 +7,9 @@ import {
 	getTelemetryPipelineStatus,
 	probeLangfuse,
 	resetTelemetryQueue,
-	toLangfuseEvents
+	toOtlpSpans,
+	type OtlpSpan
 } from './telemetry-ingest';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function record(overrides?: Partial<TelemetryEventRecord>): TelemetryEventRecord {
 	return {
@@ -24,6 +23,12 @@ function record(overrides?: Partial<TelemetryEventRecord>): TelemetryEventRecord
 		outcome: 'success',
 		...overrides
 	};
+}
+
+function spanAttributes(
+	span: OtlpSpan
+): Record<string, { stringValue?: string; intValue?: string }> {
+	return Object.fromEntries(span.attributes.map((a) => [a.key, a.value]));
 }
 
 function enabledSource() {
@@ -48,6 +53,12 @@ function okResponse(): Response {
 
 function fetchBodies(mock: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
 	return mock.mock.calls.map((call) => JSON.parse((call[1] as RequestInit).body as string));
+}
+
+function bodySpans(body: Record<string, unknown>): Array<{ traceId: string }> {
+	return (
+		body as { resourceSpans: Array<{ scopeSpans: Array<{ spans: Array<{ traceId: string }> }> }> }
+	).resourceSpans[0].scopeSpans[0].spans;
 }
 
 describe('telemetry-ingest pipeline queue', () => {
@@ -106,11 +117,9 @@ describe('telemetry-ingest pipeline queue', () => {
 		expect(getTelemetryPipelineStatus().queueDepth).toBe(500);
 
 		await vi.advanceTimersByTimeAsync(0);
-		const first = fetchBodies(fetchMock)[0] as { batch: Array<Record<string, unknown>> };
-		const traceIds = first.batch
-			.filter((e) => e.type === 'trace-create')
-			.map((e) => (e.body as { id: string }).id);
-		expect(traceIds).toEqual(Array.from({ length: 20 }, (_, i) => `r-${i + 5}`));
+		const first = bodySpans(fetchBodies(fetchMock)[0]);
+		const traceIds = first.map((span) => span.traceId);
+		expect(traceIds).toEqual(Array.from({ length: 20 }, (_, i) => `r-${i + 5}`.replace(/-/g, '')));
 
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -192,7 +201,7 @@ describe('telemetry-ingest pipeline queue', () => {
 				.fn()
 				.mockRejectedValueOnce(new Error('down'))
 				.mockRejectedValueOnce(new Error('down'))
-				.mockResolvedValue(okResponse())
+				.mockImplementation(async () => okResponse())
 		);
 		configureTelemetryIngest(enabledSource());
 		enqueueTelemetry(record());
@@ -273,66 +282,76 @@ describe('probeLangfuse', () => {
 	});
 });
 
-describe('Langfuse ingestion mapping', () => {
-	it('maps one record to trace-create + observation-create exactly per the contract', () => {
+describe('OTLP span mapping', () => {
+	it('maps one record to a generation span exactly per the contract', () => {
 		const rec = record({
 			input: { system: 'sys', messages: [{ role: 'user', content: 'q' }] },
 			output: 'answer',
 			usage: { input: 10, output: 5, total: 15 }
 		});
-		const events = toLangfuseEvents([rec], 'content') as Array<{
-			id: string;
-			type: string;
-			timestamp: string;
-			body: Record<string, unknown>;
-		}>;
-		expect(events).toHaveLength(2);
-
-		const [trace, obs] = events;
-		expect(trace.type).toBe('trace-create');
-		expect(trace.id).toMatch(UUID_RE);
-		expect(trace.timestamp).toBe(rec.startedAt);
-		expect(trace.body).toEqual({
-			id: rec.id,
-			name: 'chat-turn',
-			sessionId: 'chat-1',
-			tags: ['chat-turn', 'openai-compatible', 'content'],
-			metadata: { app: 'mayon', model: 'mock-sink', outcome: 'success' }
-		});
-
-		expect(obs.type).toBe('observation-create');
-		expect(obs.id).toMatch(UUID_RE);
-		expect(obs.id).not.toBe(trace.id);
-		expect(obs.timestamp).toBe(rec.startedAt);
-		expect(obs.body.traceId).toBe(rec.id);
-		expect(obs.body.id).toMatch(UUID_RE);
-		expect(obs.body.type).toBe('generation');
-		expect(obs.body.name).toBe('chat-turn');
-		expect(obs.body.startTime).toBe(rec.startedAt);
-		expect(obs.body.endTime).toBe('2026-10-31T00:00:00.042Z');
-		expect(obs.body.model).toBe('mock-sink');
-		expect(obs.body.input).toEqual(rec.input);
-		expect(obs.body.output).toBe('answer');
-		expect(obs.body.usage).toEqual({ input: 10, output: 5, total: 15, unit: 'TOKENS' });
-		expect(obs.body.level).toBe('DEFAULT');
-		expect('statusMessage' in obs.body).toBe(false);
+		const spans = toOtlpSpans([rec], 'content');
+		expect(spans).toHaveLength(1);
+		const span = spans[0];
+		expect(span.traceId).toBe(rec.id.replace(/-/g, ''));
+		expect(span.traceId).toMatch(/^[0-9a-f]{32}$/);
+		expect(span.spanId).toMatch(/^[0-9a-f]{16}$/);
+		expect(span.name).toBe('chat-turn');
+		expect(span.kind).toBe(1);
+		const startNanos = BigInt(Date.parse(rec.startedAt)) * 1_000_000n;
+		expect(span.startTimeUnixNano).toBe(String(startNanos));
+		expect(span.endTimeUnixNano).toBe(String((startNanos / 1_000_000n + 42n) * 1_000_000n));
+		const attrs = spanAttributes(span);
+		expect(attrs['langfuse.observation.type']).toEqual({ stringValue: 'generation' });
+		expect(attrs['langfuse.session.id']).toEqual({ stringValue: 'chat-1' });
+		expect(attrs['gen_ai.request.model']).toEqual({ stringValue: 'mock-sink' });
+		expect(attrs['mayon.provider']).toEqual({ stringValue: 'openai-compatible' });
+		expect(attrs['mayon.outcome']).toEqual({ stringValue: 'success' });
+		expect(attrs['mayon.capture_mode']).toEqual({ stringValue: 'content' });
+		expect(attrs['gen_ai.usage.input_tokens']).toEqual({ intValue: '10' });
+		expect(attrs['gen_ai.usage.output_tokens']).toEqual({ intValue: '5' });
+		expect(attrs['gen_ai.usage.total_tokens']).toEqual({ intValue: '15' });
+		expect(attrs['gen_ai.prompt']).toEqual({ stringValue: JSON.stringify(rec.input) });
+		expect(attrs['gen_ai.completion']).toEqual({ stringValue: 'answer' });
+		expect('error.type' in attrs).toBe(false);
 	});
 
-	it('omits absent input/output/usage keys and marks error records ERROR with a statusMessage', () => {
+	it('omits content/usage attributes when absent and flags errors via error.type in metadata mode', () => {
 		const rec = record({ outcome: 'error', errorDetail: 'provider 429' });
-		const events = toLangfuseEvents([rec], 'metadata') as Array<{
-			body: Record<string, unknown>;
-		}>;
-		const obs = events[1].body;
-		expect('input' in obs).toBe(false);
-		expect('output' in obs).toBe(false);
-		expect('usage' in obs).toBe(false);
-		expect(obs.level).toBe('ERROR');
-		expect(obs.statusMessage).toBe('provider 429');
-		expect(events[0].body.tags).toEqual(['chat-turn', 'openai-compatible', 'metadata']);
+		const [span] = toOtlpSpans([rec], 'metadata');
+		const attrs = spanAttributes(span);
+		expect(attrs['mayon.capture_mode']).toEqual({ stringValue: 'metadata' });
+		expect(attrs['mayon.outcome']).toEqual({ stringValue: 'error' });
+		expect(attrs['error.type']).toEqual({ stringValue: 'provider 429' });
+		expect('gen_ai.prompt' in attrs).toBe(false);
+		expect('gen_ai.completion' in attrs).toBe(false);
+		expect('gen_ai.usage.input_tokens' in attrs).toBe(false);
+		expect('gen_ai.usage.output_tokens' in attrs).toBe(false);
+		expect('gen_ai.usage.total_tokens' in attrs).toBe(false);
 	});
 
-	it('POSTs the batch to {host}/api/public/ingestion with Basic auth', async () => {
+	it('generates a fresh random spanId per span', () => {
+		const spans = toOtlpSpans(
+			[record(), record({ id: '22222222-2222-4222-8222-222222222222' })],
+			'content'
+		);
+		expect(spans[0].spanId).not.toBe(spans[1].spanId);
+	});
+
+	it('never maps record content into spans in metadata mode even if a record slipped through', () => {
+		const rec = record({ input: { system: 'leak' }, output: 'leak' });
+		const [span] = toOtlpSpans([rec], 'metadata');
+		const attrs = spanAttributes(span);
+		expect('gen_ai.prompt' in attrs).toBe(false);
+		expect('gen_ai.completion' in attrs).toBe(false);
+	});
+});
+
+describe('deliverBatch (OTLP)', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('POSTs spans to {host}/api/public/otel/v1/traces with Basic auth and the v4 ingestion header', async () => {
 		const fetchMock = vi.fn(async () => okResponse());
 		vi.stubGlobal('fetch', fetchMock);
 		const result = await deliverBatch(
@@ -342,14 +361,103 @@ describe('Langfuse ingestion mapping', () => {
 		);
 		expect(result).toEqual({ ok: true });
 		const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-		expect(String(url)).toBe('https://lf.example.com/api/public/ingestion');
+		expect(String(url)).toBe('https://lf.example.com/api/public/otel/v1/traces');
 		expect(init.method).toBe('POST');
 		expect(init.headers).toMatchObject({
 			authorization: `Basic ${Buffer.from('pk-lf-p:sk-lf-s').toString('base64')}`,
-			'content-type': 'application/json'
+			'content-type': 'application/json',
+			'x-langfuse-ingestion-version': '4'
 		});
-		const body = JSON.parse(init.body as string) as { batch: unknown[] };
-		expect(body.batch).toHaveLength(4);
+		const body = JSON.parse(init.body as string) as {
+			resourceSpans: Array<{
+				resource: { attributes: Array<{ key: string; value: unknown }> };
+				scopeSpans: Array<{ spans: unknown[] }>;
+			}>;
+		};
+		expect(body.resourceSpans).toHaveLength(1);
+		expect(body.resourceSpans[0].resource.attributes).toEqual([
+			{ key: 'service.name', value: { stringValue: 'mayon' } }
+		]);
+		expect(body.resourceSpans[0].scopeSpans[0].spans).toHaveLength(2);
+	});
+
+	it('treats HTTP 207 with legacy per-event errors as failure carrying the first message', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							successes: [],
+							errors: [
+								{ id: 'event-1', status: 400, message: 'Event type "trace-create" is not accepted' }
+							]
+						}),
+						{ status: 207 }
+					)
+			)
+		);
+		expect(
+			await deliverBatch(
+				{ host: 'https://lf.example.com', publicKey: 'pk', captureMode: 'content' },
+				'sk',
+				[record()]
+			)
+		).toEqual({ ok: false, summary: 'Event type "trace-create" is not accepted' });
+	});
+
+	it('treats a populated OTLP partialSuccess.errorMessage as failure, and an empty one as success', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							partialSuccess: { rejectedSpans: 2, errorMessage: 'invalid trace id' }
+						}),
+						{ status: 200 }
+					)
+			)
+		);
+		expect(
+			await deliverBatch(
+				{ host: 'https://lf.example.com', publicKey: 'pk', captureMode: 'content' },
+				'sk',
+				[record()]
+			)
+		).toEqual({ ok: false, summary: 'invalid trace id' });
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ partialSuccess: { errorMessage: '' } }), { status: 200 })
+			)
+		);
+		expect(
+			await deliverBatch(
+				{ host: 'https://lf.example.com', publicKey: 'pk', captureMode: 'content' },
+				'sk',
+				[record()]
+			)
+		).toEqual({ ok: true });
+	});
+
+	it('truncates long rejection messages to a sane length', async () => {
+		const long = 'x'.repeat(500);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ partialSuccess: { errorMessage: long } }), { status: 200 })
+			)
+		);
+		const result = await deliverBatch(
+			{ host: 'https://lf.example.com', publicKey: 'pk', captureMode: 'content' },
+			'sk',
+			[record()]
+		);
+		expect(result).toEqual({ ok: false, summary: `${'x'.repeat(297)}...` });
 	});
 
 	it('classifies delivery failures and never logs the secret', async () => {
