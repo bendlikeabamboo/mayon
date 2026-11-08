@@ -28,7 +28,7 @@
 
 **Purpose**: The shared in-flight latch (research D5) — both the tool (US1) and the store adoption (US3) depend on it.
 
-- [ ] T002 Implement the single-slot propagation latch (synchronous try-acquire, release-on-every-exit, plain refusal reason when busy) in `src/lib/chat/propagation.ts` per specs/027-backprop-tool/data-model.md, with unit tests in `src/lib/chat/propagation.test.ts` covering acquire → second-acquire fails → release → re-acquire succeeds, and release-on-throw
+- [X] T002 Implement the single-slot propagation latch (synchronous try-acquire, release-on-every-exit, plain refusal reason when busy) in `src/lib/chat/propagation.ts` per specs/027-backprop-tool/data-model.md, with unit tests in `src/lib/chat/propagation.test.ts` covering acquire → second-acquire fails → release → re-acquire succeeds, and release-on-throw
 
 **Checkpoint**: Latch lands green; user story implementation can begin.
 
@@ -42,16 +42,16 @@
 
 ### Tests for User Story 1 (write first; must fail)
 
-- [ ] T003 [P] [US1] Write the tool unit suite in `src/lib/agent/deterministic-tools.test.ts` from specs/027-backprop-tool/contracts/propagate-tool.md and quickstart V0–V2: refusal shapes (not-a-branch, empty branch, busy latch, bad mode), raw happy path (exactly one `branch_artifact` row in the parent anchored per `resolveAnchor`, metadata `mode:'raw'`, verbatim delta content, result names parent + mode), summary happy path (mocked generator, `summaryTraceId` set) — assert against the 020 test fixtures in `src/lib/stores/chat.svelte.test.ts` for artifact shape parity
+- [X] T003 [P] [US1] Write the tool unit suite in `src/lib/agent/deterministic-tools.test.ts` from specs/027-backprop-tool/contracts/propagate-tool.md and quickstart V0–V2: refusal shapes (not-a-branch, empty branch, busy latch, bad mode), raw happy path (exactly one `branch_artifact` row in the parent anchored per `resolveAnchor`, metadata `mode:'raw'`, verbatim delta content, result names parent + mode), summary happy path (mocked generator, `summaryTraceId` set) — assert against the 020 test fixtures in `src/lib/stores/chat.svelte.test.ts` for artifact shape parity
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Register the `propagate_to_parent` tool in `src/lib/agent/deterministic-tools.ts` per specs/027-backprop-tool/contracts/propagate-tool.md: `risk:'high'`, `generative:true`, optional `mode` enum (`raw|summary`, omitted → `raw`); `run` = latch acquire (T002) → repo-revalidated gates → raw via `buildRawDelta`/summary via `generateBranchArtifactSummary` (generate-first ordering) → single `repos.messages.insertAnchored` with `resolveAnchor` + `branchArtifactMetadata`; contract result summaries; no chat-store import (depends on T002, T003)
-- [ ] T005 [P] [US1] Add availability gating in `src/lib/stores/chat.svelte.ts` turn assembly (`disabledToolIds`, mirroring `canPropagate`): include `propagate_to_parent` when the active chat is not a branch or has no messages; add V4 assertions to `src/lib/stores/chat.svelte.test.ts` (depends on T004)
-- [ ] T006 [P] [US1] Add the `Back-propagating to parent…` generative status label for the tool to the label ternary in `src/lib/agent/loop.ts` (research D3; depends on T004)
-- [ ] T007 [P] [US1] Add the request-side capabilities-preamble lines to `buildCapabilitiesPreamble()` in `src/lib/chat/brief.ts` (tool exists on branched chats; call only on explicit request; confirm in 1–2 sentences naming parent + mode; never reproduce propagated content as chat text; manual control is the fallback when the tool is absent) with assertions in `src/lib/chat/brief.test.ts` (depends on T004)
-- [ ] T008 [US1] Add a marker-based `propagate_to_parent` tool-call dispatch mode to the mock-LLM fixture server in `tests/fixtures/mock-llm/server.mjs` (follow the existing classification pattern; document the marker in `tests/fixtures/mock-llm/README.md`) (depends on T004)
-- [ ] T009 [US1] Create `tests/e2e/backprop-tool.spec.ts` — quickstart V6: explicit-request round-trip (tool call → approval → parent shows the identical anchored artifact, branch timeline shows tool rows, short confirmation, no toast) and root-chat control (tool never offered; reply points at the manual control) (depends on T008)
+- [X] T004 [US1] Register the `propagate_to_parent` tool in `src/lib/agent/deterministic-tools.ts` per specs/027-backprop-tool/contracts/propagate-tool.md: `risk:'high'`, `generative:true`, optional `mode` enum (`raw|summary`, omitted → `raw`); `run` = latch acquire (T002) → repo-revalidated gates → raw via `buildRawDelta`/summary via `generateBranchArtifactSummary` (generate-first ordering) → single `repos.messages.insertAnchored` with `resolveAnchor` + `branchArtifactMetadata`; contract result summaries; no chat-store import (depends on T002, T003)
+- [X] T005 [P] [US1] Add availability gating in `src/lib/stores/chat.svelte.ts` turn assembly (`disabledToolIds`, mirroring `canPropagate`): include `propagate_to_parent` when the active chat is not a branch or has no messages; add V4 assertions to `src/lib/stores/chat.svelte.test.ts` (depends on T004)
+- [X] T006 [P] [US1] Add the `Back-propagating to parent…` generative status label for the tool to the label ternary in `src/lib/agent/loop.ts` (research D3; depends on T004)
+- [X] T007 [P] [US1] Add the request-side capabilities-preamble lines to `buildCapabilitiesPreamble()` in `src/lib/chat/brief.ts` (tool exists on branched chats; call only on explicit request; confirm in 1–2 sentences naming parent + mode; never reproduce propagated content as chat text; manual control is the fallback when the tool is absent) with assertions in `src/lib/chat/brief.test.ts` (depends on T004)
+- [X] T008 [US1] Add a marker-based `propagate_to_parent` tool-call dispatch mode to the mock-LLM fixture server in `tests/fixtures/mock-llm/server.mjs` (follow the existing classification pattern; document the marker in `tests/fixtures/mock-llm/README.md`) (depends on T004)
+- [X] T009 [US1] Create `tests/e2e/backprop-tool.spec.ts` — quickstart V6: explicit-request round-trip (tool call → approval → parent shows the identical anchored artifact, branch timeline shows tool rows, short confirmation, no toast) and root-chat control (tool never offered; reply points at the manual control) (depends on T008)
 
 **Checkpoint**: US1 fully functional and independently testable — this is the MVP.
 
@@ -63,7 +63,7 @@
 
 **Independent Test**: quickstart V5 preamble assertions + e2e offer/decline scenarios — offer appears at most once; "yes" executes (US1 path); decline/ignore propagates nothing and drops the subject.
 
-- [ ] T010 [US2] Add the offer-once preamble lines to `buildCapabilitiesPreamble()` in `src/lib/chat/brief.ts` (completion signal → at most one plain-language offer; never propagate unprompted; declined or ignored → dropped, no re-request) with V5 assertions in `src/lib/chat/brief.test.ts` (same file as T007 — run after it)
+- [X] T010 [US2] Add the offer-once preamble lines to `buildCapabilitiesPreamble()` in `src/lib/chat/brief.ts` (completion signal → at most one plain-language offer; never propagate unprompted; declined or ignored → dropped, no re-request) with V5 assertions in `src/lib/chat/brief.test.ts` (same file as T007 — run after it)
 - [ ] T011 [US2] Extend `tests/e2e/backprop-tool.spec.ts` with offer-once scenarios: completion signal → single offer and no propagation; agreement → propagation executes; decline → no propagation, no re-request (depends on T009, T010)
 
 **Checkpoint**: US1 and US2 both work independently.
@@ -76,8 +76,8 @@
 
 **Independent Test**: quickstart V2-throw/V3/V4 cross-path cases — zero partial or duplicated writes; every recoverable case succeeds on retry; manual path refuses while the tool runs and vice versa.
 
-- [ ] T012 [P] [US3] Adopt the shared latch in `chatStore.propagateToParent` in `src/lib/stores/chat.svelte.ts` (keep reactive `propagationStatus` for UI) and add cross-path concurrency tests to `src/lib/stores/chat.svelte.test.ts`: manual running → tool refused; tool running → manual refused (depends on T002, T004)
-- [ ] T013 [P] [US3] Add failure-atomicity and repeat-semantics tests to `src/lib/agent/deterministic-tools.test.ts` (research D8, quickstart V2/V3): summary generator throws → `{ok:false}` and zero parent writes; approval declined → `'user declined'`, no latch acquired; aborted mid-run → no insert, latch released; two sequential tool propagations land two artifacts (repeat = manual repeat); verify the tool performs no regeneration (depends on T004)
+- [X] T012 [P] [US3] Adopt the shared latch in `chatStore.propagateToParent` in `src/lib/stores/chat.svelte.ts` (keep reactive `propagationStatus` for UI) and add cross-path concurrency tests to `src/lib/stores/chat.svelte.test.ts`: manual running → tool refused; tool running → manual refused (depends on T002, T004)
+- [X] T013 [P] [US3] Add failure-atomicity and repeat-semantics tests to `src/lib/agent/deterministic-tools.test.ts` (research D8, quickstart V2/V3): summary generator throws → `{ok:false}` and zero parent writes; approval declined → `'user declined'`, no latch acquired; aborted mid-run → no insert, latch released; two sequential tool propagations land two artifacts (repeat = manual repeat); verify the tool performs no regeneration (depends on T004)
 
 **Checkpoint**: All stories independently functional.
 
