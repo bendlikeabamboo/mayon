@@ -57,13 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Server image compiles better-sqlite3 from source** — the musl
+- **Docker images compile better-sqlite3 from source** — the musl
   prebuilt download from the better-sqlite3 GitHub release started
   failing on GitHub's new Ubuntu 26 CI runners, and the node-gyp
-  fallback had no toolchain on alpine; the server build stages (prod
-  and dev) now install python3/make/g++ and force a source build, which
-  also links the addon against the image's own musl instead of a
-  prebuilt that embeds a possibly unpatched one (musl
+  fallback had no toolchain on alpine; all four Docker build stages
+  (web and server, prod and dev) now install python3/make/g++ and force
+  a source build, which also links the addon against the image's own
+  musl instead of a prebuilt that embeds a possibly unpatched one (musl
   CVE-2026-107891).
 
 ## [0.8.3] - 2026-10-25
