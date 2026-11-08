@@ -59,13 +59,16 @@ let renderChain: Promise<unknown> = Promise.resolve();
 
 /**
  * Render a single mermaid source string to an SVG string, themed for the
- * resolved app theme at call time. Returns the theme the SVG was actually
- * rendered with so callers can stamp it. Rejects on parse error; the caller
- * decides whether to show a fallback or skip.
+ * resolved app theme at call time. Returns the render-pipeline contract
+ * result: the SVG, the theme the SVG was actually rendered with (so callers
+ * can stamp it), and `repaired: false` — always false for now; it will be
+ * `true` once a repaired render (attempted after the original source failed)
+ * has succeeded. Rejects with the underlying mermaid error on parse/render
+ * failure; the caller decides whether to show a fallback or skip.
  */
 export function renderMermaidBlock(
 	source: string
-): Promise<{ svg: string; theme: 'light' | 'dark' }> {
+): Promise<{ svg: string; theme: 'light' | 'dark'; repaired: boolean }> {
 	const theme = themeState.resolved;
 	const run = renderChain
 		.catch(() => {})
@@ -73,7 +76,7 @@ export function renderMermaidBlock(
 			const api = await getMermaid(theme);
 			const id = `mmd-${Date.now()}-${renderSeq++}`;
 			const { svg } = await api.render(id, source);
-			return { svg, theme };
+			return { svg, theme, repaired: false };
 		});
 	renderChain = run;
 	return run;
