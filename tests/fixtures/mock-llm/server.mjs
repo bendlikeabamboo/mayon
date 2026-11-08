@@ -55,6 +55,12 @@ const PROPAGATE_TOOL_NAME = 'propagate_to_parent';
 const PROPAGATE_TOOL_ARGS = '{"mode":"raw"}';
 const PROPAGATE_UNAVAILABLE_REPLY =
 	'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
+// Offer-once dispatch (027 US2): a completion signal without an explicit
+// request gets one plain-text offer (manual-control fallback + an explicit
+// ask) and never a tool call — propagation requires the learner's agreement.
+const OFFER_TRIGGER = 'this branch feels done';
+const OFFER_REPLY =
+	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
 
 // How many leading characters of the classification inputs the unknown-kind
 // 400 body and server log expose as hints.
@@ -143,6 +149,15 @@ function streamReply(res, id, model) {
 	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
 }
 
+// Streamed plain-text reply (two frames, stop terminal) for the 027 text kinds.
+function streamTextReply(res, id, model, text) {
+	const frames = [
+		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
+		sseFrame({ id, model, choices: [{ delta: { content: text }, finish_reason: null }] })
+	];
+	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
+}
+
 // Streamed tool-call reply for propagate_tool_call (feature 027): OpenAI-style
 // streamed tool_call deltas that the SDK's OpenAI-compatible provider
 // accumulates into one tool call; finish_reason 'tool_calls' (the SDK maps it
@@ -182,9 +197,11 @@ function streamToolCallReply(res, id, model, toolName, argsJson) {
 //   1. no tools  + stream === true  → chat (SSE kitchen-sink stream)
 //   2. no tools  + stream !== true  → chat (single non-streamed completion)
 //   3. tools + stream === true + trigger in LAST user message:
-//      - tools contain propagate_to_parent → propagate_tool_call (streamed
-//        tool call; 027)
-//      - otherwise → propagate_unavailable (manual-control sentence; 027)
+//      - offer trigger → propagate_offer (plain-text single offer; 027 US2)
+//      - propagate trigger + tools contain propagate_to_parent →
+//        propagate_tool_call (streamed tool call; 027)
+//      - propagate trigger otherwise → propagate_unavailable
+//        (manual-control sentence; 027)
 //   4. tools + `json` tool description contains GRADING_MARKER → short_grading
 //   5. tools + first system message STARTS WITH the quiz contract opening → quiz_generation
 //   6. tools + first system message STARTS WITH the lab contract opening  → lab_generation
@@ -267,7 +284,7 @@ function firstSystemText(body) {
 		// keep the fail-loudly contract kinds below (research.md D7).
 		if (body?.stream === true) {
 			// Propagate dispatch (027): the LAST message must be role 'user' and
-			// carry the trigger; the branch-gated tool list (present only when
+			// carry a trigger; the branch-gated tool list (present only when
 			// the chat is a branch with own messages — FR-001/V4) picks
 			// tool-call vs manual-control sentence. Anchoring on the last
 			// MESSAGE (not the last user message) is what makes the ordering
@@ -277,15 +294,20 @@ function firstSystemText(body) {
 			// Case-insensitive to match the grading lever's scan.
 			const messages = Array.isArray(body?.messages) ? body.messages : [];
 			const last = messages[messages.length - 1];
-			const isTriggerTurn =
-				last &&
-				typeof last === 'object' &&
-				last.role === 'user' &&
-				messageText(last.content).toLowerCase().includes(PROPAGATE_TRIGGER);
-			if (isTriggerTurn) {
-				return hasToolNamed(body, PROPAGATE_TOOL_NAME)
-					? 'propagate_tool_call'
-					: 'propagate_unavailable';
+			const lastText =
+				last && typeof last === 'object' && last.role === 'user'
+					? messageText(last.content).toLowerCase()
+					: null;
+			if (lastText !== null) {
+				// Offer-once rule first: a completion signal is never an
+				// agreement, so it must answer with the plain offer, never a
+				// tool call (027 US2).
+				if (lastText.includes(OFFER_TRIGGER)) return 'propagate_offer';
+				if (lastText.includes(PROPAGATE_TRIGGER)) {
+					return hasToolNamed(body, PROPAGATE_TOOL_NAME)
+						? 'propagate_tool_call'
+						: 'propagate_unavailable';
+				}
 			}
 			return 'chat_stream';
 		}
@@ -383,18 +405,12 @@ const server = createServer(async (req, res) => {
 			case 'propagate_tool_call':
 				streamToolCallReply(res, id, model, PROPAGATE_TOOL_NAME, PROPAGATE_TOOL_ARGS);
 				return;
-			case 'propagate_unavailable': {
-				const frames = [
-					sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
-					sseFrame({
-						id,
-						model,
-						choices: [{ delta: { content: PROPAGATE_UNAVAILABLE_REPLY }, finish_reason: null }]
-					})
-				];
-				streamFrames(res, frames, stopTerminal(id, model, 'stop'));
+			case 'propagate_unavailable':
+				streamTextReply(res, id, model, PROPAGATE_UNAVAILABLE_REPLY);
 				return;
-			}
+			case 'propagate_offer':
+				streamTextReply(res, id, model, OFFER_REPLY);
+				return;
 			case 'chat_plain':
 				sendJson(res, 200, {
 					id,

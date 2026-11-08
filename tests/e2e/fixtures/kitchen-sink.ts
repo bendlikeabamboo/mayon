@@ -35,6 +35,9 @@ export const LEVER_TRIGGER_WRONG = 'should be wrong';
 export const PROPAGATE_TRIGGER = 'backpropagate this branch';
 export const PROPAGATE_UNAVAILABLE_REPLY =
 	'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
+export const OFFER_TRIGGER = 'this branch feels done';
+export const OFFER_REPLY =
+	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
 
 // Expected fixture payloads for assertions. The fixture files are the source
 // of truth; these are derived from them so assertions can never drift from
