@@ -44,6 +44,10 @@ async function getMermaid(theme: 'light' | 'dark'): Promise<Mermaid> {
 		api.initialize({
 			startOnLoad: false,
 			securityLevel: 'strict',
+			// Mermaid otherwise inserts a "Syntax error" SVG at the end of
+			// document.body before rejecting — the page-scroll bug. Failures
+			// are surfaced by the caller's contained .mermaid-error block.
+			suppressErrorRendering: true,
 			theme: theme === 'dark' ? 'dark' : 'default'
 		});
 	}
