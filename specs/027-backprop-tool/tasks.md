@@ -64,7 +64,7 @@
 **Independent Test**: quickstart V5 preamble assertions + e2e offer/decline scenarios — offer appears at most once; "yes" executes (US1 path); decline/ignore propagates nothing and drops the subject.
 
 - [X] T010 [US2] Add the offer-once preamble lines to `buildCapabilitiesPreamble()` in `src/lib/chat/brief.ts` (completion signal → at most one plain-language offer; never propagate unprompted; declined or ignored → dropped, no re-request) with V5 assertions in `src/lib/chat/brief.test.ts` (same file as T007 — run after it)
-- [ ] T011 [US2] Extend `tests/e2e/backprop-tool.spec.ts` with offer-once scenarios: completion signal → single offer and no propagation; agreement → propagation executes; decline → no propagation, no re-request (depends on T009, T010)
+- [X] T011 [US2] Extend `tests/e2e/backprop-tool.spec.ts` with offer-once scenarios: completion signal → single offer and no propagation; agreement → propagation executes; decline → no propagation, no re-request (depends on T009, T010)
 
 **Checkpoint**: US1 and US2 both work independently.
 
@@ -87,7 +87,7 @@
 
 **Purpose**: Documentation parity and full-gate validation.
 
-- [ ] T014 [P] Update `docs/reference/tool-map.qmd` (Deterministic inventory row, behavioral notes, availability-gate 4 entry, generative label) and `docs/reference/agent-map.qmd` if it lists tool placement — same change as the tool code per the tool-map header rule
+- [X] T014 [P] Update `docs/reference/tool-map.qmd` (Deterministic inventory row, behavioral notes, availability-gate 4 entry, generative label) and `docs/reference/agent-map.qmd` if it lists tool placement — same change as the tool code per the tool-map header rule
 - [ ] T015 Run the full gates — `pnpm check`, `pnpm lint`, `pnpm test`, Playwright e2e — and the quickstart.md V0–V6 pass; manual smoke on `pnpm dev`: approval modal, decline-is-final, and the manual back-propagate button unchanged (FR-011)
 
 ---
