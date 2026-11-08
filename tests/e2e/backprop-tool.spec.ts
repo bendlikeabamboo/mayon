@@ -231,6 +231,7 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		// minus propagate_to_parent (roots are excluded — FR-001).
 		await chatRoundTrip(page);
 		const composer = page.getByPlaceholder(/Message the active provider/);
+		const rowsBefore = await page.locator('div[id^="msg-"]:not([id^="msg-live"])').count();
 		await composer.fill(`Wrap up — ${PROPAGATE_TRIGGER}.`);
 		await page.getByRole('button', { name: 'Send', exact: true }).click();
 
@@ -243,6 +244,20 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 			() => false
 		);
 		expect(modalAppeared).toBe(false);
+
+		// Settle before any reload: the reply row persists only when the loop
+		// finished with no pending approval, so reaching it proves the turn ran
+		// to completion — reloading earlier (slow CI runner) aborts the turn
+		// mid-flight and the persisted transcript would never contain the reply.
+		await expect(page.locator('div[id^="msg-"]:not([id^="msg-live"])')).toHaveCount(
+			rowsBefore + 2,
+			{ timeout: TURN_TIMEOUT }
+		);
+		await scrollTranscriptToEnd(page);
+		await expect(
+			page.locator('.markdown-body', { hasText: PROPAGATE_UNAVAILABLE_REPLY })
+		).toBeVisible({ timeout: TURN_TIMEOUT });
+		await expect(page.locator('#msg-live-text')).toHaveCount(0, { timeout: TURN_TIMEOUT });
 		await expect(page.locator('[aria-label="Dismiss"]')).toHaveCount(0);
 
 		// The app's boot gate can hard-reload mid-turn on a transient server
