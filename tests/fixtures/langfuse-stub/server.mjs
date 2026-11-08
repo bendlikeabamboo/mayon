@@ -33,7 +33,6 @@ function readBody(req) {
 
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-
 	// Probe target (config validation, research D6): any 2xx means reachable.
 	if (req.method === 'GET' && url.pathname === '/api/public/projects') {
 		sendJson(res, 200, { data: [{ id: 'stub-project', name: 'langfuse-stub' }] });
@@ -81,4 +80,20 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
 	console.log(`langfuse-stub listening on port ${PORT}`);
+});
+
+// Keep the stub alive through races with in-flight exports: an aborted OTLP
+// body rejects readBody (unhandledRejection) and a dying socket raises
+// clientError — either would otherwise crash the process mid-deck, and the
+// next spec's /__reset would fail with a socket hang up until the container
+// restarts (observed as the telemetry V3 e2e flake).
+process.on('unhandledRejection', (err) => {
+	console.error('[langfuse-stub] swallowed rejection:', err);
+});
+process.on('uncaughtException', (err) => {
+	console.error('[langfuse-stub] swallowed exception:', err);
+});
+server.on('clientError', (err, socket) => {
+	console.error('[langfuse-stub] client error:', err.message);
+	if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
 });
