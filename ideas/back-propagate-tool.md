@@ -1,0 +1,3 @@
+Let's create a tool for the model to use that back-propagates the current chat to the parent chat. As user, there are cases where the branched out chat has already completed its purpose and I kind of want to backpropagate already but due to the nature of the turns, I end up having "i think this chapter is done, just say 'okay' so I can backpropagate". you see? it's so unergonomic. i think user just say "i think i'm done here, let's backpropagate" or if they just say "i think i'm done here" and then LLM will say something like "got it. Do you like to backpropagate now so parent chat will be updated?"
+
+There should be a tool that the LLM can use so when user explicitly says to "back propagate", then the tool can execute this on his own. 
