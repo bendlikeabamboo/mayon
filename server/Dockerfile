@@ -2,6 +2,11 @@ FROM node:22.23.4-alpine AS build
 
 WORKDIR /app
 
+# better-sqlite3 is compiled from source: the musl prebuilt download is
+# unreliable on CI runners and embeds a musl that may be unpatched
+# (CVE-2026-107891). A source build links against the image's musl.
+RUN apk add --no-cache python3 make g++
+ENV npm_config_build_from_source=true
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
