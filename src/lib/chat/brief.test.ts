@@ -452,6 +452,22 @@ describe('buildCapabilitiesPreamble', () => {
 		const preamble = buildCapabilitiesPreamble();
 		expect(preamble).not.toContain('mcp_read_resource');
 	});
+
+	it('includes back-propagation request-side etiquette', () => {
+		const preamble = buildCapabilitiesPreamble();
+		expect(preamble).toContain('propagate_to_parent');
+		expect(preamble).toContain('only when the learner explicitly asks to back-propagate');
+		expect(preamble).toContain('confirm in 1–2 sentences naming the parent chat and the mode');
+		expect(preamble).toContain('reproduce none of the propagated content');
+		expect(preamble).toContain('manual back-propagate control');
+	});
+
+	it('includes back-propagation offer-once etiquette', () => {
+		const preamble = buildCapabilitiesPreamble();
+		expect(preamble).toContain('never unprompted');
+		expect(preamble).toContain('at most once');
+		expect(preamble).toContain('if declined or ignored, drop it');
+	});
 });
 
 describe('buildFirstTurnOrientationPreamble', () => {

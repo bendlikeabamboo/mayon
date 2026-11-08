@@ -595,7 +595,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 										? 'Creating your quiz…'
 										: tc.toolName === 'create_lab'
 											? 'Creating your lab…'
-											: 'Creating artifact…';
+											: tc.toolName === 'propagate_to_parent'
+												? 'Back-propagating to parent…'
+												: 'Creating artifact…';
 								deps.notifyGenerativeStatus?.({ toolName: tc.toolName, label });
 							}
 							deps.onTrace?.({
