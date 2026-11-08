@@ -27,6 +27,15 @@ export const ALIGNED_PARAGRAPH =
 export const LEVER_TRIGGER_CORRECT = 'should be correct';
 export const LEVER_TRIGGER_WRONG = 'should be wrong';
 
+// Back-propagation dispatch triggers the mock scans for in the LAST user
+// message (feature 027, quickstart V6). The constants live in
+// tests/fixtures/mock-llm/server.mjs next to the grading lever (fixture-only
+// triggers, no product-constant pin); the reply sentence is mirrored here so
+// assertions can never drift from what the mock actually streams.
+export const PROPAGATE_TRIGGER = 'backpropagate this branch';
+export const PROPAGATE_UNAVAILABLE_REPLY =
+	'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
+
 // Expected fixture payloads for assertions. The fixture files are the source
 // of truth; these are derived from them so assertions can never drift from
 // what the mock actually serves.
