@@ -6,6 +6,7 @@ import type { ToolContext } from '#lib/agent/registry.js';
 import type { LanguageModel } from 'ai';
 import type { ProviderConfig } from '#lib/ai/types.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
+import type { BranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
 import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
 
@@ -301,6 +302,77 @@ describe('propagate_to_parent', () => {
 		expect(again.ok).toBe(true);
 		const afterRows = await repos.messages.listByChat(parent.id);
 		expect(afterRows.filter((m) => m.kind === 'branch_artifact')).toHaveLength(2);
+
+		const firstAgain = afterRows.find((m) => m.id === art.id)!;
+		expect(firstAgain.content).toBe(art.content);
+		expect(firstAgain.metadata).toBe(art.metadata);
+	});
+
+	it('aborted before start: returns aborted, zero writes, latch released', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		const ctrl = new AbortController();
+		ctrl.abort();
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{},
+			{
+				...ctx(child.id, parent.id),
+				signal: ctrl.signal
+			}
+		);
+
+		expect(result).toEqual({ ok: false, summary: 'aborted' });
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('aborted mid-summary: returns aborted (not generation-failed), zero writes, latch released', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		let rejectGen!: (err: unknown) => void;
+		vi.mocked(generateBranchArtifactSummary).mockImplementation(
+			() =>
+				new Promise<BranchArtifactSummary>((_resolve, reject) => {
+					rejectGen = reject;
+				})
+		);
+		const ctrl = new AbortController();
+
+		const pending = toolsRun(
+			'propagate_to_parent',
+			{ mode: 'summary' },
+			{ ...ctx(child.id, parent.id), signal: ctrl.signal }
+		);
+		ctrl.abort();
+		await vi.waitFor(() => expect(generateBranchArtifactSummary).toHaveBeenCalled());
+		rejectGen(new DOMException('The operation was aborted.', 'AbortError'));
+
+		const result = await pending;
+
+		expect(result).toEqual({ ok: false, summary: 'aborted' });
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('never calls ctx.requestApproval when provided (decline handling is loop-owned)', async () => {
+		const { parent, child } = await seedBranch();
+		const requestApproval = vi.fn();
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{},
+			{
+				...ctx(child.id, parent.id),
+				requestApproval
+			}
+		);
+
+		expect(result.ok).toBe(true);
+		expect(requestApproval).not.toHaveBeenCalled();
 	});
 
 	it('summary happy path: artifact carries mocked text and trace id, result names summary mode', async () => {
