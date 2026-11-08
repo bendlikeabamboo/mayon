@@ -88,7 +88,7 @@
 **Purpose**: Documentation parity and full-gate validation.
 
 - [X] T014 [P] Update `docs/reference/tool-map.qmd` (Deterministic inventory row, behavioral notes, availability-gate 4 entry, generative label) and `docs/reference/agent-map.qmd` if it lists tool placement — same change as the tool code per the tool-map header rule
-- [ ] T015 Run the full gates — `pnpm check`, `pnpm lint`, `pnpm test`, Playwright e2e — and the quickstart.md V0–V6 pass; manual smoke on `pnpm dev`: approval modal, decline-is-final, and the manual back-propagate button unchanged (FR-011)
+- [X] T015 Run the full gates — `pnpm check`, `pnpm lint`, `pnpm test`, Playwright e2e — and the quickstart.md V0–V6 pass; manual smoke on `pnpm dev`: approval modal, decline-is-final, and the manual back-propagate button unchanged (FR-011)
 
 ---
 
