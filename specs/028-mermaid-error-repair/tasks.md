@@ -105,7 +105,7 @@ Single project: `src/` at repository root (SvelteKit SPA). No server/, packages/
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T017 [P] Sweep docs for staleness: grep docs/ (architecture.qmd, seams.qmd, dev-notes) for mermaid render/error descriptions and update any that describe the old red-`<p>` fallback or lack containment/repair (docs/reference/tool-map.qmd unaffected — no tool changes)
+- [X] T017 [P] Sweep docs for staleness: grep docs/ (architecture.qmd, seams.qmd, dev-notes) for mermaid render/error descriptions and update any that describe the old red-`<p>` fallback or lack containment/repair (docs/reference/tool-map.qmd unaffected — no tool changes)
 - [ ] T018 Final gates: `pnpm check && pnpm lint && pnpm test` green; full quickstart.md pass (Scenarios 1–8); confirm zero new dependencies (diff package.json against base)
 
 ---
