@@ -11,7 +11,11 @@ RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/shared/package.json packages/shared/
 COPY server/package.json server/
-# Root closure only (excludes the server's native deps like better-sqlite3).
+# Root closure; better-sqlite3 arrives via the server dev dependency and is
+# compiled from source (musl prebuilts embed a possibly unpatched musl,
+# CVE-2026-107891).
+RUN apk add --no-cache python3 make g++
+ENV npm_config_build_from_source=true
 RUN pnpm install --frozen-lockfile --filter mayon...
 
 COPY packages/shared/ packages/shared/
