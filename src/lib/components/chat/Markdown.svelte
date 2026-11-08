@@ -66,6 +66,34 @@
 		return block;
 	}
 
+	/**
+	 * Repaired-diagram badge (spec 028 US2): "repaired" chip plus the
+	 * original source collapsed behind "show original". Attached as a
+	 * sibling AFTER the wrapper — the theme pass wipes wrapper.innerHTML,
+	 * and a sibling survives that wipe, so marking is idempotent.
+	 */
+	function markRepaired(wrapper: HTMLElement): void {
+		wrapper.dataset.mermaidRepaired = 'true';
+		const next = wrapper.nextElementSibling;
+		if (next?.classList.contains('mermaid-repaired')) return;
+		const badge = document.createElement('div');
+		badge.className = 'mermaid-repaired';
+		const label = document.createElement('span');
+		label.textContent = 'repaired';
+		const details = document.createElement('details');
+		const summary = document.createElement('summary');
+		summary.textContent = 'show original';
+		const pre = document.createElement('pre');
+		const code = document.createElement('code');
+		code.textContent = wrapper.dataset.mermaidSource ?? '';
+		pre.appendChild(code);
+		details.appendChild(summary);
+		details.appendChild(pre);
+		badge.appendChild(label);
+		badge.appendChild(details);
+		wrapper.insertAdjacentElement('afterend', badge);
+	}
+
 	/** Re-render every diagram whose stamped theme no longer matches. */
 	function syncMermaidTheme(resolved: 'light' | 'dark'): Promise<void> {
 		mermaidSync = mermaidSync.catch(() => {}).then(() => rerenderStaleMermaid(resolved));
@@ -80,13 +108,18 @@
 		for (const wrapper of wrappers) {
 			if (wrapper.dataset.renderedTheme === resolved) continue;
 			try {
-				const { svg, theme } = await renderMermaidBlock(wrapper.dataset.mermaidSource ?? '');
+				const { svg, theme, repaired } = await renderMermaidBlock(
+					wrapper.dataset.mermaidSource ?? ''
+				);
 				// In-place innerHTML swap: the click listener and dataset survive.
 				wrapper.innerHTML = svg;
 				// Stamp the theme actually rendered with, not the pass's resolved:
 				// a flip mid-pass lands exactly-stamped, so the next sync skips it.
 				wrapper.dataset.renderedTheme = theme;
+				if (repaired) markRepaired(wrapper);
 			} catch (err) {
+				const badge = wrapper.nextElementSibling;
+				if (badge?.classList.contains('mermaid-repaired')) badge.remove();
 				wrapper.replaceWith(buildMermaidError(wrapper.dataset.mermaidSource ?? '', err));
 			}
 		}
@@ -123,7 +156,7 @@
 
 			scheduleIdle(() => {
 				void renderMermaidBlock(source)
-					.then(({ svg, theme }) => {
+					.then(({ svg, theme, repaired }) => {
 						const wrapper = document.createElement('div');
 						wrapper.className =
 							'mermaid-svg my-3 flex justify-center overflow-x-auto cursor-zoom-in';
@@ -133,6 +166,7 @@
 						// `theme` is what the SVG was actually rendered with; the
 						// follow-up sync corrects anything a flip left stale.
 						wrapper.dataset.renderedTheme = theme;
+						if (repaired) markRepaired(wrapper);
 						wrapper.addEventListener('click', () => {
 							previewSvg = wrapper.innerHTML;
 						});
@@ -470,6 +504,38 @@
 		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 		font-size: 0.8125rem;
 		overflow-wrap: anywhere;
+	}
+	/* Repaired-diagram badge (spec 028 US2): sibling chrome under the SVG.
+	   Runtime-created, so :global like .mermaid-error. */
+	:global(.mermaid-repaired) {
+		margin: 0.25em 0 0;
+		text-align: center;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.mermaid-repaired > span) {
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		padding: 0.05em 0.5em;
+	}
+	:global(.mermaid-repaired summary) {
+		display: inline;
+		margin-left: 0.5em;
+		cursor: pointer;
+	}
+	:global(.mermaid-repaired pre) {
+		text-align: left;
+		max-width: 48rem;
+		margin: 0.35em auto 0;
+		padding: 0.5em 0.75em;
+		border: 1px solid var(--border);
+		border-radius: 0.375rem;
+		background: var(--muted);
+		overflow-x: auto;
+	}
+	:global(.mermaid-repaired code) {
+		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+		font-size: 0.75rem;
 	}
 	.mermaid-pending {
 		display: flex;

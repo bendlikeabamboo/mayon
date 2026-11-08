@@ -73,14 +73,14 @@ Single project: `src/` at repository root (SvelteKit SPA). No server/, packages/
 
 ### Tests for User Story 2
 
-- [ ] T008 [P] [US2] Corpus test in NEW src/lib/markdown/mermaid-repair.test.ts: spec example verbatim repairs to a parseable source; `repair(repair(x)) === repair(x)` idempotence property; identity output for already-valid sources; smart-quote and unquoted-reserved-char label cases — must FAIL (module absent)
+- [X] T008 [P] [US2] Corpus test in NEW src/lib/markdown/mermaid-repair.test.ts: spec example verbatim repairs to a parseable source; `repair(repair(x)) === repair(x)` idempotence property; identity output for already-valid sources; smart-quote and unquoted-reserved-char label cases — must FAIL (module absent)
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Implement pure `repairMermaidSource(source: string): string` in NEW src/lib/markdown/mermaid-repair.ts covering the corpus: normalize smart quotes in labels, escape/neutralize embedded double quotes and commas inside quoted edge/node labels (e.g. entity-escape inner `"`), wrap unquoted labels containing reserved characters; no mermaid import, no DOM, no state; T008 turns green
-- [ ] T010 [US2] Integrate repair at the seam in src/lib/markdown/mermaid.ts per contracts/render-pipeline.md: render original → on failure apply `repairMermaidSource` ONCE → render repaired → resolve `{ svg, theme, repaired: true }` or reject (bounded, no loop, no LLM calls); stay on the existing `renderChain` serialization
-- [ ] T011 [US2] Repaired indication in src/lib/components/chat/Markdown.svelte (both passes): stamp `data-mermaid-repaired` on the `.mermaid-svg` wrapper when `repaired: true`, render a subtle badge whose disclosure shows the ORIGINAL source (`data-mermaid-source` stays original — theme re-render re-applies repair deterministically, FR-012); add badge/source-disclosure selectors to `EXCLUDED_CHROME_SELECTORS` in src/lib/chat/selection.ts
-- [ ] T012 [US2] Verify stability: dev-stack run of quickstart Scenarios 2, 3, 4 (canonical fault renders + badge; theme flip re-renders identically with no error flash; valid diagrams unchanged); `pnpm check && pnpm lint && pnpm test`
+- [X] T009 [US2] Implement pure `repairMermaidSource(source: string): string` in NEW src/lib/markdown/mermaid-repair.ts covering the corpus: normalize smart quotes in labels, escape/neutralize embedded double quotes and commas inside quoted edge/node labels (e.g. entity-escape inner `"`), wrap unquoted labels containing reserved characters; no mermaid import, no DOM, no state; T008 turns green
+- [X] T010 [US2] Integrate repair at the seam in src/lib/markdown/mermaid.ts per contracts/render-pipeline.md: render original → on failure apply `repairMermaidSource` ONCE → render repaired → resolve `{ svg, theme, repaired: true }` or reject (bounded, no loop, no LLM calls); stay on the existing `renderChain` serialization
+- [X] T011 [US2] Repaired indication in src/lib/components/chat/Markdown.svelte (both passes): stamp `data-mermaid-repaired` on the `.mermaid-svg` wrapper when `repaired: true`, render a subtle badge whose disclosure shows the ORIGINAL source (`data-mermaid-source` stays original — theme re-render re-applies repair deterministically, FR-012); add badge/source-disclosure selectors to `EXCLUDED_CHROME_SELECTORS` in src/lib/chat/selection.ts
+- [X] T012 [US2] Verify stability: dev-stack run of quickstart Scenarios 2, 3, 4 (canonical fault renders + badge; theme flip re-renders identically with no error flash; valid diagrams unchanged); `pnpm check && pnpm lint && pnpm test`
 
 **Checkpoint**: Containment (US1) + self-healing (US2) both functional.
 

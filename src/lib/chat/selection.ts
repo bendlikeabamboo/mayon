@@ -34,6 +34,7 @@ export const EXCLUDED_CHROME_SELECTORS = [
 	'.mermaid-svg',
 	'.mermaid-pending',
 	'.mermaid-error',
+	'.mermaid-repaired',
 	'.section-strip',
 	'.section-strip-preview'
 ] as const;

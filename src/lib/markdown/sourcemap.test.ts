@@ -196,7 +196,8 @@ describe('canonical === filtered DOM textContent', () => {
 		'.katex',
 		'.callout-title',
 		'code.language-mermaid',
-		'.mermaid-error'
+		'.mermaid-error',
+		'.mermaid-repaired'
 	];
 
 	function domCanonical(html: string): string {
@@ -279,6 +280,19 @@ describe('canonical === filtered DOM textContent', () => {
 		expect(domText).toBe('Prose before.Prose after.');
 		expect(domText).not.toContain("couldn't");
 		expect(domText).not.toContain('Parse error');
+		expect(domText).not.toContain('graph TD');
+	});
+
+	// F3 sibling (spec 028 US2): a successful repair leaves a runtime-created
+	// .mermaid-repaired badge (chip + original-source disclosure) next to the
+	// SVG. Its text must be excluded from canonical text like .mermaid-error.
+	it('excludes .mermaid-repaired badge text from canonical DOM text', () => {
+		const html =
+			'<p>Prose before.</p><div class="mermaid-svg"><svg></svg></div><div class="mermaid-repaired"><span>repaired</span><details><summary>show original</summary><pre><code>graph TD A--&gt;B</code></pre></details></div><p>Prose after.</p>';
+		const domText = domCanonical(html);
+		expect(domText).toBe('Prose before.Prose after.');
+		expect(domText).not.toContain('repaired');
+		expect(domText).not.toContain('show original');
 		expect(domText).not.toContain('graph TD');
 	});
 });
