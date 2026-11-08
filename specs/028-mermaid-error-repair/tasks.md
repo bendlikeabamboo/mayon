@@ -52,14 +52,14 @@ Single project: `src/` at repository root (SvelteKit SPA). No server/, packages/
 
 ### Tests for User Story 1
 
-- [ ] T003 [US1] Regression test in NEW src/lib/markdown/mermaid.test.ts: awaiting `renderMermaidBlock` on an invalid source (use the spec example `A["waking"] -->|"sad", "SAD", "sleepy", "del"| B["tring"]`) rejects with the structured error AND appends zero nodes to `document.body` (assert body child count unchanged) — must FAIL before the fix (mermaid's error SVG is injected today)
+- [X] T003 [US1] Regression test in NEW src/lib/markdown/mermaid.test.ts: awaiting `renderMermaidBlock` on an invalid source (use the spec example `A["waking"] -->|"sad", "SAD", "sleepy", "del"| B["tring"]`) rejects with the structured error AND appends zero nodes to `document.body` (assert body child count unchanged) — must FAIL before the fix (mermaid's error SVG is injected today)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [P] [US1] Set `suppressErrorRendering: true` in the `api.initialize` options in src/lib/markdown/mermaid.ts (~L44-48); keep `startOnLoad`/`securityLevel`/`theme` as-is; T003 turns green
-- [ ] T005 [US1] Replace BOTH red-`<p>` fallbacks in src/lib/components/chat/Markdown.svelte (initial pass ~L114-119, theme pass ~L56-60) with a contained `.mermaid-error` block built in the existing DOM-builder style: plain-language notice ("This diagram couldn't be rendered"), the failure reason available on demand (collapsed `<details>`-style reveal, not inline parser dump), and the diagram source in a readable `<pre>`; block lives only inside the message body; reuse existing markdown-body/Tailwind conventions (`.mermaid-pending` styling precedent)
-- [ ] T006 [P] [US1] Add the new block's selectors (`.mermaid-error` and any text-bearing children) to `EXCLUDED_CHROME_SELECTORS` in src/lib/chat/selection.ts (fixes research F3: today's failure `<p>` degrades whole-message expound alignment)
-- [ ] T007 [US1] Add exclusion coverage: extend the selection-exclusion test mirror in src/lib/markdown/sourcemap.test.ts (or a colocated selection test) asserting `.mermaid-error` nodes are excluded from alignment; then run dev-stack smoke of quickstart Scenarios 1 and 7 (`pnpm dev`)
+- [X] T004 [P] [US1] Set `suppressErrorRendering: true` in the `api.initialize` options in src/lib/markdown/mermaid.ts (~L44-48); keep `startOnLoad`/`securityLevel`/`theme` as-is; T003 turns green
+- [X] T005 [US1] Replace BOTH red-`<p>` fallbacks in src/lib/components/chat/Markdown.svelte (initial pass ~L114-119, theme pass ~L56-60) with a contained `.mermaid-error` block built in the existing DOM-builder style: plain-language notice ("This diagram couldn't be rendered"), the failure reason available on demand (collapsed `<details>`-style reveal, not inline parser dump), and the diagram source in a readable `<pre>`; block lives only inside the message body; reuse existing markdown-body/Tailwind conventions (`.mermaid-pending` styling precedent)
+- [X] T006 [P] [US1] Add the new block's selectors (`.mermaid-error` and any text-bearing children) to `EXCLUDED_CHROME_SELECTORS` in src/lib/chat/selection.ts (fixes research F3: today's failure `<p>` degrades whole-message expound alignment)
+- [X] T007 [US1] Add exclusion coverage: extend the selection-exclusion test mirror in src/lib/markdown/sourcemap.test.ts (or a colocated selection test) asserting `.mermaid-error` nodes are excluded from alignment; then run dev-stack smoke of quickstart Scenarios 1 and 7 (`pnpm dev`)
 
 **Checkpoint**: Containment works standalone — MVP deliverable (shippable strict improvement on `main`).
 

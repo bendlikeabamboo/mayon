@@ -33,6 +33,7 @@ export const EXCLUDED_CHROME_SELECTORS = [
 	'.external-link-icon',
 	'.mermaid-svg',
 	'.mermaid-pending',
+	'.mermaid-error',
 	'.section-strip',
 	'.section-strip-preview'
 ] as const;

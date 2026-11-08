@@ -33,6 +33,39 @@
 	// (theme effect + in-flight initial renders) cannot interleave renders.
 	let mermaidSync: Promise<void> = Promise.resolve();
 
+	/**
+	 * Contained fallback block for a failed mermaid render (spec 028 US1):
+	 * plain-language notice, failure reason collapsed behind "Why?", and the
+	 * diagram source in a readable pre. Everything stays inside this block —
+	 * no page-level side effects, no inline parser dump.
+	 */
+	function buildMermaidError(source: string, err: unknown): HTMLElement {
+		const block = document.createElement('div');
+		block.className = 'mermaid-error';
+
+		const notice = document.createElement('p');
+		notice.className = 'mermaid-error-notice';
+		notice.textContent = "This diagram couldn't be rendered";
+		block.appendChild(notice);
+
+		const reason = document.createElement('details');
+		const summary = document.createElement('summary');
+		summary.textContent = 'Why?';
+		const message = document.createElement('code');
+		message.textContent = err instanceof Error ? err.message : String(err);
+		reason.appendChild(summary);
+		reason.appendChild(message);
+		block.appendChild(reason);
+
+		const sourcePre = document.createElement('pre');
+		const sourceCode = document.createElement('code');
+		sourceCode.textContent = source;
+		sourcePre.appendChild(sourceCode);
+		block.appendChild(sourcePre);
+
+		return block;
+	}
+
 	/** Re-render every diagram whose stamped theme no longer matches. */
 	function syncMermaidTheme(resolved: 'light' | 'dark'): Promise<void> {
 		mermaidSync = mermaidSync.catch(() => {}).then(() => rerenderStaleMermaid(resolved));
@@ -54,10 +87,7 @@
 				// a flip mid-pass lands exactly-stamped, so the next sync skips it.
 				wrapper.dataset.renderedTheme = theme;
 			} catch (err) {
-				const note = document.createElement('p');
-				note.className = 'my-3 text-xs text-red-600 dark:text-red-400';
-				note.textContent = `Mermaid render failed: ${err instanceof Error ? err.message : String(err)}`;
-				wrapper.replaceWith(note);
+				wrapper.replaceWith(buildMermaidError(wrapper.dataset.mermaidSource ?? '', err));
 			}
 		}
 	}
@@ -112,10 +142,7 @@
 						void syncMermaidTheme(themeState.resolved);
 					})
 					.catch((err) => {
-						const note = document.createElement('p');
-						note.className = 'my-3 text-xs text-red-600 dark:text-red-400';
-						note.textContent = `Mermaid render failed: ${err instanceof Error ? err.message : String(err)}`;
-						placeholder.replaceWith(note);
+						placeholder.replaceWith(buildMermaidError(source, err));
 					});
 			});
 		}
@@ -417,6 +444,32 @@
 			width: 2rem;
 			height: 2rem;
 		}
+	}
+	/* Failed mermaid render (spec 028): contained fallback block. The block
+	   and its children are runtime-created, so these must stay :global —
+	   scoped selectors never match elements created outside the template. */
+	:global(.mermaid-error) {
+		margin: 0.5em 0;
+		padding: 0.75em 1em;
+		border: 1px solid var(--border);
+		border-radius: 0.5rem;
+		background: var(--muted);
+		color: var(--muted-foreground);
+		font-size: 0.875rem;
+	}
+	:global(.mermaid-error .mermaid-error-notice) {
+		margin: 0 0 0.5em;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+	:global(.mermaid-error summary) {
+		cursor: pointer;
+		font-size: 0.8125rem;
+	}
+	:global(.mermaid-error code) {
+		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+		font-size: 0.8125rem;
+		overflow-wrap: anywhere;
 	}
 	.mermaid-pending {
 		display: flex;
