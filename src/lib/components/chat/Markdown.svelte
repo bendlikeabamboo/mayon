@@ -189,11 +189,14 @@
 						// `theme` is what the SVG was actually rendered with; the
 						// follow-up sync corrects anything a flip left stale.
 						wrapper.dataset.renderedTheme = theme;
-						if (repaired) markRepaired(wrapper);
 						wrapper.addEventListener('click', () => {
 							previewSvg = wrapper.innerHTML;
 						});
 						placeholder.replaceWith(wrapper);
+						// After insertion: insertAdjacentElement('afterend') is a
+						// no-op on a disconnected wrapper, so the badge can only
+						// be attached once it is in the document.
+						if (repaired) markRepaired(wrapper);
 						// Correct a render that started under the old theme and
 						// landed after a flip.
 						void syncMermaidTheme(themeState.resolved);
