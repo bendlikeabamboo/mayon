@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { useFileTestDb, type FileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import {
 	branchArtifactMetadata,
 	buildRawDelta,
+	acquirePropagationLatch,
+	releasePropagationLatch,
 	renderRawTurns,
 	resolveAnchor,
 	resolveExcerpt
@@ -288,5 +290,29 @@ describe('branchArtifactMetadata', () => {
 		expect(
 			branchArtifactMetadata(branch, 'derived', { mode: 'summary', summaryTraceId: 'trace-9' })
 		).toMatchObject({ mode: 'summary', anchor: 'derived', summaryTraceId: 'trace-9' });
+	});
+});
+
+describe('propagation latch (027 T002)', () => {
+	afterEach(() => releasePropagationLatch());
+
+	it('single slot: second acquire fails, release re-arms it', () => {
+		expect(acquirePropagationLatch()).toBe(true);
+		expect(acquirePropagationLatch()).toBe(false);
+		releasePropagationLatch();
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('release-on-throw: finally-release lets the next attempt acquire', () => {
+		const attempt = () => {
+			try {
+				throw new Error('boom');
+			} finally {
+				releasePropagationLatch();
+			}
+		};
+		expect(acquirePropagationLatch()).toBe(true);
+		expect(attempt).toThrow('boom');
+		expect(acquirePropagationLatch()).toBe(true);
 	});
 });

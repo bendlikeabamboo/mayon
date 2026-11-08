@@ -137,3 +137,23 @@ export function branchArtifactMetadata(
 		regeneratedAt: null
 	};
 }
+
+/**
+ * Shared in-flight latch (027): a module-level single slot serializing
+ * propagation attempts across the store's manual path and the
+ * `propagate_to_parent` tool. Synchronous try-acquire; the holder must
+ * release in `finally` on every exit path (abort/throw included).
+ */
+let latchHeld = false;
+
+/** Try to acquire the propagation latch; false when a propagation is already in flight. */
+export function acquirePropagationLatch(): boolean {
+	if (latchHeld) return false;
+	latchHeld = true;
+	return true;
+}
+
+/** Release the propagation latch. Always safe to call. */
+export function releasePropagationLatch(): void {
+	latchHeld = false;
+}

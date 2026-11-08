@@ -167,9 +167,9 @@ describe('summarize_progress', () => {
 });
 
 describe('getToolDefinitions', () => {
-	it('returns 12 tools: 5 readonly + 3 deterministic low + 2 deterministic high + 2 generative high', () => {
+	it('returns 13 tools: 5 readonly + 3 deterministic low + 3 deterministic high + 2 generative high', () => {
 		const defs = getToolDefinitions();
-		expect(defs).toHaveLength(12);
+		expect(defs).toHaveLength(13);
 
 		const readonly = defs.filter((d) => d.risk === 'readonly');
 		expect(readonly).toHaveLength(5);
@@ -190,17 +190,22 @@ describe('getToolDefinitions', () => {
 		]);
 
 		const high = defs.filter((d) => d.risk === 'high');
-		expect(high).toHaveLength(4);
+		expect(high).toHaveLength(5);
 		expect(high.map((d) => d.id).sort()).toEqual([
 			'branch_chat',
 			'create_lab',
 			'create_quiz',
+			'propagate_to_parent',
 			'save_brief'
 		]);
 
 		const generative = defs.filter((d) => d.generative === true);
-		expect(generative).toHaveLength(2);
-		expect(generative.map((d) => d.id).sort()).toEqual(['create_lab', 'create_quiz']);
+		expect(generative).toHaveLength(3);
+		expect(generative.map((d) => d.id).sort()).toEqual([
+			'create_lab',
+			'create_quiz',
+			'propagate_to_parent'
+		]);
 		for (const d of generative) {
 			expect(d.risk).toBe('high');
 		}

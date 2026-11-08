@@ -1,10 +1,17 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import { toolsRun } from '#lib/agent/registry.js';
 import type { ToolContext } from '#lib/agent/registry.js';
 import type { LanguageModel } from 'ai';
 import type { ProviderConfig } from '#lib/ai/types.js';
+import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
+import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
+
+vi.mock('#lib/ai/generate/generate-branch-artifact-summary.js', () => ({
+	generateBranchArtifactSummary: vi.fn()
+}));
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
@@ -180,5 +187,162 @@ describe('toggle_checklist_item', () => {
 		const result = await toolsRun('toggle_checklist_item', {}, ctx('c', 'c'));
 		expect(result.ok).toBe(false);
 		expect(result.summary).toContain('missing');
+	});
+});
+
+describe('propagate_to_parent', () => {
+	beforeEach(() => {
+		vi.mocked(generateBranchArtifactSummary).mockReset();
+	});
+	afterEach(() => releasePropagationLatch());
+
+	/** Parent with ords 0/1 and a recorded child branch off the first row, with two own turns. */
+	async function seedBranch() {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		const b = await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		await repos.messages.append(child.id, 'user', 'branch question');
+		await repos.messages.append(child.id, 'assistant', 'branch answer');
+		return { parent, a, b, child };
+	}
+
+	it('refuses a root chat with the not-a-branch reason and zero writes', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(root.id, 'user', 'hello');
+		const before = await repos.messages.listByChat(root.id);
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(root.id, root.id));
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toContain('not a branch');
+		const after = await repos.messages.listByChat(root.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+	});
+
+	it('refuses an empty branch with the no-messages reason', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: null,
+			title: 'Empty branch'
+		});
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toContain('no messages yet');
+	});
+
+	it('refuses while the propagation latch is held', async () => {
+		const { parent, child } = await seedBranch();
+		expect(acquirePropagationLatch()).toBe(true);
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toContain('already running');
+	});
+
+	it('rejects an invalid mode at run level', async () => {
+		const { parent, child } = await seedBranch();
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'banana' },
+			ctx(child.id, parent.id)
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toContain('invalid mode');
+	});
+
+	it('raw happy path: one verbatim artifact at the midpoint, 020 metadata shape, latch released', async () => {
+		const { parent, a, b, child } = await seedBranch();
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+
+		expect(result.ok).toBe(true);
+		expect(result.summary).toContain('Root');
+		expect(result.summary).toContain('raw');
+
+		const rows = await repos.messages.listByChat(parent.id);
+		const artifacts = rows.filter((m) => m.kind === 'branch_artifact');
+		expect(artifacts).toHaveLength(1);
+		const art = artifacts[0]!;
+		expect(art.ord).toBe((a.ord + b.ord) / 2);
+		expect(art.content).toBe(
+			[
+				'[excerpt]',
+				'hello',
+				'[/excerpt]',
+				'',
+				'[user] branch question',
+				'[assistant] branch answer'
+			].join('\n')
+		);
+		const meta = JSON.parse(art.metadata!) as BranchArtifactMetadata;
+		expect(meta).toEqual({
+			mode: 'raw',
+			sourceChatId: child.id,
+			sourceChatTitle: 'Branch of Root',
+			branchPointMessageId: a.id,
+			anchor: 'recorded',
+			summaryTraceId: null,
+			regeneratedAt: null
+		});
+		expect(result.detail).toEqual({ parentChatId: parent.id, mode: 'raw' });
+
+		const again = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+		expect(again.ok).toBe(true);
+		const afterRows = await repos.messages.listByChat(parent.id);
+		expect(afterRows.filter((m) => m.kind === 'branch_artifact')).toHaveLength(2);
+	});
+
+	it('summary happy path: artifact carries mocked text and trace id, result names summary mode', async () => {
+		const { parent, child } = await seedBranch();
+		vi.mocked(generateBranchArtifactSummary).mockResolvedValue({
+			summary: 'Branch summary text',
+			traceId: 'trace-9'
+		});
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'summary' },
+			ctx(child.id, parent.id)
+		);
+
+		expect(result.ok).toBe(true);
+		expect(result.summary).toContain('summary');
+
+		const rows = await repos.messages.listByChat(parent.id);
+		const artifacts = rows.filter((m) => m.kind === 'branch_artifact');
+		expect(artifacts).toHaveLength(1);
+		const art = artifacts[0]!;
+		expect(art.content).toBe('Branch summary text');
+		const meta = JSON.parse(art.metadata!) as BranchArtifactMetadata;
+		expect(meta.mode).toBe('summary');
+		expect(meta.summaryTraceId).toBe('trace-9');
+	});
+
+	it('summary generation failure inserts nothing (generate-first ordering)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		vi.mocked(generateBranchArtifactSummary).mockRejectedValue(new Error('provider down'));
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'summary' },
+			ctx(child.id, parent.id)
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.summary).toContain('summary generation failed');
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
 	});
 });
