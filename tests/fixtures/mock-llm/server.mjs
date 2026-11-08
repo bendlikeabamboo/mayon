@@ -43,6 +43,25 @@ const LEVER_FEEDBACK_WRONG =
 const LEVER_FEEDBACK_DEFAULT =
 	'Deterministic mock default: the answer carried no lever trigger, so it is not correct.';
 
+// ---------------------------------------------------------------------------
+// Back-propagation dispatch (feature 027, quickstart V6) — deterministic
+// constants, same pattern as the grading lever: fixture-only triggers with no
+// product-constant pin, so they live here instead of markers.mjs (the
+// drift-guard only pins markers that mirror product constants). Mirrored for
+// spec assertions in tests/e2e/fixtures/kitchen-sink.ts.
+// ---------------------------------------------------------------------------
+const PROPAGATE_TRIGGER = 'backpropagate this branch';
+const PROPAGATE_TOOL_NAME = 'propagate_to_parent';
+const PROPAGATE_TOOL_ARGS = '{"mode":"raw"}';
+const PROPAGATE_UNAVAILABLE_REPLY =
+	'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
+// Offer-once dispatch (027 US2): a completion signal without an explicit
+// request gets one plain-text offer (manual-control fallback + an explicit
+// ask) and never a tool call — propagation requires the learner's agreement.
+const OFFER_TRIGGER = 'this branch feels done';
+const OFFER_REPLY =
+	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
+
 // How many leading characters of the classification inputs the unknown-kind
 // 400 body and server log expose as hints.
 const HINT_PREFIX_LENGTH = 80;
@@ -87,25 +106,13 @@ function sseFrame(payload) {
 	return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-function streamReply(res, id, model) {
+function streamFrames(res, frames, terminal) {
 	res.writeHead(200, {
 		'content-type': 'text/event-stream',
 		'cache-control': 'no-cache',
 		connection: 'keep-alive'
 	});
 	res.on('error', () => {});
-	const frames = [
-		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
-		...chunks.map(
-			(content) => sseFrame({ id, model, choices: [{ delta: { content }, finish_reason: null }] })
-		)
-	];
-	const terminal = sseFrame({
-		id,
-		model,
-		choices: [{ delta: {}, finish_reason: 'stop' }],
-		usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
-	});
 	let index = 0;
 	const writeNext = () => {
 		if (res.destroyed) {
@@ -124,6 +131,64 @@ function streamReply(res, id, model) {
 	writeNext();
 }
 
+const stopTerminal = (id, model, reason) =>
+	sseFrame({
+		id,
+		model,
+		choices: [{ delta: {}, finish_reason: reason }],
+		usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+	});
+
+function streamReply(res, id, model) {
+	const frames = [
+		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
+		...chunks.map(
+			(content) => sseFrame({ id, model, choices: [{ delta: { content }, finish_reason: null }] })
+		)
+	];
+	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
+}
+
+// Streamed plain-text reply (two frames, stop terminal) for the 027 text kinds.
+function streamTextReply(res, id, model, text) {
+	const frames = [
+		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
+		sseFrame({ id, model, choices: [{ delta: { content: text }, finish_reason: null }] })
+	];
+	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
+}
+
+// Streamed tool-call reply for propagate_tool_call (feature 027): OpenAI-style
+// streamed tool_call deltas that the SDK's OpenAI-compatible provider
+// accumulates into one tool call; finish_reason 'tool_calls' (the SDK maps it
+// to 'tool-calls') routes the agent loop into the tool path. Raw mode keeps
+// the e2e single-process: the tool's deterministic delta needs no LLM sub-call.
+function streamToolCallReply(res, id, model, toolName, argsJson) {
+	const frames = [
+		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
+		sseFrame({
+			id,
+			model,
+			choices: [
+				{
+					delta: {
+						tool_calls: [
+							{
+								index: 0,
+								id: 'call-prop',
+								type: 'function',
+								function: { name: toolName, arguments: argsJson }
+							}
+						]
+					},
+					finish_reason: null
+				}
+			]
+		})
+	];
+	streamFrames(res, frames, stopTerminal(id, model, 'tool_calls'));
+}
+
 // ---------------------------------------------------------------------------
 // Request-kind classification (stateless — a pure function of the request
 // body, safe under concurrency; no shared mutable state beyond the static
@@ -131,11 +196,22 @@ function streamReply(res, id, model) {
 //
 //   1. no tools  + stream === true  → chat (SSE kitchen-sink stream)
 //   2. no tools  + stream !== true  → chat (single non-streamed completion)
-//   3. tools + `json` tool description contains GRADING_MARKER → short_grading
-//   4. tools + first system message STARTS WITH the quiz contract opening → quiz_generation
-//   5. tools + first system message STARTS WITH the lab contract opening  → lab_generation
-//   6. tools + first system message contains BRIEF_MARKER (fallback, last) → brief_generation
-//   7. anything else → unknown (HTTP 400, never a wrong-fixture reply)
+//   3. tools + stream === true + trigger in LAST user message:
+//      - offer trigger → propagate_offer (plain-text single offer; 027 US2)
+//      - propagate trigger + tools contain propagate_to_parent →
+//        propagate_tool_call (streamed tool call; 027)
+//      - propagate trigger otherwise → propagate_unavailable
+//        (manual-control sentence; 027)
+//   4. tools + `json` tool description contains GRADING_MARKER → short_grading
+//   5. tools + first system message STARTS WITH the quiz contract opening → quiz_generation
+//   6. tools + first system message STARTS WITH the lab contract opening  → lab_generation
+//   7. tools + first system message contains BRIEF_MARKER (fallback, last) → brief_generation
+//   8. anything else → unknown (HTTP 400, never a wrong-fixture reply)
+//
+// Rule 3 anchors on the LAST message being role 'user': after the tool
+// executes and approves, the loop's NEXT iteration re-requests with the tool
+// result as the last message (role 'tool'), so neither trigger rule matches
+// and the continuation falls through to the plain kitchen-sink chat stream.
 //
 // Rules 4 and 5 anchor on startsWith because quiz and lab generation lead the
 // system message with their code-owned contract (includeSystemNotes: false) —
@@ -173,6 +249,22 @@ function jsonToolDescription(body) {
 	return typeof description === 'string' ? description : null;
 }
 
+/** Whether the request's tools array declares a function with the given name. */
+function hasToolNamed(body, name) {
+	const tools = Array.isArray(body?.tools) ? body.tools : [];
+	return tools.some((t) => t && typeof t === 'object' && t.function?.name === name);
+}
+
+/** Text of the LAST user message ('' when the request has none). */
+function lastUserText(body) {
+	const messages = Array.isArray(body?.messages) ? body.messages : [];
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (m && typeof m === 'object' && m.role === 'user') return messageText(m.content);
+	}
+	return '';
+}
+
 /** Text of the FIRST system message ('' when the request has none). */
 function firstSystemText(body) {
 	const messages = Array.isArray(body?.messages) ? body.messages : [];
@@ -187,9 +279,36 @@ function firstSystemText(body) {
 		// Chat turns from the second one on carry the standard tool set (the
 		// agent loop enables tools after the first turn). A tools-bearing
 		// STREAM request is still a chat: answer with the text-only SSE stream
-		// and never call tools. Non-streamed tools requests keep the
-		// fail-loudly contract kinds below (research.md D7).
+		// and never call tools — except the 027 propagate dispatch below,
+		// which must win over this catch-all. Non-streamed tools requests
+		// keep the fail-loudly contract kinds below (research.md D7).
 		if (body?.stream === true) {
+			// Propagate dispatch (027): the LAST message must be role 'user' and
+			// carry a trigger; the branch-gated tool list (present only when
+			// the chat is a branch with own messages — FR-001/V4) picks
+			// tool-call vs manual-control sentence. Anchoring on the last
+			// MESSAGE (not the last user message) is what makes the ordering
+			// safe: after the tool executes, the continuation request ends on
+			// the role-'tool' result, so this rule cannot re-fire and the turn
+			// falls through to the kitchen-sink chat stream below.
+			// Case-insensitive to match the grading lever's scan.
+			const messages = Array.isArray(body?.messages) ? body.messages : [];
+			const last = messages[messages.length - 1];
+			const lastText =
+				last && typeof last === 'object' && last.role === 'user'
+					? messageText(last.content).toLowerCase()
+					: null;
+			if (lastText !== null) {
+				// Offer-once rule first: a completion signal is never an
+				// agreement, so it must answer with the plain offer, never a
+				// tool call (027 US2).
+				if (lastText.includes(OFFER_TRIGGER)) return 'propagate_offer';
+				if (lastText.includes(PROPAGATE_TRIGGER)) {
+					return hasToolNamed(body, PROPAGATE_TOOL_NAME)
+						? 'propagate_tool_call'
+						: 'propagate_unavailable';
+				}
+			}
 			return 'chat_stream';
 		}
 		const toolDescription = jsonToolDescription(body);
@@ -217,15 +336,7 @@ function firstSystemText(body) {
  * short_grading requests — answer text never influences other kinds.
  */
 function gradeAnswer(body) {
-	const messages = Array.isArray(body?.messages) ? body.messages : [];
-	let lastUser;
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i] && typeof messages[i] === 'object' && messages[i].role === 'user') {
-			lastUser = messages[i];
-			break;
-		}
-	}
-	const text = (lastUser ? messageText(lastUser.content) : '').toLowerCase();
+	const text = lastUserText(body).toLowerCase();
 	// Precedence: 'should be wrong' is tested FIRST so it wins when both
 	// triggers are present (fail-unsafe; see the constants block above).
 	if (text.includes(LEVER_TRIGGER_WRONG)) {
@@ -290,6 +401,15 @@ const server = createServer(async (req, res) => {
 		switch (classifyRequest(body)) {
 			case 'chat_stream':
 				streamReply(res, id, model);
+				return;
+			case 'propagate_tool_call':
+				streamToolCallReply(res, id, model, PROPAGATE_TOOL_NAME, PROPAGATE_TOOL_ARGS);
+				return;
+			case 'propagate_unavailable':
+				streamTextReply(res, id, model, PROPAGATE_UNAVAILABLE_REPLY);
+				return;
+			case 'propagate_offer':
+				streamTextReply(res, id, model, OFFER_REPLY);
 				return;
 			case 'chat_plain':
 				sendJson(res, 200, {

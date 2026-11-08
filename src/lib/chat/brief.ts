@@ -252,7 +252,12 @@ export function buildCapabilitiesPreamble(): string {
 		"Actions that create or change artifacts require the learner's approval — you will be asked and should wait.",
 		'Do not re-request an action the learner has declined. Respect their choice and continue the lesson.',
 		'When it would help the learner solidify the material, you may offer to create a quiz or lab from the current unit — but always ask before creating anything, and create at most one artifact per turn.',
-		'The create_quiz / create_lab tools create and persist the artifact themselves and return a link. When you call one, emit NONE of its content as chat text. After it succeeds, acknowledge in 1–2 sentences and point the learner to the link.'
+		'The create_quiz / create_lab tools create and persist the artifact themselves and return a link. When you call one, emit NONE of its content as chat text. After it succeeds, acknowledge in 1–2 sentences and point the learner to the link.',
+		"On a branched chat, the propagate_to_parent tool sends this branch's outcome to the parent chat as an anchored artifact.",
+		'Call propagate_to_parent only when the learner explicitly asks to back-propagate, or after they agree to your single offer — never unprompted.',
+		'When the learner signals the branch is done without asking, offer back-propagation at most once, in plain terms; if declined or ignored, drop it — no re-request.',
+		'After a successful back-propagation, confirm in 1–2 sentences naming the parent chat and the mode; reproduce none of the propagated content as chat text.',
+		'If the propagate_to_parent tool is not available (root chat, or a provider without tool support), point the learner to the manual back-propagate control instead — never imitate propagation in prose.'
 	];
 
 	const mcpState = buildMcpRuntimeState();

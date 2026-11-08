@@ -27,3 +27,18 @@ fixture; do not bypass the hop.
 - Grading (`short_grading`) — no fixture file: the lever in `server.mjs`
   resolves `{isCorrect, feedback}` from the request's user block (triggers:
   `should be correct` / `should be wrong`).
+- Back-propagation dispatch (feature 027, quickstart V6) — no fixture files:
+  three kinds in `server.mjs`, selected by the trigger phrase in the LAST user
+  message (anchored on the last message being role 'user', so continuations
+  fall through to the chat stream). `this branch feels done` →
+  `propagate_offer` (US2 offer-once: one plain-text offer naming the manual
+  back-propagate control plus an explicit ask, never a tool call);
+  `backpropagate this branch` → `propagate_tool_call` (tools contain
+  `propagate_to_parent`; streams an OpenAI-style `propagate_to_parent` tool
+  call with arguments `{"mode":"raw"}`) or `propagate_unavailable` (tool
+  absent — root chats; streams the manual-control sentence). The trigger and
+  reply constants live in `server.mjs` next to the grading lever
+  (fixture-only, no product-constant pin, so not in `markers.mjs`) and are
+  mirrored for spec assertions in `tests/e2e/fixtures/kitchen-sink.ts`
+  (`PROPAGATE_TRIGGER`, `PROPAGATE_UNAVAILABLE_REPLY`, `OFFER_TRIGGER`,
+  `OFFER_REPLY`).

@@ -17,7 +17,7 @@ Every tool is a `Tool` (a `ToolDefinition` plus a `run` function) registered in 
 | Group | Source | Tools |
 |---|---|---|
 | Readonly inspection | `src/lib/agent/registry.ts` | `read_checklist`, `list_artifacts`, `read_artifact`, `summarize_progress` |
-| Deterministic | `src/lib/agent/deterministic-tools.ts` | `branch_chat`, `save_brief`, `draft_lab_skeleton`, `draft_quiz_outline`, `toggle_checklist_item`, `present_choices` |
+| Deterministic | `src/lib/agent/deterministic-tools.ts` | `branch_chat`, `save_brief`, `draft_lab_skeleton`, `draft_quiz_outline`, `toggle_checklist_item`, `present_choices`, `propagate_to_parent` |
 | Generative | `src/lib/agent/generative-tools.ts` | `create_quiz`, `create_lab` |
 | Dynamic MCP | `src/lib/mcp/mount.ts` + `src/lib/mcp/resources.ts` | `mcp.<serverId>.<toolName>` per enabled server, plus `mcp_read_resource` |
 
@@ -44,12 +44,15 @@ Parameters are listed as each tool's schema defines them; "optional" reflects th
 | `draft_quiz_outline` | `topic` (string, optional), `questionCount` (number, default 5) | low | — | Emits a deterministic quiz outline markdown as `detail.markdown` (no LLM call). |
 | `toggle_checklist_item` | `labId` (string), `itemId` (string) | low | — | Flips a checklist item's done state; returns the updated checklist. |
 | `present_choices` | `nextUnit` (string), `options` (string array, 2–3 labels), `progress` (string) | readonly | `terminal` | Records pacing choices; the app renders them as tappable reply chips under the composer and the agent turn ends. |
+| `propagate_to_parent` | `mode` (string, optional, enum `raw`/`summary`; omitted → raw) | high | `generative` | Sends the active branch's outcome to its parent chat as one anchored `branch_artifact` row — raw is the verbatim delta (no LLM call), summary makes one LLM sub-call via the branch-artifact summary generator. The success summary names the parent chat and the mode and carries no `detail.artifact` (the artifact belongs to the parent chat). |
 
 Behavioral notes:
 
 - `save_brief` is offered only while the root chat has no brief — `disabledToolsForBrief` (`src/lib/chat/brief.ts`) disables it the moment a parseable brief exists, and the capabilities preamble further directs the model to use it only on the first turn of a brief-less chat and never to rewrite an existing goal.
 - `present_choices` renders its options as reply chips and ends the turn. The scope strategies' `GATE_INSTRUCTION` (`src/lib/chat/strategies.ts`) forbids emitting the choices as a fenced block or raw JSON — the tool call is the only chip path.
 - `create_quiz` and `create_lab` persist their content as artifacts (quiz rows and lab rows) and never reproduce it as chat text; the capabilities preamble and the tools' own success summaries instruct a one-to-two-sentence acknowledgment plus a link to the artifact.
+- `propagate_to_parent` reuses the 020 propagation helpers (`src/lib/chat/propagation.ts`) — payload, anchor, and metadata builders are shared with the manual path, so tool artifacts are byte-identical to manually back-propagated ones. A shared in-flight latch refuses a concurrent second start across the tool and manual paths ("a propagation is already running").
+- The `propagate_to_parent` tool path raises no toast — the model's one-to-two-sentence in-chat confirmation is the feedback. Calling the tool again inserts another artifact; regenerating a summary stays a manual affordance.
 
 **Generative** (`src/lib/agent/generative-tools.ts`):
 
@@ -72,7 +75,7 @@ The classes are `ToolRisk` (`src/lib/agent/registry.ts`); the gating and status 
 - `readonly` runs silently.
 - `low` runs, then raises a `notifyLowRisk` toast with the tool's summary.
 - `high` raises a `requestApproval` modal before running; a decline is final — the capabilities preamble forbids the model from re-requesting a declined action.
-- `generative` shows a `notifyGenerativeStatus` label ("Creating your quiz…") while running and consumes the per-turn sub-call budget (`{subCalls: 0, maxSubCalls: 1}`); a second generative call in the same turn is refused with "one generative action per turn".
+- `generative` shows a `notifyGenerativeStatus` label ("Creating your quiz…", "Creating your lab…", or "Back-propagating to parent…") while running and consumes the per-turn sub-call budget (`{subCalls: 0, maxSubCalls: 1}`); a second generative call in the same turn is refused with "one generative action per turn".
 - `terminal` (only `present_choices`) ends the agent turn once its tool calls complete — no further iteration.
 - If every iteration of the turn loop ends in tool calls (`MAX_ITERATIONS = 6`), the turn exits through the critic phase with "(…tool budget reached; continuing from here.)" appended to the reply.
 
@@ -83,7 +86,7 @@ The gates apply in this order:
 1. **Provider capability** — `resolveToolCapability` (`src/lib/agent/capability.ts`) requires the provider's `toolCapability` to not be `'off'`; legacy stored configs resolve through `legacyToolDefault` (anthropic, gemini, and github-copilot default on; ollama off; openai-compatible only for base URLs on the `KNOWN_GATEWAY_BASEURLS` allowlist). The same function also consults the session-disabled flag from gate 2.
 2. **Session safety net** — if a tools-enabled turn fails with an `APICallError` (HTTP 400, or a message matching `/tool|function/i`), `disableToolsForSession()` trips the flag for the rest of the session and the turn retries without tools (`src/lib/agent/loop.ts`).
 3. **First-turn blackout** — `runAgentTurn` computes the capability as `resolveToolCapability(...) && !firstTurn`: tools are never offered on the first turn of a root chat, and the first-turn orientation preamble tells the model why.
-4. **Per-turn disabled ids** — the chat store (`src/lib/stores/chat.svelte.ts`) passes `disabledToolIds` with the turn: `save_brief` when the root chat already has a brief; `branch_chat` while a manual branch is pending; `mcp.<serverId>.*` for servers the chat disabled or trimmed by a per-tool allowlist; `mcp_read_resource` when no enabled MCP server exposes resources.
+4. **Per-turn disabled ids** — the chat store (`src/lib/stores/chat.svelte.ts`) passes `disabledToolIds` with the turn: `save_brief` when the root chat already has a brief; `branch_chat` while a manual branch is pending; `propagate_to_parent` when the active chat is not a branch or has no messages (mirroring the manual control's `canPropagate`); `mcp.<serverId>.*` for servers the chat disabled or trimmed by a per-tool allowlist; `mcp_read_resource` when no enabled MCP server exposes resources.
 5. **Definition cap** — `buildSdkTools` (`src/lib/agent/loop.ts`) keeps at most 64 tool definitions per request and drops the overflow with a console warning.
 6. **MCP-specific gates** (at mount time, before any MCP tool exists): the server config must be trusted — an `isTrusted` hash comparison in `src/lib/mcp/trust.ts` backed by the user's explicit confirmation; a stdio-transport server additionally requires the Mayon server's `stdio-mcp` capability (`src/lib/mcp/lifecycle.ts`, `src/lib/mcp/server-stdio.ts`); and each tool's risk derives from its MCP annotations with `high` as the default (`src/lib/mcp/risk.ts`).
 7. **Capabilities preamble** — when tools are live, `buildCapabilitiesPreamble()` (`src/lib/chat/brief.ts`) is injected into the system prompt: the model-facing contract covering judicious tool use, approval etiquette, one artifact per turn, and never reproducing artifact content as chat text.

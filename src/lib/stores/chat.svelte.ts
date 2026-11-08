@@ -34,7 +34,13 @@ import {
 	type SharedMetadata
 } from '#lib/chat/kinds.js';
 import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
-import { buildRawDelta, resolveAnchor, branchArtifactMetadata } from '#lib/chat/propagation.js';
+import {
+	acquirePropagationLatch,
+	releasePropagationLatch,
+	buildRawDelta,
+	resolveAnchor,
+	branchArtifactMetadata
+} from '#lib/chat/propagation.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import { getActiveSdkProvider } from '#lib/ai/client.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
@@ -473,6 +479,10 @@ class ChatState {
 		// atomic append carrying text + image parts (contracts/message-parts.md
 		// §4). Image-less sends write no parts column: the row is byte-identical
 		// to the pre-parts flow.
+		// Availability snapshot (027 T005): taken before the append below
+		// mutates `this.messages` — an empty branch's first turn must not
+		// offer `propagate_to_parent` (quickstart V4).
+		const hadMessages = this.messages.length > 0;
 		const userMeta: Record<string, unknown> = {};
 		if (hidden) userMeta.hidden = true;
 		if (choicesEntryId) userMeta.choicesEntryId = choicesEntryId;
@@ -596,6 +606,7 @@ class ChatState {
 				disabledToolIds: [
 					...disabledToolsForBrief(rootBriefRaw),
 					...(this.manualBranchPending ? ['branch_chat'] : []),
+					...(!(chat && chat.parentId !== null && hadMessages) ? ['propagate_to_parent'] : []),
 					...mcpDisabled
 				],
 				firstTurn: isFirstRootTurn,
@@ -1385,58 +1396,69 @@ class ChatState {
 	 * anchored INSERT never rewrites existing rows (FR-005/SC-003). Gated on an
 	 * active branch with at least one own message (FR-010) — misuse throws;
 	 * runtime failures land in `propagationError` / `propagationStatus`.
+	 *
+	 * Holds the shared in-flight latch (027 D5) ahead of the reactive
+	 * `propagationStatus` guard: a concurrent propagation from the tool path
+	 * (or another manual call) makes this return silently — the reactive state
+	 * is left untouched so a foreign path's run never corrupts the UI.
 	 */
 	async propagateToParent(mode: 'raw' | 'summary'): Promise<void> {
 		const chat = this.chat;
 		const chatId = this.chatId;
-		if (!chat || !chatId || this.propagationStatus === 'running') return;
-		if (chat.parentId === null) {
-			throw new Error('Cannot propagate: the active chat is not a branch.');
-		}
-		if (this.messages.length === 0) {
-			throw new Error('Cannot propagate: this branch has no messages yet.');
-		}
-		const parentId = chat.parentId;
-
-		this.propagationAction = 'propagate';
-		this.propagationStatus = 'running';
-		this.propagationError = null;
-		this.lastPropagation = null;
-		this.propagationController = new AbortController();
+		if (!chat || !chatId) return;
+		if (!acquirePropagationLatch()) return;
 		try {
-			const { placement, anchor } = await resolveAnchor(chat);
-			let content: string;
-			let metadata: BranchArtifactMetadata;
-			if (mode === 'summary') {
-				const { summary, traceId } = await generateBranchArtifactSummary(
-					chatId,
-					this.propagationController.signal
-				);
-				content = summary;
-				metadata = branchArtifactMetadata(chat, anchor, {
-					mode: 'summary',
-					summaryTraceId: traceId
-				});
-			} else {
-				content = await buildRawDelta(chatId);
-				metadata = branchArtifactMetadata(chat, anchor);
+			if (this.propagationStatus === 'running') return;
+			if (chat.parentId === null) {
+				throw new Error('Cannot propagate: the active chat is not a branch.');
 			}
-			await repos.messages.insertAnchored(
-				parentId,
-				{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
-				placement
-			);
-			this.lastPropagation = { parentChatId: parentId, mode };
-			this.propagationStatus = 'idle';
-		} catch (err) {
-			if (isAbortError(err)) {
+			if (this.messages.length === 0) {
+				throw new Error('Cannot propagate: this branch has no messages yet.');
+			}
+			const parentId = chat.parentId;
+
+			this.propagationAction = 'propagate';
+			this.propagationStatus = 'running';
+			this.propagationError = null;
+			this.lastPropagation = null;
+			this.propagationController = new AbortController();
+			try {
+				const { placement, anchor } = await resolveAnchor(chat);
+				let content: string;
+				let metadata: BranchArtifactMetadata;
+				if (mode === 'summary') {
+					const { summary, traceId } = await generateBranchArtifactSummary(
+						chatId,
+						this.propagationController.signal
+					);
+					content = summary;
+					metadata = branchArtifactMetadata(chat, anchor, {
+						mode: 'summary',
+						summaryTraceId: traceId
+					});
+				} else {
+					content = await buildRawDelta(chatId);
+					metadata = branchArtifactMetadata(chat, anchor);
+				}
+				await repos.messages.insertAnchored(
+					parentId,
+					{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
+					placement
+				);
+				this.lastPropagation = { parentChatId: parentId, mode };
 				this.propagationStatus = 'idle';
-			} else {
-				this.propagationError = err instanceof Error ? err.message : String(err);
-				this.propagationStatus = 'error';
+			} catch (err) {
+				if (isAbortError(err)) {
+					this.propagationStatus = 'idle';
+				} else {
+					this.propagationError = err instanceof Error ? err.message : String(err);
+					this.propagationStatus = 'error';
+				}
+			} finally {
+				this.propagationController = null;
 			}
 		} finally {
-			this.propagationController = null;
+			releasePropagationLatch();
 		}
 	}
 

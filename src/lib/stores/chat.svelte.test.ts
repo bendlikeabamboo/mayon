@@ -13,6 +13,9 @@ import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
 import type { ComposerAttachment, ImagePart, BranchArtifactMetadata } from '#lib/chat/kinds.js';
 import { attachmentsOf } from '#lib/chat/kinds.js';
+import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import { toolsRun } from '#lib/agent/registry.js';
+import type { ToolContext } from '#lib/agent/registry.js';
 
 if (typeof requestAnimationFrame === 'undefined') {
 	globalThis.requestAnimationFrame = (cb: FrameRequestCallback) =>
@@ -1922,6 +1925,10 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 		chatStore.lastPropagation = null;
 	});
 
+	afterEach(() => {
+		releasePropagationLatch();
+	});
+
 	/** Raw SQL escape hatch for timestamp seeding (setup() is idempotent). */
 	async function handleExec(sql: string): Promise<void> {
 		const handle = await testDb.setup();
@@ -2091,6 +2098,120 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 		expect(
 			(await repos.messages.listByChat(parent.id)).filter((m) => m.kind === 'branch_artifact')
 		).toHaveLength(0);
+	});
+
+	// ── Shared in-flight latch, cross-path (027 D5 / T012) ──
+
+	/** Minimal tool context, mirroring deterministic-tools.test.ts. */
+	function toolCtx(chatId: string, rootChatId: string): ToolContext {
+		return {
+			chatId,
+			rootChatId,
+			budget: { subCalls: 0, maxSubCalls: 0 },
+			model: null as unknown as LanguageModel,
+			config: null as unknown as ProviderConfig
+		};
+	}
+
+	it('manual propagation is silently refused while the tool path holds the latch (027 D5)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		expect(acquirePropagationLatch()).toBe(true);
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(chatStore.propagationStatus).not.toBe('running');
+		expect(chatStore.lastPropagation).toBeNull();
+		// The refusing call did not steal or free the foreign path's latch.
+		expect(acquirePropagationLatch()).toBe(false);
+	});
+
+	it('tool path is refused while a manual propagation is in flight (027 D5)', async () => {
+		const { parent, child } = await seedBranch();
+		mockDefaultProvider();
+		let resolveSummary!: (v: unknown) => void;
+		mockedGenerateText.mockReturnValueOnce(
+			new Promise((resolve) => (resolveSummary = resolve)) as never
+		);
+		await chatStore.load(child.id);
+		const before = await repos.messages.listByChat(parent.id);
+
+		const manual = chatStore.propagateToParent('summary');
+		// The manual path's synchronous prefix already holds the latch.
+		const toolResult = await toolsRun('propagate_to_parent', {}, toolCtx(child.id, parent.id));
+		expect(toolResult.ok).toBe(false);
+		expect(toolResult.summary).toContain('already running');
+		expect((await repos.messages.listByChat(parent.id)).map((m) => m.id)).toEqual(
+			before.map((m) => m.id)
+		);
+
+		resolveSummary({ text: 'Deferred summary' });
+		await manual;
+
+		const rows = await repos.messages.listByChat(parent.id);
+		expect(rows.filter((m) => m.kind === 'branch_artifact')).toHaveLength(1);
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'summary' });
+	});
+
+	it('gate misuse throws but still releases the latch (027 D5)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		await expect(chatStore.propagateToParent('raw')).rejects.toThrow('not a branch');
+
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+});
+
+describe('propagate_to_parent availability gating (027 V4)', () => {
+	it('root chat turn disables propagate_to_parent', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockStreamReply(['Reply']);
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		expect(lastDisabledToolIds).toContain('propagate_to_parent');
+	});
+
+	it('branch with messages does not disable propagate_to_parent', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		await repos.messages.append(child.id, 'user', 'branch question');
+		await repos.messages.append(child.id, 'assistant', 'branch answer');
+
+		mockDefaultProvider();
+		mockStreamReply(['Reply']);
+		await chatStore.load(child.id);
+		await chatStore.send('branch turn');
+
+		expect(lastDisabledToolIds).not.toContain('propagate_to_parent');
+	});
+
+	it('empty branch disables propagate_to_parent', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Empty branch'
+		});
+
+		mockDefaultProvider();
+		mockStreamReply(['Reply']);
+		await chatStore.load(child.id);
+		await chatStore.send('first branch turn');
+
+		expect(lastDisabledToolIds).toContain('propagate_to_parent');
 	});
 });
 

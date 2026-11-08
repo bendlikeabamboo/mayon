@@ -2,6 +2,14 @@ import { repos } from '#lib/db/index.js';
 import type { ToolResult, Tool } from '#lib/agent/registry.js';
 import { parseBrief, summarizeBrief, strategyForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
+import {
+	acquirePropagationLatch,
+	releasePropagationLatch,
+	branchArtifactMetadata,
+	buildRawDelta,
+	resolveAnchor
+} from '#lib/chat/propagation.js';
+import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 
 function toolSchema(properties: Record<string, unknown>): Record<string, unknown> {
 	return {
@@ -9,6 +17,11 @@ function toolSchema(properties: Record<string, unknown>): Record<string, unknown
 		properties,
 		required: Object.keys(properties ?? {})
 	};
+}
+
+/** Mirrors chat.svelte.ts isAbortError (027 execution contract, abort step). */
+function isAbortError(err: unknown): boolean {
+	return err instanceof DOMException && err.name === 'AbortError';
 }
 
 export const deterministicTools: Tool[] = [
@@ -229,6 +242,92 @@ export const deterministicTools: Tool[] = [
 				summary: `Next: ${a.nextUnit ?? '—'} (${opts})`,
 				detail: { nextUnit: a.nextUnit, options: a.options, progress: a.progress }
 			};
+		}
+	},
+	{
+		def: {
+			id: 'propagate_to_parent',
+			description:
+				"Back-propagate this branch chat's outcome into its parent chat as an anchored artifact. Call only when the learner explicitly asks, or after they agree to your single offer. Never reproduce the propagated content as chat text; confirm in 1–2 sentences (parent chat, mode).",
+			parameters: {
+				type: 'object',
+				properties: {
+					mode: {
+						type: 'string',
+						enum: ['raw', 'summary'],
+						description:
+							'Payload mode: raw = verbatim branch delta (default), summary = model-written handoff summary.'
+					}
+				},
+				required: []
+			},
+			risk: 'high',
+			generative: true
+		},
+		async run(args, ctx): Promise<ToolResult> {
+			const requested = (args as { mode?: unknown }).mode;
+			const mode =
+				requested === 'summary'
+					? 'summary'
+					: requested === 'raw' || requested === undefined
+						? 'raw'
+						: null;
+			if (mode === null) return { ok: false, summary: `invalid mode: ${String(requested)}` };
+			if (!acquirePropagationLatch()) {
+				return { ok: false, summary: 'a propagation is already running' };
+			}
+			try {
+				if (ctx.signal?.aborted) return { ok: false, summary: 'aborted' };
+
+				const chat = await repos.chats.getById(ctx.chatId);
+				if (!chat || chat.parentId === null) {
+					return { ok: false, summary: 'cannot propagate: this chat is not a branch' };
+				}
+				if ((await repos.messages.listByChat(ctx.chatId)).length === 0) {
+					return { ok: false, summary: 'cannot propagate: this branch has no messages yet' };
+				}
+
+				let content: string;
+				let opts: { mode?: 'raw' | 'summary'; summaryTraceId?: string | null } | undefined;
+				if (mode === 'summary') {
+					try {
+						const generated = await generateBranchArtifactSummary(ctx.chatId, ctx.signal);
+						content = generated.summary;
+						opts = { mode: 'summary', summaryTraceId: generated.traceId };
+					} catch (err) {
+						if (isAbortError(err) || ctx.signal?.aborted) {
+							return { ok: false, summary: 'aborted' };
+						}
+						return {
+							ok: false,
+							summary: `summary generation failed: ${
+								err instanceof Error ? err.message : String(err)
+							}`
+						};
+					}
+				} else {
+					content = await buildRawDelta(ctx.chatId);
+				}
+
+				const { placement, anchor } = await resolveAnchor(chat);
+				const metadata = branchArtifactMetadata(chat, anchor, opts);
+				await repos.messages.insertAnchored(
+					chat.parentId,
+					{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
+					placement
+				);
+
+				const parent = await repos.chats.getById(chat.parentId);
+				return {
+					ok: true,
+					summary: `Back-propagated to parent "${parent?.title ?? ''}" as ${
+						mode === 'summary' ? 'summary' : 'raw delta'
+					}.`,
+					detail: { parentChatId: chat.parentId, mode }
+				};
+			} finally {
+				releasePropagationLatch();
+			}
 		}
 	}
 ];

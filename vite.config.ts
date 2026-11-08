@@ -77,6 +77,11 @@ export default defineConfig(({ mode }) => {
 			minWorkers: envNumber(env, 'VITEST_MIN_WORKERS', 1),
 			fileParallelism: envBoolean(env, 'VITEST_FILE_PARALLELISM', true),
 			pool: env.VITEST_POOL ?? 'threads'
-		}
+		},
+		// rolldown#11086: the dep optimizer's tsconfig walk-up breaks when any
+		// ancestor tsconfig (e.g. a nested worktree's parent checkout) fails to
+		// load; deps never need this repo's tsconfig paths.
+		optimizeDeps: { rolldownOptions: { tsconfig: false } },
+		ssr: { optimizeDeps: { rolldownOptions: { tsconfig: false } } }
 	};
 });

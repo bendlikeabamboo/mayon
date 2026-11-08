@@ -92,6 +92,13 @@ vi.mock('#lib/agent/registry.js', () => {
 			parameters: { type: 'object', properties: {} },
 			risk: 'high' as const,
 			generative: true
+		},
+		{
+			id: 'propagate_to_parent',
+			description: 'Send branch outcome to parent chat',
+			parameters: { type: 'object', properties: {} },
+			risk: 'high' as const,
+			generative: true
 		}
 	];
 	return {
@@ -1055,6 +1062,46 @@ describe('runAgentTurn', () => {
 			expect(deps.appendToolResult).toHaveBeenCalledOnce();
 		});
 
+		it('(t) propagate_to_parent status: approved run notifies label, then null', async () => {
+			mockedStreamText
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{
+							type: 'tool-call',
+							toolCallId: 'tc1',
+							toolName: 'propagate_to_parent',
+							args: {}
+						},
+						{ type: 'finish', finishReason: 'tool-calls' }
+					])
+				} as never)
+				.mockReturnValueOnce({
+					fullStream: scriptedFullStream([
+						{ type: 'text-delta', text: 'Propagated.' },
+						{ type: 'finish', finishReason: 'stop' }
+					])
+				} as never);
+
+			mockedToolsRun.mockResolvedValue({
+				ok: true,
+				summary: 'Propagated branch outcome to parent chat',
+				detail: {}
+			});
+
+			const notifyGenerativeStatus = vi.fn();
+			const deps = makeDeps({
+				requestApproval: vi.fn(async () => ({ approved: true })),
+				notifyGenerativeStatus
+			});
+			await runAgentTurn(deps);
+
+			expect(notifyGenerativeStatus).toHaveBeenCalledWith({
+				toolName: 'propagate_to_parent',
+				label: 'Back-propagating to parent…'
+			});
+			expect(notifyGenerativeStatus).toHaveBeenLastCalledWith(null);
+		});
+
 		it('(q) cap-depth-one enforced: two create_quiz → first runs, second synthesized as cap; both persisted', async () => {
 			mockedStreamText
 				.mockReturnValueOnce({
@@ -1514,7 +1561,7 @@ describe('disabledToolIds filtering', () => {
 
 		const enabledTools = mockedStreamText.mock.calls[0][0].tools as Record<string, unknown>;
 		expect(Object.keys(enabledTools!)).toContain('branch_chat');
-		expect(Object.keys(enabledTools!)).toHaveLength(5);
+		expect(Object.keys(enabledTools!)).toHaveLength(6);
 	});
 });
 
