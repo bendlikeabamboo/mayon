@@ -5,4 +5,4 @@ Mermaid render failed: Parse error on line 2: ...tring"] -->|"sad", "SAD", "slee
 
 ```
 
- in addition everytime there's a mermiad error, the whole screen becomes scrollable vertically and on the bottom there's a mermaid banner that says "Syntax error in text".
+in addition everytime there's a mermiad error, the whole screen becomes scrollable vertically and on the bottom there's a mermaid banner that says "Syntax error in text".
