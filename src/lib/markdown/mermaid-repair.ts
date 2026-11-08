@@ -40,3 +40,22 @@ export function repairMermaidSource(source: string): string {
 	s = s.replace(UNQUOTED_COMMA_LABEL, (_, label: string) => `["${label}"]`);
 	return s;
 }
+
+/**
+ * Canned follow-up prompt for the fix-diagram affordance (spec 028 US3,
+ * contracts/fix-affordance.md): asks for ONLY a corrected mermaid fence,
+ * carries the original source verbatim, and names the failure reason.
+ * Pure string builder — deterministic, no DOM, no state.
+ */
+export function buildMermaidFixPrompt(source: string, reason: string): string {
+	return [
+		'The mermaid diagram below failed to render. Reply with ONLY a corrected version of it as a single valid ```mermaid code fence — no other text.',
+		'',
+		'Original source:',
+		'```mermaid',
+		source,
+		'```',
+		'',
+		`The diagram failed to render with this error: ${reason}`
+	].join('\n');
+}

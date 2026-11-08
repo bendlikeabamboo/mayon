@@ -142,7 +142,7 @@
 				onExpound={(raw, sel, opts) => (props as DurableProps).onExpound(entry!.id, raw, sel, opts)}
 				onCopy={(props as DurableProps).onCopy}
 			>
-				<Markdown raw={visible} />
+				<Markdown raw={visible} onFixMermaid={(prompt) => void chatStore.send(prompt)} />
 			</Highlighter>
 		{:else}
 			<div class="group/live relative">

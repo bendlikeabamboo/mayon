@@ -94,10 +94,10 @@ Single project: `src/` at repository root (SvelteKit SPA). No server/, packages/
 
 ### Implementation for User Story 3
 
-- [ ] T013 [P] [US3] Extract a pure prompt builder `buildMermaidFixPrompt(source: string, reason: string): string` (instruction to re-emit only a corrected mermaid fence + verbatim fenced original source + failure reason) in src/lib/markdown/mermaid-repair.ts, with unit tests in src/lib/markdown/mermaid-repair.test.ts asserting all three parts verbatim
-- [ ] T014 [US3] Add an optional fix-action callback prop to src/lib/components/chat/Markdown.svelte: when a handler is provided, the `.mermaid-error` block renders a "Fix this diagram" button (existing button vocabulary) that calls `handler(buildMermaidFixPrompt(source, reason))`; no handler ⇒ no button (labs, quizzes, user messages, tool results)
-- [ ] T015 [US3] Wire the callback in src/lib/components/chat/rows/AssistantMessage.svelte (durable body `<Markdown>` only, NOT the `live` streaming instance) to `chatStore.send(prompt)` per contracts/fix-affordance.md — visible message, one send per activation
-- [ ] T016 [US3] Verify: dev-stack run of quickstart Scenarios 5 and 6 (fix round-trip renders corrected diagram, original message byte-identical; no-provider shows no action); `pnpm check && pnpm lint && pnpm test`
+- [X] T013 [P] [US3] Extract a pure prompt builder `buildMermaidFixPrompt(source: string, reason: string): string` (instruction to re-emit only a corrected mermaid fence + verbatim fenced original source + failure reason) in src/lib/markdown/mermaid-repair.ts, with unit tests in src/lib/markdown/mermaid-repair.test.ts asserting all three parts verbatim
+- [X] T014 [US3] Add an optional fix-action callback prop to src/lib/components/chat/Markdown.svelte: when a handler is provided, the `.mermaid-error` block renders a "Fix this diagram" button (existing button vocabulary) that calls `handler(buildMermaidFixPrompt(source, reason))`; no handler ⇒ no button (labs, quizzes, user messages, tool results)
+- [X] T015 [US3] Wire the callback in src/lib/components/chat/rows/AssistantMessage.svelte (durable body `<Markdown>` only, NOT the `live` streaming instance) to `chatStore.send(prompt)` per contracts/fix-affordance.md — visible message, one send per activation
+- [X] T016 [US3] Verify: dev-stack run of quickstart Scenarios 5 and 6 (fix round-trip renders corrected diagram, original message byte-identical; no-provider shows no action); `pnpm check && pnpm lint && pnpm test`
 
 **Checkpoint**: All three stories independently functional.
 

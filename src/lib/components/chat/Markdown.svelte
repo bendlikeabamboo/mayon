@@ -3,6 +3,7 @@
 	import { renderMarkdown, renderMarkdownLive } from '#lib/markdown/render.js';
 	import { incRender } from '#lib/perf/mark.js';
 	import { hasMermaid, renderMermaidBlock } from '#lib/markdown/mermaid.js';
+	import { buildMermaidFixPrompt } from '#lib/markdown/mermaid-repair.js';
 	import { themeState } from '#lib/stores/theme.svelte.js';
 	import { isExternalLink } from '#lib/markdown/links.js';
 	import { enhanceFocusable } from '#lib/markdown/focusable.js';
@@ -18,8 +19,14 @@
 	let {
 		raw,
 		class: className = '',
-		live = false
-	}: { raw: string; class?: string; live?: boolean } = $props();
+		live = false,
+		onFixMermaid
+	}: {
+		raw: string;
+		class?: string;
+		live?: boolean;
+		onFixMermaid?: (prompt: string) => void;
+	} = $props();
 
 	const html = $derived(live ? renderMarkdownLive(raw) : renderMarkdown(raw));
 	const needsMermaid = $derived(hasMermaid(html));
@@ -48,11 +55,13 @@
 		notice.textContent = "This diagram couldn't be rendered";
 		block.appendChild(notice);
 
+		const reasonText = err instanceof Error ? err.message : String(err);
+
 		const reason = document.createElement('details');
 		const summary = document.createElement('summary');
 		summary.textContent = 'Why?';
 		const message = document.createElement('code');
-		message.textContent = err instanceof Error ? err.message : String(err);
+		message.textContent = reasonText;
 		reason.appendChild(summary);
 		reason.appendChild(message);
 		block.appendChild(reason);
@@ -62,6 +71,20 @@
 		sourceCode.textContent = source;
 		sourcePre.appendChild(sourceCode);
 		block.appendChild(sourcePre);
+
+		// Fix affordance (spec 028 US3): only when a handler was passed —
+		// no handler (labs, quizzes, user messages, tool results, live) ⇒
+		// no button at all.
+		if (onFixMermaid) {
+			const fixBtn = document.createElement('button');
+			fixBtn.className = 'mermaid-fix-btn';
+			fixBtn.type = 'button';
+			fixBtn.textContent = 'Fix this diagram';
+			fixBtn.addEventListener('click', () => {
+				onFixMermaid(buildMermaidFixPrompt(source, reasonText));
+			});
+			block.appendChild(fixBtn);
+		}
 
 		return block;
 	}
@@ -504,6 +527,22 @@
 		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 		font-size: 0.8125rem;
 		overflow-wrap: anywhere;
+	}
+	/* Fix-diagram affordance (spec 028 US3): md-copy-btn vocabulary, but
+	   statically visible inside the error block. Runtime-created ⇒ :global. */
+	:global(.mermaid-fix-btn) {
+		margin-top: 0.5em;
+		padding: 0.25em 0.75em;
+		border-radius: 0.25rem;
+		border: 1px solid var(--border);
+		background: var(--card);
+		color: var(--muted-foreground);
+		font-size: 0.8125rem;
+		cursor: pointer;
+	}
+	:global(.mermaid-fix-btn:hover) {
+		color: var(--foreground);
+		border-color: var(--foreground);
 	}
 	/* Repaired-diagram badge (spec 028 US2): sibling chrome under the SVG.
 	   Runtime-created, so :global like .mermaid-error. */

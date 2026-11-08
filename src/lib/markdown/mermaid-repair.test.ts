@@ -6,7 +6,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { repairMermaidSource } from './mermaid-repair.js';
+import { repairMermaidSource, buildMermaidFixPrompt } from './mermaid-repair.js';
 
 // Canonical broken diagram from specs/028-mermaid-error-repair (spec.md):
 // comma-separated quoted-string list inside an edge label — unparseable.
@@ -87,5 +87,30 @@ describe('repairMermaidSource', () => {
 		const repaired = repairMermaidSource('graph TD\n  A[hello, world] --> B');
 		expect(repaired).toContain('A["hello, world"]');
 		expect(await parses(repaired)).toBe(true);
+	});
+});
+
+describe('buildMermaidFixPrompt', () => {
+	const source = SPEC_EXAMPLE;
+	const reason = 'Parse error on line 2';
+
+	it('contains the re-emit instruction', () => {
+		const prompt = buildMermaidFixPrompt(source, reason);
+		expect(prompt.toLowerCase()).toMatch(/only.*corrected/);
+		expect(prompt).toMatch(/```mermaid/);
+	});
+
+	it('wraps the original source verbatim in a mermaid fence', () => {
+		const prompt = buildMermaidFixPrompt(source, reason);
+		expect(prompt).toContain('```mermaid\n' + source + '\n```');
+	});
+
+	it('contains the failure reason verbatim', () => {
+		const prompt = buildMermaidFixPrompt(source, reason);
+		expect(prompt).toContain(reason);
+	});
+
+	it('is deterministic: same input, same output', () => {
+		expect(buildMermaidFixPrompt(source, reason)).toBe(buildMermaidFixPrompt(source, reason));
 	});
 });
