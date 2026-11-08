@@ -1,0 +1,1 @@
+As user, when I'm coding, I repeatedly paste the contents of my IDE in the chat bar. I wish there was a section where I can paste my code and then mayon keeps track of artifacts that I'm adding there and then can look through them if it needs to. I think this will be a massive shift in architecture maybe so better to run it with pre-spec.
