@@ -21,6 +21,7 @@
  */
 import type { Mermaid } from 'mermaid';
 import { themeState } from '#lib/stores/theme.svelte.js';
+import { repairMermaidSource } from './mermaid-repair.js';
 
 let mermaidPromise: Promise<Mermaid> | null = null;
 let initializedTheme: 'light' | 'dark' | null = null;
@@ -44,6 +45,10 @@ async function getMermaid(theme: 'light' | 'dark'): Promise<Mermaid> {
 		api.initialize({
 			startOnLoad: false,
 			securityLevel: 'strict',
+			// Mermaid otherwise inserts a "Syntax error" SVG at the end of
+			// document.body before rejecting — the page-scroll bug. Failures
+			// are surfaced by the caller's contained .mermaid-error block.
+			suppressErrorRendering: true,
 			theme: theme === 'dark' ? 'dark' : 'default'
 		});
 	}
@@ -59,21 +64,34 @@ let renderChain: Promise<unknown> = Promise.resolve();
 
 /**
  * Render a single mermaid source string to an SVG string, themed for the
- * resolved app theme at call time. Returns the theme the SVG was actually
- * rendered with so callers can stamp it. Rejects on parse error; the caller
- * decides whether to show a fallback or skip.
+ * resolved app theme at call time. Returns the render-pipeline contract
+ * result: the SVG, the theme the SVG was actually rendered with (so callers
+ * can stamp it), and whether the displayed SVG came from a repaired source
+ * (one deterministic repair pass attempted after the original failed —
+ * contracts/render-pipeline.md). Zero cost for valid diagrams: repair only
+ * runs in the failure path. Rejects with the underlying mermaid error when
+ * the original (unrepaired) source or the repaired attempt still fails.
  */
 export function renderMermaidBlock(
 	source: string
-): Promise<{ svg: string; theme: 'light' | 'dark' }> {
+): Promise<{ svg: string; theme: 'light' | 'dark'; repaired: boolean }> {
 	const theme = themeState.resolved;
 	const run = renderChain
 		.catch(() => {})
 		.then(async () => {
 			const api = await getMermaid(theme);
-			const id = `mmd-${Date.now()}-${renderSeq++}`;
-			const { svg } = await api.render(id, source);
-			return { svg, theme };
+			try {
+				const { svg } = await api.render(`mmd-${Date.now()}-${renderSeq++}`, source);
+				return { svg, theme, repaired: false };
+			} catch (err) {
+				const repairedSource = repairMermaidSource(source);
+				if (repairedSource === source) throw err;
+				// One repair pass, then the verdict is final (no loop): a second
+				// failure rejects with the repaired attempt's error — the last
+				// word on why the diagram cannot render.
+				const { svg } = await api.render(`mmd-${Date.now()}-${renderSeq++}`, repairedSource);
+				return { svg, theme, repaired: true };
+			}
 		});
 	renderChain = run;
 	return run;

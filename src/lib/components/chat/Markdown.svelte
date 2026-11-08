@@ -3,6 +3,7 @@
 	import { renderMarkdown, renderMarkdownLive } from '#lib/markdown/render.js';
 	import { incRender } from '#lib/perf/mark.js';
 	import { hasMermaid, renderMermaidBlock } from '#lib/markdown/mermaid.js';
+	import { buildMermaidFixPrompt } from '#lib/markdown/mermaid-repair.js';
 	import { themeState } from '#lib/stores/theme.svelte.js';
 	import { isExternalLink } from '#lib/markdown/links.js';
 	import { enhanceFocusable } from '#lib/markdown/focusable.js';
@@ -18,8 +19,14 @@
 	let {
 		raw,
 		class: className = '',
-		live = false
-	}: { raw: string; class?: string; live?: boolean } = $props();
+		live = false,
+		onFixMermaid
+	}: {
+		raw: string;
+		class?: string;
+		live?: boolean;
+		onFixMermaid?: (prompt: string) => void;
+	} = $props();
 
 	const html = $derived(live ? renderMarkdownLive(raw) : renderMarkdown(raw));
 	const needsMermaid = $derived(hasMermaid(html));
@@ -32,6 +39,83 @@
 	// Serialize mermaid re-renders within this instance so concurrent syncs
 	// (theme effect + in-flight initial renders) cannot interleave renders.
 	let mermaidSync: Promise<void> = Promise.resolve();
+
+	/**
+	 * Contained fallback block for a failed mermaid render (spec 028 US1):
+	 * plain-language notice, failure reason collapsed behind "Why?", and the
+	 * diagram source in a readable pre. Everything stays inside this block —
+	 * no page-level side effects, no inline parser dump.
+	 */
+	function buildMermaidError(source: string, err: unknown): HTMLElement {
+		const block = document.createElement('div');
+		block.className = 'mermaid-error';
+
+		const notice = document.createElement('p');
+		notice.className = 'mermaid-error-notice';
+		notice.textContent = "This diagram couldn't be rendered";
+		block.appendChild(notice);
+
+		const reasonText = err instanceof Error ? err.message : String(err);
+
+		const reason = document.createElement('details');
+		const summary = document.createElement('summary');
+		summary.textContent = 'Why?';
+		const message = document.createElement('code');
+		message.textContent = reasonText;
+		reason.appendChild(summary);
+		reason.appendChild(message);
+		block.appendChild(reason);
+
+		const sourcePre = document.createElement('pre');
+		const sourceCode = document.createElement('code');
+		sourceCode.textContent = source;
+		sourcePre.appendChild(sourceCode);
+		block.appendChild(sourcePre);
+
+		// Fix affordance (spec 028 US3): only when a handler was passed —
+		// no handler (labs, quizzes, user messages, tool results, live) ⇒
+		// no button at all.
+		if (onFixMermaid) {
+			const fixBtn = document.createElement('button');
+			fixBtn.className = 'mermaid-fix-btn';
+			fixBtn.type = 'button';
+			fixBtn.textContent = 'Fix this diagram';
+			fixBtn.addEventListener('click', () => {
+				onFixMermaid(buildMermaidFixPrompt(source, reasonText));
+			});
+			block.appendChild(fixBtn);
+		}
+
+		return block;
+	}
+
+	/**
+	 * Repaired-diagram badge (spec 028 US2): "repaired" chip plus the
+	 * original source collapsed behind "show original". Attached as a
+	 * sibling AFTER the wrapper — the theme pass wipes wrapper.innerHTML,
+	 * and a sibling survives that wipe, so marking is idempotent.
+	 */
+	function markRepaired(wrapper: HTMLElement): void {
+		wrapper.dataset.mermaidRepaired = 'true';
+		const next = wrapper.nextElementSibling;
+		if (next?.classList.contains('mermaid-repaired')) return;
+		const badge = document.createElement('div');
+		badge.className = 'mermaid-repaired';
+		const label = document.createElement('span');
+		label.textContent = 'repaired';
+		const details = document.createElement('details');
+		const summary = document.createElement('summary');
+		summary.textContent = 'show original';
+		const pre = document.createElement('pre');
+		const code = document.createElement('code');
+		code.textContent = wrapper.dataset.mermaidSource ?? '';
+		pre.appendChild(code);
+		details.appendChild(summary);
+		details.appendChild(pre);
+		badge.appendChild(label);
+		badge.appendChild(details);
+		wrapper.insertAdjacentElement('afterend', badge);
+	}
 
 	/** Re-render every diagram whose stamped theme no longer matches. */
 	function syncMermaidTheme(resolved: 'light' | 'dark'): Promise<void> {
@@ -47,17 +131,19 @@
 		for (const wrapper of wrappers) {
 			if (wrapper.dataset.renderedTheme === resolved) continue;
 			try {
-				const { svg, theme } = await renderMermaidBlock(wrapper.dataset.mermaidSource ?? '');
+				const { svg, theme, repaired } = await renderMermaidBlock(
+					wrapper.dataset.mermaidSource ?? ''
+				);
 				// In-place innerHTML swap: the click listener and dataset survive.
 				wrapper.innerHTML = svg;
 				// Stamp the theme actually rendered with, not the pass's resolved:
 				// a flip mid-pass lands exactly-stamped, so the next sync skips it.
 				wrapper.dataset.renderedTheme = theme;
+				if (repaired) markRepaired(wrapper);
 			} catch (err) {
-				const note = document.createElement('p');
-				note.className = 'my-3 text-xs text-red-600 dark:text-red-400';
-				note.textContent = `Mermaid render failed: ${err instanceof Error ? err.message : String(err)}`;
-				wrapper.replaceWith(note);
+				const badge = wrapper.nextElementSibling;
+				if (badge?.classList.contains('mermaid-repaired')) badge.remove();
+				wrapper.replaceWith(buildMermaidError(wrapper.dataset.mermaidSource ?? '', err));
 			}
 		}
 	}
@@ -93,7 +179,7 @@
 
 			scheduleIdle(() => {
 				void renderMermaidBlock(source)
-					.then(({ svg, theme }) => {
+					.then(({ svg, theme, repaired }) => {
 						const wrapper = document.createElement('div');
 						wrapper.className =
 							'mermaid-svg my-3 flex justify-center overflow-x-auto cursor-zoom-in';
@@ -107,15 +193,16 @@
 							previewSvg = wrapper.innerHTML;
 						});
 						placeholder.replaceWith(wrapper);
+						// After insertion: insertAdjacentElement('afterend') is a
+						// no-op on a disconnected wrapper, so the badge can only
+						// be attached once it is in the document.
+						if (repaired) markRepaired(wrapper);
 						// Correct a render that started under the old theme and
 						// landed after a flip.
 						void syncMermaidTheme(themeState.resolved);
 					})
 					.catch((err) => {
-						const note = document.createElement('p');
-						note.className = 'my-3 text-xs text-red-600 dark:text-red-400';
-						note.textContent = `Mermaid render failed: ${err instanceof Error ? err.message : String(err)}`;
-						placeholder.replaceWith(note);
+						placeholder.replaceWith(buildMermaidError(source, err));
 					});
 			});
 		}
@@ -417,6 +504,80 @@
 			width: 2rem;
 			height: 2rem;
 		}
+	}
+	/* Failed mermaid render (spec 028): contained fallback block. The block
+	   and its children are runtime-created, so these must stay :global —
+	   scoped selectors never match elements created outside the template. */
+	:global(.mermaid-error) {
+		margin: 0.5em 0;
+		padding: 0.75em 1em;
+		border: 1px solid var(--border);
+		border-radius: 0.5rem;
+		background: var(--muted);
+		color: var(--muted-foreground);
+		font-size: 0.875rem;
+	}
+	:global(.mermaid-error .mermaid-error-notice) {
+		margin: 0 0 0.5em;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+	:global(.mermaid-error summary) {
+		cursor: pointer;
+		font-size: 0.8125rem;
+	}
+	:global(.mermaid-error code) {
+		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+		font-size: 0.8125rem;
+		overflow-wrap: anywhere;
+	}
+	/* Fix-diagram affordance (spec 028 US3): md-copy-btn vocabulary, but
+	   statically visible inside the error block. Runtime-created ⇒ :global. */
+	:global(.mermaid-fix-btn) {
+		margin-top: 0.5em;
+		padding: 0.25em 0.75em;
+		border-radius: 0.25rem;
+		border: 1px solid var(--border);
+		background: var(--card);
+		color: var(--muted-foreground);
+		font-size: 0.8125rem;
+		cursor: pointer;
+	}
+	:global(.mermaid-fix-btn:hover) {
+		color: var(--foreground);
+		border-color: var(--foreground);
+	}
+	/* Repaired-diagram badge (spec 028 US2): sibling chrome under the SVG.
+	   Runtime-created, so :global like .mermaid-error. */
+	:global(.mermaid-repaired) {
+		margin: 0.25em 0 0;
+		text-align: center;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.mermaid-repaired > span) {
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		padding: 0.05em 0.5em;
+	}
+	:global(.mermaid-repaired summary) {
+		display: inline;
+		margin-left: 0.5em;
+		cursor: pointer;
+	}
+	:global(.mermaid-repaired pre) {
+		text-align: left;
+		max-width: 48rem;
+		margin: 0.35em auto 0;
+		padding: 0.5em 0.75em;
+		border: 1px solid var(--border);
+		border-radius: 0.375rem;
+		background: var(--muted);
+		overflow-x: auto;
+	}
+	:global(.mermaid-repaired code) {
+		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+		font-size: 0.75rem;
 	}
 	.mermaid-pending {
 		display: flex;

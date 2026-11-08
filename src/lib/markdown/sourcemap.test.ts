@@ -192,7 +192,13 @@ describe('buildSourceMap', () => {
 });
 
 describe('canonical === filtered DOM textContent', () => {
-	const EXCLUDED_SELECTORS = ['.katex', '.callout-title', 'code.language-mermaid'];
+	const EXCLUDED_SELECTORS = [
+		'.katex',
+		'.callout-title',
+		'code.language-mermaid',
+		'.mermaid-error',
+		'.mermaid-repaired'
+	];
 
 	function domCanonical(html: string): string {
 		const dom = new JSDOM(`<!DOCTYPE html><div id="root">${html}</div>`);
@@ -262,6 +268,33 @@ describe('canonical === filtered DOM textContent', () => {
 			expect(sm.canonical).toBe(domText);
 		});
 	}
+
+	// F3 regression (spec 028 US1): a failed mermaid render leaves a
+	// runtime-created .mermaid-error block in the DOM. Its text (notice,
+	// reason, source) must be excluded from canonical text so expound
+	// alignment over the prose survives.
+	it('excludes .mermaid-error block text from canonical DOM text', () => {
+		const html =
+			'<p>Prose before.</p><div class="mermaid-error"><p class="mermaid-error-notice">This diagram couldn&apos;t be rendered</p><details><summary>Why?</summary><code>Parse error</code></details><pre><code>graph TD A--&gt;B</code></pre></div><p>Prose after.</p>';
+		const domText = domCanonical(html);
+		expect(domText).toBe('Prose before.Prose after.');
+		expect(domText).not.toContain("couldn't");
+		expect(domText).not.toContain('Parse error');
+		expect(domText).not.toContain('graph TD');
+	});
+
+	// F3 sibling (spec 028 US2): a successful repair leaves a runtime-created
+	// .mermaid-repaired badge (chip + original-source disclosure) next to the
+	// SVG. Its text must be excluded from canonical text like .mermaid-error.
+	it('excludes .mermaid-repaired badge text from canonical DOM text', () => {
+		const html =
+			'<p>Prose before.</p><div class="mermaid-svg"><svg></svg></div><div class="mermaid-repaired"><span>repaired</span><details><summary>show original</summary><pre><code>graph TD A--&gt;B</code></pre></details></div><p>Prose after.</p>';
+		const domText = domCanonical(html);
+		expect(domText).toBe('Prose before.Prose after.');
+		expect(domText).not.toContain('repaired');
+		expect(domText).not.toContain('show original');
+		expect(domText).not.toContain('graph TD');
+	});
 });
 
 describe('processor parity', () => {
