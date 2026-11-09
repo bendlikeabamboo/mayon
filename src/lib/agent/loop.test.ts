@@ -122,7 +122,8 @@ vi.mock('#lib/chat/brief.js', () => ({
 	buildReplyTiersPreamble: vi.fn(() => 'tiers')
 }));
 
-vi.mock('#lib/ai/dialects.js', () => ({
+vi.mock('#lib/ai/dialects.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/ai/dialects.js')>()),
 	resolveRequestSettings: vi.fn(() => ({
 		callSettings: {},
 		providerOptions: {},
