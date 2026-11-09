@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	asImageOutputError,
 	asImageUnsupported,
 	classifyFetchError,
 	formatProviderError,
@@ -10,6 +11,7 @@ import {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageOutputError,
 	ImageUnsupportedError,
 	MissingKeyError,
 	NetworkError,
@@ -181,5 +183,81 @@ describe('asImageUnsupported', () => {
 		expect(out.title).toBe('Images not supported');
 		expect(out.message).toMatch(/gpt-3.5-turbo doesn't accept images/);
 		expect(out.hint).toMatch(/Remove the attachment/);
+	});
+});
+
+describe('formatProviderError: ImageOutputError', () => {
+	it('names the model and the "Image output" toggle in plain language', () => {
+		const out = formatProviderError(new ImageOutputError(undefined, 'deepseek-chat', 'p1'));
+		expect(out.title).toBe('No image produced');
+		expect(out.message).toBe('deepseek-chat did not produce an image.');
+		expect(out.hint).toMatch(/Image output/);
+		expect(out.hint).toMatch(/provider settings/);
+		expect(out.hint).toMatch(/"On"/);
+	});
+
+	it('falls back to a generic model mention when no modelId is set', () => {
+		const out = formatProviderError(new ImageOutputError());
+		expect(out.title).toBe('No image produced');
+		expect(out.message).toBe('The model did not produce an image.');
+	});
+});
+
+describe('asImageOutputError', () => {
+	it('refines a provider 4xx on a failed image turn into ImageOutputError', () => {
+		const refined = asImageOutputError(
+			new ProviderHttpError('image request rejected', 400, '{"error":"cannot generate images"}'),
+			'deepseek-chat',
+			'p1'
+		);
+		expect(refined).toBeInstanceOf(ImageOutputError);
+		const typed = refined as ImageOutputError;
+		expect(typed.modelId).toBe('deepseek-chat');
+		expect(typed.providerId).toBe('p1');
+
+		const out = formatProviderError(refined);
+		expect(out.title).toBe('No image produced');
+		expect(out.message).toMatch(/deepseek-chat did not produce an image/);
+		expect(out.hint).toMatch(/Image output/);
+		// Never a raw provider dump.
+		expect(out.message).not.toMatch(/cannot generate images/);
+	});
+
+	it('refines a provider 5xx on a failed image turn too (contract: 4xx/5xx)', () => {
+		const refined = asImageOutputError(new ProviderHttpError('boom', 500, 'internal error'));
+		expect(refined).toBeInstanceOf(ImageOutputError);
+		expect(formatProviderError(refined).message).toMatch(/did not produce an image/);
+	});
+
+	it('leaves 429 and non-HTTP errors unchanged (rate limits and network failures keep their own notices)', () => {
+		const rateErr = new RateLimitError();
+		expect(asImageOutputError(rateErr)).toBe(rateErr);
+
+		const netErr = new NetworkError('offline');
+		expect(asImageOutputError(netErr)).toBe(netErr);
+
+		const timeoutErr = new TimeoutError();
+		expect(asImageOutputError(timeoutErr)).toBe(timeoutErr);
+	});
+
+	it('keeps an already-typed ImageOutputError or ImageUnsupportedError intact', () => {
+		const direct = new ImageOutputError(undefined, 'kimi-k3');
+		expect(asImageOutputError(direct, 'gpt-4o')).toBe(direct);
+
+		const inputErr = new ImageUnsupportedError(undefined, 'kimi-k3');
+		expect(asImageOutputError(inputErr, 'gpt-4o')).toBe(inputErr);
+	});
+
+	it('classifies provider 500 on a failed image turn end-to-end: httpStatusToError → asImageOutputError → formatProviderError', async () => {
+		const res = new Response('{"error":{"message":"image generation failed"}}', { status: 500 });
+		const mapped = await httpStatusToError(res);
+		expect(mapped).toBeInstanceOf(ProviderHttpError);
+
+		const refined = asImageOutputError(mapped, 'gpt-image-1');
+		expect(refined).toBeInstanceOf(ImageOutputError);
+
+		const out = formatProviderError(refined);
+		expect(out.title).toBe('No image produced');
+		expect(out.hint).toMatch(/Image output/);
 	});
 });

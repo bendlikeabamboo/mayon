@@ -10,6 +10,31 @@ import type {
 
 export type ProviderOptionsFragment = Record<string, unknown>;
 
+/**
+ * A recognized assistant image from a stream, normalized for persistence
+ * (spec 030): either inline base64 or a remote URL.
+ */
+export interface ImageCandidate {
+	mediaType?: string;
+	base64?: string;
+	url?: string;
+}
+
+/**
+ * Normalize one wire image (`{ type:'image_url', image_url:{ url } }`, the
+ * openai-compatible delta.images shape) into an `ImageCandidate`. Data URLs
+ * split into mediaType + base64; https URLs stay URL candidates (fetched at
+ * finalize per R-4, not here). Anything else → null (ignored).
+ */
+export function wireImageToCandidate(wire: unknown): ImageCandidate | null {
+	const url = (wire as { image_url?: { url?: unknown } } | null)?.image_url?.url;
+	if (typeof url !== 'string' || url === '') return null;
+	const data = /^data:([^;,]+);base64,(.+)$/.exec(url);
+	if (data) return { mediaType: data[1], base64: data[2] };
+	if (/^https?:\/\//.test(url)) return { url };
+	return null;
+}
+
 export interface EndpointDialect {
 	id: string;
 	baseUrl: RegExp;

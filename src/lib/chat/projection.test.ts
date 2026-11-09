@@ -112,7 +112,7 @@ describe('new-shape projection tests (T027)', () => {
 	});
 });
 
-describe('user parts projection (T013 — contracts/message-parts.md §5)', () => {
+describe('user parts projection (T013 — specs/030-image-generation/contracts/message-parts.md §5)', () => {
 	it('a user row with [text, image, image] parts projects to an ordered user parts array', () => {
 		resetOrd();
 		const imageA = 'data:image/png;base64,AAAA';
@@ -145,6 +145,62 @@ describe('user parts projection (T013 — contracts/message-parts.md §5)', () =
 		expect(result).toEqual([
 			{ role: 'user', content: [{ type: 'text', text: 'hello' }] }
 		] as ModelMessage[]);
+	});
+});
+
+describe('assistant parts projection (T020 — specs/030-image-generation/contracts/message-parts.md §5)', () => {
+	const image = 'data:image/png;base64,AAAA';
+
+	function assistantRowWithParts() {
+		return {
+			...makeRow({ role: 'assistant', content: 'here is the chart' }),
+			parts: JSON.stringify([
+				{ type: 'text', text: 'here is the chart' },
+				{ type: 'image', data: image }
+			])
+		};
+	}
+
+	it('emits ordered assistant parts for a vision-capable target (same wire shapes as the user branch)', () => {
+		resetOrd();
+		const result = projectEntries([assistantRowWithParts()], { visionCapable: true });
+		expect(result).toEqual([
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'here is the chart' },
+					{ type: 'image', image }
+				]
+			}
+		] as ModelMessage[]);
+	});
+
+	it('projects text-only, silently, for a text-only target (flag false or absent)', () => {
+		resetOrd();
+		const row = assistantRowWithParts();
+		for (const opts of [{ visionCapable: false }, undefined]) {
+			const result = projectEntries([row], opts);
+			expect(result).toEqual([
+				{ role: 'assistant', content: [{ type: 'text', text: 'here is the chart' }] }
+			] as ModelMessage[]);
+		}
+	});
+
+	it('branch_artifact rows stay text-only even with parts — never emitted on the wire', () => {
+		resetOrd();
+		const row = {
+			...makeRow({ role: 'user', content: 'the fix, verbatim', kind: 'branch_artifact' }),
+			parts: JSON.stringify([
+				{ type: 'text', text: 'the fix, verbatim' },
+				{ type: 'image', data: image }
+			])
+		};
+		const result = projectEntries([row], { visionCapable: true });
+		expect(result).toHaveLength(1);
+		expect(result[0]!.role).toBe('user');
+		const content = result[0]!.content as Array<{ type: string; text?: string }>;
+		expect(content.every((p) => p.type === 'text')).toBe(true);
+		expect(content.some((p) => p.text?.includes('the fix, verbatim'))).toBe(true);
 	});
 });
 

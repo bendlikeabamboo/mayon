@@ -209,6 +209,37 @@ export function textOf(message: Message): string {
 }
 
 /**
+ * Label (and alt text) for a generated image part (030): the model-provided
+ * label when one exists, else `Generated image N` — N is the part's 1-based
+ * position in the row's parts.
+ */
+export function generatedImageName(label: string | null | undefined, partIndex: number): string {
+	const provided = label?.trim();
+	return provided ? provided : `Generated image ${partIndex + 1}`;
+}
+
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+	'image/png': 'png',
+	'image/jpeg': 'jpg',
+	'image/webp': 'webp',
+	'image/gif': 'gif',
+	'image/avif': 'avif'
+};
+
+/**
+ * Safe download filename for an image part (030 T022): the part's `name` with
+ * path separators and filesystem-illegal characters neutralized, plus the
+ * mimeType's extension appended when missing. Falls back to `image` when the
+ * part has no name.
+ */
+export function imageDownloadName(name: string | null | undefined, mimeType: string): string {
+	const base = (name?.trim() || 'image').replace(/[\\/:*?"<>|]/g, '-');
+	const ext = IMAGE_MIME_EXTENSIONS[mimeType] ?? mimeType.split('/')[1];
+	if (!ext || base.toLowerCase().endsWith(`.${ext.toLowerCase()}`)) return base;
+	return `${base}.${ext}`;
+}
+
+/**
  * Rebuild composer attachments from a stored row's image parts (018 US1: the
  * regenerate path re-sends the preceding user turn's images). The thumbnail
  * falls back to the full data URL — the composer only uses it for preview.

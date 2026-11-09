@@ -8,7 +8,7 @@ import type { ProviderConfig } from '#lib/ai/types.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import type { BranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
-import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
+import type { BranchArtifactMetadata, ImagePart, MessagePart, TextPart } from '#lib/chat/kinds.js';
 
 vi.mock('#lib/ai/generate/generate-branch-artifact-summary.js', () => ({
 	generateBranchArtifactSummary: vi.fn()
@@ -306,6 +306,37 @@ describe('propagate_to_parent', () => {
 		const firstAgain = afterRows.find((m) => m.id === art.id)!;
 		expect(firstAgain.content).toBe(art.content);
 		expect(firstAgain.metadata).toBe(art.metadata);
+	});
+
+	it("carries the branch turns' image parts on the artifact row (030 T021)", async () => {
+		const { parent, child } = await seedBranch();
+		const image: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,Zm9v',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		await repos.messages.append(child.id, 'assistant', 'see  pic', {
+			parts: [{ type: 'text', text: 'see ' }, image, { type: 'text', text: ' pic' }]
+		});
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+		expect(result.ok).toBe(true);
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(art.content).toContain('[assistant] see [image] pic');
+		const parts = JSON.parse(art.parts!) as MessagePart[];
+		expect(parts.filter((p) => p.type === 'image')).toHaveLength(1);
+		expect(
+			parts
+				.filter((p): p is TextPart => p.type === 'text')
+				.map((p) => p.text)
+				.join('')
+		).toBe(art.content);
 	});
 
 	it('aborted before start: returns aborted, zero writes, latch released', async () => {

@@ -29,26 +29,34 @@ import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import {
 	kindOf,
 	parseMetadata,
+	generatedImageName,
 	type ComposerAttachment,
 	type BranchArtifactMetadata,
-	type SharedMetadata
+	type SharedMetadata,
+	type ImagePart,
+	type MessagePart
 } from '#lib/chat/kinds.js';
+import { applyOutputBudget, candidateToImagePart, fetchImageCandidate } from '#lib/chat/images.js';
 import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
 import {
 	acquirePropagationLatch,
 	releasePropagationLatch,
-	buildRawDelta,
+	buildRawPayload,
+	collectPropagatedImages,
+	artifactParts,
 	resolveAnchor,
 	branchArtifactMetadata
 } from '#lib/chat/propagation.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import { getActiveSdkProvider } from '#lib/ai/client.js';
+import { providerFetchFor } from '#lib/ai/sdk-factory.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
 import { mark, incRender } from '#lib/perf/mark.js';
-import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import { resolveRequestSettings, type ImageCandidate } from '#lib/ai/dialects.js';
 import { mapSdkError } from '#lib/ai/sdk-errors.js';
 import {
+	asImageOutputError,
 	asImageUnsupported,
 	formatProviderError,
 	type FormattedProviderError
@@ -159,13 +167,26 @@ class ChatState {
 	/** Pacer lifecycle of the in-flight stream, synced from `pacer.mode` (US2 overlay reads it). */
 	streamPhase = $state<PacerMode>('idle');
 	liveBlocks = $state<LiveBlock[]>([]);
+	/**
+	 * Image candidates recognized from the in-flight stream (030 R-3),
+	 * pending finalize. Text stays a pure string — the pacer and the rAF
+	 * flush never touch this.
+	 */
+	private pendingImages = $state<ImageCandidate[]>([]);
+	/**
+	 * Bounded live-placeholder signal (contracts/stream-image-parts.md §2):
+	 * a count only — no base64, no partial frames, ever.
+	 */
+	get pendingImageCount(): number {
+		return this.pendingImages.length;
+	}
 	streamPreset = $state<StreamPreset>('standard');
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
 	/**
 	 * Attachments of the last failed send, carried alongside
 	 * `lastFailedPrompt` so Retry restores text + images
-	 * (contracts/message-parts.md §4). Null when the failed send had none.
+	 * (specs/030-image-generation/contracts/message-parts.md §4). Null when the failed send had none.
 	 */
 	lastFailedAttachments = $state<ComposerAttachment[] | null>(null);
 	/**
@@ -414,6 +435,7 @@ class ChatState {
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
 		this.liveBlocks = [];
+		this.pendingImages = [];
 		this.streaming = false;
 		this.generativeStatus = null;
 		this.mcpNotices = [];
@@ -502,7 +524,7 @@ class ChatState {
 					: null;
 
 		// 1) Persist the user row immediately and reflect it in the UI — one
-		// atomic append carrying text + image parts (contracts/message-parts.md
+		// atomic append carrying text + image parts (specs/030-image-generation/contracts/message-parts.md
 		// §4). Image-less sends write no parts column: the row is byte-identical
 		// to the pre-parts flow.
 		// Availability snapshot (027 T005): taken before the append below
@@ -532,6 +554,7 @@ class ChatState {
 		this.streamPhase = 'idle';
 		this.pacer = createPacer(isSafeBoundary);
 		this.liveBlocks = [];
+		this.pendingImages = [];
 		this.generativeStatus = null;
 		this.controller = new AbortController();
 		this.startRenderFlush();
@@ -552,6 +575,13 @@ class ChatState {
 		let assistantMessageId: string | null = null;
 		let model: LanguageModel | undefined;
 		let config: ProviderConfig | undefined;
+		/**
+		 * Provider transport for finalize-time image materialization (030 R-4):
+		 * keychain/proxy fetch built from the active provider config; undefined
+		 * kinds (ollama, github-copilot) fall back to plain fetch inside the
+		 * materialize helper.
+		 */
+		let fetchImpl: typeof globalThis.fetch | undefined;
 		let mcpSession: { unmountAll: () => void } | null = null;
 
 		try {
@@ -559,6 +589,7 @@ class ChatState {
 			this.lastAssembledChars = ctx.reduce((n, m) => n + m.content.length, 0);
 			model = sdk.model;
 			config = sdk.config;
+			fetchImpl = providerFetchFor(config);
 
 			if (isFirstRootTurn) {
 				void this.autoTitleRoot(model, prompt);
@@ -664,22 +695,32 @@ class ChatState {
 					// Concatenated whole-turn buffer semantics (029 rule 6): the walk may
 					// call this once per text block; lint/telemetry read the sum.
 					finalAssistantText += content;
+					// 030 R-3: stream images ride the per-turn pendingImages state.
+					if (opts?.images?.length) {
+						this.pendingImages = [...this.pendingImages, ...opts.images];
+					}
 					const pacer = this.pacer;
+					const aborted = this.controller?.signal.aborted ?? false;
 					// Deferred finalization (research.md D3): on a normal finish the
 					// durable row waits for the eased drain; abort/error persists now.
-					if (
-						pacer &&
-						this.streamPreset !== 'standard' &&
-						content &&
-						!this.controller?.signal.aborted
-					) {
+					if (pacer && this.streamPreset !== 'standard' && content && !aborted) {
 						pacer.onStreamEnd();
 						this.streamPhase = pacer.mode;
 						await this.waitForDrain(pacer);
 					}
-					const row = await repos.messages.append(chatId, 'assistant', content, {
-						model: opts?.model
+					// Finalize (contracts/stream-image-parts.md §3): compose ordered
+					// parts and persist ONE atomic append. Image-less turns keep
+					// today's exact append shape (parts omitted → NULL column).
+					const finalized = await this.composeAssistantParts(content, fetchImpl);
+					const parts = finalized.parts;
+					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
+						model: opts?.model ?? (parts ? config?.defaultModel : undefined),
+						// 030 §4: an aborted finalize carrying images marks the row
+						// interrupted; image-less aborts keep today's exact shape.
+						...(aborted && parts ? { metadata: JSON.stringify({ interrupted: true }) } : {}),
+						...(parts ? { parts } : {})
 					});
+					this.pendingImages = [];
 					this.messages = [...this.messages, row];
 					this.streamBuffer = '';
 					this.streamBufferRender = '';
@@ -823,9 +864,19 @@ class ChatState {
 				// refine a provider 4xx into the dedicated image-unsupported error
 				// ahead of opaque provider output. Other failures pass through
 				// unchanged. Active model = `config.defaultModel` (contract §4).
-				this.error = formatProviderError(
-					hasImages ? asImageUnsupported(mapped, config?.defaultModel) : mapped
-				);
+				const imageInputRefined = hasImages
+					? asImageUnsupported(mapped, config?.defaultModel)
+					: mapped;
+				// Failed image turn (spec 030 FR-007): pendingImages still held at
+				// catch time means stream images were handed to finalize but the
+				// turn failed before any row persisted — refine into the typed
+				// no-image notice naming the "Image output" toggle, never a raw
+				// provider dump. Same surface path as the vision error above.
+				const refined =
+					this.pendingImages.length > 0
+						? asImageOutputError(imageInputRefined, config?.defaultModel)
+						: imageInputRefined;
+				this.error = formatProviderError(refined);
 				this.lastMappedError = mapped;
 				this.lastFailedPrompt = prompt;
 				this.lastFailedAttachments = hasImages ? attachments : null;
@@ -860,8 +911,12 @@ class ChatState {
 			for (const b of this.liveBlocks) b.open = false;
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
-					const row = await repos.messages.append(chatId, 'assistant', this.streamBuffer, {
-						metadata: JSON.stringify({ interrupted: true })
+					// 030 §4: complete pendingImages persist with the interrupted
+					// row; images that never completed are dropped silently.
+					const finalized = await this.composeAssistantParts(this.streamBuffer, fetchImpl);
+					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
+						metadata: JSON.stringify({ interrupted: true }),
+						...(finalized.parts ? { parts: finalized.parts } : {})
 					});
 					this.messages = [...this.messages, row];
 				} catch {
@@ -875,6 +930,7 @@ class ChatState {
 			this.pacer = null;
 			this.streamPhase = 'idle';
 			this.liveBlocks = [];
+			this.pendingImages = [];
 			this.generativeStatus = null;
 			this.controller = null;
 			this.manualBranchPending = false;
@@ -946,6 +1002,53 @@ class ChatState {
 		}
 	}
 
+	/**
+	 * Compose the durable parts of a finalizing assistant row (030 contract
+	 * §3): the text part first, then completed stream images in arrival order,
+	 * with the T002 output budget applied and `generatedImageName` labels
+	 * before composition. Null when the turn carried no images — image-less
+	 * rows keep today's exact shape (parts omitted → NULL column). URL-only
+	 * candidates materialize here through the provider fetch (R-4); an
+	 * un-fetchable link becomes a contained bracketed notice appended to the
+	 * text content — the reply persists searchable, never a broken frame or a
+	 * dropped message. Returns the possibly notice-amended content so the
+	 * persisted row text and its text part stay in sync.
+	 */
+	private async composeAssistantParts(
+		content: string,
+		fetchImpl?: typeof globalThis.fetch
+	): Promise<{ content: string; parts: MessagePart[] | null }> {
+		const withBytes: ImageCandidate[] = [];
+		const notices: string[] = [];
+		for (const c of this.pendingImages) {
+			if (c.base64 !== undefined) {
+				withBytes.push(c);
+				continue;
+			}
+			const fetched = c.url ? await fetchImageCandidate(c.url, c.mediaType, fetchImpl) : null;
+			if (fetched) withBytes.push(fetched);
+			else notices.push("[Image could not be loaded: the provider's link is no longer available.]");
+		}
+		let text = content;
+		for (const notice of notices) {
+			text = text ? `${text}\n\n${notice}` : notice;
+		}
+		if (withBytes.length === 0) return { content: text, parts: null };
+		const decoded = await Promise.all(withBytes.map((c) => candidateToImagePart(c)));
+		const images = await applyOutputBudget(decoded.filter((p): p is ImagePart => p !== null));
+		const textPart: MessagePart[] = text ? [{ type: 'text', text }] : [];
+		return {
+			content: text,
+			parts: [
+				...textPart,
+				...images.map((part, i) => ({
+					...part,
+					name: generatedImageName(part.name, textPart.length + i)
+				}))
+			]
+		};
+	}
+
 	/** Stop the in-flight stream (AbortError is swallowed in `send`). */
 	stop(): void {
 		this.controller?.abort();
@@ -1004,6 +1107,7 @@ class ChatState {
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
 		this.streaming = false;
+		this.pendingImages = [];
 		this.generativeStatus = null;
 		this.lastFailedPrompt = null;
 		this.lastFailedAttachments = null;
@@ -1471,6 +1575,7 @@ class ChatState {
 			try {
 				const { placement, anchor } = await resolveAnchor(chat);
 				let content: string;
+				let imageParts: ImagePart[];
 				let metadata: BranchArtifactMetadata;
 				if (mode === 'summary') {
 					const { summary, traceId } = await generateBranchArtifactSummary(
@@ -1482,13 +1587,22 @@ class ChatState {
 						mode: 'summary',
 						summaryTraceId: traceId
 					});
+					imageParts = await collectPropagatedImages(chatId);
 				} else {
-					content = await buildRawDelta(chatId);
+					const payload = await buildRawPayload(chatId);
+					content = payload.content;
+					imageParts = payload.imageParts;
 					metadata = branchArtifactMetadata(chat, anchor);
 				}
 				await repos.messages.insertAnchored(
 					parentId,
-					{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
+					{
+						role: 'user',
+						content,
+						kind: 'branch_artifact',
+						metadata: JSON.stringify(metadata),
+						parts: artifactParts(content, imageParts)
+					},
 					placement
 				);
 				this.lastPropagation = { parentChatId: parentId, mode };

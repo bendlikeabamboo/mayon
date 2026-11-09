@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import type { ProviderConfig } from '#lib/ai/types.js';
-import { MissingKeyError, ProviderHttpError } from '#lib/ai/types.js';
+import { MissingKeyError, NetworkError, ProviderHttpError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '#lib/chat/context.js';
@@ -12,7 +12,13 @@ import { assembleTimeline, isDurableEntry } from '#lib/chat/entries.js';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
 import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
-import type { ComposerAttachment, ImagePart, BranchArtifactMetadata } from '#lib/chat/kinds.js';
+import type {
+	ComposerAttachment,
+	ImagePart,
+	BranchArtifactMetadata,
+	MessagePart,
+	TextPart
+} from '#lib/chat/kinds.js';
 import { attachmentsOf } from '#lib/chat/kinds.js';
 import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
 import { toolsRun } from '#lib/agent/registry.js';
@@ -80,6 +86,16 @@ vi.mock('#lib/agent/loop.js', async (importOriginal) => {
 
 const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
+
+// T009: image materialization at finalize rides the provider fetch built by
+// sdk-factory; tests swap `materializeState.fetch` to stub the remote fetch.
+const materializeState = vi.hoisted(() => ({
+	fetch: undefined as typeof globalThis.fetch | undefined
+}));
+vi.mock('#lib/ai/sdk-factory.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/ai/sdk-factory.js')>();
+	return { ...actual, providerFetchFor: () => materializeState.fetch };
+});
 
 const { generateText, generateObject, streamText } = await import('ai');
 const mockedGenerateText = vi.mocked(generateText);
@@ -2091,6 +2107,208 @@ describe('chatStore send with attachments (T010 — specs/018 User Story 1)', ()
 	});
 });
 
+// 030 image replies (T004 — specs/030-image-generation US1): recognized stream
+// images land on the assistant row as ordered parts in the same atomic append
+// that records the model. Prescribes the store contract for T008.
+describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
+	const PNG_B64 = 'QUFB'; // "AAA"
+
+	function imageReplyStream(text: string): void {
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield text;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text };
+				yield {
+					type: 'file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1, 2, 3]), mediaType: 'image/png' }
+				};
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text,
+			response: { id: 'test' }
+		} as never);
+	}
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('(a) an image reply persists ONE assistant row: ordered text+image parts with the model, atomically', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageReplyStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+
+		const row = assistantRows[0]!;
+		expect(row.content).toBe('Here you go');
+		expect(row.model).toBe('stub-model');
+		const parts = JSON.parse(row.parts!);
+		expect(parts).toHaveLength(2);
+		expect(parts[0]).toEqual({ type: 'text', text: 'Here you go' });
+		expect(parts[1].type).toBe('image');
+		expect(parts[1].data).toBe(`data:image/png;base64,${PNG_B64}`);
+		expect(parts[1].mimeType).toBe('image/png');
+	});
+
+	it('(b) abort after an image arrives persists it on the interrupted row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.updateStreamBuffer('partial reply');
+			await new Promise<void>((resolve) => {
+				deps.signal.addEventListener('abort', () => resolve(), { once: true });
+			});
+			const opts = { images: [{ mediaType: 'image/png', base64: PNG_B64 }] };
+			await deps.appendAssistantText(
+				'partial reply',
+				opts as unknown as Parameters<typeof deps.appendAssistantText>[1]
+			);
+			return { aborted: true };
+		});
+
+		await chatStore.load(root.id);
+		const sendP = chatStore.send('draw a quokka');
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('partial reply'));
+		chatStore.stop();
+		await sendP;
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const interrupted = msgs.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(interrupted).toBeDefined();
+		expect(interrupted!.content).toBe('partial reply');
+		const parts = JSON.parse(interrupted!.parts!);
+		expect(parts[0]).toEqual({ type: 'text', text: 'partial reply' });
+		expect(parts[1]).toMatchObject({ type: 'image', data: `data:image/png;base64,${PNG_B64}` });
+	});
+
+	it('(c) pendingImages never leak: the next image-less turn persists a parts-less assistant row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+
+		await chatStore.load(root.id);
+		imageReplyStream('Here you go');
+		await chatStore.send('draw a quokka');
+
+		mockStreamReply(['plain reply']);
+		await chatStore.send('now some text');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(2);
+		const second = assistantRows[1]!;
+		expect(second.content).toBe('plain reply');
+		expect(second.parts).toBeNull();
+		expect(chatStore.lastFailedPrompt).toBeNull();
+		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+});
+
+// T009 (specs/030 US1, contract stream-image-parts.md §1): URL-only candidates
+// materialize through the provider fetch at finalize; an un-fetchable link
+// becomes a contained inline notice in the text content — never a broken
+// frame, never a dropped message.
+describe('chatStore URL-image materialization at finalize (T009 — specs/030 US1)', () => {
+	const IMAGE_URL = 'https://img.example/generations/abc.png';
+	const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
+
+	function imageReplyUrlStream(text: string): void {
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield text;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text };
+				// SDK caveat shape (loop.ts candidateFromFile): url-typed file data
+				// lands in the base64 slot → a URL candidate for the store.
+				yield { type: 'file', file: { base64: IMAGE_URL, mediaType: 'image/png' } };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text,
+			response: { id: 'test' }
+		} as never);
+	}
+
+	beforeEach(() => {
+		materializeState.fetch = undefined;
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('materializes a URL candidate through the provider fetch and persists an image part', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		materializeState.fetch = vi.fn(
+			async () =>
+				new Response(PNG_BYTES as BodyInit, {
+					status: 200,
+					headers: { 'content-type': 'image/png' }
+				})
+		) as unknown as typeof globalThis.fetch;
+		imageReplyUrlStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		expect(materializeState.fetch).toHaveBeenCalledWith(
+			IMAGE_URL,
+			expect.objectContaining({ signal: expect.any(AbortSignal) })
+		);
+		const msgs = await repos.messages.listByChat(root.id);
+		const row = msgs.find((m) => m.role === 'assistant');
+		expect(row).toBeDefined();
+		expect(row!.content).toBe('Here you go');
+		expect(row!.model).toBe('stub-model');
+		const parts = JSON.parse(row!.parts!);
+		expect(parts).toHaveLength(2);
+		expect(parts[0]).toEqual({ type: 'text', text: 'Here you go' });
+		expect(parts[1]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+		expect(parts[1].data).toBe(`data:image/png;base64,${btoa(String.fromCharCode(...PNG_BYTES))}`);
+	});
+
+	it('an un-fetchable URL persists the row with a contained notice in the text content', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		materializeState.fetch = vi.fn(
+			async () => new Response('gone', { status: 404 })
+		) as unknown as typeof globalThis.fetch;
+		imageReplyUrlStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const row = msgs.find((m) => m.role === 'assistant');
+		expect(row).toBeDefined();
+		expect(row!.content).toBe(
+			"Here you go\n\n[Image could not be loaded: the provider's link is no longer available.]"
+		);
+		expect(row!.parts).toBeNull();
+		expect(chatStore.error).toBeNull();
+	});
+});
+
 describe('chatStore image-unsupported error wiring (T021 — specs/018 User Story 2)', () => {
 	const IMAGE_A = 'data:image/png;base64,AAAA';
 
@@ -2196,6 +2414,74 @@ describe('chatStore image-unsupported error wiring (T021 — specs/018 User Stor
 			hint: undefined
 		});
 		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+});
+
+// T018 (specs/030 US2): a failed image turn — stream images were handed to
+// finalize but never persisted — is refined into a typed, plain-language
+// notice naming the "Image output" capability toggle, never a raw provider
+// dump (contract image-output-capability.md "Failure refinement", FR-007).
+describe('chatStore image-output failure refinement (T018 — specs/030 US2)', () => {
+	const PNG_B64 = 'QUFB'; // "AAA"
+
+	/** Turn mock: hands an image to finalize, whose assistant append fails. */
+	function imageTurnFailingAtFinalize(): void {
+		vi.mocked(runAgentTurn).mockImplementationOnce(async (deps) => {
+			await deps.appendAssistantText('drawing your quokka', {
+				images: [{ mediaType: 'image/png', base64: PNG_B64 }]
+			} as unknown as Parameters<typeof deps.appendAssistantText>[1]);
+			return { aborted: false };
+		});
+	}
+
+	/** Fail only the assistant-row append (the user row must persist). */
+	function failAssistantAppendWith(err: Error): void {
+		const originalAppend = repos.messages.append.bind(repos.messages);
+		vi.spyOn(repos.messages, 'append').mockImplementation(async (chatId, role, content, opts) => {
+			if (role === 'assistant') throw err;
+			return originalAppend(chatId, role, content, opts);
+		});
+	}
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('failed image turn surfaces the contained "No image produced" notice naming the toggle', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageTurnFailingAtFinalize();
+		failAssistantAppendWith(
+			new ProviderHttpError('Provider returned HTTP 400', 400, 'image request rejected')
+		);
+		await chatStore.load(root.id);
+
+		await chatStore.send('draw a quokka');
+
+		expect(chatStore.error).toEqual({
+			title: 'No image produced',
+			message: 'stub-model did not produce an image.',
+			hint: 'Set "Image output" to "On" in provider settings to force the attempt, or switch to a model that produces images.'
+		});
+	});
+
+	it('failed image turn with a non-provider error keeps that error\u2019s own notice', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageTurnFailingAtFinalize();
+		failAssistantAppendWith(new NetworkError('offline'));
+		await chatStore.load(root.id);
+
+		await chatStore.send('draw a quokka');
+
+		expect(chatStore.error?.title).toBe('Network error');
+		expect(chatStore.error?.message).toBe('offline');
 	});
 });
 
@@ -2331,6 +2617,38 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 			expect(after).toEqual(before);
 		}
 		expect(await repos.messages.listByChat(child.id)).toEqual(branchBefore);
+	});
+
+	it('raw propagation with image-bearing turns stores the collected parts on the artifact (030 T021)', async () => {
+		const { parent, child } = await seedBranch();
+		const image: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,Zm9v',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		await repos.messages.append(child.id, 'assistant', 'see  pic', {
+			parts: [{ type: 'text', text: 'see ' }, image, { type: 'text', text: ' pic' }]
+		});
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(art.content).toContain('[assistant] see [image] pic');
+		const parts = JSON.parse(art.parts!) as MessagePart[];
+		expect(parts.filter((p) => p.type === 'image')).toHaveLength(1);
+		expect(
+			parts
+				.filter((p): p is TextPart => p.type === 'text')
+				.map((p) => p.text)
+				.join('')
+		).toBe(art.content);
+		expect(chatStore.propagationStatus).toBe('idle');
 	});
 
 	it('raw propagation on a derived branch (null branch point) anchors by createdAt', async () => {
