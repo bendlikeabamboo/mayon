@@ -2025,3 +2025,134 @@ describe('(w) persist order (003 US3): reasoning first, per iteration', () => {
 		expect(textCalls.map((c) => c[0] as string)).toEqual(['before', ' mid ', 'after']);
 	});
 });
+
+describe('(x) 029 US3 parity: pre-029 shapes unchanged (T018/T019)', () => {
+	function orderOf(mock: unknown, nth: number): number {
+		const calls = (mock as ReturnType<typeof vi.fn>).mock.invocationCallOrder as number[];
+		return calls[nth];
+	}
+
+	it('single pre-answer reasoning block persists exactly the pre-029 rows: appendReasoning(solo, 0) + one full-buffer appendAssistantText with no opts, reasoning < text (029 T018)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-start', id: 'r' },
+				{ type: 'reasoning-delta', text: 'solo thought' },
+				{ type: 'reasoning-end', id: 'r' },
+				{ type: 'text-delta', text: 'answer' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({
+			onReasoningSegmentStart: vi.fn(),
+			onTextSegmentStart: vi.fn()
+		});
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(1);
+		expect(deps.appendReasoning).toHaveBeenCalledWith('solo thought', 0);
+		const textCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+		expect(textCalls).toHaveLength(1);
+		expect(textCalls[0][0]).toBe('answer');
+		// single text block ⇒ no per-block opts — same signature as pre-029
+		expect(textCalls[0][1]).toBeUndefined();
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+	});
+
+	it('no-reasoning stream never calls appendReasoning; one appendAssistantText with the full buffer (029 T018)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'answer' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendReasoning).not.toHaveBeenCalled();
+		const textCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+		expect(textCalls).toHaveLength(1);
+		expect(textCalls[0][0]).toBe('answer');
+		expect(textCalls[0][1]).toBeUndefined();
+	});
+
+	it('critic correction re-stream discards reasoning deltas; only the corrected text persists (029 T019, research D6)', async () => {
+		let validateCount = 0;
+		mockedValidateTurn.mockImplementation(async () => {
+			validateCount++;
+			if (validateCount === 1) return [{ type: 'mermaid', message: 'parse error' }];
+			return [];
+		});
+
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: '```mermaid\nbad' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'rc' },
+					{ type: 'reasoning-delta', text: 'corrective thought' },
+					{ type: 'reasoning-end', id: 'rc' },
+					{ type: 'text-delta', text: '```mermaid\ngraph TD\nA-->B\n```' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		const deps = makeDeps();
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(mockedStreamText).toHaveBeenCalledTimes(2);
+		expect(deps.appendReasoning).not.toHaveBeenCalled();
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```');
+	});
+
+	it('tool-call closes the open reasoning segment; tool-boundary persist order preserved (029 T019)', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'r' },
+					{ type: 'reasoning-delta', text: 'think' },
+					{ type: 'text-delta', text: 'interim' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'read_checklist', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Final' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
+
+		const deps = makeDeps({
+			onReasoningSegmentStart: vi.fn(),
+			onTextSegmentStart: vi.fn()
+		});
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		// exactly one segment opened; the tool-call closed it without a second open
+		expect(deps.onReasoningSegmentStart).toHaveBeenCalledTimes(1);
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(1);
+		expect(deps.appendReasoning).toHaveBeenCalledWith('think', 0);
+		// iteration 0: reasoning < text < tool call < tool result
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(
+			orderOf(deps.appendAssistantToolCall, 0)
+		);
+		expect(orderOf(deps.appendAssistantToolCall, 0)).toBeLessThan(
+			orderOf(deps.appendToolResult, 0)
+		);
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('interim');
+	});
+});

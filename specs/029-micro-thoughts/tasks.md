@@ -95,12 +95,12 @@ Single project: `src/`, `tests/` at repository root (SvelteKit SPA + `server/` +
 
 ### Tests for User Story 3 (write first; regression guards FAIL only if US1/US2 broke parity)
 
-- [ ] T018 [P] [US3] Parity regression tests: in `src/lib/agent/loop.test.ts` — single reasoning block stream persists exactly `[reasoning, text]` with today's row shapes (byte-level metadata assertion modulo `anchored`); no-reasoning stream never calls `appendReasoning`; in `src/lib/chat/projection.test.ts` — anchored reasoning rows stay excluded from `projectEntries` output and consecutive `assistant_message` rows merge into one assistant turn; in `src/lib/chat/entries.test.ts` — reasoning-disabled/no-reasoning turn produces no thought entries.
-- [ ] T019 [US3] Critic + generative-tool path tests in `src/lib/agent/loop.test.ts`: critic correction re-stream discards reasoning deltas (text-only, today's behavior — research.md D6); tool-call closes the open reasoning segment and the tool-boundary persist order (`appendReasoning < appendAssistantText < appendAssistantToolCall < appendToolResult` per iteration) is preserved.
+- [X] T018 [P] [US3] Parity regression tests: in `src/lib/agent/loop.test.ts` — single reasoning block stream persists exactly `[reasoning, text]` with today's row shapes (byte-level metadata assertion modulo `anchored`); no-reasoning stream never calls `appendReasoning`; in `src/lib/chat/projection.test.ts` — anchored reasoning rows stay excluded from `projectEntries` output and consecutive `assistant_message` rows merge into one assistant turn; in `src/lib/chat/entries.test.ts` — reasoning-disabled/no-reasoning turn produces no thought entries.
+- [X] T019 [US3] Critic + generative-tool path tests in `src/lib/agent/loop.test.ts`: critic correction re-stream discards reasoning deltas (text-only, today's behavior — research.md D6); tool-call closes the open reasoning segment and the tool-boundary persist order (`appendReasoning < appendAssistantText < appendAssistantToolCall < appendToolResult` per iteration) is preserved.
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] Fix any parity breaks surfaced by T018/T019 in the owning files (`src/lib/agent/loop.ts`, `src/lib/stores/chat.svelte.ts`, `src/lib/chat/entries.ts`) — single-segment path must remain byte-identical to pre-029 row shapes and today's callback order; reasoning-disabled suppresses all thought entries (existing dialect/effort plumbing untouched). Expected outcome: usually no code change; this task is the verified parity gate.
+- [X] T020 [US3] Fix any parity breaks surfaced by T018/T019 in the owning files (`src/lib/agent/loop.ts`, `src/lib/stores/chat.svelte.ts`, `src/lib/chat/entries.ts`) — single-segment path must remain byte-identical to pre-029 row shapes and today's callback order; reasoning-disabled suppresses all thought entries (existing dialect/effort plumbing untouched). Expected outcome: usually no code change; this task is the verified parity gate.
 
 **Checkpoint**: All user stories independently functional; full suite green.
 

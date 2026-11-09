@@ -465,3 +465,35 @@ describe('branch_artifact projection (020 US2 / T015)', () => {
 		);
 	});
 });
+
+describe('029 US3 parity: reasoning exclusion + assistant merge (T018)', () => {
+	it('anchored reasoning rows stay excluded; consecutive assistant_message rows merge into ONE assistant turn', () => {
+		resetOrd();
+		const anchoredReasoning = makeRow({
+			role: 'assistant',
+			content: 'mid thought',
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		const rows: LegacyRow[] = [
+			makeRow({ role: 'user', content: 'prompt' }),
+			makeRow({ role: 'assistant', content: 'part one' }),
+			anchoredReasoning,
+			makeRow({ role: 'assistant', content: 'part two' })
+		];
+		const result = projectEntries(rows as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{ role: 'user', content: [{ type: 'text', text: 'prompt' }] },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'text', text: 'part one' },
+					{ type: 'text', text: 'part two' }
+				]
+			}
+		] as ModelMessage[]);
+		// the model never observes the reasoning row or the split (FR-006)
+		expect(JSON.stringify(result)).not.toContain('mid thought');
+		expect(result.filter((m) => m.role === 'assistant')).toHaveLength(1);
+	});
+});

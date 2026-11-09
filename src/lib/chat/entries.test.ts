@@ -882,3 +882,35 @@ describe('FR-006 live-ask merge (004 T013)', () => {
 		expect(tailLive[1].live).toBe('live_ask');
 	});
 });
+
+describe('029 US3 parity: no-reasoning turn (T018)', () => {
+	it('reasoning-disabled / no-reasoning turn produces no thought entries', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({ id: 'row-a1', role: 'assistant', content: 'Reply', ord: 1 }),
+			msg({
+				id: 'row-call-9',
+				role: 'assistant',
+				toolCallId: 'call-9',
+				toolName: 'bash',
+				ord: 2
+			}),
+			msg({
+				id: 'row-res-9',
+				role: 'tool',
+				toolCallId: 'call-9',
+				toolName: 'bash',
+				content: 'ok',
+				ord: 3
+			}),
+			msg({ id: 'row-a2', role: 'assistant', content: 'done', ord: 4 })
+		]);
+		expect(rowIds(items)).toEqual([
+			'user_message:row-u1',
+			'assistant_message:row-a1',
+			'group:row-call-9',
+			'assistant_message:row-a2'
+		]);
+		expect(items.some((i) => isDurableEntry(i) && i.kind === 'reasoning')).toBe(false);
+	});
+});
