@@ -75,3 +75,13 @@ export const QUIZ_SHORT_RUBRIC = quizShort.payload.rubric;
 export const LAB_TITLE = LAB_FIXTURE.title;
 export const LAB_STEPS = LAB_FIXTURE.steps;
 export const LAB_CHECKLIST_TEXTS = LAB_FIXTURE.checklist.map((item) => item.text);
+
+// Image-reply dispatch (030): fixture-only trigger + reply constants that
+// live in server.mjs next to the propagate dispatch (no product-constant
+// pin), mirrored here so assertions can never drift from what the mock
+// actually streams. The data URL is the mock's inlined 8x8 PNG; asserting it
+// byte-exact proves the part survives stream → persist → reload intact.
+export const IMAGE_TRIGGER = 'generate an image';
+export const IMAGE_REPLY_TEXT = 'Here is your chart.';
+export const IMAGE_DATA_URL =
+	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC';
