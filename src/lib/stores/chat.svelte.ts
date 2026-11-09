@@ -29,10 +29,14 @@ import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import {
 	kindOf,
 	parseMetadata,
+	generatedImageName,
 	type ComposerAttachment,
 	type BranchArtifactMetadata,
-	type SharedMetadata
+	type SharedMetadata,
+	type ImagePart,
+	type MessagePart
 } from '#lib/chat/kinds.js';
+import { applyOutputBudget, candidateToImagePart } from '#lib/chat/images.js';
 import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
 import {
 	acquirePropagationLatch,
@@ -46,7 +50,7 @@ import { getActiveSdkProvider } from '#lib/ai/client.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
 import { mark, incRender } from '#lib/perf/mark.js';
-import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import { resolveRequestSettings, type ImageCandidate } from '#lib/ai/dialects.js';
 import { mapSdkError } from '#lib/ai/sdk-errors.js';
 import {
 	asImageUnsupported,
@@ -150,6 +154,19 @@ class ChatState {
 	/** Pacer lifecycle of the in-flight stream, synced from `pacer.mode` (US2 overlay reads it). */
 	streamPhase = $state<PacerMode>('idle');
 	reasoningBuffer = $state('');
+	/**
+	 * Image candidates recognized from the in-flight stream (030 R-3),
+	 * pending finalize. Text stays a pure string — the pacer and the rAF
+	 * flush never touch this.
+	 */
+	private pendingImages = $state<ImageCandidate[]>([]);
+	/**
+	 * Bounded live-placeholder signal (contracts/stream-image-parts.md §2):
+	 * a count only — no base64, no partial frames, ever.
+	 */
+	get pendingImageCount(): number {
+		return this.pendingImages.length;
+	}
 	streamPreset = $state<StreamPreset>('standard');
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
@@ -388,6 +405,7 @@ class ChatState {
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
 		this.reasoningBuffer = '';
+		this.pendingImages = [];
 		this.streaming = false;
 		this.generativeStatus = null;
 		this.mcpNotices = [];
@@ -506,6 +524,7 @@ class ChatState {
 		this.streamPhase = 'idle';
 		this.pacer = createPacer(isSafeBoundary);
 		this.reasoningBuffer = '';
+		this.pendingImages = [];
 		this.generativeStatus = null;
 		this.controller = new AbortController();
 		this.startRenderFlush();
@@ -621,22 +640,31 @@ class ChatState {
 				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
 				appendAssistantText: async (content, opts) => {
 					finalAssistantText = content;
+					// 030 R-3: stream images ride the per-turn pendingImages state.
+					if (opts?.images?.length) {
+						this.pendingImages = [...this.pendingImages, ...opts.images];
+					}
 					const pacer = this.pacer;
+					const aborted = this.controller?.signal.aborted ?? false;
 					// Deferred finalization (research.md D3): on a normal finish the
 					// durable row waits for the eased drain; abort/error persists now.
-					if (
-						pacer &&
-						this.streamPreset !== 'standard' &&
-						content &&
-						!this.controller?.signal.aborted
-					) {
+					if (pacer && this.streamPreset !== 'standard' && content && !aborted) {
 						pacer.onStreamEnd();
 						this.streamPhase = pacer.mode;
 						await this.waitForDrain(pacer);
 					}
+					// Finalize (contracts/stream-image-parts.md §3): compose ordered
+					// parts and persist ONE atomic append. Image-less turns keep
+					// today's exact append shape (parts omitted → NULL column).
+					const parts = await this.composeAssistantParts(content);
 					const row = await repos.messages.append(chatId, 'assistant', content, {
-						model: opts?.model
+						model: opts?.model ?? (parts ? config?.defaultModel : undefined),
+						// 030 §4: an aborted finalize carrying images marks the row
+						// interrupted; image-less aborts keep today's exact shape.
+						...(aborted && parts ? { metadata: JSON.stringify({ interrupted: true }) } : {}),
+						...(parts ? { parts } : {})
 					});
+					this.pendingImages = [];
 					this.messages = [...this.messages, row];
 					this.streamBuffer = '';
 					this.streamBufferRender = '';
@@ -814,8 +842,12 @@ class ChatState {
 			if (wasAborted || this.error) this.pacer?.onAbort();
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
+					// 030 §4: complete pendingImages persist with the interrupted
+					// row; images that never completed are dropped silently.
+					const parts = await this.composeAssistantParts(this.streamBuffer);
 					const row = await repos.messages.append(chatId, 'assistant', this.streamBuffer, {
-						metadata: JSON.stringify({ interrupted: true })
+						metadata: JSON.stringify({ interrupted: true }),
+						...(parts ? { parts } : {})
 					});
 					this.messages = [...this.messages, row];
 				} catch {
@@ -829,6 +861,7 @@ class ChatState {
 			this.pacer = null;
 			this.streamPhase = 'idle';
 			this.reasoningBuffer = '';
+			this.pendingImages = [];
 			this.generativeStatus = null;
 			this.controller = null;
 			this.manualBranchPending = false;
@@ -900,6 +933,32 @@ class ChatState {
 		}
 	}
 
+	/**
+	 * Compose the durable parts of a finalizing assistant row (030 contract
+	 * §3): the text part first, then completed stream images in arrival order,
+	 * with the T002 output budget applied and `generatedImageName` labels
+	 * before composition. Null when the turn carried no images — image-less
+	 * rows keep today's exact shape (parts omitted → NULL column). URL-only
+	 * candidates are left out for now; T009 materializes them through the
+	 * keychain/proxy fetch at this point.
+	 */
+	private async composeAssistantParts(content: string): Promise<MessagePart[] | null> {
+		const withBytes = this.pendingImages.filter((c) => c.base64 !== undefined);
+		// TODO(030 T009): materialize URL candidates (`c.url`) here via the
+		// existing keychain/proxy fetch before composition.
+		if (withBytes.length === 0) return null;
+		const decoded = await Promise.all(withBytes.map((c) => candidateToImagePart(c)));
+		const images = await applyOutputBudget(decoded.filter((p): p is ImagePart => p !== null));
+		const textPart: MessagePart[] = content ? [{ type: 'text', text: content }] : [];
+		return [
+			...textPart,
+			...images.map((part, i) => ({
+				...part,
+				name: generatedImageName(part.name, textPart.length + i)
+			}))
+		];
+	}
+
 	/** Stop the in-flight stream (AbortError is swallowed in `send`). */
 	stop(): void {
 		this.controller?.abort();
@@ -958,6 +1017,7 @@ class ChatState {
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
 		this.streaming = false;
+		this.pendingImages = [];
 		this.generativeStatus = null;
 		this.lastFailedPrompt = null;
 		this.lastFailedAttachments = null;

@@ -6,6 +6,7 @@
  * decode/draw/encode work is isolated behind `ImageIntakeOps` with a
  * `browserOps` default so tests can inject stubs instead of a canvas.
  */
+import type { ImageCandidate } from '#lib/ai/dialects.js';
 import type { ImagePart } from './kinds';
 
 export const SUPPORTED_IMAGE_MIMES = [
@@ -319,4 +320,36 @@ export async function applyOutputBudget(
 		kept.push(rebuilt);
 	}
 	return kept;
+}
+
+/**
+ * Convert one recognized stream-image candidate (030) into a finished
+ * ImagePart. Width/height come from a best-effort decode probe (0×0 when no
+ * bitmap decoder is available, e.g. node tests); URL-only candidates return
+ * null — T009 fetches them through the keychain/proxy path first.
+ */
+export async function candidateToImagePart(
+	candidate: ImageCandidate,
+	ops: ImageIntakeOps = browserOps
+): Promise<ImagePart | null> {
+	if (candidate.base64 === undefined) return null;
+	const bytes = dataUrlToBytes(`data:;base64,${candidate.base64}`);
+	const mime = candidate.mediaType ?? sniffImageMime(bytes) ?? 'image/png';
+	let width = 0;
+	let height = 0;
+	try {
+		const bitmap = await ops.decode(bytes);
+		width = bitmap.width;
+		height = bitmap.height;
+		bitmap.close();
+	} catch {
+		/* dimension probe is best-effort */
+	}
+	return imagePart(
+		`data:${mime};base64,${candidate.base64}`,
+		mime,
+		width,
+		height,
+		bytes.byteLength
+	);
 }

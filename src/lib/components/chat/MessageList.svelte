@@ -156,6 +156,9 @@
 					<ReasoningEntry live={true} buffer={item.buffer} />
 				{:else if item.live === 'live_text'}
 					<AssistantMessage live={true} buffer={item.buffer} pending={item.pending} {personaName} />
+					{#if chatStore.pendingImageCount > 0}
+						<p id="msg-live-images" class="text-sm text-muted-foreground">Generating image…</p>
+					{/if}
 				{:else if item.live === 'live_ask'}
 					<AskEntry
 						live={true}
