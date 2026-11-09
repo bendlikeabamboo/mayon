@@ -9,11 +9,21 @@
  * Raw-delta format (docs/history/appendices/020-branch-backprop-data-model.md): the anchored
  * excerpt (omitted when unresolvable) followed by every branch row rendered
  * verbatim in `ord` order — `[user] `, `[assistant] `, `[tool: <name>] `.
+ * Image parts render as positioned `[image]` markers (030 T021).
  * No truncation, ever.
  */
 import { repos } from '#lib/db/index.js';
 import type { Chat, Message } from '#lib/db/index.js';
-import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
+import {
+	partsOf,
+	type BranchArtifactMetadata,
+	type ImagePart,
+	type MessagePart,
+	type TextPart
+} from '#lib/chat/kinds.js';
+
+const asImage = (p: MessagePart): p is ImagePart => p.type === 'image';
+const asText = (p: MessagePart): p is TextPart => p.type === 'text';
 
 /** Placement accepted by `messagesRepo.insertAnchored`. */
 export type ArtifactPlacement = { afterOrd: number; beforeOrd: number | null } | 'start';
@@ -29,10 +39,17 @@ function turnPrefix(row: Message): string {
 	return `[${row.role}] `;
 }
 
-/** The row's verbatim payload: tool results prefer their structured metadata. */
+/**
+ * The row's verbatim payload: tool results prefer their structured metadata;
+ * image-bearing rows (030 T021) flow text parts through unchanged and render
+ * each image part as a positioned `[image]` marker — the marker sits exactly
+ * where the image sat in the row's `parts` sequence.
+ */
 function turnBody(row: Message): string {
 	if (row.role === 'tool') return row.metadata ?? row.content;
-	return row.content;
+	const parts = partsOf(row);
+	if (!parts.some(asImage)) return row.content;
+	return parts.map((p) => (asText(p) ? p.text : asImage(p) ? '[image]' : '')).join('');
 }
 
 /** Render rows verbatim in the given (ord) order, one prefixed turn per row. */
@@ -66,14 +83,55 @@ export async function resolveExcerpt(branch: Chat): Promise<string | null> {
 	return null;
 }
 
-/** Build the complete raw-delta payload for a branch chat. */
-export async function buildRawDelta(branchChatId: string): Promise<string> {
+/**
+ * The complete raw-delta payload plus the branch's own image parts (030 T021):
+ * images are collected in turn order from the branch rows, first 8 kept (the
+ * repo-wide image cap, applied at collection so the artifact insert cannot
+ * fail validation).
+ */
+export interface RawPayload {
+	content: string;
+	imageParts: ImagePart[];
+}
+
+/** Build the complete raw-delta payload for a branch chat plus its collected image parts. */
+export async function buildRawPayload(branchChatId: string): Promise<RawPayload> {
 	const [branch, rows] = await Promise.all([
 		repos.chats.getById(branchChatId),
 		repos.messages.listByChat(branchChatId)
 	]);
 	if (!branch) throw new Error(`Branch chat ${branchChatId} not found`);
-	return renderRawDelta(rows, await resolveExcerpt(branch));
+	const content = renderRawDelta(rows, await resolveExcerpt(branch));
+	const imageParts = rows.flatMap((r) => partsOf(r).filter(asImage)).slice(0, 8);
+	return { content, imageParts };
+}
+
+/** Build the complete raw-delta payload for a branch chat. */
+export async function buildRawDelta(branchChatId: string): Promise<string> {
+	return (await buildRawPayload(branchChatId)).content;
+}
+
+/**
+ * Image parts of a branch's own turns (030): turn order, first 8 kept.
+ * Standalone read for summary mode, whose payload comes from the LLM instead
+ * of the raw renderer.
+ */
+export async function collectPropagatedImages(branchChatId: string): Promise<ImagePart[]> {
+	const rows = await repos.messages.listByChat(branchChatId);
+	return rows.flatMap((r) => partsOf(r).filter(asImage)).slice(0, 8);
+}
+
+/**
+ * Artifact-row `parts` (030 T021): a leading text part carrying the payload
+ * (repo invariant: text parts concatenate exactly to `content`) followed by
+ * the collected image parts. Undefined for image-less branches — those rows
+ * stay byte-identical to the pre-030 shape (`parts` NULL).
+ */
+export function artifactParts(
+	content: string,
+	imageParts: readonly ImagePart[]
+): MessagePart[] | undefined {
+	return imageParts.length ? [{ type: 'text', text: content }, ...imageParts] : undefined;
 }
 
 /** Next parent row's `ord` strictly above `afterOrd` (rows sorted by ord), or null. */

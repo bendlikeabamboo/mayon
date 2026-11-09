@@ -9,10 +9,17 @@
 		Trash2
 	} from '@lucide/svelte';
 	import type { Message } from '#lib/db/index.js';
-	import { parseMetadata, type BranchArtifactMetadata } from '#lib/chat/kinds.js';
+	import {
+		parseMetadata,
+		partsOf,
+		type BranchArtifactMetadata,
+		type ImagePart,
+		type MessagePart
+	} from '#lib/chat/kinds.js';
 	import { incRender } from '#lib/perf/mark.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import ImageLightbox from './ImageLightbox.svelte';
 	import { chatStore } from '#lib/stores/chat.svelte.js';
 
 	/**
@@ -51,7 +58,14 @@
 		chatStore.propagationStatus === 'error' ? chatStore.propagationError : null
 	);
 
+	// Propagated image parts (030 T021); empty for parts-NULL rows — render
+	// unchanged. The open union's `{ type: string }` member defeats
+	// discriminant narrowing; explicit predicate (house pattern).
+	const asImage = (p: MessagePart): p is ImagePart => p.type === 'image';
+	const images = $derived(partsOf(entry).filter(asImage));
+
 	let open = $state(false);
+	let expanded = $state<ImagePart | null>(null);
 
 	function handleRegenerate() {
 		void onRegenerate?.(entry.id);
@@ -99,6 +113,26 @@
 		<div class="flex w-full flex-col gap-1">
 			<pre
 				class="max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{entry.content}</pre>
+			{#if images.length > 0}
+				<!-- Shared thumbnail grid (same markup as UserMessage/AssistantMessage rows). -->
+				<div class="flex flex-wrap gap-1.5 px-1">
+					{#each images as image (image.data)}
+						<button
+							type="button"
+							class="overflow-hidden rounded-lg border border-border transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							onclick={() => (expanded = image)}
+							aria-label="View image full size"
+						>
+							<img
+								src={image.data}
+								alt={image.name ?? 'Generated image'}
+								class="size-24 object-cover"
+								loading="lazy"
+							/>
+						</button>
+					{/each}
+				</div>
+			{/if}
 			{#if canRegenerate || onDelete}
 				<div class="flex flex-wrap items-center gap-2 px-1">
 					{#if canRegenerate}
@@ -139,3 +173,5 @@
 		</div>
 	{/if}
 </div>
+
+<ImageLightbox part={expanded} onClose={() => (expanded = null)} />

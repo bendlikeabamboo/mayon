@@ -2,14 +2,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useFileTestDb, type FileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import {
+	artifactParts,
 	branchArtifactMetadata,
 	buildRawDelta,
+	buildRawPayload,
 	acquirePropagationLatch,
 	releasePropagationLatch,
 	renderRawTurns,
 	resolveAnchor,
 	resolveExcerpt
 } from './propagation';
+import type { ImagePart } from '#lib/chat/kinds.js';
 
 const testDb = useFileTestDb();
 let handle: FileTestDb | null = null;
@@ -264,6 +267,63 @@ describe('placement derivation through insertAnchored', () => {
 			placement
 		);
 		expect(art.ord).toBe(2);
+	});
+});
+
+describe('image markers + propagated parts (030 T021)', () => {
+	function img(tag: string): ImagePart {
+		return {
+			type: 'image',
+			data: `data:image/png;base64,${tag}`,
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+	}
+
+	it("inserts [image] markers at the images' positions inside the turn payload", async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await seedBranch(parent.id, null);
+		await repos.messages.append(child.id, 'assistant', 'first  then', {
+			parts: [{ type: 'text', text: 'first ' }, img('A'), { type: 'text', text: ' then' }, img('B')]
+		});
+
+		expect(await buildRawDelta(child.id)).toBe('[assistant] first [image] then[image]');
+	});
+
+	it('collects image parts in turn order, capped at the first 8', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await seedBranch(parent.id, null);
+		const images = Array.from({ length: 9 }, (_, i) => img(`I${i}`));
+		await repos.messages.append(child.id, 'assistant', 'five', {
+			parts: [{ type: 'text', text: 'five' }, ...images.slice(0, 5)]
+		});
+		await repos.messages.append(child.id, 'assistant', 'four', {
+			parts: [{ type: 'text', text: 'four' }, ...images.slice(5)]
+		});
+
+		const payload = await buildRawPayload(child.id);
+		expect(payload.imageParts).toHaveLength(8);
+		expect(payload.imageParts[0]!.data).toContain('I0');
+		expect(payload.imageParts[7]!.data).toContain('I7');
+	});
+
+	it('branches without images render byte-identically and collect no parts', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await seedBranch(parent.id, null);
+		await repos.messages.append(child.id, 'user', 'plain question');
+
+		expect(await buildRawPayload(child.id)).toEqual({
+			content: '[user] plain question',
+			imageParts: []
+		});
+	});
+
+	it('artifactParts prepends the content text part and is undefined for image-less branches', () => {
+		const content = '[user] x';
+		expect(artifactParts(content, [img('A')])).toEqual([{ type: 'text', text: content }, img('A')]);
+		expect(artifactParts(content, [])).toBeUndefined();
 	});
 });
 

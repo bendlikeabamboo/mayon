@@ -41,7 +41,9 @@ import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
 import {
 	acquirePropagationLatch,
 	releasePropagationLatch,
-	buildRawDelta,
+	buildRawPayload,
+	collectPropagatedImages,
+	artifactParts,
 	resolveAnchor,
 	branchArtifactMetadata
 } from '#lib/chat/propagation.js';
@@ -1527,6 +1529,7 @@ class ChatState {
 			try {
 				const { placement, anchor } = await resolveAnchor(chat);
 				let content: string;
+				let imageParts: ImagePart[];
 				let metadata: BranchArtifactMetadata;
 				if (mode === 'summary') {
 					const { summary, traceId } = await generateBranchArtifactSummary(
@@ -1538,13 +1541,22 @@ class ChatState {
 						mode: 'summary',
 						summaryTraceId: traceId
 					});
+					imageParts = await collectPropagatedImages(chatId);
 				} else {
-					content = await buildRawDelta(chatId);
+					const payload = await buildRawPayload(chatId);
+					content = payload.content;
+					imageParts = payload.imageParts;
 					metadata = branchArtifactMetadata(chat, anchor);
 				}
 				await repos.messages.insertAnchored(
 					parentId,
-					{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
+					{
+						role: 'user',
+						content,
+						kind: 'branch_artifact',
+						metadata: JSON.stringify(metadata),
+						parts: artifactParts(content, imageParts)
+					},
 					placement
 				);
 				this.lastPropagation = { parentChatId: parentId, mode };
