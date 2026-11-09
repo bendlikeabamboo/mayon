@@ -98,7 +98,7 @@ description: "Task list for feature 030 implementation"
 - [x] T020 [P] [US3] Continuation projection: assistant branch in src/lib/chat/projection.ts emits image parts on the wire only when the active model is vision-capable (mirror the user branch at 221-247; silent text-only degradation otherwise) + tests in src/lib/chat/projection.test.ts (pattern: T013 user-parts block).
 - [x] T021 [US3] Backprop round-trip: positioned `[image]` markers in raw payload in src/lib/chat/propagation.ts; artifact rows carry propagated image parts via the T019 `insertAnchored` (propagation callers in src/lib/stores/chat.svelte.ts and src/lib/agent/deterministic-tools.ts); render artifact parts with the shared image presentation in src/lib/components/chat/rows/PropagatedArtifact.svelte; tests in src/lib/chat/propagation.test.ts (depends on T019, T010).
 - [x] T022 [US3] Download affordance in the shared lightbox (native `<a download>`, filename from the part's `name`): shared component from T010 + reuse in UserMessage.svelte; full-size and download each ≤2 actions from the thumbnail (depends on T010).
-- [ ] T023 [US3] Portability verification: extend src/lib/db/repositories/search.test.ts with assistant image-row invariants (text findable, base64 never matches); run the S6 regression pass (selection/anchoring on segmented messages, backup/restore round trip incl. artifact parts).
+- [x] T023 [US3] Portability verification: extend src/lib/db/repositories/search.test.ts with assistant image-row invariants (text findable, base64 never matches); run the S6 regression pass (selection/anchoring on segmented messages, backup/restore round trip incl. artifact parts).
 
 **Checkpoint**: All stories independently functional.
 
@@ -107,8 +107,8 @@ description: "Task list for feature 030 implementation"
 ## Phase 6: Polish & Cross-Cutting Concerns
 
 - [x] T024 [P] Repoint the four dangling `contracts/message-parts.md` code comments to specs/030-image-generation/contracts/message-parts.md: src/lib/stores/chat.svelte.ts:159,479; src/lib/chat/projection.ts:230; src/lib/chat/projection.test.ts:115.
-- [ ] T025 [P] Perf probe measurement (constitution IV): streaming render with and without pending images via `window.__MAYON_PERF__` + `localStorage.mayon_perf_scenario`; record before/after numbers; confirm no user-perceptible regression for image-less replies.
-- [ ] T026 Full gates + validation: `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm --filter @mayon/server test`, then the full quickstart.md S1–S6 pass (incl. manual S6 smoke on the dev stack).
+- [x] T025 [P] Perf probe measurement (constitution IV): streaming render with and without pending images via `window.__MAYON_PERF__` + `localStorage.mayon_perf_scenario`; record before/after numbers; confirm no user-perceptible regression for image-less replies. (Numbers recorded in research.md, "Perf measurement (T025)".)
+- [x] T026 Full gates + validation: `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm --filter @mayon/server test`, then the full quickstart.md S1–S6 pass (incl. manual S6 smoke on the dev stack). (S6 run against the mock-llm dev stack; real-provider S6 items deferred — no provider credentials on a fresh dev DB.)
 
 ---
 

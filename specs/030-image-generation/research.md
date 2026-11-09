@@ -131,3 +131,39 @@ Resolved by reading the installed packages directly (`ai@7.0.4`, `@ai-sdk/google
 **T006 directive**: `consumeStream` (`src/lib/agent/loop.ts:153-210`) must recognize `p.type === 'file'` — take `p.file.mediaType` + `p.file.base64` (ignore `p.type === 'reasoning-file'` entirely) — and, only when the dialect shim is active, `p.type === 'raw'` → extract `rawValue.choices[0].delta.images[]` (`image_url.url`, data-URL split into mime + base64); return collected images in the result. Everything else (persistence, capping) is R-3/R-4.
 
 **T011 directive**: the mock fixture emits, per dialect — google-kind fixtures: SSE `candidates[0].content.parts[]` containing `{"inlineData":{"mimeType":"image/png","data":"<base64>"}}`; openai-compatible fixtures: SSE chunks with `choices[0].delta.images = [{ "type": "image_url", "image_url": { "url": "data:image/png;base64,<base64>" } }]` (the raw-chunk shim's input shape; no `message.images` — the app only streams).
+
+## Perf measurement (T025, 2026-11-09)
+
+Probe via `localStorage.mayon_perf=1` + `localStorage.mayon_perf_scenario`, `[mayon-perf]` 3s console summaries on the mock-llm dev stacks; values below are the single 3s window containing each turn's streaming+finalize activity. Mock fixture text turn = kitchen-sink SSE (~5s); image turn = 4-frame image_reply.
+
+Baseline = image-less streaming on the pre-030 checkout (shimmer-check stack, :5173), scenario `stream-text`:
+
+```
+fps      n=173  avgMs=17.24  p50=16.70  p95=16.80  max=83.2  dropped=3
+longtask 1x 50-100ms
+cls      score=0.066  entries=2
+marks    markdown:render n=24 totalMs=133.9 maxMs=36.5
+renders  Markdown=11 TimelineRow=3 Highlighter=2 SectionStrip=1
+```
+
+030, scenario `stream-text` (image-less, same fixture turn):
+
+```
+fps      n=178  avgMs=16.76  p50=16.70  p95=16.70  max=33.3  dropped=1
+longtask none
+cls      score=0.122  entries=3
+marks    markdown:render n=8 totalMs=32.5 maxMs=16.7
+renders  TimelineRow=1 Markdown=4 Highlighter=2
+```
+
+030, scenario `stream-image` (image turn; activity straddles two 3s windows):
+
+```
+fps      n=179/179  avgMs=16.67/16.67  p50=16.70/16.70  max=16.8/16.8  dropped=0/0
+longtask none
+cls      score=0.0000247  entries=1
+marks    markdown:render n=7 totalMs=11.8 maxMs=9.2 | n=2 totalMs=0.5 maxMs=0.3
+renders  TimelineRow=3 Markdown=3 Highlighter=1 | Highlighter=1
+```
+
+Verdict: no user-perceptible regression for image-less replies — 030 stream-text holds 60fps with fewer dropped frames (1 vs 3) and no longtasks vs the pre-030 baseline; CLS is streaming-autoscroll growth in both (0.066 vs 0.122, same order of magnitude, no longtask driver). The image turn adds no dropped frames (0/0), no longtasks, negligible CLS (0.0000247), and its bounded placeholder shows without base64 rendering cost. markdown:render count differences vs baseline are chunk-batching differences between checkouts, not cost regressions (totalMs 32.5 vs 133.9 on the same fixture text).
