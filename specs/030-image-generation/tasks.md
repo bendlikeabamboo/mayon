@@ -80,7 +80,7 @@ description: "Task list for feature 030 implementation"
 - [x] T015 [P] [US2] Provider settings UI: "Image output" tri-state select next to "Images (vision)" in src/lib/components/ai/ProviderConfig.svelte (depends on T014).
 - [x] T016 [P] [US2] Model badge: image-output chip in model-select rows next to the context-window badge in src/lib/components/ai/model-select/ (depends on T014).
 - [x] T017 [US2] Chat-surface indication: derive `supportsImageOutput` in src/routes/chat/[id]/+page.svelte following the `supportsVisionModel` wiring and surface it at the Composer (depends on T014).
-- [ ] T018 [US2] Typed failure refinement in src/lib/ai/errors.ts (`asImageOutputError` pattern after `asImageUnsupported`) + wire the store catch in src/lib/stores/chat.svelte.ts so a failed image turn yields a contained plain-language notice naming the capability toggle — never a raw provider dump (depends on T008; touches chat.svelte.ts, run after US1).
+- [x] T018 [US2] Typed failure refinement in src/lib/ai/errors.ts (`asImageOutputError` pattern after `asImageUnsupported`) + wire the store catch in src/lib/stores/chat.svelte.ts so a failed image turn yields a contained plain-language notice naming the capability toggle — never a raw provider dump (depends on T008; touches chat.svelte.ts, run after US1).
 
 **Checkpoint**: US1 and US2 both independently functional.
 

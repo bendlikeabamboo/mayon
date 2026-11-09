@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import type { ProviderConfig } from '#lib/ai/types.js';
-import { MissingKeyError, ProviderHttpError } from '#lib/ai/types.js';
+import { MissingKeyError, NetworkError, ProviderHttpError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '#lib/chat/context.js';
@@ -2127,6 +2127,74 @@ describe('chatStore image-unsupported error wiring (T021 — specs/018 User Stor
 			hint: undefined
 		});
 		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+});
+
+// T018 (specs/030 US2): a failed image turn — stream images were handed to
+// finalize but never persisted — is refined into a typed, plain-language
+// notice naming the "Image output" capability toggle, never a raw provider
+// dump (contract image-output-capability.md "Failure refinement", FR-007).
+describe('chatStore image-output failure refinement (T018 — specs/030 US2)', () => {
+	const PNG_B64 = 'QUFB'; // "AAA"
+
+	/** Turn mock: hands an image to finalize, whose assistant append fails. */
+	function imageTurnFailingAtFinalize(): void {
+		vi.mocked(runAgentTurn).mockImplementationOnce(async (deps) => {
+			await deps.appendAssistantText('drawing your quokka', {
+				images: [{ mediaType: 'image/png', base64: PNG_B64 }]
+			} as unknown as Parameters<typeof deps.appendAssistantText>[1]);
+			return { aborted: false };
+		});
+	}
+
+	/** Fail only the assistant-row append (the user row must persist). */
+	function failAssistantAppendWith(err: Error): void {
+		const originalAppend = repos.messages.append.bind(repos.messages);
+		vi.spyOn(repos.messages, 'append').mockImplementation(async (chatId, role, content, opts) => {
+			if (role === 'assistant') throw err;
+			return originalAppend(chatId, role, content, opts);
+		});
+	}
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('failed image turn surfaces the contained "No image produced" notice naming the toggle', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageTurnFailingAtFinalize();
+		failAssistantAppendWith(
+			new ProviderHttpError('Provider returned HTTP 400', 400, 'image request rejected')
+		);
+		await chatStore.load(root.id);
+
+		await chatStore.send('draw a quokka');
+
+		expect(chatStore.error).toEqual({
+			title: 'No image produced',
+			message: 'stub-model did not produce an image.',
+			hint: 'Set "Image output" to "On" in provider settings to force the attempt, or switch to a model that produces images.'
+		});
+	});
+
+	it('failed image turn with a non-provider error keeps that error\u2019s own notice', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageTurnFailingAtFinalize();
+		failAssistantAppendWith(new NetworkError('offline'));
+		await chatStore.load(root.id);
+
+		await chatStore.send('draw a quokka');
+
+		expect(chatStore.error?.title).toBe('Network error');
+		expect(chatStore.error?.message).toBe('offline');
 	});
 });
 

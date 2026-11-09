@@ -54,6 +54,7 @@ import { mark, incRender } from '#lib/perf/mark.js';
 import { resolveRequestSettings, type ImageCandidate } from '#lib/ai/dialects.js';
 import { mapSdkError } from '#lib/ai/sdk-errors.js';
 import {
+	asImageOutputError,
 	asImageUnsupported,
 	formatProviderError,
 	type FormattedProviderError
@@ -818,9 +819,19 @@ class ChatState {
 				// refine a provider 4xx into the dedicated image-unsupported error
 				// ahead of opaque provider output. Other failures pass through
 				// unchanged. Active model = `config.defaultModel` (contract §4).
-				this.error = formatProviderError(
-					hasImages ? asImageUnsupported(mapped, config?.defaultModel) : mapped
-				);
+				const imageInputRefined = hasImages
+					? asImageUnsupported(mapped, config?.defaultModel)
+					: mapped;
+				// Failed image turn (spec 030 FR-007): pendingImages still held at
+				// catch time means stream images were handed to finalize but the
+				// turn failed before any row persisted — refine into the typed
+				// no-image notice naming the "Image output" toggle, never a raw
+				// provider dump. Same surface path as the vision error above.
+				const refined =
+					this.pendingImages.length > 0
+						? asImageOutputError(imageInputRefined, config?.defaultModel)
+						: imageInputRefined;
+				this.error = formatProviderError(refined);
 				this.lastMappedError = mapped;
 				this.lastFailedPrompt = prompt;
 				this.lastFailedAttachments = hasImages ? attachments : null;

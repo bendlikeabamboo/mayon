@@ -344,3 +344,18 @@ export class ImageUnsupportedError extends Error {
 		this.name = 'ImageUnsupportedError';
 	}
 }
+
+/** The active model did not produce an image — refined from a provider
+ *  4xx/5xx that landed on a failed image turn (see `asImageOutputError`,
+ *  spec 030 FR-007). Sibling of `ImageUnsupportedError`, which covers image
+ *  input rejection; this one covers image output failure. */
+export class ImageOutputError extends Error {
+	constructor(
+		message = 'The model did not produce an image.',
+		public readonly modelId?: string,
+		public readonly providerId?: string
+	) {
+		super(message);
+		this.name = 'ImageOutputError';
+	}
+}
