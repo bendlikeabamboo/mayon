@@ -82,8 +82,8 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 
 **Independent Test**: quickstart V3 — one row per `tests/e2e/*.spec.ts` (10/10, incl. `backprop-tool` + `telemetry`), every row states a `ui-only`/`live-path` classification and UI-residue line, zero `proposed` dispositions, policy statements present.
 
-- [ ] T019 [US2] Restructure `tests/e2e/README.md` to the full contract: table columns (Spec / Classification / UI residue / Behavior invariants → fast-tier home), policy statements 1–4 from contracts/browser-inventory.md, classification + residue rows for the 8 classification-only specs (`mock-classification`, `quiz`, `lab`, `prompt-contract`, `onboard`, `render`, plus completing `backprop-tool`/`telemetry` rows)
-- [ ] T020 [US2] Ledger completeness sweep against `contracts/browser-inventory.md`: every cluster from the research triage has a disposition (`already-covered →` / `migrated →` / `retained-ui` / `retained-live-path` / `pruned-covered`), zero unclassified specs, zero `proposed` entries
+- [X] T019 [US2] Restructure `tests/e2e/README.md` to the full contract: table columns (Spec / Classification / UI residue / Behavior invariants → fast-tier home), policy statements 1–4 from contracts/browser-inventory.md, classification + residue rows for the 8 classification-only specs (`mock-classification`, `quiz`, `lab`, `prompt-contract`, `onboard`, `render`, plus completing `backprop-tool`/`telemetry` rows)
+- [X] T020 [US2] Ledger completeness sweep against `contracts/browser-inventory.md`: every cluster from the research triage has a disposition (`already-covered →` / `migrated →` / `retained-ui` / `retained-live-path` / `pruned-covered`), zero unclassified specs, zero `proposed` entries
 
 **Checkpoint**: Inventory answers "what is this browser test for?" for all 10 specs; policy makes behavior-proving additions a visible mismatch.
 
