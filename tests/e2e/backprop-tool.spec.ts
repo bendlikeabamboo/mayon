@@ -120,12 +120,19 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		// Offer turn: the fixture answers with the deterministic plain-text
 		// offer (manual control + explicit ask) — never a tool call.
 		const composer = page.getByPlaceholder(/Message the active provider/);
+		const rowsBefore = await page.locator('div[id^="msg-"]:not([id^="msg-live"])').count();
 		await composer.fill(`Wrapping up — ${OFFER_TRIGGER}.`);
 		await page.getByRole('button', { name: 'Send', exact: true }).click();
 
-		// The offer streams as one fast frame, so the committed reply row can
-		// stay below the fold, outside LazyMount's mount margin. Scroll the
-		// reply into its mount zone, then wait for the turn to settle.
+		// The offer streams as one fast frame, so the streaming autoscroll
+		// never runs and the committed reply row can stay below the fold,
+		// outside LazyMount's mount margin. Wait for the turn to settle (both
+		// durable rows commit — the turn-spanning reload mitigation), then
+		// scroll the reply into its mount zone.
+		await expect(page.locator('div[id^="msg-"]:not([id^="msg-live"])')).toHaveCount(
+			rowsBefore + 2,
+			{ timeout: TURN_TIMEOUT }
+		);
 		await scrollTranscriptToEnd(page);
 		await expect(page.locator('.markdown-body', { hasText: OFFER_REPLY })).toBeVisible({
 			timeout: TURN_TIMEOUT
@@ -191,14 +198,19 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		// minus propagate_to_parent (roots are excluded — FR-001).
 		await chatRoundTrip(page);
 		const composer = page.getByPlaceholder(/Message the active provider/);
+		const rowsBefore = await page.locator('div[id^="msg-"]:not([id^="msg-live"])').count();
 		await composer.fill(`Wrap up — ${PROPAGATE_TRIGGER}.`);
 		await page.getByRole('button', { name: 'Send', exact: true }).click();
 
 		// Settle before any reload: the reply row persists only when the loop
 		// finished, so reaching it proves the turn ran to completion —
 		// reloading earlier (slow CI runner) aborts the turn mid-flight and
-		// the persisted transcript would never contain the reply.
-		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
+		// the persisted transcript would never contain the reply
+		// (turn-spanning reload mitigation).
+		await expect(page.locator('div[id^="msg-"]:not([id^="msg-live"])')).toHaveCount(
+			rowsBefore + 2,
+			{ timeout: TURN_TIMEOUT }
+		);
 
 		// The persisted transcript is the source of truth: a CI server blip can
 		// still fire the boot gate's (streaming-deferred) reload near the turn's

@@ -66,7 +66,7 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 
 ### Parity ledger entries, then e2e pruning (research D8 rubric: counts/absence-windows/trace-counts/mock-log scrapes only; keep render, reload-render, nav, live-path steps)
 
-- [ ] T014 [US1] Record ledger dispositions in `tests/e2e/README.md` for every cluster with a landed fast home from T007–T013 (`migrated → <file>` / `already-covered → <file>`) — dispositions MUST exist before any deletion (contracts/browser-inventory.md policy 3)
+- [X] T014 [US1] Record ledger dispositions in `tests/e2e/README.md` for every cluster with a landed fast home from T007–T013 (`migrated → <file>` / `already-covered → <file>`) — dispositions MUST exist before any deletion (contracts/browser-inventory.md policy 3)
 - [X] T015 [P] [US1] Prune behavior-only assertions from `tests/e2e/backprop-tool.spec.ts` (durable-row counts, 12s no-modal/no-toast/no-re-ask windows, parent-artifact absence checks; keep Approve/Decline UI, badges, reload-render persistence, breadcrumb, live-path steps) (depends T014)
 - [X] T016 [P] [US1] Prune behavior-only assertions from `tests/e2e/provider-picker.spec.ts` (persisted-trace tool-count iterations; keep card UI, status text, discovery dialog, live fetch) (depends T014)
 - [X] T017 [P] [US1] Prune behavior-only assertions from `tests/e2e/telemetry.spec.ts` (span attribute/usage/composition checks now proven in T012; keep one thin live-delivery check per stub path) (depends T014)
@@ -95,9 +95,9 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 
 **Independent Test**: quickstart V6+V7+V8.
 
-- [ ] T021 [P] [US3] No-runtime-change proof (quickstart V8): `git diff --stat` across the branch shows only `specs/`, `tests/`, `src/**/*.test.ts`, `server/src/**/*.test.ts` — zero product source, routes, schemas, workflows
-- [ ] T022 [US3] Full gates green (quickstart V1/V4): `pnpm lint && pnpm check && pnpm test` with the stack down, then `pnpm dev:up && pnpm test:e2e && pnpm dev:down`
-- [ ] T023 [US3] Measurements (quickstart V6/V7): 5× consecutive runs of `pnpm test src/lib/chat/backprop-endstate.test.ts` all green (flake-class-free by construction); record fast-tier vs browser-tier wall times, confirm ≤ 1/10 ratio; record both in the validation-pass commit message
+- [X] T021 [P] [US3] No-runtime-change proof (quickstart V8): `git diff --stat` across the branch shows only `specs/`, `tests/`, `src/**/*.test.ts`, `server/src/**/*.test.ts` — zero product source, routes, schemas, workflows
+- [X] T022 [US3] Full gates green (quickstart V1/V4): `pnpm lint && pnpm check && pnpm test` with the stack down, then `pnpm dev:up && pnpm test:e2e && pnpm dev:down`
+- [X] T023 [US3] Measurements (quickstart V6/V7): 5× consecutive runs of `pnpm test src/lib/chat/backprop-endstate.test.ts` all green (flake-class-free by construction); record fast-tier vs browser-tier wall times, confirm ≤ 1/10 ratio; record both in the validation-pass commit message
 
 **Checkpoint**: All quickstart measurable criteria demonstrated on the final tree.
 
@@ -107,7 +107,7 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 
 **Purpose**: End-to-end validation of the finished split.
 
-- [ ] T024 Run `specs/031-split-text-e2e-tests/quickstart.md` V1–V8 end-to-end; fix anything it catches; only then mark this feature's tasks complete
+- [X] T024 Run `specs/031-split-text-e2e-tests/quickstart.md` V1–V8 end-to-end; fix anything it catches; only then mark this feature's tasks complete
 
 ---
 
