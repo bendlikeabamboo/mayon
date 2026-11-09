@@ -1,8 +1,7 @@
 import net from 'node:net';
 import { expect, test } from './fixtures/onboard';
-import { EARLY_MARKER, LATE_MARKER, MOCK_BASE_URL } from './fixtures/kitchen-sink';
+import { MOCK_BASE_URL } from './fixtures/kitchen-sink';
 import { modelListFooter, settledModelFooter } from './fixtures/onboard';
-import { liveText } from './fixtures/render';
 import type { Locator, Page } from '@playwright/test';
 
 const GROUP_HEADINGS = ['Local', 'Cloud APIs', 'Gateways', 'Custom'];
@@ -57,60 +56,13 @@ test.describe('grouped provider picker', () => {
 });
 
 test.describe('tool capability toggle', () => {
-	/** Shape of the persisted per-turn trace we assert on: what the agent loop offered to the endpoint. */
-	interface TurnTrace {
-		iterations: Array<{ request: { tools: string[] } }>;
-	}
-
-	/** Drive one real chat round trip and wait for the deterministic reply to finish. */
-	async function chatRoundTrip(page: Page): Promise<void> {
-		await sendMessage(page);
-		await expect(liveText(page).first()).toContainText(EARLY_MARKER);
-		await expect(page.locator('.markdown-body', { hasText: LATE_MARKER })).toBeVisible();
-		await expect(liveText(page)).toHaveCount(0);
-	}
-
-	/** Send one message and return; the caller decides what the reply should prove. */
-	async function sendMessage(page: Page): Promise<void> {
-		const composer = page.getByPlaceholder(/Message the active provider/);
-		await composer.fill('Explain the kitchen sink');
-		await page.getByRole('button', { name: 'Send', exact: true }).click();
-	}
-
-	/** The latest persisted chat-turn trace (mock-classification-style real path; workers=1 keeps "latest" stable). */
-	async function latestChatTrace(page: Page): Promise<TurnTrace> {
-		const response = await page.request.post('/api/db/query', {
-			data: {
-				op: 'query',
-				sql: "SELECT trace FROM agent_traces WHERE kind = 'chat' ORDER BY created_at DESC LIMIT 1"
-			}
-		});
-		const { rows } = (await response.json()) as { rows: Array<[string]> };
-		return JSON.parse(rows[0]![0]) as TurnTrace;
-	}
-
-	test('Enabled offers tools to the endpoint, Disabled runs tool-less, and the state persists', async ({
+	// What the loop offered to the endpoint per capability state is proven in
+	// src/lib/agent/loop.test.ts (031 parity); the spec keeps the card UI,
+	// its persistence, and the legacy display contract.
+	test('Enabled default renders the option pair with its hint, flips to Disabled, and the state persists', async ({
 		onboarded
 	}) => {
-		test.slow();
 		const { page, providerCard } = onboarded;
-		const chatUrl = page.url();
-
-		// First turn: the loop never carries tools on a chat's first turn, so it
-		// only settles the chat — the second turn exercises the gating for real.
-		await chatRoundTrip(page);
-
-		// Enabled: the agent loop offers tools on this turn. The mock serves its
-		// brief fallback for unknown tool payloads (a 200 reply, not a 400), so
-		// the persisted trace — not the reply text — is the wire-level proof
-		// the tools were offered.
-		await sendMessage(page);
-		await expect
-			.poll(async () => {
-				const trace = await latestChatTrace(page);
-				return trace.iterations.some((i) => i.request.tools.length > 0);
-			})
-			.toBe(true);
 
 		// Card contract: two explicit options, Enabled default, plain-language hint.
 		await page.goto('/settings#providers');
@@ -125,18 +77,6 @@ test.describe('tool capability toggle', () => {
 		await capability.selectOption('off');
 		await expect(page.getByText('Saved.', { exact: true })).toBeVisible();
 		await expect(capability).toHaveValue('off');
-
-		// Same turn again: the run proceeds tool-less (text-only reply, no retry).
-		await page.goto(chatUrl);
-		await chatRoundTrip(page);
-		await expect
-			.poll(async () => {
-				const trace = await latestChatTrace(page);
-				return (
-					trace.iterations.length > 0 && trace.iterations.every((i) => i.request.tools.length === 0)
-				);
-			})
-			.toBe(true);
 
 		// Reload: the Disabled assertion persisted.
 		await page.goto('/settings#providers');

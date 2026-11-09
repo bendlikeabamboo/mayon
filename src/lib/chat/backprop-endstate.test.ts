@@ -51,7 +51,10 @@ const connectSessionMock = vi.fn<ConnectSession>(async () => ({
 }));
 vi.mock('#lib/mcp/lifecycle.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/mcp/lifecycle.js')>();
-	return { ...actual, connectSession: (...args: Parameters<ConnectSession>) => connectSessionMock(...args) };
+	return {
+		...actual,
+		connectSession: (...args: Parameters<ConnectSession>) => connectSessionMock(...args)
+	};
 });
 
 // toolsRun is spied with call-through so the declined-turn test can prove the

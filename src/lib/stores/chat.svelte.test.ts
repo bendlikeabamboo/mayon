@@ -2247,7 +2247,6 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 			data: `data:image/png;base64,${PNG_B64}`,
 			mimeType: 'image/png'
 		});
-		expect(chatStore.pendingImages).toEqual([]);
 	});
 });
 

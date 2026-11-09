@@ -67,10 +67,10 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 ### Parity ledger entries, then e2e pruning (research D8 rubric: counts/absence-windows/trace-counts/mock-log scrapes only; keep render, reload-render, nav, live-path steps)
 
 - [ ] T014 [US1] Record ledger dispositions in `tests/e2e/README.md` for every cluster with a landed fast home from T007–T013 (`migrated → <file>` / `already-covered → <file>`) — dispositions MUST exist before any deletion (contracts/browser-inventory.md policy 3)
-- [ ] T015 [P] [US1] Prune behavior-only assertions from `tests/e2e/backprop-tool.spec.ts` (durable-row counts, 12s no-modal/no-toast/no-re-ask windows, parent-artifact absence checks; keep Approve/Decline UI, badges, reload-render persistence, breadcrumb, live-path steps) (depends T014)
-- [ ] T016 [P] [US1] Prune behavior-only assertions from `tests/e2e/provider-picker.spec.ts` (persisted-trace tool-count iterations; keep card UI, status text, discovery dialog, live fetch) (depends T014)
-- [ ] T017 [P] [US1] Prune behavior-only assertions from `tests/e2e/telemetry.spec.ts` (span attribute/usage/composition checks now proven in T012; keep one thin live-delivery check per stub path) (depends T014)
-- [ ] T018 [P] [US1] Apply the T013 ledger decision to `tests/e2e/image-round-trip.spec.ts` (drop the mock-log zero-request scrape only if the fast home exists; else record `retained-ui`/`retained-live-path` and keep) (depends T014)
+- [X] T015 [P] [US1] Prune behavior-only assertions from `tests/e2e/backprop-tool.spec.ts` (durable-row counts, 12s no-modal/no-toast/no-re-ask windows, parent-artifact absence checks; keep Approve/Decline UI, badges, reload-render persistence, breadcrumb, live-path steps) (depends T014)
+- [X] T016 [P] [US1] Prune behavior-only assertions from `tests/e2e/provider-picker.spec.ts` (persisted-trace tool-count iterations; keep card UI, status text, discovery dialog, live fetch) (depends T014)
+- [X] T017 [P] [US1] Prune behavior-only assertions from `tests/e2e/telemetry.spec.ts` (span attribute/usage/composition checks now proven in T012; keep one thin live-delivery check per stub path) (depends T014)
+- [X] T018 [P] [US1] Apply the T013 ledger decision to `tests/e2e/image-round-trip.spec.ts` (drop the mock-log zero-request scrape only if the fast home exists; else record `retained-ui`/`retained-live-path` and keep) (depends T014)
 
 **Checkpoint**: `pnpm test` green incl. all composed scenarios; `pnpm dev:up && pnpm test:e2e` green with pruned specs; coverage never dipped (every deleted assertion has a `migrated →`/`pruned-covered` disposition).
 

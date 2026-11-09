@@ -87,16 +87,15 @@ test.describe('mock-llm image reply round trip (030 S5)', () => {
 		// proxy path (browser → /api/llm/proxy → mock). The first exchange
 		// also fires the pre-existing goal-inference aux requests
 		// (brief_generation, chat_plain), so the total count is not exact —
-		// the reply kind is.
+		// the reply kind is. (Live-path wire composition; the reload
+		// no-provider-contact invariant is proven in
+		// src/lib/stores/chat.svelte.test.ts, 031 parity.)
 		expect(mockRequestCount('image_reply')).toBe(repliesBefore + 1);
 
-		// Reload: the redisplay is served from the persisted row — the
-		// mock's request log must not grow at all.
-		const totalAfterTurn = mockRequestCount();
+		// Reload: the redisplay is served from the persisted row (fast parity).
 		await page.reload();
 		await expect(
 			page.getByRole('button', { name: 'View image full size' }).locator('img')
 		).toBeVisible({ timeout: TURN_TIMEOUT });
-		expect(mockRequestCount()).toBe(totalAfterTurn);
 	});
 });
