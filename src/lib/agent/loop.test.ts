@@ -1896,4 +1896,132 @@ describe('(w) persist order (003 US3): reasoning first, per iteration', () => {
 		expect(deps.appendAssistantText).toHaveBeenCalledWith('partial reply');
 		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
 	});
+
+	it('interleaved segments persist the block walk in arrival order; per-block text rows concatenate to the buffer (029 T011)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-start', id: 'r1' },
+				{ type: 'reasoning-delta', text: 'thought one' },
+				{ type: 'reasoning-end', id: 'r1' },
+				{ type: 'text-delta', text: 'answer one' },
+				{ type: 'reasoning-start', id: 'r2' },
+				{ type: 'reasoning-delta', text: 'thought two' },
+				{ type: 'reasoning-end', id: 'r2' },
+				{ type: 'text-delta', text: 'answer two' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({
+			onReasoningSegmentStart: vi.fn(),
+			onTextSegmentStart: vi.fn()
+		});
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(2);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(1, 'thought one', 0);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(2, 'thought two', 0);
+
+		const textCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+		expect(textCalls).toHaveLength(2);
+		expect(textCalls[0][0]).toBe('answer one');
+		expect(textCalls[1][0]).toBe('answer two');
+		// lossless split: per-block contents concatenated equal the full stream buffer (rule 3)
+		expect(textCalls.map((c) => c[0] as string).join('')).toBe('answer oneanswer two');
+
+		// walk order: reasoning < text < reasoning < text
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(orderOf(deps.appendReasoning, 1));
+		expect(orderOf(deps.appendReasoning, 1)).toBeLessThan(orderOf(deps.appendAssistantText, 1));
+	});
+
+	it('single-segment stream persists exactly the pre-029 shapes: one reasoning row + one full-buffer text row (029 T011)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-start', id: 'r' },
+				{ type: 'reasoning-delta', text: 'solo thought' },
+				{ type: 'reasoning-end', id: 'r' },
+				{ type: 'text-delta', text: 'answer' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({
+			onReasoningSegmentStart: vi.fn(),
+			onTextSegmentStart: vi.fn()
+		});
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('solo thought', 0);
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('answer');
+	});
+
+	it('abort mid-interleave persists received blocks in order; nothing after the stop point (029 T011)', async () => {
+		const ac = new AbortController();
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-start', id: 'r1' },
+				{ type: 'reasoning-delta', text: 'thought one' },
+				{ type: 'reasoning-end', id: 'r1' },
+				{ type: 'text-delta', text: 'answer one' },
+				{ type: 'reasoning-start', id: 'r2' },
+				{ type: 'reasoning-delta', text: 'thought two partial' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({
+			signal: ac.signal,
+			updateReasoningBuffer: vi.fn((n: string) => {
+				if (n.includes('two')) ac.abort();
+			}),
+			onReasoningSegmentStart: vi.fn(),
+			onTextSegmentStart: vi.fn()
+		});
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: true });
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(2);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(1, 'thought one', 0);
+		expect(deps.appendReasoning).toHaveBeenNthCalledWith(2, 'thought two partial', 0);
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('answer one');
+		// completed reasoning < its text < the partial open-block reasoning; nothing after
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(orderOf(deps.appendReasoning, 1));
+	});
+
+	it('whitespace-only segments produce no reasoning row; walk persists the surrounding blocks (029 T011)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'before' },
+				{ type: 'reasoning-start', id: 'rw' },
+				{ type: 'reasoning-delta', text: '   ' },
+				{ type: 'reasoning-end', id: 'rw' },
+				{ type: 'text-delta', text: ' mid ' },
+				{ type: 'reasoning-start', id: 'rr' },
+				{ type: 'reasoning-delta', text: 'real thought' },
+				{ type: 'reasoning-end', id: 'rr' },
+				{ type: 'text-delta', text: 'after' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({
+			onReasoningSegmentStart: vi.fn(),
+			onTextSegmentStart: vi.fn()
+		});
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('real thought', 0);
+
+		const textCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
+		expect(textCalls.map((c) => c[0] as string)).toEqual(['before', ' mid ', 'after']);
+	});
 });

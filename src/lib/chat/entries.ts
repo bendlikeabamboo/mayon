@@ -2,6 +2,7 @@ import type { Message } from '#lib/db/index.js';
 import type {
 	ApprovalMeta,
 	EntryKind,
+	ReasoningMeta,
 	SharedMetadata,
 	ToolResultMeta,
 	UserMessageMeta
@@ -279,7 +280,7 @@ function isToolActivity(item: TimelineItem): boolean {
 function reorderTurn(items: TimelineItem[]): TimelineItem[] {
 	const out: TimelineItem[] = [];
 	for (const item of items) {
-		if (isDurableEntry(item) && item.kind === 'reasoning') {
+		if (isDurableEntry(item) && item.kind === 'reasoning' && !isAnchoredReasoning(item.entry)) {
 			let insertAt = -1;
 			for (let j = out.length - 1; j >= 0; j--) {
 				const prev = out[j];
@@ -297,6 +298,10 @@ function reorderTurn(items: TimelineItem[]): TimelineItem[] {
 		out.push(item);
 	}
 	return out;
+}
+
+function isAnchoredReasoning(m: Message): boolean {
+	return metaOf<ReasoningMeta>(m)?.anchored === true;
 }
 
 function canonicalizeOrder(items: TimelineItem[]): TimelineItem[] {

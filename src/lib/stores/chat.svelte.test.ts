@@ -8,6 +8,7 @@ import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
 import { projectEntries } from '#lib/chat/projection.js';
+import { assembleTimeline, isDurableEntry } from '#lib/chat/entries.js';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
 import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
@@ -1104,6 +1105,108 @@ describe('029 live blocks (T010)', () => {
 
 		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
 		expect(chatStore.liveItems).toEqual([]);
+	});
+});
+
+// T017 (029 US2): an interleaved turn persisted through the real store path
+// must survive reload with the live block sequence intact — rows in arrival
+// order, `anchored: true` on reasoning rows, and canonical entries keeping
+// reasoning at their persisted positions (reorderTurn v2 semantics).
+describe('029 reload fidelity (T017)', () => {
+	afterEach(() => {
+		vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl!);
+	});
+
+	it('interleaved turn reload reproduces the live block sequence exactly', async () => {
+		let liveKinds: string[] = [];
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			// One iteration, segments interleaved: R → T → R → T.
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought one');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer one');
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought two');
+			deps.onTextSegmentStart?.('answer one'.length);
+			deps.updateStreamBuffer('answer oneanswer two');
+			liveKinds = chatStore.liveBlocks.map((b) => b.kind);
+			// Iteration-end block walk (post-T012): persist in arrival order.
+			await deps.appendReasoning?.('thought one', 0);
+			await deps.appendAssistantText('answer one', {});
+			await deps.appendReasoning?.('thought two', 0);
+			await deps.appendAssistantText('answer two', {});
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		expect(liveKinds).toEqual(['reasoning', 'text', 'reasoning', 'text']);
+
+		await chatStore.load(root.id);
+
+		const turn = chatStore.messages.filter((m) => m.role === 'assistant');
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['reasoning', 'thought one'],
+			['assistant_message', 'answer one'],
+			['reasoning', 'thought two'],
+			['assistant_message', 'answer two']
+		]);
+		const storedKinds = turn.map((m) => (m.kind === 'reasoning' ? 'reasoning' : 'text'));
+		expect(storedKinds).toEqual(liveKinds);
+
+		const reasoningRows = turn.filter((m) => m.kind === 'reasoning');
+		expect(JSON.parse(reasoningRows[0]!.metadata!)).toEqual({ iteration: 0, anchored: true });
+		expect(JSON.parse(reasoningRows[1]!.metadata!)).toEqual({ iteration: 0, anchored: true });
+		const textRows = turn.filter((m) => m.kind === 'assistant_message');
+		expect(textRows[0]!.metadata).toBeNull();
+		expect(textRows[1]!.metadata).toBeNull();
+
+		// Canonical rebuild (post-T014): anchored reasoning rows stay at their
+		// persisted positions — NOT hoisted before the turn's assistant row.
+		const kinds = assembleTimeline(chatStore.messages)
+			.filter(isDurableEntry)
+			.map((t) => t.kind);
+		expect(kinds).toEqual([
+			'user_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning',
+			'assistant_message'
+		]);
+	});
+
+	it('single-segment turn reload keeps the [reasoning, assistant_message] shapes', async () => {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('solo thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('solo answer');
+			await deps.appendReasoning?.('solo thought', 0);
+			await deps.appendAssistantText('solo answer', {});
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+		await chatStore.load(root.id);
+
+		const turn = chatStore.messages.filter((m) => m.role === 'assistant');
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['reasoning', 'solo thought'],
+			['assistant_message', 'solo answer']
+		]);
+		expect(JSON.parse(turn[0]!.metadata!).iteration).toBe(0);
+		expect(turn[1]!.metadata).toBeNull();
+
+		const kinds = assembleTimeline(chatStore.messages)
+			.filter(isDurableEntry)
+			.map((t) => t.kind);
+		expect(kinds).toEqual(['user_message', 'reasoning', 'assistant_message']);
 	});
 });
 

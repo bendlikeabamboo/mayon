@@ -309,6 +309,174 @@ describe('canonical order pass (003 US3)', () => {
 			'assistant_message:row-a1'
 		]);
 	});
+
+	// 029 T015: reorderTurn v2 — anchored (ReasoningMeta.anchored === true) rows are
+	// position-authoritative and must never be hoisted; legacy rows keep 003 US3 repair.
+	const anchoredMeta = JSON.stringify({ iteration: 1, anchored: true });
+	const legacyMeta = JSON.stringify({ iteration: 1 });
+
+	it('anchored reasoning after its reply is NOT hoisted (position authoritative, 029)', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({ id: 'row-a1', role: 'assistant', content: 'Reply', ord: 1 }),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'afterthought',
+				metadata: anchoredMeta,
+				ord: 2
+			})
+		]);
+		expect(rowIds(items)).toEqual([
+			'user_message:row-u1',
+			'assistant_message:row-a1',
+			'reasoning:row-r1'
+		]);
+	});
+
+	it('anchored reasoning between two replies stays in place (mid-turn interleave)', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({ id: 'row-a1', role: 'assistant', content: 'part one', ord: 1 }),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'mid thought',
+				metadata: anchoredMeta,
+				ord: 2
+			}),
+			msg({ id: 'row-a2', role: 'assistant', content: 'part two', ord: 3 })
+		]);
+		expect(rowIds(items)).toEqual([
+			'user_message:row-u1',
+			'assistant_message:row-a1',
+			'reasoning:row-r1',
+			'assistant_message:row-a2'
+		]);
+	});
+
+	it('legacy unanchored reasoning after a reply is still repaired to pre-answer (003 US3)', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({ id: 'row-a1', role: 'assistant', content: 'Reply', ord: 1 }),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'legacy thoughts',
+				metadata: legacyMeta,
+				ord: 2
+			})
+		]);
+		expect(rowIds(items)).toEqual([
+			'user_message:row-u1',
+			'reasoning:row-r1',
+			'assistant_message:row-a1'
+		]);
+	});
+
+	it('anchored rows never cross tool rows; legacy repair still stops at tool rows', () => {
+		const anchoredMid = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({ id: 'row-a1', role: 'assistant', content: 'Reply', ord: 1 }),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'before tool',
+				metadata: anchoredMeta,
+				ord: 2
+			}),
+			msg({
+				id: 'row-call-1',
+				role: 'assistant',
+				toolCallId: 'call-1',
+				toolName: 'bash',
+				ord: 3
+			}),
+			msg({
+				id: 'row-res-1',
+				role: 'tool',
+				toolCallId: 'call-1',
+				toolName: 'bash',
+				content: 'ok',
+				ord: 4
+			})
+		]);
+		expect(rowIds(anchoredMid)).toEqual([
+			'user_message:row-u1',
+			'assistant_message:row-a1',
+			'reasoning:row-r1',
+			'group:row-call-1'
+		]);
+
+		const legacyAfterTool = assembleTimeline([
+			msg({ id: 'row-u2', role: 'user', content: 'go again', ord: 0 }),
+			msg({ id: 'row-a2', role: 'assistant', content: 'Reply', ord: 1 }),
+			msg({
+				id: 'row-call-2',
+				role: 'assistant',
+				toolCallId: 'call-2',
+				toolName: 'bash',
+				ord: 2
+			}),
+			msg({
+				id: 'row-res-2',
+				role: 'tool',
+				toolCallId: 'call-2',
+				toolName: 'bash',
+				content: 'ok',
+				ord: 3
+			}),
+			msg({
+				id: 'row-r2',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'legacy after tool',
+				metadata: legacyMeta,
+				ord: 4
+			})
+		]);
+		expect(rowIds(legacyAfterTool)).toEqual([
+			'user_message:row-u2',
+			'assistant_message:row-a2',
+			'group:row-call-2',
+			'reasoning:row-r2'
+		]);
+	});
+
+	it('multi-row interleaved turn assembles in stored ord order (anchored)', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'think one',
+				metadata: anchoredMeta,
+				ord: 1
+			}),
+			msg({ id: 'row-a1', role: 'assistant', content: 'part one', ord: 2 }),
+			msg({
+				id: 'row-r2',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'think two',
+				metadata: anchoredMeta,
+				ord: 3
+			}),
+			msg({ id: 'row-a2', role: 'assistant', content: 'part two', ord: 4 })
+		]);
+		expect(rowIds(items)).toEqual([
+			'user_message:row-u1',
+			'reasoning:row-r1',
+			'assistant_message:row-a1',
+			'reasoning:row-r2',
+			'assistant_message:row-a2'
+		]);
+	});
 });
 
 describe('FR-001 boundary persist: no duplicate text after D1 (T005)', () => {

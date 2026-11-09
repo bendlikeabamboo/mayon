@@ -661,7 +661,9 @@ class ChatState {
 					this.liveBlocks.push({ kind: 'text', start: startOffset, open: true });
 				},
 				appendAssistantText: async (content, opts) => {
-					finalAssistantText = content;
+					// Concatenated whole-turn buffer semantics (029 rule 6): the walk may
+					// call this once per text block; lint/telemetry read the sum.
+					finalAssistantText += content;
 					const pacer = this.pacer;
 					// Deferred finalization (research.md D3): on a normal finish the
 					// durable row waits for the eased drain; abort/error persists now.
@@ -752,7 +754,7 @@ class ChatState {
 				appendReasoning: async (text, iteration) => {
 					const row = await repos.messages.append(chatId, 'assistant', text, {
 						kind: 'reasoning',
-						metadata: JSON.stringify({ iteration })
+						metadata: JSON.stringify({ iteration, anchored: true })
 					});
 					this.messages = [...this.messages, row];
 					await repos.chats.touch(chatId);
