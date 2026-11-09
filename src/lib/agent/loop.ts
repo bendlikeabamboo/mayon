@@ -169,36 +169,53 @@ async function consumeStream(
 	let finishReason = '';
 	let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null =
 		null;
-	let reasoningOpen = false;
+	// Segment state machine (029): reasoning segments are positional (provider
+	// ids are reused/reopened), whitespace-only segments defer their open until
+	// real content arrives, and text splits are recorded at the current buffer
+	// length whenever a new text stretch begins.
+	let segText = '';
+	let segStarted = false;
+	let textOpen = false;
+	const closeReasoningSegment = () => {
+		segText = '';
+		segStarted = false;
+	};
 	for await (const part of fullStream) {
 		if (signal.aborted) break;
 		const p = part as Record<string, unknown>;
 		onTrace?.({ kind: 'part', type: p.type as string, payload: p });
 		if (p.type === 'reasoning-start') {
-			reasoningOpen = true;
-			onReasoningSegmentStart();
+			closeReasoningSegment();
+			textOpen = false;
 		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
-			if (!reasoningOpen) {
-				reasoningOpen = true;
+			segText += p.text;
+			if (!segStarted && segText.trim()) {
+				segStarted = true;
 				onReasoningSegmentStart();
 			}
-			onReasoningDelta(p.text);
+			if (segStarted) onReasoningDelta(p.text);
 		} else if (p.type === 'reasoning-end') {
-			reasoningOpen = false;
+			closeReasoningSegment();
 		} else if (p.type === 'text-start') {
-			reasoningOpen = false;
+			closeReasoningSegment();
+			textOpen = true;
 			onTextSegmentStart(textLength());
 		} else if (p.type === 'text-delta' && typeof p.text === 'string') {
+			if (!textOpen) {
+				textOpen = true;
+				onTextSegmentStart(textLength());
+			}
 			onTextDelta(p.text);
 		} else if (p.type === 'tool-call') {
-			reasoningOpen = false;
+			closeReasoningSegment();
 			onToolCall({
 				toolCallId: p.toolCallId as string,
 				toolName: p.toolName as string,
 				args: p.input ?? p.args
 			});
 		} else if (p.type === 'finish') {
-			reasoningOpen = false;
+			closeReasoningSegment();
+			textOpen = false;
 			finishReason = p.finishReason as string;
 			// ai@7 renamed the finish-part usage fields to inputTokens/outputTokens;
 			// accept both spellings per field. Prefer the richer of usage / totalUsage

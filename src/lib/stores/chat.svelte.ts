@@ -310,19 +310,32 @@ class ChatState {
 		}
 		const items: LiveEntry[] = [];
 		if (this.streaming) {
-			let reasoning = '';
-			for (const b of this.liveBlocks) {
-				if (b.kind === 'reasoning' && b.text.trim()) reasoning += b.text;
+			const blocks = this.liveBlocks;
+			const visible = this.streamBufferRender;
+			for (let i = 0; i < blocks.length; i++) {
+				const b = blocks[i];
+				if (b.kind === 'reasoning') {
+					if (!b.text.trim()) continue;
+					items.push({ source: 'live', live: 'live_reasoning', buffer: b.text });
+					continue;
+				}
+				let nextStart: number | null = null;
+				let isLastText = true;
+				for (let j = i + 1; j < blocks.length; j++) {
+					const nb = blocks[j];
+					if (nb.kind !== 'text') continue;
+					nextStart = nb.start;
+					isLastText = false;
+					break;
+				}
+				const buffer = visible.slice(b.start, nextStart ?? visible.length);
+				items.push({
+					source: 'live',
+					live: 'live_text',
+					buffer,
+					pending: isLastText && b.open && buffer.length === 0
+				});
 			}
-			if (reasoning) {
-				items.push({ source: 'live', live: 'live_reasoning', buffer: reasoning });
-			}
-			items.push({
-				source: 'live',
-				live: 'live_text',
-				buffer: this.streamBufferRender,
-				pending: this.streamBufferRender.length === 0
-			});
 		}
 		for (const a of this.pendingApprovals) {
 			const payload: LiveAskPayload = {
@@ -840,6 +853,9 @@ class ChatState {
 			this.streamBufferRender = this.streamBuffer;
 			const wasAborted = this.controller?.signal.aborted ?? false;
 			if (wasAborted || this.error) this.pacer?.onAbort();
+			// Terminal closure (029 T009): no open live block may survive the
+			// turn's end — close before residual persistence and teardown.
+			for (const b of this.liveBlocks) b.open = false;
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
 					const row = await repos.messages.append(chatId, 'assistant', this.streamBuffer, {
@@ -856,7 +872,6 @@ class ChatState {
 			this.pacer?.reset();
 			this.pacer = null;
 			this.streamPhase = 'idle';
-			for (const b of this.liveBlocks) b.open = false;
 			this.liveBlocks = [];
 			this.generativeStatus = null;
 			this.controller = null;

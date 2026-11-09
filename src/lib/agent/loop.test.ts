@@ -1276,6 +1276,124 @@ describe('runAgentTurn', () => {
 			expect(deps.appendReasoning).not.toHaveBeenCalled();
 		});
 
+		it('interleaved segments: per-segment callbacks with split offsets; buffers never concatenate (029 T006)', async () => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'r1' },
+					{ type: 'reasoning-delta', text: 'thought one' },
+					{ type: 'reasoning-end', id: 'r1' },
+					{ type: 'text-delta', text: 'answer part 1' },
+					{ type: 'reasoning-start', id: 'r2' },
+					{ type: 'reasoning-delta', text: 'thought two' },
+					{ type: 'reasoning-end', id: 'r2' },
+					{ type: 'text-delta', text: 'answer part 2' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps({
+				onReasoningSegmentStart: vi.fn(),
+				onTextSegmentStart: vi.fn()
+			});
+			await runAgentTurn(deps);
+
+			expect(deps.onReasoningSegmentStart).toHaveBeenCalledTimes(2);
+			expect(deps.onTextSegmentStart).toHaveBeenCalledTimes(2);
+			expect(deps.onTextSegmentStart).toHaveBeenNthCalledWith(1, 0);
+			expect(deps.onTextSegmentStart).toHaveBeenNthCalledWith(2, 'answer part 1'.length);
+
+			const reasoningCalls = (
+				deps.updateReasoningBuffer as ReturnType<typeof vi.fn>
+			).mock.calls.map((c) => c[0] as string);
+			const segmentCalls = reasoningCalls.filter(Boolean);
+			expect(segmentCalls).toEqual(['thought one', 'thought two']);
+			expect(reasoningCalls.join('|')).not.toContain('thought onethought two');
+
+			expect(deps.updateStreamBuffer).toHaveBeenCalledWith('answer part 1answer part 2');
+		});
+
+		it('single-segment stream: one segment start, accumulated buffer, one text boundary at 0 (029 T006)', async () => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'r' },
+					{ type: 'reasoning-delta', text: 'hmm ' },
+					{ type: 'reasoning-delta', text: 'thinking' },
+					{ type: 'reasoning-end', id: 'r' },
+					{ type: 'text-delta', text: 'Reply' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps({
+				onReasoningSegmentStart: vi.fn(),
+				onTextSegmentStart: vi.fn()
+			});
+			await runAgentTurn(deps);
+
+			expect(deps.onReasoningSegmentStart).toHaveBeenCalledTimes(1);
+			expect(deps.updateReasoningBuffer).toHaveBeenNthCalledWith(1, 'hmm ');
+			expect(deps.updateReasoningBuffer).toHaveBeenNthCalledWith(2, 'hmm thinking');
+			expect(deps.onTextSegmentStart).toHaveBeenCalledTimes(1);
+			expect(deps.onTextSegmentStart).toHaveBeenCalledWith(0);
+		});
+
+		it('whitespace-only reasoning segment is never surfaced; later segments unaffected (029 T006)', async () => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'before' },
+					{ type: 'reasoning-start', id: 'rw' },
+					{ type: 'reasoning-delta', text: '  ' },
+					{ type: 'reasoning-end', id: 'rw' },
+					{ type: 'text-delta', text: ' mid ' },
+					{ type: 'reasoning-start', id: 'rr' },
+					{ type: 'reasoning-delta', text: 'real thought' },
+					{ type: 'reasoning-end', id: 'rr' },
+					{ type: 'text-delta', text: 'after' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps({
+				onReasoningSegmentStart: vi.fn(),
+				onTextSegmentStart: vi.fn()
+			});
+			await runAgentTurn(deps);
+
+			expect(deps.onReasoningSegmentStart).toHaveBeenCalledTimes(1);
+			const reasoningCalls = (
+				deps.updateReasoningBuffer as ReturnType<typeof vi.fn>
+			).mock.calls.map((c) => c[0] as string);
+			expect(reasoningCalls).toEqual(['real thought', '']);
+			expect(deps.onTextSegmentStart).toHaveBeenCalledTimes(3);
+			expect(deps.onTextSegmentStart).toHaveBeenNthCalledWith(2, 'before'.length);
+			expect(deps.onTextSegmentStart).toHaveBeenNthCalledWith(3, 'before mid '.length);
+		});
+
+		it('abort mid-reasoning closes the open segment: partial reasoning persisted, buffer cleared (029 T006)', async () => {
+			const ac = new AbortController();
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'r' },
+					{ type: 'reasoning-delta', text: 'partial thought' },
+					{ type: 'reasoning-delta', text: ' never arrives' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const deps = makeDeps({
+				signal: ac.signal,
+				updateReasoningBuffer: vi.fn((n: string) => {
+					if (n.length > 5) ac.abort();
+				}),
+				onReasoningSegmentStart: vi.fn()
+			});
+			const result = await runAgentTurn(deps);
+
+			expect(result).toEqual({ aborted: true });
+			expect(deps.appendReasoning).toHaveBeenCalledWith('partial thought', 0);
+			expect(deps.updateReasoningBuffer).toHaveBeenLastCalledWith('');
+		});
+
 		it('assistant rows carry no reasoning metadata', async () => {
 			mockedStreamText.mockReturnValue({
 				fullStream: scriptedFullStream([

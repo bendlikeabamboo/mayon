@@ -1014,6 +1014,99 @@ describe('chatStore reasoning buffer', () => {
 	});
 });
 
+describe('029 live blocks (T010)', () => {
+	afterEach(() => {
+		vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl!);
+	});
+
+	it('interleaved turn produces ordered liveBlocks and per-block liveItems; blocks clear on teardown', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought one');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer part 1');
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought two');
+			deps.onTextSegmentStart?.('answer part 1'.length);
+			deps.updateStreamBuffer('answer part 1answer part 2');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(4));
+		expect(chatStore.liveBlocks).toEqual([
+			{ kind: 'reasoning', text: 'thought one', open: true },
+			{ kind: 'text', start: 0, open: false },
+			{ kind: 'reasoning', text: 'thought two', open: true },
+			{ kind: 'text', start: 13, open: true }
+		]);
+
+		await new Promise((r) => setTimeout(r, 100));
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought one' },
+			{ source: 'live', live: 'live_text', buffer: 'answer part 1', pending: false },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought two' },
+			{ source: 'live', live: 'live_text', buffer: 'answer part 2', pending: false }
+		]);
+
+		resolveTurn();
+		await sendP;
+		expect(chatStore.liveBlocks).toEqual([]);
+	});
+
+	it('error path leaves no open live block and no live entries', async () => {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('mid-thought');
+			deps.updateStreamBuffer('partial');
+			throw new Error('provider exploded');
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		await chatStore.send('hello');
+
+		expect(chatStore.error).not.toBeNull();
+		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+
+	it('abort path leaves no open live block and no live entries', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('mid-thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('partial');
+			await turnBlocked;
+			return { aborted: true };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(2));
+		chatStore.stop();
+		resolveTurn();
+		await sendP;
+
+		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+});
+
 describe('disabledToolsForBrief', () => {
 	it('returns save_brief when root has a brief', () => {
 		const brief: LearningBrief = { goal: 'learn X' };
