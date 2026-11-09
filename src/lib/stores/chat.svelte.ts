@@ -177,7 +177,7 @@ class ChatState {
 	/**
 	 * Attachments of the last failed send, carried alongside
 	 * `lastFailedPrompt` so Retry restores text + images
-	 * (contracts/message-parts.md §4). Null when the failed send had none.
+	 * (specs/030-image-generation/contracts/message-parts.md §4). Null when the failed send had none.
 	 */
 	lastFailedAttachments = $state<ComposerAttachment[] | null>(null);
 	/**
@@ -498,7 +498,7 @@ class ChatState {
 					: null;
 
 		// 1) Persist the user row immediately and reflect it in the UI — one
-		// atomic append carrying text + image parts (contracts/message-parts.md
+		// atomic append carrying text + image parts (specs/030-image-generation/contracts/message-parts.md
 		// §4). Image-less sends write no parts column: the row is byte-identical
 		// to the pre-parts flow.
 		// Availability snapshot (027 T005): taken before the append below

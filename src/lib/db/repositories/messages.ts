@@ -16,7 +16,7 @@ async function insertMessage(input: typeof messages.$inferInsert): Promise<Messa
 }
 
 /**
- * Shared parts invariants for every appending path (contracts/message-parts.md
+ * Shared parts invariants for every appending path (specs/030-image-generation/contracts/message-parts.md
  * §1/§3): non-empty, at most 8 image parts, text parts concatenate exactly to
  * the row's canonical `content`.
  */

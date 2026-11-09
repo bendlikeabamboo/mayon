@@ -76,7 +76,7 @@ function isImagePart(p: MessagePart): p is ImagePart {
 }
 
 /**
- * Wire content for a row carrying parts (contracts/message-parts.md §5):
+ * Wire content for a row carrying parts (specs/030-image-generation/contracts/message-parts.md §5):
  * ordered parts — text part(s) first (omitted when empty, i.e. image-only),
  * then one image part per stored image in order. The AI SDK image part takes
  * the stored data-URL string directly. Falls back to the row's canonical
@@ -150,7 +150,7 @@ export interface ProjectEntriesOptions {
 	/**
 	 * Whether the active target model accepts images (resolve with
 	 * `supportsVision`). Gates `assistant_message` image parts
-	 * (contracts/message-parts.md §5): emitted only when true; otherwise the
+	 * (specs/030-image-generation/contracts/message-parts.md §5): emitted only when true; otherwise the
 	 * row projects text-only, silently. Absent = not vision-capable.
 	 */
 	visionCapable?: boolean;
@@ -273,7 +273,7 @@ export function projectEntries(
 		}
 
 		if (k === 'assistant_message') {
-			// 030 (contracts/message-parts.md §5): assistant image parts ride the
+			// 030 (specs/030-image-generation/contracts/message-parts.md §5): assistant image parts ride the
 			// wire only for vision-capable targets; otherwise text-only, silently.
 			const parts = opts?.visionCapable ? rowParts(r) : null;
 			if (!parts) {

@@ -112,7 +112,7 @@ describe('new-shape projection tests (T027)', () => {
 	});
 });
 
-describe('user parts projection (T013 — contracts/message-parts.md §5)', () => {
+describe('user parts projection (T013 — specs/030-image-generation/contracts/message-parts.md §5)', () => {
 	it('a user row with [text, image, image] parts projects to an ordered user parts array', () => {
 		resetOrd();
 		const imageA = 'data:image/png;base64,AAAA';
@@ -148,7 +148,7 @@ describe('user parts projection (T013 — contracts/message-parts.md §5)', () =
 	});
 });
 
-describe('assistant parts projection (T020 — contracts/message-parts.md §5)', () => {
+describe('assistant parts projection (T020 — specs/030-image-generation/contracts/message-parts.md §5)', () => {
 	const image = 'data:image/png;base64,AAAA';
 
 	function assistantRowWithParts() {
