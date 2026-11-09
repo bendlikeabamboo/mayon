@@ -110,8 +110,8 @@ Single project: `src/`, `tests/` at repository root (SvelteKit SPA + `server/` +
 
 **Purpose**: Read-side niceties, docs, and end-to-end validation across stories.
 
-- [ ] T021 [P] Diagnostics segments: add `reasoningSegments: string[]` to `TurnTrace.iterations[]` in `src/lib/agent/trace.ts` (keep concatenated `reasoning` for continuity; raw `reasoning-start/end` parts already flow into `partSequence`) and render per-segment entries in `src/lib/components/diagnostics/DiagnosticsPanel.svelte` (iteration `iter.reasoning` display site).
-- [ ] T022 [P] Docs touch-up: verify whether `docs/explanation/architecture.qmd` / `docs/reference/seams.qmd` describe the reasoning display canonicalizer; if so, add the `anchored` ordering rule (anchored = position authoritative; legacy repair unchanged). No tool-map change (no agent/MCP tool surface).
+- [X] T021 [P] Diagnostics segments: add `reasoningSegments: string[]` to `TurnTrace.iterations[]` in `src/lib/agent/trace.ts` (keep concatenated `reasoning` for continuity; raw `reasoning-start/end` parts already flow into `partSequence`) and render per-segment entries in `src/lib/components/diagnostics/DiagnosticsPanel.svelte` (iteration `iter.reasoning` display site).
+- [X] T022 [P] Docs touch-up: verify whether `docs/explanation/architecture.qmd` / `docs/reference/seams.qmd` describe the reasoning display canonicalizer; if so, add the `anchored` ordering rule (anchored = position authoritative; legacy repair unchanged). No tool-map change (no agent/MCP tool surface).
 - [ ] T023 Run full validation per `specs/029-micro-thoughts/quickstart.md`: Scenarios 1–4 on the dev stack (`pnpm dev` + mock LLM; optional Scenario 3 with a real OpenRouter GPT-6-Luna endpoint), perf spot-check with `window.__MAYON_PERF__ = 1` + `localStorage.mayon_perf_scenario = 'micro-thoughts'` (SC-004 pacing parity), then the gates: `pnpm check && pnpm lint && pnpm test`.
 
 ---
