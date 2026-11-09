@@ -19,7 +19,7 @@ import type {
 	MessagePart,
 	TextPart
 } from '#lib/chat/kinds.js';
-import { attachmentsOf } from '#lib/chat/kinds.js';
+import { attachmentsOf, partsOf } from '#lib/chat/kinds.js';
 import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
 import { toolsRun } from '#lib/agent/registry.js';
 import type { ToolContext } from '#lib/agent/registry.js';
@@ -2217,6 +2217,37 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 		expect(second.parts).toBeNull();
 		expect(chatStore.lastFailedPrompt).toBeNull();
 		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+
+	// Reload-serves-from-row (031 T013, e2e image-round-trip reload twin):
+	// re-hydrating the chat after the image turn yields the stored image part
+	// through the same helper the renderer reads (partsOf) — the image is
+	// served from the persisted row, with no provider round-trip.
+	it('(d) reload hydration serves the image from the persisted row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageReplyStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+		const callsAfterTurn = mockedStreamText.mock.calls.length;
+
+		// Hydration (the load() a chat switch / reload performs) issues no
+		// provider request — the image comes back from the row.
+		await chatStore.load(root.id);
+		expect(mockedStreamText.mock.calls).toHaveLength(callsAfterTurn);
+
+		const assistant = chatStore.messages.find((m) => m.role === 'assistant');
+		expect(assistant).toBeDefined();
+		expect(assistant!.content).toBe('Here you go');
+		const parts = partsOf(assistant!);
+		expect(parts[0]).toEqual({ type: 'text', text: 'Here you go' });
+		expect(parts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`,
+			mimeType: 'image/png'
+		});
+		expect(chatStore.pendingImages).toEqual([]);
 	});
 });
 

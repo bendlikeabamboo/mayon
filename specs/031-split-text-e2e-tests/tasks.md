@@ -39,10 +39,10 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 
 **Purpose**: Shared fixture single-source (FR-005, research D3, contracts/shared-fixtures.md) that every US1 fast-tier scenario and every e2e assertion depends on.
 
-- [ ] T003 Extract fixture-only assertion strings (`PROPAGATE_*`, `OFFER_*`, `LEVER_TRIGGER_*`, `IMAGE_*`, …) from `tests/fixtures/mock-llm/server.mjs` into `tests/fixtures/mock-llm/strings.mjs` (or extend `markers.mjs`); `server.mjs` serves from the constants, zero inline copies of served text
-- [ ] T004 Convert `tests/e2e/fixtures/kitchen-sink.ts` to import/re-export the shared constants (precedent: its existing `quiz-fixture.mjs`/`lab-fixture.mjs` imports); delete every hand-mirrored copy
-- [ ] T005 Add the drift-guard test (extend `src/lib/ai/generate/classification-markers.test.ts` or a sibling): fails when a constant diverges from what `server.mjs` serves, or when `kitchen-sink.ts` re-defines a served string (depends T003, T004)
-- [ ] T006 [P] Cross-link the harness rule: `tests/fixtures/mock-llm/README.md` points import rules at `specs/031-split-text-e2e-tests/contracts/shared-fixtures.md`
+- [X] T003 Extract fixture-only assertion strings (`PROPAGATE_*`, `OFFER_*`, `LEVER_TRIGGER_*`, `IMAGE_*`, …) from `tests/fixtures/mock-llm/server.mjs` into `tests/fixtures/mock-llm/strings.mjs` (or extend `markers.mjs`); `server.mjs` serves from the constants, zero inline copies of served text
+- [X] T004 Convert `tests/e2e/fixtures/kitchen-sink.ts` to import/re-export the shared constants (precedent: its existing `quiz-fixture.mjs`/`lab-fixture.mjs` imports); delete every hand-mirrored copy
+- [X] T005 Add the drift-guard test (extend `src/lib/ai/generate/classification-markers.test.ts` or a sibling): fails when a constant diverges from what `server.mjs` serves, or when `kitchen-sink.ts` re-defines a served string (depends T003, T004)
+- [X] T006 [P] Cross-link the harness rule: `tests/fixtures/mock-llm/README.md` points import rules at `specs/031-split-text-e2e-tests/contracts/shared-fixtures.md`
 
 **Checkpoint**: Single fixture source + drift guard green (`pnpm test src/lib/ai/generate/classification-markers.test.ts`, then `pnpm test`); e2e constants unchanged in value.
 
@@ -56,13 +56,13 @@ Monorepo per plan.md: fast tier colocated `src/**/*.test.ts` (+ `server/src/`), 
 
 ### Composed fast-tier scenarios (research D2; add-before-remove — all green before Phase prunes)
 
-- [ ] T007 [US1] Offer-turn end-state in `src/lib/chat/backprop-endstate.test.ts` (new file; `useFileTestDb()` → seed branch chat via `repos` → offer-classified reply turn ⇒ exactly +2 durable message rows, 0 approval-ask rows, offer never repeats, parent chat untouched); import fixture text per contracts/shared-fixtures.md
-- [ ] T008 [US1] Declined-turn end-state in `src/lib/chat/backprop-endstate.test.ts`: declined tool result persisted, `toolsRun` never invoked, never re-asked, parent untouched (depends T007 — same file)
-- [ ] T009 [US1] Root-trigger end-state in `src/lib/chat/backprop-endstate.test.ts`: `propagate_unavailable` plain reply persisted, 0 ask rows, next turn's tool set excludes `propagate_to_parent` (depends T008 — same file)
-- [ ] T010 [P] [US1] Capability-toggle → tool-less trace: extend `src/lib/agent/loop.test.ts` — flip provider tool capability ⇒ next turn's persisted agent trace records 0 tool iterations
-- [ ] T011 [P] [US1] Discovery → persisted settings merge: extend `src/lib/ai/connection-test.test.ts` and/or the provider store test — successful model discovery merges the catalog into the persisted provider record
-- [ ] T012 [P] [US1] Telemetry per-turn record emission: extend `src/lib/telemetry/telemetry.test.ts` (or sibling) — a composed turn emits chat-turn + title records with expected attrs; aborted turn emits the aborted record; metadata mode carries no conversation text
-- [ ] T013 [P] [US1] Image reload-serves-from-row decision: verify store-hydration coverage of "reload serves the image from the persisted row" in `src/lib/stores/chat.svelte.test.ts`; add the scenario only if genuinely absent; record the ledger decision (migrated → home, or already-covered → home)
+- [X] T007 [US1] Offer-turn end-state in `src/lib/chat/backprop-endstate.test.ts` (new file; `useFileTestDb()` → seed branch chat via `repos` → offer-classified reply turn ⇒ exactly +2 durable message rows, 0 approval-ask rows, offer never repeats, parent chat untouched); import fixture text per contracts/shared-fixtures.md
+- [X] T008 [US1] Declined-turn end-state in `src/lib/chat/backprop-endstate.test.ts`: declined tool result persisted, `toolsRun` never invoked, never re-asked, parent untouched (depends T007 — same file)
+- [X] T009 [US1] Root-trigger end-state in `src/lib/chat/backprop-endstate.test.ts`: `propagate_unavailable` plain reply persisted, 0 ask rows, next turn's tool set excludes `propagate_to_parent` (depends T008 — same file)
+- [X] T010 [P] [US1] Capability-toggle → tool-less trace: extend `src/lib/agent/loop.test.ts` — flip provider tool capability ⇒ next turn's persisted agent trace records 0 tool iterations
+- [X] T011 [P] [US1] Discovery → persisted settings merge: extend `src/lib/ai/connection-test.test.ts` and/or the provider store test — successful model discovery merges the catalog into the persisted provider record
+- [X] T012 [P] [US1] Telemetry per-turn record emission: extend `src/lib/telemetry/telemetry.test.ts` (or sibling) — a composed turn emits chat-turn + title records with expected attrs; aborted turn emits the aborted record; metadata mode carries no conversation text
+- [X] T013 [P] [US1] Image reload-serves-from-row decision: verify store-hydration coverage of "reload serves the image from the persisted row" in `src/lib/stores/chat.svelte.test.ts`; add the scenario only if genuinely absent; record the ledger decision (migrated → home, or already-covered → home)
 
 ### Parity ledger entries, then e2e pruning (research D8 rubric: counts/absence-windows/trace-counts/mock-log scrapes only; keep render, reload-render, nav, live-path steps)
 

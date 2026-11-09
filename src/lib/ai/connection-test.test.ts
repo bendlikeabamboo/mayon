@@ -1,5 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { listProviders, saveProviders } from './client';
 import { testProviderConnection } from './connection-test';
+import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { SERVER_REQUIRED_HINT } from './errors';
 import { setHttpTransport, type HttpStreamTransport } from './http-transport';
 import {
@@ -322,5 +324,36 @@ describe('testProviderConnection', () => {
 			}
 		});
 		expect((await testProviderConnection(config)).failure?.class).toBe('auth');
+	});
+
+	/**
+	 * The composed Settings-UI invariant: a successful probe hands the
+	 * discovered catalog to the caller, which merges it into the persisted
+	 * provider record (`ProviderConfig.testConnection`/`refreshModels` —
+	 * discovered IDs first, manual additions preserved — then `saveProviders`
+	 * → `repos.settings`).
+	 */
+	describe('discovery → persisted settings merge', () => {
+		const testDb = useFileTestDb();
+		beforeAll(() => testDb.setup());
+		beforeEach(() => testDb.reset());
+		afterAll(() => testDb.teardown());
+
+		it('successful discovery merges the catalog into the persisted provider record', async () => {
+			await saveProviders([{ ...config, models: ['manual-keep'] }]);
+
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+				jsonBody(JSON.stringify({ data: [{ id: 'b' }, { id: 'a' }, { id: 'manual-keep' }] }))
+			);
+			const res = await testProviderConnection(config);
+			expect(res.ok).toBe(true);
+
+			const discovered = res.models ?? [];
+			const merged = [...discovered, ...config.models.filter((m) => !discovered.includes(m))];
+			await saveProviders([{ ...config, models: merged }]);
+
+			const record = (await listProviders()).find((p) => p.id === config.id);
+			expect(record?.models).toEqual(['a', 'b', 'manual-keep']);
+		});
 	});
 });
