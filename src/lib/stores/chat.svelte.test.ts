@@ -48,6 +48,8 @@ vi.mock('ai', () => ({
 	generateText: vi.fn(),
 	streamText: vi.fn(),
 	tool: vi.fn((def: unknown) => def),
+	// Tool-bearing turns build SDK tools via jsonSchema (loop buildSdkTools).
+	jsonSchema: vi.fn((schema: unknown) => schema),
 	APICallError: class extends Error {
 		statusCode: number;
 		responseBody?: string;
@@ -876,6 +878,87 @@ describe('chatStore approval flow', () => {
 		const result = await promise;
 		expect(result).toEqual({ approved: false, aborted: true });
 		expect(chatStore.pendingApprovals).toHaveLength(0);
+	});
+});
+
+describe('root chat never offers propagation (027 FR-001, data layer)', () => {
+	// Byte-matches tests/e2e/fixtures/kitchen-sink.ts PROPAGATE_TRIGGER /
+	// PROPAGATE_UNAVAILABLE_REPLY and tests/fixtures/mock-llm/server.mjs, the
+	// way the suite's e2e deck exercises the same journey; the data-layer
+	// invariant under test is the tool-set exclusion plus plain-reply
+	// persistence, independent of the mock's string matching.
+	const PROPAGATE_TRIGGER = 'backpropagate this branch';
+	const PROPAGATE_UNAVAILABLE_REPLY =
+		'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
+
+	function mockToolsOnProvider(): void {
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: { ...stubConfig, toolCapability: 'on' },
+			toolCapability: true
+		});
+	}
+
+	it('root trigger turn: propagate_to_parent excluded from the tool set, one request, plain reply persisted, no asks', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockToolsOnProvider();
+		mockStreamReply(['First reply.']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const callsAfterTurn1 = mockedStreamText.mock.calls.length;
+		mockStreamReply([PROPAGATE_UNAVAILABLE_REPLY]);
+		await chatStore.send(`Wrap up — ${PROPAGATE_TRIGGER}.`);
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+
+		// The trigger wording must never re-request or continue: the plain
+		// reply ends the turn after exactly one LLM call.
+		expect(mockedStreamText.mock.calls.length - callsAfterTurn1).toBe(1);
+		const turnRequest = mockedStreamText.mock.calls[mockedStreamText.mock.calls.length - 1][0] as {
+			tools: Record<string, unknown>;
+		};
+		expect(Object.keys(turnRequest.tools)).toContain('branch_chat');
+		expect(Object.keys(turnRequest.tools)).not.toContain('propagate_to_parent');
+
+		// Persisted transcript: exactly user+assistant per turn, no reasoning,
+		// no tool result, no approval rows — the reply text survives verbatim.
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs).toHaveLength(4);
+		expect(msgs[2]!.role).toBe('user');
+		expect(msgs[2]!.content).toBe(`Wrap up — ${PROPAGATE_TRIGGER}.`);
+		expect(msgs[3]!.role).toBe('assistant');
+		expect(msgs[3]!.kind).toBe('assistant_message');
+		expect(msgs[3]!.content).toBe(PROPAGATE_UNAVAILABLE_REPLY);
+		for (const m of msgs) {
+			expect(['user_message', 'assistant_message']).toContain(m.kind ?? m.role);
+		}
+
+		// No approval ask ever entered the live pipeline, and the turn closed
+		// its live blocks.
+		expect(chatStore.pendingApprovals).toHaveLength(0);
+		expect(chatStore.liveItems).toHaveLength(0);
+	});
+
+	it('branch with own messages keeps propagate_to_parent available (FR-001 complement)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockToolsOnProvider();
+		mockStreamReply(['Root reply.']);
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const child = await repos.chats.createChild({ parentId: root.id, title: 'Branch' });
+		mockStreamReply(['Branch first turn.']);
+		await chatStore.load(child.id);
+		await chatStore.send('branch first turn');
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+		// A branch's first own turn still excludes propagate (hadMessages was
+		// false at send time); the second turn — the branch now having its own
+		// transcript — must keep the tool available.
+		mockStreamReply(['Branch second turn.']);
+		await chatStore.send(`Wrap up — ${PROPAGATE_TRIGGER}.`);
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+		expect(lastDisabledToolIds).not.toContain('propagate_to_parent');
 	});
 });
 

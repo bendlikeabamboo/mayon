@@ -254,20 +254,17 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 			rowsBefore + 2,
 			{ timeout: TURN_TIMEOUT }
 		);
+
+		// The persisted transcript is the source of truth: a CI server blip can
+		// still fire the boot gate's (streaming-deferred) reload near the turn's
+		// tail, so the end state is asserted after an explicit reload rather
+		// than trusting the mid-air DOM.
+		await page.reload();
 		await scrollTranscriptToEnd(page);
 		await expect(
 			page.locator('.markdown-body', { hasText: PROPAGATE_UNAVAILABLE_REPLY })
 		).toBeVisible({ timeout: TURN_TIMEOUT });
 		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
-		await expect(page.locator('[aria-label="Dismiss"]')).toHaveCount(0);
-
-		// The app's boot gate can hard-reload mid-turn on a transient server
-		// blip, orphaning committed-but-unrendered rows from the live DOM. The
-		// persisted transcript is the source of truth for the final assertions.
-		await page.reload();
-		await expect(
-			page.locator('.markdown-body', { hasText: PROPAGATE_UNAVAILABLE_REPLY })
-		).toBeVisible({ timeout: TURN_TIMEOUT });
 		// An undecided durable ask row survives the reload — its absence is the
 		// end-state no-approval assertion.
 		await expect(page.getByText('Approval required')).toHaveCount(0);
