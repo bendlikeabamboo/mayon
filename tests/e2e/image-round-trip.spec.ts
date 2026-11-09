@@ -2,8 +2,10 @@ import { execSync } from 'node:child_process';
 import { expect, test } from './fixtures/onboard';
 import { IMAGE_DATA_URL, IMAGE_REPLY_TEXT, IMAGE_TRIGGER } from './fixtures/kitchen-sink';
 
-// The fixture chunks at 150ms per frame; one image turn (four frames + drain
-// + persist) settles well inside 30s, same bound as backprop-tool.spec.ts.
+// Image replies stream slower than the standard fixture (600ms per frame, see
+// IMAGE_FRAME_INTERVAL_MS in the mock) so the caption stays live-visible long
+// enough to observe before finalize; one image turn (four frames + drain +
+// persist) settles well inside 30s, same bound as backprop-tool.spec.ts.
 const TURN_TIMEOUT = 30_000;
 
 // The mock-llm fixture logs one line per classified provider request to its

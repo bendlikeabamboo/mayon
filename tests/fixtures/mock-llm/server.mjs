@@ -125,7 +125,7 @@ function sseFrame(payload) {
 	return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-function streamFrames(res, frames, terminal) {
+function streamFrames(res, frames, terminal, intervalMs = CHUNK_INTERVAL_MS) {
 	res.writeHead(200, {
 		'content-type': 'text/event-stream',
 		'cache-control': 'no-cache',
@@ -140,7 +140,7 @@ function streamFrames(res, frames, terminal) {
 		}
 		if (index < frames.length) {
 			res.write(frames[index++]);
-			setTimeout(writeNext, CHUNK_INTERVAL_MS);
+			setTimeout(writeNext, intervalMs);
 			return;
 		}
 		res.write(terminal);
@@ -211,6 +211,14 @@ function streamToolCallReply(res, id, model, toolName, argsJson) {
 // Streamed image reply (feature 030, openai-compatible dialect): the R-2
 // spike's raw-chunk shape — `choices[0].delta.images[]` with a data URL.
 // `message.images` is never sent: the app only streams.
+//
+// Frames are paced slower than the standard 150ms on purpose: the caption is
+// the first text part, so the e2e live-view assertion can only observe it
+// between the caption frame and finalize. Real image models take seconds per
+// reply; the slower pace is both realistic and gives the browser enough time
+// to flush the live render under CI load (a ~450ms window flaked there).
+const IMAGE_FRAME_INTERVAL_MS = 600;
+
 function streamImageReply(res, id, model) {
 	const frames = [
 		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
@@ -237,7 +245,7 @@ function streamImageReply(res, id, model) {
 			]
 		})
 	];
-	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
+	streamFrames(res, frames, stopTerminal(id, model, 'stop'), IMAGE_FRAME_INTERVAL_MS);
 }
 
 // Google GenerateContentRequest: text of the LAST user turn's text parts
@@ -275,7 +283,7 @@ function streamGoogleImageReply(res) {
 		}),
 		sseFrame({ candidates: [{ content: { parts: [] }, finishReason: 'STOP' }] })
 	];
-	streamFrames(res, frames, '');
+	streamFrames(res, frames, '', IMAGE_FRAME_INTERVAL_MS);
 }
 
 // ---------------------------------------------------------------------------
