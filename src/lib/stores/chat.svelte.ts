@@ -140,6 +140,15 @@ export class ExcerptOverlapError extends Error {
 	}
 }
 
+/**
+ * Live streaming block (029): ordered display segments of the in-flight turn.
+ * Reasoning blocks carry their own text; text blocks are offsets into the
+ * concatenated `streamBuffer`.
+ */
+export type LiveBlock =
+	| { kind: 'reasoning'; text: string; open: boolean }
+	| { kind: 'text'; start: number; open: boolean };
+
 class ChatState {
 	chatId = $state<string | null>(null);
 	chat = $state<Chat | null>(null);
@@ -149,7 +158,7 @@ class ChatState {
 	streamBufferRender = $state('');
 	/** Pacer lifecycle of the in-flight stream, synced from `pacer.mode` (US2 overlay reads it). */
 	streamPhase = $state<PacerMode>('idle');
-	reasoningBuffer = $state('');
+	liveBlocks = $state<LiveBlock[]>([]);
 	streamPreset = $state<StreamPreset>('standard');
 	error = $state<FormattedProviderError | null>(null);
 	lastFailedPrompt = $state<string | null>(null);
@@ -301,8 +310,12 @@ class ChatState {
 		}
 		const items: LiveEntry[] = [];
 		if (this.streaming) {
-			if (this.reasoningBuffer) {
-				items.push({ source: 'live', live: 'live_reasoning', buffer: this.reasoningBuffer });
+			let reasoning = '';
+			for (const b of this.liveBlocks) {
+				if (b.kind === 'reasoning' && b.text.trim()) reasoning += b.text;
+			}
+			if (reasoning) {
+				items.push({ source: 'live', live: 'live_reasoning', buffer: reasoning });
 			}
 			items.push({
 				source: 'live',
@@ -387,7 +400,7 @@ class ChatState {
 		this.error = null;
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
-		this.reasoningBuffer = '';
+		this.liveBlocks = [];
 		this.streaming = false;
 		this.generativeStatus = null;
 		this.mcpNotices = [];
@@ -505,7 +518,7 @@ class ChatState {
 		this.streamBufferRender = '';
 		this.streamPhase = 'idle';
 		this.pacer = createPacer(isSafeBoundary);
-		this.reasoningBuffer = '';
+		this.liveBlocks = [];
 		this.generativeStatus = null;
 		this.controller = new AbortController();
 		this.startRenderFlush();
@@ -612,13 +625,28 @@ class ChatState {
 				firstTurn: isFirstRootTurn,
 				updateStreamBuffer: (n) => {
 					this.streamBuffer = n;
+					if (n && !this.liveBlocks.some((b) => b.kind === 'text' && b.open)) {
+						this.liveBlocks.push({ kind: 'text', start: 0, open: true });
+					}
 					const pacer = this.pacer;
 					if (pacer) {
 						pacer.onArrived(n);
 						this.streamPhase = pacer.mode;
 					}
 				},
-				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
+				updateReasoningBuffer: (n) => {
+					const last = this.liveBlocks[this.liveBlocks.length - 1];
+					if (last?.kind === 'reasoning') last.text = n;
+				},
+				onReasoningSegmentStart: () => {
+					this.liveBlocks.push({ kind: 'reasoning', text: '', open: true });
+				},
+				onTextSegmentStart: (startOffset) => {
+					for (const b of this.liveBlocks) {
+						if (b.kind === 'text' && b.open) b.open = false;
+					}
+					this.liveBlocks.push({ kind: 'text', start: startOffset, open: true });
+				},
 				appendAssistantText: async (content, opts) => {
 					finalAssistantText = content;
 					const pacer = this.pacer;
@@ -828,7 +856,8 @@ class ChatState {
 			this.pacer?.reset();
 			this.pacer = null;
 			this.streamPhase = 'idle';
-			this.reasoningBuffer = '';
+			for (const b of this.liveBlocks) b.open = false;
+			this.liveBlocks = [];
 			this.generativeStatus = null;
 			this.controller = null;
 			this.manualBranchPending = false;

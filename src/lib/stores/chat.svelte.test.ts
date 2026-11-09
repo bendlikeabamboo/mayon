@@ -931,7 +931,7 @@ describe('chatStore MCP connect notices', () => {
 });
 
 describe('chatStore reasoning buffer', () => {
-	it('reasoningBuffer resets on send() start and in finally', async () => {
+	it('liveBlocks reset on send() start and in finally', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		mockDefaultProvider();
 		mockedStreamText.mockReturnValue({
@@ -948,22 +948,24 @@ describe('chatStore reasoning buffer', () => {
 		} as never);
 
 		await chatStore.load(root.id);
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 
 		void chatStore.send('hello');
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 
 		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 	});
 
-	it('reasoningBuffer resets on load()', async () => {
+	it('liveBlocks reset on load()', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		await chatStore.load(root.id);
 
-		(chatStore as unknown as { reasoningBuffer: string }).reasoningBuffer = 'some reasoning';
+		(chatStore as unknown as { liveBlocks: unknown[] }).liveBlocks = [
+			{ kind: 'reasoning', text: 'some reasoning', open: true }
+		];
 		await chatStore.load(root.id);
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 	});
 
 	it('turn with reasoning persists a separate reasoning entry and no reasoning metadata on assistant row', async () => {

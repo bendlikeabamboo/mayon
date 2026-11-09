@@ -26,6 +26,8 @@ export interface AgentTurnDeps {
 	effort: ReasoningEffort;
 	updateStreamBuffer: (next: string) => void;
 	updateReasoningBuffer: (next: string) => void;
+	onReasoningSegmentStart?: () => void;
+	onTextSegmentStart?: (startOffset: number) => void;
 	appendReasoning?: (text: string, iteration: number) => Promise<void>;
 	appendSelfCorrected?: (
 		report: { issues: { type: string; message: string }[]; attempts: number; succeeded: boolean },
@@ -156,6 +158,9 @@ async function consumeStream(
 	onTextDelta: (text: string) => void,
 	onToolCall: (tc: CollectedToolCall) => void,
 	onReasoningDelta: (text: string) => void,
+	onReasoningSegmentStart: () => void,
+	onTextSegmentStart: (startOffset: number) => void,
+	textLength: () => number,
 	onTrace?: (e: TraceEvent) => void
 ): Promise<{
 	finishReason: string;
@@ -164,21 +169,36 @@ async function consumeStream(
 	let finishReason = '';
 	let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null =
 		null;
+	let reasoningOpen = false;
 	for await (const part of fullStream) {
 		if (signal.aborted) break;
 		const p = part as Record<string, unknown>;
 		onTrace?.({ kind: 'part', type: p.type as string, payload: p });
-		if (p.type === 'text-delta' && typeof p.text === 'string') {
+		if (p.type === 'reasoning-start') {
+			reasoningOpen = true;
+			onReasoningSegmentStart();
+		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
+			if (!reasoningOpen) {
+				reasoningOpen = true;
+				onReasoningSegmentStart();
+			}
+			onReasoningDelta(p.text);
+		} else if (p.type === 'reasoning-end') {
+			reasoningOpen = false;
+		} else if (p.type === 'text-start') {
+			reasoningOpen = false;
+			onTextSegmentStart(textLength());
+		} else if (p.type === 'text-delta' && typeof p.text === 'string') {
 			onTextDelta(p.text);
 		} else if (p.type === 'tool-call') {
+			reasoningOpen = false;
 			onToolCall({
 				toolCallId: p.toolCallId as string,
 				toolName: p.toolName as string,
 				args: p.input ?? p.args
 			});
-		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
-			onReasoningDelta(p.text);
 		} else if (p.type === 'finish') {
+			reasoningOpen = false;
 			finishReason = p.finishReason as string;
 			// ai@7 renamed the finish-part usage fields to inputTokens/outputTokens;
 			// accept both spellings per field. Prefer the richer of usage / totalUsage
@@ -404,6 +424,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						reasoningBuf += t;
 						deps.updateReasoningBuffer(reasoningBuf);
 					},
+					() => {
+						reasoningBuf = '';
+						deps.onReasoningSegmentStart?.();
+					},
+					(startOffset) => deps.onTextSegmentStart?.(startOffset),
+					() => buf.length,
 					deps.onTrace
 				));
 			} catch (err) {
