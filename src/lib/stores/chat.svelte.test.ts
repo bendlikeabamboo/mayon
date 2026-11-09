@@ -78,6 +78,16 @@ vi.mock('#lib/agent/loop.js', async (importOriginal) => {
 const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
+// T009: image materialization at finalize rides the provider fetch built by
+// sdk-factory; tests swap `materializeState.fetch` to stub the remote fetch.
+const materializeState = vi.hoisted(() => ({
+	fetch: undefined as typeof globalThis.fetch | undefined
+}));
+vi.mock('#lib/ai/sdk-factory.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/ai/sdk-factory.js')>();
+	return { ...actual, providerFetchFor: () => materializeState.fetch };
+});
+
 const { generateText, generateObject, streamText } = await import('ai');
 const mockedGenerateText = vi.mocked(generateText);
 const mockedGenerateObject = vi.mocked(generateObject);
@@ -1920,6 +1930,95 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 		expect(second.parts).toBeNull();
 		expect(chatStore.lastFailedPrompt).toBeNull();
 		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+});
+
+// T009 (specs/030 US1, contract stream-image-parts.md §1): URL-only candidates
+// materialize through the provider fetch at finalize; an un-fetchable link
+// becomes a contained inline notice in the text content — never a broken
+// frame, never a dropped message.
+describe('chatStore URL-image materialization at finalize (T009 — specs/030 US1)', () => {
+	const IMAGE_URL = 'https://img.example/generations/abc.png';
+	const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1]);
+
+	function imageReplyUrlStream(text: string): void {
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield text;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text };
+				// SDK caveat shape (loop.ts candidateFromFile): url-typed file data
+				// lands in the base64 slot → a URL candidate for the store.
+				yield { type: 'file', file: { base64: IMAGE_URL, mediaType: 'image/png' } };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text,
+			response: { id: 'test' }
+		} as never);
+	}
+
+	beforeEach(() => {
+		materializeState.fetch = undefined;
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('materializes a URL candidate through the provider fetch and persists an image part', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		materializeState.fetch = vi.fn(
+			async () =>
+				new Response(PNG_BYTES as BodyInit, {
+					status: 200,
+					headers: { 'content-type': 'image/png' }
+				})
+		) as unknown as typeof globalThis.fetch;
+		imageReplyUrlStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		expect(materializeState.fetch).toHaveBeenCalledWith(
+			IMAGE_URL,
+			expect.objectContaining({ signal: expect.any(AbortSignal) })
+		);
+		const msgs = await repos.messages.listByChat(root.id);
+		const row = msgs.find((m) => m.role === 'assistant');
+		expect(row).toBeDefined();
+		expect(row!.content).toBe('Here you go');
+		expect(row!.model).toBe('stub-model');
+		const parts = JSON.parse(row!.parts!);
+		expect(parts).toHaveLength(2);
+		expect(parts[0]).toEqual({ type: 'text', text: 'Here you go' });
+		expect(parts[1]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+		expect(parts[1].data).toBe(`data:image/png;base64,${btoa(String.fromCharCode(...PNG_BYTES))}`);
+	});
+
+	it('an un-fetchable URL persists the row with a contained notice in the text content', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		materializeState.fetch = vi.fn(
+			async () => new Response('gone', { status: 404 })
+		) as unknown as typeof globalThis.fetch;
+		imageReplyUrlStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const row = msgs.find((m) => m.role === 'assistant');
+		expect(row).toBeDefined();
+		expect(row!.content).toBe(
+			"Here you go\n\n[Image could not be loaded: the provider's link is no longer available.]"
+		);
+		expect(row!.parts).toBeNull();
+		expect(chatStore.error).toBeNull();
 	});
 });
 

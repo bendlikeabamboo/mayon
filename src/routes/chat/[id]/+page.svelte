@@ -472,11 +472,15 @@
 		scrolledToHash = true;
 
 		function attemptJump(): boolean {
-			const body = document.getElementById(`msg-${msgId}`)?.querySelector('.markdown-body');
-			if (!body) return false;
-			const anchors = [...body.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter(
-				(h) => !h.closest('blockquote, .callout')
-			);
+			// Segmented messages (030) render one .markdown-body per text run;
+			// collect headings across all of them in document order.
+			const bodies = [
+				...(document.getElementById(`msg-${msgId}`)?.querySelectorAll('.markdown-body') ?? [])
+			];
+			if (bodies.length === 0) return false;
+			const anchors = bodies
+				.flatMap((body) => [...body.querySelectorAll('h1, h2, h3, h4, h5, h6')])
+				.filter((h) => !h.closest('blockquote, .callout'));
 			const anchor = anchors[index] ?? null;
 			if (!anchor) return false;
 			anchor.scrollIntoView({

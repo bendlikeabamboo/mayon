@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ImagePart } from './kinds';
 import {
 	applyOutputBudget,
@@ -6,6 +6,7 @@ import {
 	assertInputSize,
 	bytesToDataUrl,
 	dataUrlBytes,
+	fetchImageCandidate,
 	type ImageIntakeOps,
 	intakeImage,
 	MAX_IMAGES_PER_MESSAGE,
@@ -410,5 +411,60 @@ describe('applyOutputBudget', () => {
 		expect(part.width).toBeGreaterThan(0);
 		expect(part.height).toBeGreaterThan(0);
 		expect(part.bytes).toBe(dataUrlBytes(part.data));
+	});
+});
+
+describe('fetchImageCandidate', () => {
+	const PNG_URL = 'https://img.example/generations/abc.png';
+
+	function stubFetch(
+		status: number,
+		contentType: string,
+		bytes: Uint8Array
+	): ReturnType<typeof vi.fn> {
+		return vi.fn(
+			async () =>
+				new Response(bytes as BodyInit, { status, headers: { 'content-type': contentType } })
+		);
+	}
+
+	it('fetches the bytes through the injected fetch and returns a base64 candidate', async () => {
+		const bytes = b64ToBytes(TINY_PNG_B64);
+		const fetchImpl = stubFetch(200, 'image/png', bytes);
+		const candidate = await fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch);
+		expect(candidate).toEqual({ mediaType: 'image/png', base64: TINY_PNG_B64 });
+		expect(fetchImpl).toHaveBeenCalledWith(
+			PNG_URL,
+			expect.objectContaining({ signal: expect.any(AbortSignal) })
+		);
+	});
+
+	it('returns null on non-2xx without throwing', async () => {
+		const fetchImpl = stubFetch(404, 'text/plain', TEXT_BYTES);
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('returns null when the fetch throws (network failure)', async () => {
+		const fetchImpl = vi.fn(async () => {
+			throw new TypeError('fetch failed');
+		});
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as unknown as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('guards the content type: a non-image payload returns null', async () => {
+		const fetchImpl = stubFetch(200, 'text/html', TEXT_BYTES);
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('magic bytes win over a mislabeled response content type', async () => {
+		const fetchImpl = stubFetch(200, 'application/octet-stream', b64ToBytes(TINY_PNG_B64));
+		const candidate = await fetchImageCandidate(PNG_URL, undefined, fetchImpl as typeof fetch);
+		expect(candidate).toEqual({ mediaType: 'image/png', base64: TINY_PNG_B64 });
 	});
 });

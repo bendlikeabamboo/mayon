@@ -18,14 +18,18 @@ export interface SdkFactoryDeps {
 	hasKey: () => Promise<boolean>;
 }
 
-export async function buildSdkModel(
-	config: ProviderConfig,
-	_deps: SdkFactoryDeps
-): Promise<ActiveProvider> {
-	const toolCapability = resolveToolCapability(config);
+/**
+ * The provider-transport fetch for `config`, shared by the SDK model and
+ * finalize-time image materialization (030 R-4): keychain auth and the server
+ * proxy apply, same as a chat request. Kinds whose fetch retargets request
+ * URLs (`github-copilot` — image links must keep their own host) or needs no
+ * custom transport (`ollama`) return undefined; callers fall back to plain
+ * fetch.
+ */
+export function providerFetchFor(config: ProviderConfig): typeof globalThis.fetch | undefined {
 	switch (config.kind) {
-		case 'openai-compatible': {
-			const customFetch = createKeychainFetch({
+		case 'openai-compatible':
+			return createKeychainFetch({
 				header: 'Authorization',
 				scheme: 'Bearer',
 				keyId: config.id,
@@ -34,6 +38,23 @@ export async function buildSdkModel(
 				// connection (the 008 keyless flow).
 				optionalKey: config.requiresKey === false
 			});
+		case 'anthropic':
+			return createKeychainFetch({ header: 'x-api-key', keyId: config.id });
+		case 'gemini':
+			return createKeychainFetch({ header: 'x-goog-api-key', keyId: config.id });
+		default:
+			return undefined;
+	}
+}
+
+export async function buildSdkModel(
+	config: ProviderConfig,
+	_deps: SdkFactoryDeps
+): Promise<ActiveProvider> {
+	const toolCapability = resolveToolCapability(config);
+	switch (config.kind) {
+		case 'openai-compatible': {
+			const customFetch = providerFetchFor(config)!;
 			const provider = createOpenAICompatible({
 				name: config.name ?? 'openai-compatible',
 				baseURL: config.baseUrl,
@@ -44,19 +65,13 @@ export async function buildSdkModel(
 			return { model, config, toolCapability };
 		}
 		case 'anthropic': {
-			const customFetch = createKeychainFetch({
-				header: 'x-api-key',
-				keyId: config.id
-			});
+			const customFetch = providerFetchFor(config)!;
 			const provider = createAnthropic({ baseURL: config.baseUrl, fetch: customFetch });
 			const model = provider(config.defaultModel);
 			return { model, config, toolCapability };
 		}
 		case 'gemini': {
-			const customFetch = createKeychainFetch({
-				header: 'x-goog-api-key',
-				keyId: config.id
-			});
+			const customFetch = providerFetchFor(config)!;
 			const provider = createGoogleGenerativeAI({ baseURL: config.baseUrl, fetch: customFetch });
 			const model = provider(config.defaultModel);
 			return { model, config, toolCapability };

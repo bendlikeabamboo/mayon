@@ -353,3 +353,38 @@ export async function candidateToImagePart(
 		bytes.byteLength
 	);
 }
+
+/**
+ * Bounded fetch timeout for remote-URL image candidates (030 R-4). Generated
+ * images are multi-MB downloads through the server proxy; 15 s matches the
+ * model-discovery bound (model-discovery.ts) without pinning finalize for long.
+ */
+export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Materialize one remote-URL image candidate (030 R-4) by fetching its bytes
+ * through the provider fetch (keychain auth + server proxy apply) and
+ * returning a ready `{ mediaType, base64 }` candidate — display never depends
+ * on the live link. The caller passes the provider's fetch; tests inject a
+ * stub. Returns null when the link is un-fetchable (network error, non-2xx,
+ * truncated body, non-image payload) — never throws — so the caller can render
+ * a contained inline notice instead of a broken frame or a dropped message.
+ */
+export async function fetchImageCandidate(
+	url: string,
+	mediaType: string | undefined,
+	fetchImpl: typeof fetch = globalThis.fetch
+): Promise<ImageCandidate | null> {
+	try {
+		const res = await fetchImpl(url, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
+		if (!res.ok) return null;
+		const bytes = new Uint8Array(await res.arrayBuffer());
+		const declared = res.headers.get('content-type')?.split(';')[0]?.trim() || mediaType || null;
+		const mime = resolveMime(sniffImageMime(bytes), declared);
+		if (!mime) return null;
+		const dataUrl = bytesToDataUrl(bytes, mime);
+		return { mediaType: mime, base64: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+	} catch {
+		return null;
+	}
+}

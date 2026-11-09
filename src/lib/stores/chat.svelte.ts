@@ -36,7 +36,7 @@ import {
 	type ImagePart,
 	type MessagePart
 } from '#lib/chat/kinds.js';
-import { applyOutputBudget, candidateToImagePart } from '#lib/chat/images.js';
+import { applyOutputBudget, candidateToImagePart, fetchImageCandidate } from '#lib/chat/images.js';
 import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
 import {
 	acquirePropagationLatch,
@@ -47,6 +47,7 @@ import {
 } from '#lib/chat/propagation.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import { getActiveSdkProvider } from '#lib/ai/client.js';
+import { providerFetchFor } from '#lib/ai/sdk-factory.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
 import { mark, incRender } from '#lib/perf/mark.js';
@@ -545,6 +546,13 @@ class ChatState {
 		let assistantMessageId: string | null = null;
 		let model: LanguageModel | undefined;
 		let config: ProviderConfig | undefined;
+		/**
+		 * Provider transport for finalize-time image materialization (030 R-4):
+		 * keychain/proxy fetch built from the active provider config; undefined
+		 * kinds (ollama, github-copilot) fall back to plain fetch inside the
+		 * materialize helper.
+		 */
+		let fetchImpl: typeof globalThis.fetch | undefined;
 		let mcpSession: { unmountAll: () => void } | null = null;
 
 		try {
@@ -552,6 +560,7 @@ class ChatState {
 			this.lastAssembledChars = ctx.reduce((n, m) => n + m.content.length, 0);
 			model = sdk.model;
 			config = sdk.config;
+			fetchImpl = providerFetchFor(config);
 
 			if (isFirstRootTurn) {
 				void this.autoTitleRoot(model, prompt);
@@ -656,8 +665,9 @@ class ChatState {
 					// Finalize (contracts/stream-image-parts.md §3): compose ordered
 					// parts and persist ONE atomic append. Image-less turns keep
 					// today's exact append shape (parts omitted → NULL column).
-					const parts = await this.composeAssistantParts(content);
-					const row = await repos.messages.append(chatId, 'assistant', content, {
+					const finalized = await this.composeAssistantParts(content, fetchImpl);
+					const parts = finalized.parts;
+					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
 						model: opts?.model ?? (parts ? config?.defaultModel : undefined),
 						// 030 §4: an aborted finalize carrying images marks the row
 						// interrupted; image-less aborts keep today's exact shape.
@@ -844,10 +854,10 @@ class ChatState {
 				try {
 					// 030 §4: complete pendingImages persist with the interrupted
 					// row; images that never completed are dropped silently.
-					const parts = await this.composeAssistantParts(this.streamBuffer);
-					const row = await repos.messages.append(chatId, 'assistant', this.streamBuffer, {
+					const finalized = await this.composeAssistantParts(this.streamBuffer, fetchImpl);
+					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
 						metadata: JSON.stringify({ interrupted: true }),
-						...(parts ? { parts } : {})
+						...(finalized.parts ? { parts: finalized.parts } : {})
 					});
 					this.messages = [...this.messages, row];
 				} catch {
@@ -939,24 +949,45 @@ class ChatState {
 	 * with the T002 output budget applied and `generatedImageName` labels
 	 * before composition. Null when the turn carried no images — image-less
 	 * rows keep today's exact shape (parts omitted → NULL column). URL-only
-	 * candidates are left out for now; T009 materializes them through the
-	 * keychain/proxy fetch at this point.
+	 * candidates materialize here through the provider fetch (R-4); an
+	 * un-fetchable link becomes a contained bracketed notice appended to the
+	 * text content — the reply persists searchable, never a broken frame or a
+	 * dropped message. Returns the possibly notice-amended content so the
+	 * persisted row text and its text part stay in sync.
 	 */
-	private async composeAssistantParts(content: string): Promise<MessagePart[] | null> {
-		const withBytes = this.pendingImages.filter((c) => c.base64 !== undefined);
-		// TODO(030 T009): materialize URL candidates (`c.url`) here via the
-		// existing keychain/proxy fetch before composition.
-		if (withBytes.length === 0) return null;
+	private async composeAssistantParts(
+		content: string,
+		fetchImpl?: typeof globalThis.fetch
+	): Promise<{ content: string; parts: MessagePart[] | null }> {
+		const withBytes: ImageCandidate[] = [];
+		const notices: string[] = [];
+		for (const c of this.pendingImages) {
+			if (c.base64 !== undefined) {
+				withBytes.push(c);
+				continue;
+			}
+			const fetched = c.url ? await fetchImageCandidate(c.url, c.mediaType, fetchImpl) : null;
+			if (fetched) withBytes.push(fetched);
+			else notices.push("[Image could not be loaded: the provider's link is no longer available.]");
+		}
+		let text = content;
+		for (const notice of notices) {
+			text = text ? `${text}\n\n${notice}` : notice;
+		}
+		if (withBytes.length === 0) return { content: text, parts: null };
 		const decoded = await Promise.all(withBytes.map((c) => candidateToImagePart(c)));
 		const images = await applyOutputBudget(decoded.filter((p): p is ImagePart => p !== null));
-		const textPart: MessagePart[] = content ? [{ type: 'text', text: content }] : [];
-		return [
-			...textPart,
-			...images.map((part, i) => ({
-				...part,
-				name: generatedImageName(part.name, textPart.length + i)
-			}))
-		];
+		const textPart: MessagePart[] = text ? [{ type: 'text', text }] : [];
+		return {
+			content: text,
+			parts: [
+				...textPart,
+				...images.map((part, i) => ({
+					...part,
+					name: generatedImageName(part.name, textPart.length + i)
+				}))
+			]
+		};
 	}
 
 	/** Stop the in-flight stream (AbortError is swallowed in `send`). */

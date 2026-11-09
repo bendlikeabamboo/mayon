@@ -8,12 +8,19 @@
 	import Highlighter from '../Highlighter.svelte';
 	import Spinner from '../Spinner.svelte';
 	import SectionStrip from '../strip/SectionStrip.svelte';
+	import ImageLightbox from '../ImageLightbox.svelte';
 	import type { DurableEntry } from '#lib/chat/entries.js';
 	import type { ResolvedOffsets } from '#lib/chat/selection.js';
 	import type { ExpoundOptions } from '#lib/chat/expound.js';
 	import { extractSections, isStripCandidate } from '#lib/markdown/sections.js';
 	import { stripGateFence } from '#lib/ai/generate/generate-gate.js';
-	import { parseMetadata } from '#lib/chat/kinds.js';
+	import {
+		parseMetadata,
+		partsOf,
+		type ImagePart,
+		type MessagePart,
+		type TextPart
+	} from '#lib/chat/kinds.js';
 	import type { AssistantMessageMeta } from '#lib/chat/kinds.js';
 	import { incRender } from '#lib/perf/mark.js';
 	import { chatStore } from '#lib/stores/chat.svelte.js';
@@ -73,6 +80,83 @@
 	);
 
 	let reasoningOpen = $state(false);
+	let expanded = $state<ImagePart | null>(null);
+
+	type BodySegment = { kind: 'text'; text: string } | { kind: 'images'; images: ImagePart[] };
+
+	// The open union's `{ type: string }` member defeats discriminant
+	// narrowing; use explicit predicates (house pattern, cf. kinds.ts).
+	const asImage = (p: MessagePart): p is ImagePart => p.type === 'image';
+	const asText = (p: MessagePart): p is TextPart => p.type === 'text';
+
+	const rowParts = $derived(isDurable ? partsOf(entry!) : []);
+	const hasImages = $derived(rowParts.some((p) => p.type === 'image'));
+
+	/**
+	 * Ordered render segments (030 contract §4): contiguous text parts become
+	 * one Markdown block each, image parts become thumbnail grids between them.
+	 * Null ⇒ the single-block legacy render below (image-less rows are
+	 * untouched). Text runs concatenate byte-for-byte to `visible` —
+	 * stripGateFence's truncation slices the run list at the same boundary —
+	 * which keeps expound's sourcemap + DOM alignment derivable by
+	 * construction; a split that misaligns markdown (e.g. mid-`**` emphasis)
+	 * simply fails alignment and hits the existing 'unaligned' menu-disable
+	 * path in selection.ts. Images contribute no text nodes, so grids between
+	 * segments are invisible to the alignment walk.
+	 */
+	const segments = $derived.by(() => {
+		if (!isDurable || !hasImages) return null;
+		const segs: BodySegment[] = [];
+		let run = '';
+		let images: ImagePart[] = [];
+		let textTotal = 0;
+		const flushText = () => {
+			if (run !== '') {
+				segs.push({ kind: 'text', text: run });
+				run = '';
+			}
+		};
+		const flushImages = () => {
+			if (images.length > 0) {
+				segs.push({ kind: 'images', images });
+				images = [];
+			}
+		};
+		for (const part of rowParts) {
+			if (asImage(part)) {
+				flushText();
+				images.push(part);
+			} else if (asText(part)) {
+				flushImages();
+				run += part.text;
+				textTotal += part.text.length;
+			}
+		}
+		flushText();
+		flushImages();
+		if (textTotal > visible.length) {
+			let remaining = visible.length;
+			const out: BodySegment[] = [];
+			for (const seg of segs) {
+				if (seg.kind === 'text') {
+					if (remaining <= 0) continue;
+					const text = seg.text.slice(0, remaining);
+					remaining -= text.length;
+					out.push({ kind: 'text', text });
+				} else {
+					out.push(seg);
+				}
+			}
+			for (let i = out.length - 1; i >= 0; i--) {
+				const seg = out[i]!;
+				if (seg.kind === 'images') continue;
+				seg.text = seg.text.trimEnd();
+				break;
+			}
+			return out;
+		}
+		return segs;
+	});
 
 	const sections = $derived(isDurable ? extractSections(visible) : []);
 	const stripCandidate = $derived(isDurable && isStripCandidate(sections));
@@ -142,7 +226,33 @@
 				onExpound={(raw, sel, opts) => (props as DurableProps).onExpound(entry!.id, raw, sel, opts)}
 				onCopy={(props as DurableProps).onCopy}
 			>
-				<Markdown raw={visible} onFixMermaid={(prompt) => void chatStore.send(prompt)} />
+				{#if segments}
+					{#each segments as seg, i (i)}
+						{#if seg.kind === 'text'}
+							<Markdown raw={seg.text} onFixMermaid={(prompt) => void chatStore.send(prompt)} />
+						{:else}
+							<div class="flex flex-wrap gap-1.5">
+								{#each seg.images as image (image.data)}
+									<button
+										type="button"
+										class="overflow-hidden rounded-lg border border-border transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										onclick={() => (expanded = image)}
+										aria-label="View image full size"
+									>
+										<img
+											src={image.data}
+											alt={image.name ?? 'Generated image'}
+											class="size-24 object-cover"
+											loading="lazy"
+										/>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					{/each}
+				{:else}
+					<Markdown raw={visible} onFixMermaid={(prompt) => void chatStore.send(prompt)} />
+				{/if}
 			</Highlighter>
 		{:else}
 			<div class="group/live relative">
@@ -209,6 +319,8 @@
 		<div class="mt-1 text-xs text-muted-foreground">This reply was interrupted.</div>
 	{/if}
 </div>
+
+<ImageLightbox part={expanded} onClose={() => (expanded = null)} />
 
 <style>
 	/* us5-coarse-pointer: touch devices have no hover, so the action row stays
