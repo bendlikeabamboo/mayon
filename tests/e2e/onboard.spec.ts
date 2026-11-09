@@ -1,4 +1,5 @@
 import { expect, modelListFooter, settledModelFooter, test } from './fixtures/onboard';
+import { liveText } from './fixtures/render';
 import {
 	EARLY_MARKER,
 	HEADING_PROBE,
@@ -17,9 +18,9 @@ test.describe('mock-llm onboarding and round trip', () => {
 		await composer.fill('Explain the kitchen sink');
 		await page.getByRole('button', { name: 'Send', exact: true }).click();
 
-		const live = page.locator('#msg-live-text');
-		await expect(live).toContainText(EARLY_MARKER);
-		expect(await live.innerText()).not.toContain(LATE_MARKER);
+		const live = liveText(page);
+		await expect(live.first()).toContainText(EARLY_MARKER);
+		expect(await live.first().innerText()).not.toContain(LATE_MARKER);
 
 		const reply = page.locator('.markdown-body', { hasText: LATE_MARKER });
 		await expect(reply).toBeVisible();

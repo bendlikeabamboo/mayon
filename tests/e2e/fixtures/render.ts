@@ -1,13 +1,21 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { LATE_MARKER } from './kitchen-sink';
 
+/**
+ * Live streaming text blocks (029 per-block ids): `msg-live-text-0`,
+ * `msg-live-text-1`, … Reasoning blocks mount under `msg-live-reasoning-N`.
+ */
+export function liveText(page: Page): Locator {
+	return page.locator('[id^="msg-live-text"]');
+}
+
 export async function openKitchenSinkReply(page: Page): Promise<Locator> {
 	const composer = page.getByPlaceholder(/Message the active provider/);
 	await composer.fill('Render the kitchen sink');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	const body = page.locator('.markdown-body').last();
 	await expect(body).toContainText(LATE_MARKER);
-	await expect(page.locator('#msg-live-text')).toHaveCount(0);
+	await expect(liveText(page)).toHaveCount(0);
 	return body;
 }
 

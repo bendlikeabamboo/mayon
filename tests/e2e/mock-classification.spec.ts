@@ -8,6 +8,7 @@ import {
 	QUIZ_MCQ_PROMPT
 } from './fixtures/kitchen-sink';
 import type { Page } from '@playwright/test';
+import { liveText } from './fixtures/render';
 
 // Unknown request kinds (contract rule 7, research.md D7) are answered with
 // HTTP 400 { error: 'unrecognized request kind', hints: [...] } and can never
@@ -33,9 +34,9 @@ async function chatRoundTrip(page: Page): Promise<void> {
 	const composer = page.getByPlaceholder(/Message the active provider/);
 	await composer.fill('Explain the kitchen sink');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
-	await expect(page.locator('#msg-live-text')).toContainText(EARLY_MARKER);
+	await expect(liveText(page).first()).toContainText(EARLY_MARKER);
 	await expect(page.locator('.markdown-body', { hasText: LATE_MARKER })).toBeVisible();
-	await expect(page.locator('#msg-live-text')).toHaveCount(0);
+	await expect(liveText(page)).toHaveCount(0);
 }
 
 test.describe('mock-llm request-kind classification', () => {

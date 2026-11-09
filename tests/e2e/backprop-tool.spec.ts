@@ -6,6 +6,7 @@ import {
 	PROPAGATE_TRIGGER,
 	PROPAGATE_UNAVAILABLE_REPLY
 } from './fixtures/kitchen-sink';
+import { liveText } from './fixtures/render';
 import type { Page } from '@playwright/test';
 
 // The fixture chunks at 150ms per frame; a full turn (stream, tool round-trip
@@ -26,12 +27,12 @@ async function chatRoundTrip(page: Page): Promise<void> {
 	const composer = page.getByPlaceholder(/Message the active provider/);
 	await composer.fill('Explain the kitchen sink');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
-	await expect(page.locator('#msg-live-text')).toContainText(EARLY_MARKER, {
+	await expect(liveText(page).first()).toContainText(EARLY_MARKER, {
 		timeout: TURN_TIMEOUT
 	});
 	// The streamed kitchen-sink reply alone runs ~5s (150ms/frame); the turn
 	// must fully settle (drain + persist) before the next send is safe.
-	await expect(page.locator('#msg-live-text')).toHaveCount(0, { timeout: TURN_TIMEOUT });
+	await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
 }
 
 /**
@@ -108,7 +109,7 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		await expect(page.locator('.markdown-body', { hasText: EARLY_MARKER }).last()).toBeVisible({
 			timeout: TURN_TIMEOUT
 		});
-		await expect(page.locator('#msg-live-text')).toHaveCount(0, { timeout: TURN_TIMEOUT });
+		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
 
 		// (4) No toast ever fired on the tool path (turn fully settled).
 		await expect(page.locator('[aria-label="Dismiss"]')).toHaveCount(0);
@@ -145,7 +146,7 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		await expect(page.locator('.markdown-body', { hasText: OFFER_REPLY })).toBeVisible({
 			timeout: TURN_TIMEOUT
 		});
-		await expect(page.locator('#msg-live-text')).toHaveCount(0, { timeout: TURN_TIMEOUT });
+		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
 
 		// No approval ask ever fired, and no toast.
 		await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0, {
@@ -198,7 +199,7 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		await expect(page.locator('.markdown-body', { hasText: EARLY_MARKER }).last()).toBeVisible({
 			timeout: TURN_TIMEOUT
 		});
-		await expect(page.locator('#msg-live-text')).toHaveCount(0, { timeout: TURN_TIMEOUT });
+		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
 
 		// The loop never re-runs a declined call: no second live ask within
 		// the bounded window, and no toast on the declined path.
@@ -257,7 +258,7 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		await expect(
 			page.locator('.markdown-body', { hasText: PROPAGATE_UNAVAILABLE_REPLY })
 		).toBeVisible({ timeout: TURN_TIMEOUT });
-		await expect(page.locator('#msg-live-text')).toHaveCount(0, { timeout: TURN_TIMEOUT });
+		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
 		await expect(page.locator('[aria-label="Dismiss"]')).toHaveCount(0);
 
 		// The app's boot gate can hard-reload mid-turn on a transient server

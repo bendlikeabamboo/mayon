@@ -2,6 +2,7 @@ import net from 'node:net';
 import { expect, test } from './fixtures/onboard';
 import { EARLY_MARKER, LATE_MARKER, MOCK_BASE_URL } from './fixtures/kitchen-sink';
 import { modelListFooter, settledModelFooter } from './fixtures/onboard';
+import { liveText } from './fixtures/render';
 import type { Locator, Page } from '@playwright/test';
 
 const GROUP_HEADINGS = ['Local', 'Cloud APIs', 'Gateways', 'Custom'];
@@ -64,9 +65,9 @@ test.describe('tool capability toggle', () => {
 	/** Drive one real chat round trip and wait for the deterministic reply to finish. */
 	async function chatRoundTrip(page: Page): Promise<void> {
 		await sendMessage(page);
-		await expect(page.locator('#msg-live-text')).toContainText(EARLY_MARKER);
+		await expect(liveText(page).first()).toContainText(EARLY_MARKER);
 		await expect(page.locator('.markdown-body', { hasText: LATE_MARKER })).toBeVisible();
-		await expect(page.locator('#msg-live-text')).toHaveCount(0);
+		await expect(liveText(page)).toHaveCount(0);
 	}
 
 	/** Send one message and return; the caller decides what the reply should prove. */
