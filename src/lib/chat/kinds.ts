@@ -208,6 +208,16 @@ export function textOf(message: Message): string {
 }
 
 /**
+ * Label (and alt text) for a generated image part (030): the model-provided
+ * label when one exists, else `Generated image N` — N is the part's 1-based
+ * position in the row's parts.
+ */
+export function generatedImageName(label: string | null | undefined, partIndex: number): string {
+	const provided = label?.trim();
+	return provided ? provided : `Generated image ${partIndex + 1}`;
+}
+
+/**
  * Rebuild composer attachments from a stored row's image parts (018 US1: the
  * regenerate path re-sends the preceding user turn's images). The thumbnail
  * falls back to the full data URL — the composer only uses it for preview.

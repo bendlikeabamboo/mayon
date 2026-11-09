@@ -76,6 +76,28 @@ function isImagePart(p: MessagePart): p is ImagePart {
 }
 
 /**
+ * Wire content for a row carrying parts (contracts/message-parts.md §5):
+ * ordered parts — text part(s) first (omitted when empty, i.e. image-only),
+ * then one image part per stored image in order. The AI SDK image part takes
+ * the stored data-URL string directly. Falls back to the row's canonical
+ * content when nothing survives, so the payload never goes out empty.
+ */
+function wireContent(parts: MessagePart[], fallbackText: string): unknown[] {
+	const content: unknown[] = [];
+	for (const p of parts) {
+		if (isTextPart(p)) {
+			if (p.text) content.push({ type: 'text', text: p.text });
+		} else if (isImagePart(p)) {
+			content.push({ type: 'image', image: p.data });
+		}
+	}
+	if (content.length === 0) {
+		content.push({ type: 'text', text: fallbackText });
+	}
+	return content;
+}
+
+/**
  * Placeholder result synthesized for a tool call whose result row was never
  * persisted (turn interrupted between appending the call and its result).
  * Providers reject requests containing a dangling tool call, so every emitted
@@ -124,7 +146,20 @@ function artifactText(row: ProjectableRow): string {
 	return `[Back-propagated from "${title}" · ${mode} · ${createdAt}]\n\n${row.content}`;
 }
 
-export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] {
+export interface ProjectEntriesOptions {
+	/**
+	 * Whether the active target model accepts images (resolve with
+	 * `supportsVision`). Gates `assistant_message` image parts
+	 * (contracts/message-parts.md §5): emitted only when true; otherwise the
+	 * row projects text-only, silently. Absent = not vision-capable.
+	 */
+	visionCapable?: boolean;
+}
+
+export function projectEntries(
+	rows: readonly ProjectableRow[],
+	opts?: ProjectEntriesOptions
+): ModelMessage[] {
 	const resultScopes = turnResultScopes(rows);
 
 	const raw: ModelMessage[] = [];
@@ -227,29 +262,30 @@ export function projectEntries(rows: readonly ProjectableRow[]): ModelMessage[] 
 				} as unknown as ModelMessage);
 				continue;
 			}
-			// contracts/message-parts.md §5: ordered parts — text part(s) first
-			// (omitted when empty, i.e. image-only), then one image part per
-			// stored image in order. The AI SDK user image part takes the
-			// stored data-URL string directly.
-			const content: unknown[] = [];
-			for (const p of parts) {
-				if (isTextPart(p)) {
-					if (p.text) content.push({ type: 'text', text: p.text });
-				} else if (isImagePart(p)) {
-					content.push({ type: 'image', image: p.data });
-				}
-			}
-			if (content.length === 0) {
-				content.push({ type: 'text', text: r.content });
-			}
-			raw.push({ role: 'user' as const, content } as unknown as ModelMessage);
+			// 018 behavior: user image parts ride the wire unconditionally here —
+			// the vision gate lives upstream (Composer only offers attach for
+			// vision-capable models).
+			raw.push({
+				role: 'user' as const,
+				content: wireContent(parts, r.content)
+			} as unknown as ModelMessage);
 			continue;
 		}
 
 		if (k === 'assistant_message') {
+			// 030 (contracts/message-parts.md §5): assistant image parts ride the
+			// wire only for vision-capable targets; otherwise text-only, silently.
+			const parts = opts?.visionCapable ? rowParts(r) : null;
+			if (!parts) {
+				raw.push({
+					role: 'assistant' as const,
+					content: [{ type: 'text', text: r.content }]
+				} as unknown as ModelMessage);
+				continue;
+			}
 			raw.push({
 				role: 'assistant' as const,
-				content: [{ type: 'text', text: r.content }]
+				content: wireContent(parts, r.content)
 			} as unknown as ModelMessage);
 			continue;
 		}

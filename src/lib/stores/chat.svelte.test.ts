@@ -1810,6 +1810,119 @@ describe('chatStore send with attachments (T010 — specs/018 User Story 1)', ()
 	});
 });
 
+// 030 image replies (T004 — specs/030-image-generation US1): recognized stream
+// images land on the assistant row as ordered parts in the same atomic append
+// that records the model. Prescribes the store contract for T008.
+describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
+	const PNG_B64 = 'QUFB'; // "AAA"
+
+	function imageReplyStream(text: string): void {
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield text;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text };
+				yield {
+					type: 'file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1, 2, 3]), mediaType: 'image/png' }
+				};
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text,
+			response: { id: 'test' }
+		} as never);
+	}
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('(a) an image reply persists ONE assistant row: ordered text+image parts with the model, atomically', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		imageReplyStream('Here you go');
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+
+		const row = assistantRows[0]!;
+		expect(row.content).toBe('Here you go');
+		expect(row.model).toBe('stub-model');
+		const parts = JSON.parse(row.parts!);
+		expect(parts).toHaveLength(2);
+		expect(parts[0]).toEqual({ type: 'text', text: 'Here you go' });
+		expect(parts[1].type).toBe('image');
+		expect(parts[1].data).toBe(`data:image/png;base64,${PNG_B64}`);
+		expect(parts[1].mimeType).toBe('image/png');
+	});
+
+	it('(b) abort after an image arrives persists it on the interrupted row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.updateStreamBuffer('partial reply');
+			await new Promise<void>((resolve) => {
+				deps.signal.addEventListener('abort', () => resolve(), { once: true });
+			});
+			const opts = { images: [{ mediaType: 'image/png', base64: PNG_B64 }] };
+			await deps.appendAssistantText(
+				'partial reply',
+				opts as unknown as Parameters<typeof deps.appendAssistantText>[1]
+			);
+			return { aborted: true };
+		});
+
+		await chatStore.load(root.id);
+		const sendP = chatStore.send('draw a quokka');
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('partial reply'));
+		chatStore.stop();
+		await sendP;
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const interrupted = msgs.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(interrupted).toBeDefined();
+		expect(interrupted!.content).toBe('partial reply');
+		const parts = JSON.parse(interrupted!.parts!);
+		expect(parts[0]).toEqual({ type: 'text', text: 'partial reply' });
+		expect(parts[1]).toMatchObject({ type: 'image', data: `data:image/png;base64,${PNG_B64}` });
+	});
+
+	it('(c) pendingImages never leak: the next image-less turn persists a parts-less assistant row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+
+		await chatStore.load(root.id);
+		imageReplyStream('Here you go');
+		await chatStore.send('draw a quokka');
+
+		mockStreamReply(['plain reply']);
+		await chatStore.send('now some text');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(2);
+		const second = assistantRows[1]!;
+		expect(second.content).toBe('plain reply');
+		expect(second.parts).toBeNull();
+		expect(chatStore.lastFailedPrompt).toBeNull();
+		expect(chatStore.lastFailedAttachments).toBeNull();
+	});
+});
+
 describe('chatStore image-unsupported error wiring (T021 — specs/018 User Story 2)', () => {
 	const IMAGE_A = 'data:image/png;base64,AAAA';
 

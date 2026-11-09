@@ -51,6 +51,7 @@
 	import { getActiveSdkProvider } from '#lib/ai/client.js';
 	import { describeDialect } from '#lib/ai/dialects.js';
 	import { supportsVision } from '#lib/ai/vision-capability.js';
+	import { supportsImageOutput } from '#lib/ai/image-output-capability.js';
 	import { deriveContextGauge } from '#lib/chat/context-usage.js';
 	import { DEFAULT_TITLE } from '#lib/ai/generate/generate-title.js';
 	import type { ProviderConfig, ReasoningEffort } from '#lib/ai/types.js';
@@ -105,6 +106,12 @@
 	const supportsVisionModel = $derived.by(() => {
 		if (!activeConfig || !activeModelId) return true;
 		return supportsVision(activeConfig, activeModelId);
+	});
+	// Advisory image-output indication (spec 030): derived exactly like the
+	// vision gate above. Indication only — never gates or rewrites payloads.
+	const supportsImageOutputModel = $derived.by(() => {
+		if (!activeConfig || !activeModelId) return true;
+		return supportsImageOutput(activeConfig, activeModelId);
 	});
 	const contextGauge = $derived.by(() =>
 		deriveContextGauge({
@@ -1112,6 +1119,7 @@
 						onLab={onLaunchLab}
 						{supportsDeep}
 						supportsVision={supportsVisionModel}
+						supportsImageOutput={supportsImageOutputModel}
 						providerName={activeProviderName}
 						modelId={activeModelId}
 						gauge={contextGauge}

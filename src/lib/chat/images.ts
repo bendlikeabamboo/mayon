@@ -224,3 +224,99 @@ export async function intakeImage(
 		bitmap.close();
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Output-side budget (specs/030-image-generation, data-model validation rule 4):
+// bound persisted assistant rows so their insert fits the 16 MiB
+// /api/db/query request envelope (server/src/pg.ts), re-encoding down through
+// the same canvas pipeline instead of rejecting.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-image decoded-byte cap (030). 1 MiB keeps chart/text detail intact — a
+ * ≤1568 px JPEG q0.85 re-encode typically lands ~200–400 KB, so only heavy
+ * generations get re-encoded.
+ */
+export const MAX_OUTPUT_IMAGE_BYTES = 1024 * 1024;
+/**
+ * Per-message cap on the persisted data-URL strings of output images (030).
+ * A worst-case 8-image row insert stays ≈8 MB, half of the 16 MiB envelope
+ * (server/src/pg.ts bodyLimit), leaving headroom for content text and SQL.
+ */
+export const MAX_OUTPUT_TOTAL_DATA_URL_BYTES = 8 * 1024 * 1024;
+/** Bounded re-encode attempts before the best (smallest) attempt ships as-is. */
+const OUTPUT_REENCODE_MAX_ATTEMPTS = 12;
+
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+	const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+}
+
+/**
+ * Re-encode one image down to `targetBytes` decoded bytes: decode the data
+ * URL, then encode JPEG at a shrinking scale until it fits (JPEG size tracks
+ * area, so each step aims straight at the scale that should fit) or the
+ * attempt bound is hit — the result is never a rejection.
+ */
+async function reencodeOutputImage(
+	image: ImagePart,
+	targetBytes: number,
+	ops: ImageIntakeOps
+): Promise<ImagePart> {
+	const bitmap = await ops.decode(dataUrlToBytes(image.data));
+	try {
+		// Same yield as intake (spec SC-007): finalize of several images must not
+		// serialize into one long main-thread task.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let scale = Math.min(1, MAX_LONG_EDGE / Math.max(bitmap.width, bitmap.height));
+		let width = 1;
+		let height = 1;
+		let data = '';
+		let bytes = 0;
+		for (let attempt = 0; attempt < OUTPUT_REENCODE_MAX_ATTEMPTS; attempt++) {
+			width = Math.max(1, Math.round(bitmap.width * scale));
+			height = Math.max(1, Math.round(bitmap.height * scale));
+			const blob = await ops.encodeJpeg(bitmap, width, height);
+			const encoded = new Uint8Array(await blob.arrayBuffer());
+			data = bytesToDataUrl(encoded, 'image/jpeg');
+			bytes = encoded.byteLength;
+			if (bytes <= targetBytes) break;
+			scale = Math.min(scale, scale * Math.sqrt(targetBytes / bytes));
+		}
+		return imagePart(data, 'image/jpeg', width, height, bytes, image.name);
+	} finally {
+		bitmap.close();
+	}
+}
+
+/**
+ * Apply the output-side budget to the images of one assistant row before
+ * finalize (030 contracts/stream-image-parts.md §3). In-budget images pass
+ * through untouched (byte-identical); anything over the per-image cap — or
+ * pushing the row past the per-message total — is re-encoded down via the
+ * existing canvas pipeline, never rejected. Earlier images keep their bytes;
+ * later ones absorb the squeeze when the total binds.
+ */
+export async function applyOutputBudget(
+	images: ImagePart[],
+	ops: ImageIntakeOps = browserOps
+): Promise<ImagePart[]> {
+	const kept: ImagePart[] = [];
+	let remaining = MAX_OUTPUT_TOTAL_DATA_URL_BYTES;
+	for (const image of images) {
+		if (image.bytes <= MAX_OUTPUT_IMAGE_BYTES && image.data.length <= remaining) {
+			remaining -= image.data.length;
+			kept.push(image);
+			continue;
+		}
+		// Base64 expands ~4/3, so the decoded target is 3/4 of what's left; at
+		// least 0 so a drained budget still yields a (tiny) best-effort image.
+		const target = Math.min(MAX_OUTPUT_IMAGE_BYTES, Math.floor((Math.max(remaining, 0) * 3) / 4));
+		const rebuilt = await reencodeOutputImage(image, target, ops);
+		remaining -= rebuilt.data.length;
+		kept.push(rebuilt);
+	}
+	return kept;
+}

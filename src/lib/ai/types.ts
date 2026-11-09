@@ -171,6 +171,15 @@ export interface ProviderConfig {
 	 */
 	vision?: 'auto' | 'on' | 'off';
 	/**
+	 * Per-provider image-output flag (spec 030), sibling of `vision`.
+	 * `'auto'`/undefined → resolved from a static allowlist of image-output
+	 * model-family prefixes (see `src/lib/ai/image-output-capability.ts`).
+	 * `'on'`/`'off'` override. Advisory only: drives UI indication (provider
+	 * select, model-select badge, chat-surface chip); it must never gate,
+	 * block, strip, or rewrite any request or response payload.
+	 */
+	imageOutput?: 'auto' | 'on' | 'off';
+	/**
 	 * Optional provider-declared context window in tokens (positive integer).
 	 * User-declared per provider; absent when unknown. Drives the context
 	 * gauge (feature 023); not a secret.

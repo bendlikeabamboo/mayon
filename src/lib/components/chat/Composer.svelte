@@ -65,6 +65,7 @@
 		onLab,
 		supportsDeep = true,
 		supportsVision = true,
+		supportsImageOutput = false,
 		providerName,
 		modelId,
 		gauge = null,
@@ -90,6 +91,11 @@
 		supportsDeep?: boolean;
 		/** Paperclip visibility (FR-006 gate). Paste-with-image stays permissive (FR-007). */
 		supportsVision?: boolean;
+		/**
+		 * Advisory image-output indication (spec 030). Renders a subtle chip in
+		 * the provider header; never gates, blocks, or rewrites any payload.
+		 */
+		supportsImageOutput?: boolean;
 		providerName?: string;
 		modelId?: string;
 		gauge?: ContextGaugeModel | null;
@@ -372,7 +378,12 @@
 			class="flex items-center justify-between gap-1.5 px-1 text-[11px] leading-none text-muted-foreground"
 		>
 			<span>{providerName} · {modelId}</span>
-			<ContextGauge {gauge} />
+			<span class="flex items-center gap-2">
+				{#if supportsImageOutput}
+					<span title="This model is advertised as image-output capable">image output</span>
+				{/if}
+				<ContextGauge {gauge} />
+			</span>
 		</div>
 	{/if}
 	{#if toastVisible}

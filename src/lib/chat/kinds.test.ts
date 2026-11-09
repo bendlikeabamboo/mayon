@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Message } from '#lib/db/schema.js';
 import {
 	deriveKindFromColumns,
+	generatedImageName,
 	kindOf,
 	laneOf,
 	ALL_KINDS,
@@ -197,6 +198,21 @@ describe('partsOf', () => {
 		const parts = partsOf(msg);
 		expect(parts).toHaveLength(2);
 		expect(parts[1]!.type).toBe('voice');
+	});
+});
+
+describe('generatedImageName', () => {
+	it('uses the model-provided label when present', () => {
+		expect(generatedImageName('Quarterly revenue chart', 3)).toBe('Quarterly revenue chart');
+	});
+
+	it('falls back to `Generated image N` from the 1-based part index', () => {
+		expect(generatedImageName(undefined, 0)).toBe('Generated image 1');
+		expect(generatedImageName(null, 1)).toBe('Generated image 2');
+	});
+
+	it('treats blank labels as absent', () => {
+		expect(generatedImageName('   ', 0)).toBe('Generated image 1');
 	});
 });
 

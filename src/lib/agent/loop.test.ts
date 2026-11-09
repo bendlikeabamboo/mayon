@@ -1779,3 +1779,165 @@ describe('(w) persist order (003 US3): reasoning first, per iteration', () => {
 		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
 	});
 });
+
+// 030 image recognition (T003 — specs/030-image-generation US1). scriptedFullStream
+// already accepts arbitrary part shapes, so image-bearing parts flow through as-is.
+// These tests prescribe the finalize handoff for T006: `appendAssistantText` gains
+// an opts bag carrying `images` candidates of `{ mediaType, base64? | url? }`.
+describe('030 image recognition (stream → finalize handoff)', () => {
+	const PNG_B64 = 'QUFB'; // "AAA"
+	const JPEG_B64 = 'QkJC'; // "BBB"
+
+	function filePart(base64: string, mediaType = 'image/png') {
+		return {
+			type: 'file',
+			file: { base64, uint8Array: new Uint8Array([1, 2, 3]), mediaType }
+		};
+	}
+
+	function rawImagesPart(urls: string[]) {
+		return {
+			type: 'raw',
+			rawValue: {
+				choices: [
+					{
+						delta: {
+							images: urls.map((url) => ({ type: 'image_url', image_url: { url } }))
+						}
+					}
+				]
+			}
+		};
+	}
+
+	it('file parts (image/*) are recognized and handed off at finalize in arrival order', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Here you go' },
+				filePart(PNG_B64),
+				filePart(JPEG_B64, 'image/jpeg'),
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith(
+			'Here you go',
+			expect.objectContaining({
+				images: [
+					{ mediaType: 'image/png', base64: PNG_B64 },
+					{ mediaType: 'image/jpeg', base64: JPEG_B64 }
+				]
+			})
+		);
+	});
+
+	it('reasoning-file parts are ignored (thought images never persist)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Reply' },
+				{
+					type: 'reasoning-file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1]), mediaType: 'image/png' }
+				},
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply');
+	});
+
+	it('raw-chunk delta.images (openai-compatible shim) are recognized; data URLs split into mediaType+base64', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Reply' },
+				rawImagesPart([`data:image/png;base64,${PNG_B64}`]),
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledWith(
+			'Reply',
+			expect.objectContaining({ images: [{ mediaType: 'image/png', base64: PNG_B64 }] })
+		);
+		// The shim only sees raw chunks when they are requested, gated to the
+		// openai-compatible dialect (R-2 addendum).
+		expect(mockedStreamText.mock.calls[0]![0]).toHaveProperty('includeRawChunks', true);
+	});
+
+	it('https-URL images normalize to a url candidate; recognition does not fetch (R-4)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Reply' },
+				rawImagesPart(['https://img.example.com/out.png']),
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledWith(
+			'Reply',
+			expect.objectContaining({ images: [{ url: 'https://img.example.com/out.png' }] })
+		);
+	});
+
+	it('images collected before a critic correction survive to the persisted reply', async () => {
+		let validateCount = 0;
+		mockedValidateTurn.mockImplementation(async () => {
+			validateCount++;
+			return validateCount === 1 ? [{ type: 'mermaid', message: 'parse error' }] : [];
+		});
+
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: '```mermaid\nbad' },
+					filePart(PNG_B64),
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: '```mermaid\ngraph TD\nA-->B\n```' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith(
+			'```mermaid\ngraph TD\nA-->B\n```',
+			expect.objectContaining({ images: [{ mediaType: 'image/png', base64: PNG_B64 }] })
+		);
+	});
+
+	it('image-less streams keep the 1-arg finalize call (byte-identical behavior)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'Hello' },
+				{ type: 'text-delta', text: ' world' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world');
+	});
+});
