@@ -86,6 +86,7 @@ export type AssistantMessageMeta = SharedMetadata;
 export interface ReasoningMeta extends SharedMetadata {
 	iteration: number;
 	model?: string;
+	anchored?: true;
 }
 
 export interface ToolCallMeta extends SharedMetadata {

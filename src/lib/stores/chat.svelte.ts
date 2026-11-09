@@ -148,6 +148,15 @@ export class ExcerptOverlapError extends Error {
 	}
 }
 
+/**
+ * Live streaming block (029): ordered display segments of the in-flight turn.
+ * Reasoning blocks carry their own text; text blocks are offsets into the
+ * concatenated `streamBuffer`.
+ */
+export type LiveBlock =
+	| { kind: 'reasoning'; text: string; open: boolean }
+	| { kind: 'text'; start: number; open: boolean };
+
 class ChatState {
 	chatId = $state<string | null>(null);
 	chat = $state<Chat | null>(null);
@@ -157,7 +166,7 @@ class ChatState {
 	streamBufferRender = $state('');
 	/** Pacer lifecycle of the in-flight stream, synced from `pacer.mode` (US2 overlay reads it). */
 	streamPhase = $state<PacerMode>('idle');
-	reasoningBuffer = $state('');
+	liveBlocks = $state<LiveBlock[]>([]);
 	/**
 	 * Image candidates recognized from the in-flight stream (030 R-3),
 	 * pending finalize. Text stays a pure string — the pacer and the rAF
@@ -322,15 +331,32 @@ class ChatState {
 		}
 		const items: LiveEntry[] = [];
 		if (this.streaming) {
-			if (this.reasoningBuffer) {
-				items.push({ source: 'live', live: 'live_reasoning', buffer: this.reasoningBuffer });
+			const blocks = this.liveBlocks;
+			const visible = this.streamBufferRender;
+			for (let i = 0; i < blocks.length; i++) {
+				const b = blocks[i];
+				if (b.kind === 'reasoning') {
+					if (!b.text.trim()) continue;
+					items.push({ source: 'live', live: 'live_reasoning', buffer: b.text });
+					continue;
+				}
+				let nextStart: number | null = null;
+				let isLastText = true;
+				for (let j = i + 1; j < blocks.length; j++) {
+					const nb = blocks[j];
+					if (nb.kind !== 'text') continue;
+					nextStart = nb.start;
+					isLastText = false;
+					break;
+				}
+				const buffer = visible.slice(b.start, nextStart ?? visible.length);
+				items.push({
+					source: 'live',
+					live: 'live_text',
+					buffer,
+					pending: isLastText && b.open && buffer.length === 0
+				});
 			}
-			items.push({
-				source: 'live',
-				live: 'live_text',
-				buffer: this.streamBufferRender,
-				pending: this.streamBufferRender.length === 0
-			});
 		}
 		for (const a of this.pendingApprovals) {
 			const payload: LiveAskPayload = {
@@ -408,7 +434,7 @@ class ChatState {
 		this.error = null;
 		this.streamBuffer = '';
 		this.streamBufferRender = '';
-		this.reasoningBuffer = '';
+		this.liveBlocks = [];
 		this.pendingImages = [];
 		this.streaming = false;
 		this.generativeStatus = null;
@@ -527,7 +553,7 @@ class ChatState {
 		this.streamBufferRender = '';
 		this.streamPhase = 'idle';
 		this.pacer = createPacer(isSafeBoundary);
-		this.reasoningBuffer = '';
+		this.liveBlocks = [];
 		this.pendingImages = [];
 		this.generativeStatus = null;
 		this.controller = new AbortController();
@@ -643,15 +669,32 @@ class ChatState {
 				firstTurn: isFirstRootTurn,
 				updateStreamBuffer: (n) => {
 					this.streamBuffer = n;
+					if (n && !this.liveBlocks.some((b) => b.kind === 'text' && b.open)) {
+						this.liveBlocks.push({ kind: 'text', start: 0, open: true });
+					}
 					const pacer = this.pacer;
 					if (pacer) {
 						pacer.onArrived(n);
 						this.streamPhase = pacer.mode;
 					}
 				},
-				updateReasoningBuffer: (n) => (this.reasoningBuffer = n),
+				updateReasoningBuffer: (n) => {
+					const last = this.liveBlocks[this.liveBlocks.length - 1];
+					if (last?.kind === 'reasoning') last.text = n;
+				},
+				onReasoningSegmentStart: () => {
+					this.liveBlocks.push({ kind: 'reasoning', text: '', open: true });
+				},
+				onTextSegmentStart: (startOffset) => {
+					for (const b of this.liveBlocks) {
+						if (b.kind === 'text' && b.open) b.open = false;
+					}
+					this.liveBlocks.push({ kind: 'text', start: startOffset, open: true });
+				},
 				appendAssistantText: async (content, opts) => {
-					finalAssistantText = content;
+					// Concatenated whole-turn buffer semantics (029 rule 6): the walk may
+					// call this once per text block; lint/telemetry read the sum.
+					finalAssistantText += content;
 					// 030 R-3: stream images ride the per-turn pendingImages state.
 					if (opts?.images?.length) {
 						this.pendingImages = [...this.pendingImages, ...opts.images];
@@ -752,7 +795,7 @@ class ChatState {
 				appendReasoning: async (text, iteration) => {
 					const row = await repos.messages.append(chatId, 'assistant', text, {
 						kind: 'reasoning',
-						metadata: JSON.stringify({ iteration })
+						metadata: JSON.stringify({ iteration, anchored: true })
 					});
 					this.messages = [...this.messages, row];
 					await repos.chats.touch(chatId);
@@ -863,6 +906,9 @@ class ChatState {
 			this.streamBufferRender = this.streamBuffer;
 			const wasAborted = this.controller?.signal.aborted ?? false;
 			if (wasAborted || this.error) this.pacer?.onAbort();
+			// Terminal closure (029 T009): no open live block may survive the
+			// turn's end — close before residual persistence and teardown.
+			for (const b of this.liveBlocks) b.open = false;
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
 					// 030 §4: complete pendingImages persist with the interrupted
@@ -883,7 +929,7 @@ class ChatState {
 			this.pacer?.reset();
 			this.pacer = null;
 			this.streamPhase = 'idle';
-			this.reasoningBuffer = '';
+			this.liveBlocks = [];
 			this.pendingImages = [];
 			this.generativeStatus = null;
 			this.controller = null;

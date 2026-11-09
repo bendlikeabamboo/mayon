@@ -8,6 +8,7 @@ import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
 import { projectEntries } from '#lib/chat/projection.js';
+import { assembleTimeline, isDurableEntry } from '#lib/chat/entries.js';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
 import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
@@ -53,6 +54,8 @@ vi.mock('ai', () => ({
 	generateText: vi.fn(),
 	streamText: vi.fn(),
 	tool: vi.fn((def: unknown) => def),
+	// Tool-bearing turns build SDK tools via jsonSchema (loop buildSdkTools).
+	jsonSchema: vi.fn((schema: unknown) => schema),
 	APICallError: class extends Error {
 		statusCode: number;
 		responseBody?: string;
@@ -894,6 +897,87 @@ describe('chatStore approval flow', () => {
 	});
 });
 
+describe('root chat never offers propagation (027 FR-001, data layer)', () => {
+	// Byte-matches tests/e2e/fixtures/kitchen-sink.ts PROPAGATE_TRIGGER /
+	// PROPAGATE_UNAVAILABLE_REPLY and tests/fixtures/mock-llm/server.mjs, the
+	// way the suite's e2e deck exercises the same journey; the data-layer
+	// invariant under test is the tool-set exclusion plus plain-reply
+	// persistence, independent of the mock's string matching.
+	const PROPAGATE_TRIGGER = 'backpropagate this branch';
+	const PROPAGATE_UNAVAILABLE_REPLY =
+		'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
+
+	function mockToolsOnProvider(): void {
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: { ...stubConfig, toolCapability: 'on' },
+			toolCapability: true
+		});
+	}
+
+	it('root trigger turn: propagate_to_parent excluded from the tool set, one request, plain reply persisted, no asks', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockToolsOnProvider();
+		mockStreamReply(['First reply.']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const callsAfterTurn1 = mockedStreamText.mock.calls.length;
+		mockStreamReply([PROPAGATE_UNAVAILABLE_REPLY]);
+		await chatStore.send(`Wrap up — ${PROPAGATE_TRIGGER}.`);
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+
+		// The trigger wording must never re-request or continue: the plain
+		// reply ends the turn after exactly one LLM call.
+		expect(mockedStreamText.mock.calls.length - callsAfterTurn1).toBe(1);
+		const turnRequest = mockedStreamText.mock.calls[mockedStreamText.mock.calls.length - 1][0] as {
+			tools: Record<string, unknown>;
+		};
+		expect(Object.keys(turnRequest.tools)).toContain('branch_chat');
+		expect(Object.keys(turnRequest.tools)).not.toContain('propagate_to_parent');
+
+		// Persisted transcript: exactly user+assistant per turn, no reasoning,
+		// no tool result, no approval rows — the reply text survives verbatim.
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs).toHaveLength(4);
+		expect(msgs[2]!.role).toBe('user');
+		expect(msgs[2]!.content).toBe(`Wrap up — ${PROPAGATE_TRIGGER}.`);
+		expect(msgs[3]!.role).toBe('assistant');
+		expect(msgs[3]!.kind).toBe('assistant_message');
+		expect(msgs[3]!.content).toBe(PROPAGATE_UNAVAILABLE_REPLY);
+		for (const m of msgs) {
+			expect(['user_message', 'assistant_message']).toContain(m.kind ?? m.role);
+		}
+
+		// No approval ask ever entered the live pipeline, and the turn closed
+		// its live blocks.
+		expect(chatStore.pendingApprovals).toHaveLength(0);
+		expect(chatStore.liveItems).toHaveLength(0);
+	});
+
+	it('branch with own messages keeps propagate_to_parent available (FR-001 complement)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockToolsOnProvider();
+		mockStreamReply(['Root reply.']);
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const child = await repos.chats.createChild({ parentId: root.id, title: 'Branch' });
+		mockStreamReply(['Branch first turn.']);
+		await chatStore.load(child.id);
+		await chatStore.send('branch first turn');
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+		// A branch's first own turn still excludes propagate (hadMessages was
+		// false at send time); the second turn — the branch now having its own
+		// transcript — must keep the tool available.
+		mockStreamReply(['Branch second turn.']);
+		await chatStore.send(`Wrap up — ${PROPAGATE_TRIGGER}.`);
+		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
+		expect(lastDisabledToolIds).not.toContain('propagate_to_parent');
+	});
+});
+
 describe('chatStore MCP connect notices', () => {
 	beforeEach(() => {
 		connectSessionMock.mockReset();
@@ -947,7 +1031,7 @@ describe('chatStore MCP connect notices', () => {
 });
 
 describe('chatStore reasoning buffer', () => {
-	it('reasoningBuffer resets on send() start and in finally', async () => {
+	it('liveBlocks reset on send() start and in finally', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		mockDefaultProvider();
 		mockedStreamText.mockReturnValue({
@@ -964,22 +1048,24 @@ describe('chatStore reasoning buffer', () => {
 		} as never);
 
 		await chatStore.load(root.id);
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 
 		void chatStore.send('hello');
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 
 		await vi.waitFor(() => expect(chatStore.streaming).toBe(false));
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 	});
 
-	it('reasoningBuffer resets on load()', async () => {
+	it('liveBlocks reset on load()', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		await chatStore.load(root.id);
 
-		(chatStore as unknown as { reasoningBuffer: string }).reasoningBuffer = 'some reasoning';
+		(chatStore as unknown as { liveBlocks: unknown[] }).liveBlocks = [
+			{ kind: 'reasoning', text: 'some reasoning', open: true }
+		];
 		await chatStore.load(root.id);
-		expect(chatStore.reasoningBuffer).toBe('');
+		expect(chatStore.liveBlocks).toEqual([]);
 	});
 
 	it('turn with reasoning persists a separate reasoning entry and no reasoning metadata on assistant row', async () => {
@@ -1025,6 +1111,201 @@ describe('chatStore reasoning buffer', () => {
 		const assistant = msgs.find((m) => m.role === 'assistant');
 		expect(assistant).toBeDefined();
 		expect(assistant!.metadata).toBeNull();
+	});
+});
+
+describe('029 live blocks (T010)', () => {
+	afterEach(() => {
+		vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl!);
+	});
+
+	it('interleaved turn produces ordered liveBlocks and per-block liveItems; blocks clear on teardown', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought one');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer part 1');
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought two');
+			deps.onTextSegmentStart?.('answer part 1'.length);
+			deps.updateStreamBuffer('answer part 1answer part 2');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(4));
+		expect(chatStore.liveBlocks).toEqual([
+			{ kind: 'reasoning', text: 'thought one', open: true },
+			{ kind: 'text', start: 0, open: false },
+			{ kind: 'reasoning', text: 'thought two', open: true },
+			{ kind: 'text', start: 13, open: true }
+		]);
+
+		await new Promise((r) => setTimeout(r, 100));
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought one' },
+			{ source: 'live', live: 'live_text', buffer: 'answer part 1', pending: false },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought two' },
+			{ source: 'live', live: 'live_text', buffer: 'answer part 2', pending: false }
+		]);
+
+		resolveTurn();
+		await sendP;
+		expect(chatStore.liveBlocks).toEqual([]);
+	});
+
+	it('error path leaves no open live block and no live entries', async () => {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('mid-thought');
+			deps.updateStreamBuffer('partial');
+			throw new Error('provider exploded');
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		await chatStore.send('hello');
+
+		expect(chatStore.error).not.toBeNull();
+		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+
+	it('abort path leaves no open live block and no live entries', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('mid-thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('partial');
+			await turnBlocked;
+			return { aborted: true };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(2));
+		chatStore.stop();
+		resolveTurn();
+		await sendP;
+
+		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+});
+
+// T017 (029 US2): an interleaved turn persisted through the real store path
+// must survive reload with the live block sequence intact — rows in arrival
+// order, `anchored: true` on reasoning rows, and canonical entries keeping
+// reasoning at their persisted positions (reorderTurn v2 semantics).
+describe('029 reload fidelity (T017)', () => {
+	afterEach(() => {
+		vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl!);
+	});
+
+	it('interleaved turn reload reproduces the live block sequence exactly', async () => {
+		let liveKinds: string[] = [];
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			// One iteration, segments interleaved: R → T → R → T.
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought one');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer one');
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('thought two');
+			deps.onTextSegmentStart?.('answer one'.length);
+			deps.updateStreamBuffer('answer oneanswer two');
+			liveKinds = chatStore.liveBlocks.map((b) => b.kind);
+			// Iteration-end block walk (post-T012): persist in arrival order.
+			await deps.appendReasoning?.('thought one', 0);
+			await deps.appendAssistantText('answer one', {});
+			await deps.appendReasoning?.('thought two', 0);
+			await deps.appendAssistantText('answer two', {});
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		expect(liveKinds).toEqual(['reasoning', 'text', 'reasoning', 'text']);
+
+		await chatStore.load(root.id);
+
+		const turn = chatStore.messages.filter((m) => m.role === 'assistant');
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['reasoning', 'thought one'],
+			['assistant_message', 'answer one'],
+			['reasoning', 'thought two'],
+			['assistant_message', 'answer two']
+		]);
+		const storedKinds = turn.map((m) => (m.kind === 'reasoning' ? 'reasoning' : 'text'));
+		expect(storedKinds).toEqual(liveKinds);
+
+		const reasoningRows = turn.filter((m) => m.kind === 'reasoning');
+		expect(JSON.parse(reasoningRows[0]!.metadata!)).toEqual({ iteration: 0, anchored: true });
+		expect(JSON.parse(reasoningRows[1]!.metadata!)).toEqual({ iteration: 0, anchored: true });
+		const textRows = turn.filter((m) => m.kind === 'assistant_message');
+		expect(textRows[0]!.metadata).toBeNull();
+		expect(textRows[1]!.metadata).toBeNull();
+
+		// Canonical rebuild (post-T014): anchored reasoning rows stay at their
+		// persisted positions — NOT hoisted before the turn's assistant row.
+		const kinds = assembleTimeline(chatStore.messages)
+			.filter(isDurableEntry)
+			.map((t) => t.kind);
+		expect(kinds).toEqual([
+			'user_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning',
+			'assistant_message'
+		]);
+	});
+
+	it('single-segment turn reload keeps the [reasoning, assistant_message] shapes', async () => {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('solo thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('solo answer');
+			await deps.appendReasoning?.('solo thought', 0);
+			await deps.appendAssistantText('solo answer', {});
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+		await chatStore.load(root.id);
+
+		const turn = chatStore.messages.filter((m) => m.role === 'assistant');
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['reasoning', 'solo thought'],
+			['assistant_message', 'solo answer']
+		]);
+		expect(JSON.parse(turn[0]!.metadata!).iteration).toBe(0);
+		expect(turn[1]!.metadata).toBeNull();
+
+		const kinds = assembleTimeline(chatStore.messages)
+			.filter(isDurableEntry)
+			.map((t) => t.kind);
+		expect(kinds).toEqual(['user_message', 'reasoning', 'assistant_message']);
 	});
 });
 

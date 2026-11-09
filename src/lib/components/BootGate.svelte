@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { Loader2, RefreshCw, WifiOff } from '@lucide/svelte';
 	import { dbStatus } from '#lib/stores/db.svelte.js';
+	import { chatStore } from '#lib/stores/chat.svelte.js';
 	import { serverStatus } from '#lib/services/status.svelte.js';
 	import { detectServer } from '#lib/services/detect.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -22,7 +23,12 @@
 		const id = setInterval(async () => {
 			try {
 				const h = await detectServer();
-				if (h && h.ok && h.caps.includes('pg')) location.reload();
+				// A reload aborts any in-flight turn (the store documents that
+				// tradeoff), so while a turn streams, defer to the next tick and
+				// reload once the turn settles — the blip that landed us here has
+				// already failed its requests; the turn's own error path handles
+				// the outcome.
+				if (h && h.ok && h.caps.includes('pg') && !chatStore.streaming) location.reload();
 			} catch {
 				// ignore — next tick
 			}

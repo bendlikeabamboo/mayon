@@ -69,3 +69,7 @@ Every deck request must travel the real path: browser → `createKeychainFetch` 
 ## Concurrency
 
 Requests of different kinds in flight concurrently each classify and receive their own fixture; no shared mutable state between requests beyond the static fixture library.
+
+## Amendment (feature `029-micro-thoughts`, 2026-11-09): interleaved reasoning frames
+
+New kind `chat_interleaved`, slotted ahead of rule 1 (no `tools`, `stream === true`, and the LAST user message contains the exact, case-sensitive marker `[[interleaved-thoughts]]`). Response: the normal SSE envelope carries `delta.reasoning_content` frames (same shape as content frames) in a fixed order — ≥2 reasoning deltas → 1–2 content deltas → ≥2 reasoning deltas again (reasoning re-opened AFTER text, the segmentation defect case) → 1–2 content deltas → one final short reasoning delta with no trailing content — then the unchanged `stop` terminal and `[DONE]`. Non-goals: no `reasoning_details`, no `<think>` raw tags, no tool-call+reasoning combined script, no Responses-API shapes (normative reference: `specs/029-micro-thoughts/contracts/mock-llm-reasoning.md`). Marker absence ⇒ zero behavior change: rules 1–7 (above) stay byte-identical.

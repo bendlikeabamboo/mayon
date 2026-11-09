@@ -56,6 +56,7 @@ interface TurnTrace {
 		};
 		partSequence: Array<{ type: string; count: number }>;
 		reasoning: string;
+		reasoningSegments: string[];
 		receivedText: string;
 		finishReason?: string;
 		toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
@@ -77,6 +78,7 @@ interface IterationState {
 	};
 	partSequence: Array<{ type: string; count: number }>;
 	reasoning: string;
+	reasoningSegments: string[];
 	receivedText: string;
 	finishReason?: string;
 	toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
@@ -153,6 +155,7 @@ export class TraceBuilder {
 					},
 					partSequence: [],
 					reasoning: '',
+					reasoningSegments: [],
 					receivedText: '',
 					toolCalls: [],
 					toolResults: []
@@ -176,10 +179,22 @@ export class TraceBuilder {
 
 				if (event.type === 'text-delta' && payload?.text) {
 					this.current.receivedText += String(payload.text);
-				} else if (event.type === 'reasoning-delta' && payload?.text) {
-					this.current.reasoning += String(payload.text);
-				} else if (event.type === 'reasoning' && payload?.text) {
-					this.current.reasoning += String(payload.text);
+				} else if (event.type === 'reasoning-start') {
+					// Mirror the loop's segment semantics (029): every reasoning-start
+					// opens a new segment, but a pending whitespace-only segment was
+					// never opened by the loop, so drop it instead of counting it.
+					const segs = this.current.reasoningSegments;
+					if (segs.length > 0 && !segs[segs.length - 1].trim()) segs.pop();
+					segs.push('');
+				} else if (
+					(event.type === 'reasoning-delta' || event.type === 'reasoning') &&
+					payload?.text
+				) {
+					const text = String(payload.text);
+					this.current.reasoning += text;
+					const segs = this.current.reasoningSegments;
+					if (segs.length === 0) segs.push('');
+					segs[segs.length - 1] += text;
 				} else if (event.type === 'finish' && payload?.finishReason) {
 					this.current.finishReason = String(payload.finishReason);
 				} else if (event.type === 'tool-call' && payload) {

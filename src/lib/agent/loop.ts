@@ -31,6 +31,8 @@ export interface AgentTurnDeps {
 	effort: ReasoningEffort;
 	updateStreamBuffer: (next: string) => void;
 	updateReasoningBuffer: (next: string) => void;
+	onReasoningSegmentStart?: () => void;
+	onTextSegmentStart?: (startOffset: number) => void;
 	appendReasoning?: (text: string, iteration: number) => Promise<void>;
 	appendSelfCorrected?: (
 		report: { issues: { type: string; message: string }[]; attempts: number; succeeded: boolean },
@@ -72,6 +74,13 @@ interface CollectedToolCall {
 	toolName: string;
 	args: unknown;
 }
+
+/**
+ * Shadow of the store's `liveBlocks` (029 T012): one entry per arrival-order
+ * block of the current iteration. Reasoning blocks carry their captured text;
+ * text blocks are offsets into the concatenated buffer, sliced at walk time.
+ */
+type PersistBlock = { kind: 'reasoning'; text: string } | { kind: 'text'; start: number };
 
 function candidateFromFile(file: Record<string, unknown>): ImageCandidate | null {
 	const { mediaType, base64 } = file;
@@ -196,6 +205,9 @@ async function consumeStream(
 	onTextDelta: (text: string) => void,
 	onToolCall: (tc: CollectedToolCall) => void,
 	onReasoningDelta: (text: string) => void,
+	onReasoningSegmentStart: () => void,
+	onTextSegmentStart: (startOffset: number) => void,
+	textLength: () => number,
 	onTrace?: (e: TraceEvent) => void
 ): Promise<{
 	finishReason: string;
@@ -206,6 +218,17 @@ async function consumeStream(
 	let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null =
 		null;
 	const images: ImageCandidate[] = [];
+	// Segment state machine (029): reasoning segments are positional (provider
+	// ids are reused/reopened), whitespace-only segments defer their open until
+	// real content arrives, and text splits are recorded at the current buffer
+	// length whenever a new text stretch begins.
+	let segText = '';
+	let segStarted = false;
+	let textOpen = false;
+	const closeReasoningSegment = () => {
+		segText = '';
+		segStarted = false;
+	};
 	for await (const part of fullStream) {
 		if (signal.aborted) break;
 		const p = part as Record<string, unknown>;
@@ -223,19 +246,40 @@ async function consumeStream(
 					? { type: p.type }
 					: p;
 		onTrace?.({ kind: 'part', type: p.type as string, payload: tracePayload });
-		if (p.type === 'text-delta' && typeof p.text === 'string') {
+		if (p.type === 'reasoning-start') {
+			closeReasoningSegment();
+			textOpen = false;
+		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
+			segText += p.text;
+			if (!segStarted && segText.trim()) {
+				segStarted = true;
+				onReasoningSegmentStart();
+			}
+			if (segStarted) onReasoningDelta(p.text);
+		} else if (p.type === 'reasoning-end') {
+			closeReasoningSegment();
+		} else if (p.type === 'text-start') {
+			closeReasoningSegment();
+			textOpen = true;
+			onTextSegmentStart(textLength());
+		} else if (p.type === 'text-delta' && typeof p.text === 'string') {
+			if (!textOpen) {
+				textOpen = true;
+				onTextSegmentStart(textLength());
+			}
 			onTextDelta(p.text);
 		} else if (p.type === 'tool-call') {
+			closeReasoningSegment();
 			onToolCall({
 				toolCallId: p.toolCallId as string,
 				toolName: p.toolName as string,
 				args: p.input ?? p.args
 			});
-		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
-			onReasoningDelta(p.text);
 		} else if (p.type === 'file' || p.type === 'raw') {
 			collectStreamImages(p, images);
 		} else if (p.type === 'finish') {
+			closeReasoningSegment();
+			textOpen = false;
 			finishReason = p.finishReason as string;
 			// ai@7 renamed the finish-part usage fields to inputTokens/outputTokens;
 			// accept both spellings per field. Prefer the richer of usage / totalUsage
@@ -369,6 +413,45 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		const turnBudget = { subCalls: 0, maxSubCalls: 1 };
 		let buf = '';
 		let reasoningBuf = '';
+		let blocks: PersistBlock[] = [];
+
+		// Walk the iteration's blocks in arrival order (029 contract rules 1–6):
+		// one reasoning row per reasoning block, one text row per text block —
+		// except a single-text-block iteration persists one row with the full
+		// buffer (byte-identical to pre-029). Empty/whitespace blocks make no
+		// rows. Returns the last text row (anchor for id/usage plumbing).
+		const walkPersist = async (
+			iteration: number,
+			textBuf: string,
+			images?: ImageCandidate[]
+		): Promise<Message | null> => {
+			const textStarts: number[] = [];
+			for (const b of blocks) if (b.kind === 'text') textStarts.push(b.start);
+			let msg: Message | null = null;
+			let ti = 0;
+			for (const b of blocks) {
+				if (b.kind === 'reasoning') {
+					if (b.text.trim()) await deps.appendReasoning?.(b.text, iteration);
+					continue;
+				}
+				const end = ti + 1 < textStarts.length ? textStarts[ti + 1]! : textBuf.length;
+				const content = textBuf.slice(b.start, end);
+				ti++;
+				if (content) {
+					// 030 §3: collected images ride the last text row — the row the
+					// id/usage plumbing binds to (029 rule 4). Image-less rows keep
+					// the exact 1-arg call.
+					if (images && images.length > 0 && ti === textStarts.length) {
+						msg = await deps.appendAssistantText(content, { images });
+					} else {
+						msg = await deps.appendAssistantText(content);
+					}
+				}
+			}
+			blocks = [];
+			return msg;
+		};
+
 		// Image candidates accumulate across iterations and critic rounds (R-3);
 		// handed to persistence at finalize (T008 persists them).
 		const turnImages: ImageCandidate[] = [];
@@ -446,6 +529,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 			const toolCalls: CollectedToolCall[] = [];
 			buf = '';
+			blocks = [];
 
 			let finishReason: string;
 			let streamUsage: {
@@ -476,20 +560,29 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					(t) => {
 						reasoningBuf += t;
 						deps.updateReasoningBuffer(reasoningBuf);
+						const last = blocks[blocks.length - 1];
+						if (last?.kind === 'reasoning') last.text = reasoningBuf;
 					},
+					() => {
+						reasoningBuf = '';
+						blocks.push({ kind: 'reasoning', text: '' });
+						deps.onReasoningSegmentStart?.();
+					},
+					(startOffset) => {
+						blocks.push({ kind: 'text', start: startOffset });
+						deps.onTextSegmentStart?.(startOffset);
+					},
+					() => buf.length,
 					deps.onTrace
 				));
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {
-					if (reasoningBuf) {
-						await deps.appendReasoning?.(reasoningBuf, i);
-					}
+					// 029 T013: persist blocks received so far — completed segments,
+					// the partial in-flight segment, partial text — in arrival order,
+					// nothing after the stop point (FR-008).
+					await walkPersist(i, buf);
 					reasoningBuf = '';
 					deps.updateReasoningBuffer('');
-					if (buf) {
-						const msg = await deps.appendAssistantText(buf);
-						deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
-					}
 					deps.onTrace?.({ kind: 'aborted' });
 					return { aborted: true };
 				}
@@ -502,11 +595,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 			turnImages.push(...iterationImages);
 
-			// Persist this iteration's reasoning before any text/tool rows of the same
-			// iteration, so stored order matches the canonical display order (003 US3).
-			if (reasoningBuf) {
-				await deps.appendReasoning?.(reasoningBuf, i);
-			}
+			// Per-block reasoning rows are persisted by walkPersist at the persist
+			// sites below, interleaved with text rows in arrival order (029 T012).
+			// Only the live reasoning buffer is cleared here.
 			reasoningBuf = '';
 			deps.updateReasoningBuffer('');
 
@@ -523,10 +614,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 
 			if (deps.signal.aborted) {
-				if (buf) {
-					const msg = await deps.appendAssistantText(buf);
-					deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
-				}
+				await walkPersist(i, buf);
 				deps.onTrace?.({ kind: 'aborted' });
 				return { aborted: true };
 			}
@@ -536,16 +624,25 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				if (report && deps.appendSelfCorrected) {
 					await deps.appendSelfCorrected(report, finalBuf.length);
 				}
+				// A critic correction re-emits the reply as one stretch — the stream's
+				// block offsets no longer apply, so it persists as a single row
+				// (contract rules 3/6); otherwise walk the blocks (029 T012). Images
+				// ride both paths (030 §3): collected candidates persist with the
+				// final row — on the walk, the last text row.
 				const msg =
-					turnImages.length > 0
-						? await deps.appendAssistantText(finalBuf, { images: turnImages })
-						: await deps.appendAssistantText(finalBuf);
-				deps.onTrace?.({
-					kind: 'persisted',
-					messageId: msg.id,
-					finalText: finalBuf,
-					empty: !finalBuf
-				});
+					finalBuf !== buf
+						? turnImages.length > 0
+							? await deps.appendAssistantText(finalBuf, { images: turnImages })
+							: await deps.appendAssistantText(finalBuf)
+						: await walkPersist(i, finalBuf, turnImages);
+				if (msg) {
+					deps.onTrace?.({
+						kind: 'persisted',
+						messageId: msg.id,
+						finalText: finalBuf,
+						empty: !finalBuf
+					});
+				}
 				return { aborted: false };
 			}
 
@@ -555,9 +652,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				toolCalls.length > 0 &&
 				toolCalls.every((tc) => getToolDefinition(tc.toolName)?.terminal === true);
 
-			if (buf && !hasGenerative) {
-				const msg = await deps.appendAssistantText(buf);
-				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+			const interimMsg = await walkPersist(i, buf);
+			if (interimMsg) {
+				deps.onTrace?.({
+					kind: 'persisted',
+					messageId: interimMsg.id,
+					finalText: buf,
+					empty: false
+				});
 			}
 			if (hasGenerative) {
 				buf = '';

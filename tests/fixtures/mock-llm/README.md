@@ -42,3 +42,12 @@ fixture; do not bypass the hop.
   mirrored for spec assertions in `tests/e2e/fixtures/kitchen-sink.ts`
   (`PROPAGATE_TRIGGER`, `PROPAGATE_UNAVAILABLE_REPLY`, `OFFER_TRIGGER`,
   `OFFER_REPLY`).
+- Interleaved reasoning (feature 029, `chat_interleaved`) — no fixture file:
+  a streamed plain chat where the LAST user message contains the exact,
+  case-sensitive marker `[[interleaved-thoughts]]` (and the request has no
+  tools) streams reasoning/text deltas interleaved — ≥2 `reasoning_content`
+  deltas, 1–2 content deltas, ≥2 `reasoning_content` deltas again (reasoning
+  re-opened AFTER text — the defect case), 1–2 content deltas, then one final
+  `reasoning_content` delta with no trailing content — before the unchanged
+  `stop` terminal. Without the marker all flows are byte-identical. Spec:
+  `specs/029-micro-thoughts/contracts/mock-llm-reasoning.md`.

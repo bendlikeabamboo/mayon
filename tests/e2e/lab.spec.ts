@@ -6,6 +6,7 @@ import {
 	LAB_TITLE,
 	LATE_MARKER
 } from './fixtures/kitchen-sink';
+import { liveText } from './fixtures/render';
 import type { Page } from '@playwright/test';
 
 /**
@@ -19,9 +20,9 @@ async function chatRoundTrip(page: Page): Promise<void> {
 	const composer = page.getByPlaceholder(/Message the active provider/);
 	await composer.fill('Explain the kitchen sink');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
-	await expect(page.locator('#msg-live-text')).toContainText(EARLY_MARKER);
+	await expect(liveText(page).first()).toContainText(EARLY_MARKER);
 	await expect(page.locator('.markdown-body', { hasText: LATE_MARKER })).toBeVisible();
-	await expect(page.locator('#msg-live-text')).toHaveCount(0);
+	await expect(liveText(page)).toHaveCount(0);
 }
 
 test.describe('lab RC verification deck', () => {

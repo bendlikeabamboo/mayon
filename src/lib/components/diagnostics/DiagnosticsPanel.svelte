@@ -479,8 +479,18 @@
 												<Copy class="size-3" /> Copy
 											</Button>
 										</div>
-										<pre
-											class="overflow-auto max-h-64 bg-muted rounded p-2 font-mono text-xs whitespace-pre-wrap">{iter.reasoning}</pre>
+										{#if iter.reasoningSegments?.length > 1}
+											{#each iter.reasoningSegments as seg, i (i)}
+												<div class="flex items-start gap-2 min-w-0">
+													<span class="text-xs text-muted-foreground shrink-0 pt-2">{i + 1}</span>
+													<pre
+														class="overflow-auto max-h-64 bg-muted rounded p-2 font-mono text-xs whitespace-pre-wrap flex-1 min-w-0">{seg}</pre>
+												</div>
+											{/each}
+										{:else}
+											<pre
+												class="overflow-auto max-h-64 bg-muted rounded p-2 font-mono text-xs whitespace-pre-wrap">{iter.reasoning}</pre>
+										{/if}
 									</div>
 								{/if}
 

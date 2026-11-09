@@ -62,6 +62,15 @@ const OFFER_TRIGGER = 'this branch feels done';
 const OFFER_REPLY =
 	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
 
+// Interleaved reasoning script (feature 029): marker-triggered plain chat
+// stream exercising reasoning/text interleaving on the openai-compatible wire
+// (delta.reasoning_content). Frame order: reasoning burst, content, reasoning
+// burst AGAIN after text (forces a segment re-open), content, then a final
+// reasoning delta with no trailing content. Spec: specs/029-micro-thoughts/
+// contracts/mock-llm-reasoning.md. Fixture-only trigger (no product-constant
+// pin, so not in markers.mjs). Case-sensitive, exact token.
+const INTERLEAVED_MARKER = '[[interleaved-thoughts]]';
+
 // ---------------------------------------------------------------------------
 // Image-reply dispatch (feature 030, US1) — deterministic constants, same
 // pattern as the grading lever / propagate dispatch: a fixture-only trigger
@@ -173,6 +182,31 @@ function streamTextReply(res, id, model, text) {
 	const frames = [
 		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
 		sseFrame({ id, model, choices: [{ delta: { content: text }, finish_reason: null }] })
+	];
+	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
+}
+
+// Streamed interleaved reply (feature 029): reasoning_content deltas sharing
+// the normal SSE envelope, ordered so reasoning both precedes AND follows
+// content — the post-text re-open is the segmentation defect case — ending on
+// a trailing reasoning delta with no content after it. Stop terminal + [DONE]
+// unchanged.
+function streamInterleavedReply(res, id, model) {
+	const reasoning = (text) =>
+		sseFrame({ id, model, choices: [{ delta: { reasoning_content: text }, finish_reason: null }] });
+	const content = (text) =>
+		sseFrame({ id, model, choices: [{ delta: { content: text }, finish_reason: null }] });
+	const frames = [
+		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
+		reasoning(' considering the question…'),
+		reasoning(' it is a simple arithmetic sum…'),
+		content('Sure — '),
+		content('2 + 2 = 4.'),
+		reasoning(' double-checking after answering…'),
+		reasoning(' the sum holds under recheck…'),
+		content(' That stays '),
+		content('4.'),
+		reasoning(' done thinking.')
 	];
 	streamFrames(res, frames, stopTerminal(id, model, 'stop'));
 }
@@ -294,7 +328,9 @@ function streamGoogleImageReply(res) {
 //   0. stream + IMAGE_TRIGGER ('generate an image') in the LAST user message
 //      → image_reply (030; wire shape chosen by endpoint — google requests
 //      never reach /v1/chat/completions, they hit :streamGenerateContent)
-//   1. no tools  + stream === true  → chat (SSE kitchen-sink stream)
+//   1. no tools  + stream === true  → chat (SSE kitchen-sink stream), or
+//      chat_interleaved (029) when the LAST user message carries the exact
+//      marker [[interleaved-thoughts]]
 //   2. no tools  + stream !== true  → chat (single non-streamed completion)
 //   3. tools + stream === true + trigger in LAST user message:
 //      - offer trigger → propagate_offer (plain-text single offer; 027 US2)
@@ -383,6 +419,13 @@ function firstSystemText(body) {
 			return 'image_reply';
 		}
 		if (!hasTools(body)) {
+			// 029 interleaved script: marker in the LAST user message flips the
+			// streamed plain chat into the reasoning-interleaved reply. Exact,
+			// case-sensitive token; only on the stream path (non-streamed
+			// requests keep chat_plain unchanged).
+			if (body?.stream === true && lastUserText(body).includes(INTERLEAVED_MARKER)) {
+				return 'chat_interleaved';
+			}
 			return body?.stream === true ? 'chat_stream' : 'chat_plain';
 		}
 		// Chat turns from the second one on carry the standard tool set (the
@@ -510,6 +553,9 @@ const server = createServer(async (req, res) => {
 		switch (classifyRequest(body)) {
 			case 'chat_stream':
 				streamReply(res, id, model);
+				return;
+			case 'chat_interleaved':
+				streamInterleavedReply(res, id, model);
 				return;
 			case 'image_reply':
 				streamImageReply(res, id, model);

@@ -108,8 +108,16 @@
 		if (isToolGroup(item)) return item.call.id;
 		if (isOrphanToolResult(item)) return item.result.id;
 		if (isDurableEntry(item)) return item.entry.id;
-		if (item.live === 'live_text') return 'live-text';
-		if (item.live === 'live_reasoning') return 'live-reasoning';
+		if (item.live === 'live_text' || item.live === 'live_reasoning') {
+			// Per-block key (029 T008): index among same-variant live entries so
+			// interleaved blocks keep stable, unique keys (append-only, FR-011).
+			let n = 0;
+			for (const t of timeline) {
+				if (isLiveEntry(t) && t.live === item.live) n++;
+				if (t === item) break;
+			}
+			return `${item.live === 'live_text' ? 'live-text' : 'live-reasoning'}-${n}`;
+		}
 		return 'live-ask-' + item.payload.rowId;
 	}
 
