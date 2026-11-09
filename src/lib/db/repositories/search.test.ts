@@ -350,6 +350,49 @@ describe('search repository (P-pg-4 PG FTS)', () => {
 		});
 	});
 
+	describe('assistant parts-bearing messages (030 T023 search invariant, real search_vec)', () => {
+		it('finds an assistant row carrying text + image parts by its text with a ts_headline snippet', async () => {
+			const chat = await repos.chats.createRoot({
+				title: 'AssistantPartsChat',
+				provider: 'openai',
+				model: 'gpt-4o'
+			});
+			const text = 'axolotl regeneration timeline';
+			const msg = await repos.messages.append(chat.id, 'assistant', text, {
+				parts: [{ type: 'text', text }, imagePart()]
+			});
+
+			const hits = await repos.search.search('axolotl');
+			const msgHit = hits.find((h) => h.kind === 'message' && h.refId === msg.id);
+			expect(msgHit).toBeDefined();
+			expect(msgHit!.chatId).toBe(chat.id);
+
+			const segs = renderSnippet(msgHit!.snippetBody);
+			const markedSeg = segs.find((s) => s.mark && s.text.includes('axolotl'));
+			expect(markedSeg).toBeDefined();
+		});
+
+		it('never matches base64 image data from an assistant parts row (control: text still matches)', async () => {
+			const chat = await repos.chats.createRoot({
+				title: 'AssistantPartsNoiseChat',
+				provider: 'openai',
+				model: 'gpt-4o'
+			});
+			const text = 'axolotl regeneration timeline';
+			const msg = await repos.messages.append(chat.id, 'assistant', text, {
+				parts: [{ type: 'text', text }, imagePart()]
+			});
+
+			const control = await repos.search.search('axolotl');
+			expect(control.some((h) => h.kind === 'message' && h.refId === msg.id)).toBe(true);
+
+			for (const noise of [IMAGE_BASE64_NOISE, 'data:image']) {
+				const hits = await repos.search.search(noise);
+				expect(hits.filter((h) => h.kind === 'message' && h.refId === msg.id)).toEqual([]);
+			}
+		});
+	});
+
 	it('rebuildIndex() is a no-op', async () => {
 		await expect(repos.search.rebuildIndex()).resolves.toBeUndefined();
 	});

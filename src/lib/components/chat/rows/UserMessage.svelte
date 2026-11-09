@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Markdown from '../Markdown.svelte';
+	import ImageLightbox from '../ImageLightbox.svelte';
 	import type { DurableEntry } from '#lib/chat/entries.js';
 	import { partsOf, type ImagePart } from '#lib/chat/kinds.js';
 	import { incRender } from '#lib/perf/mark.js';
@@ -49,17 +50,4 @@
 	{/if}
 </div>
 
-{#if expanded}
-	<button
-		type="button"
-		class="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/70 p-8"
-		onclick={() => (expanded = null)}
-		aria-label="Close image view"
-	>
-		<img
-			src={expanded.data}
-			alt={expanded.name ?? 'Attached image'}
-			class="max-h-full max-w-full rounded-lg object-contain shadow-xl"
-		/>
-	</button>
-{/if}
+<ImageLightbox part={expanded} onClose={() => (expanded = null)} />

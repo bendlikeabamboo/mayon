@@ -1,12 +1,21 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
-import type { BranchArtifactMetadata } from '#lib/chat/kinds.js';
+import { partsOf, textOf, type BranchArtifactMetadata, type ImagePart } from '#lib/chat/kinds.js';
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
 beforeEach(() => testDb.reset());
 afterAll(() => testDb.teardown());
+
+const testImage: ImagePart = {
+	type: 'image',
+	data: 'data:image/jpeg;base64,AAAA',
+	mimeType: 'image/jpeg',
+	width: 4,
+	height: 4,
+	bytes: 8
+};
 
 function artifactMeta(overrides?: Partial<BranchArtifactMetadata>): string {
 	const meta: BranchArtifactMetadata = {
@@ -143,6 +152,69 @@ describe('append after anchored inserts', () => {
 		const next = await repos.messages.append(chat.id, 'user', 'tail');
 		expect(next.ord).toBe(2);
 		expect((await repos.messages.listByChat(chat.id)).map((m) => m.ord)).toEqual([-1, 0, 1, 2]);
+	});
+});
+
+describe('insertAnchored with parts (030 T019)', () => {
+	it('accepts parts on an artifact row: stored round-trip, invariants hold, placement intact', async () => {
+		const { chat, a, b } = await seedChat();
+		const parts = [{ type: 'text', text: 'generated: ' }, testImage];
+		const art = await repos.messages.insertAnchored(
+			chat.id,
+			{
+				role: 'user',
+				content: 'generated: ',
+				kind: 'branch_artifact',
+				metadata: artifactMeta(),
+				parts
+			},
+			{ afterOrd: a.ord, beforeOrd: b.ord }
+		);
+		expect(art.ord).toBe(0.5);
+		expect(art.parts).toBe(JSON.stringify(parts));
+		expect(partsOf(art)).toEqual(parts);
+		expect(textOf(art)).toBe(art.content);
+
+		const reread = await repos.messages.getById(art.id);
+		expect(reread!.parts).toBe(JSON.stringify(parts));
+	});
+
+	it('rejects more than 8 image parts', async () => {
+		const { chat } = await seedChat();
+		const nineImages = Array.from({ length: 9 }, () => testImage);
+		await expect(
+			repos.messages.insertAnchored(
+				chat.id,
+				{ role: 'user', content: '', kind: 'branch_artifact', parts: nineImages },
+				'start'
+			)
+		).rejects.toThrow('at most 8 image parts');
+	});
+
+	it('rejects text parts that do not concatenate to content', async () => {
+		const { chat } = await seedChat();
+		await expect(
+			repos.messages.insertAnchored(
+				chat.id,
+				{
+					role: 'user',
+					content: 'content',
+					kind: 'branch_artifact',
+					parts: [{ type: 'text', text: 'different' }]
+				},
+				'start'
+			)
+		).rejects.toThrow('concatenate');
+	});
+
+	it('parts omitted leaves the parts column NULL (path unchanged)', async () => {
+		const { chat } = await seedChat();
+		const art = await repos.messages.insertAnchored(
+			chat.id,
+			{ role: 'user', content: 'artifact', kind: 'branch_artifact' },
+			'start'
+		);
+		expect(art.parts).toBeNull();
 	});
 });
 

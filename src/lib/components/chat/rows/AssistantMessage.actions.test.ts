@@ -31,9 +31,12 @@ describe('US5: AssistantMessage hover-revealed action row', () => {
 	});
 
 	it('transitions only opacity and honors reduced motion', () => {
-		expect(source).toContain('transition-opacity');
-		expect(source).not.toContain('transition-transform');
-		expect(source).toContain('motion-reduce:transition-none');
+		// Scoped to the action row: image thumbnails (030) legitimately use
+		// transition-transform for hover scale, same as the UserMessage grid.
+		const actionsClass = source.match(/class="message-actions[^"]*"/)?.[0] ?? '';
+		expect(actionsClass).toContain('transition-opacity');
+		expect(actionsClass).not.toContain('transition-transform');
+		expect(actionsClass).toContain('motion-reduce:transition-none');
 	});
 
 	it('pins the coarse-pointer steady-visible override (touch parity)', () => {

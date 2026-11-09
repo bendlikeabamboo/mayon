@@ -10,7 +10,12 @@ import {
 	buildReplyTiersPreamble
 } from '#lib/chat/brief.js';
 import type { ChatMessage, ReasoningEffort, ProviderConfig } from '#lib/ai/types.js';
-import { resolveRequestSettings } from '#lib/ai/dialects.js';
+import {
+	resolveRequestSettings,
+	wireImageToCandidate,
+	type ImageCandidate
+} from '#lib/ai/dialects.js';
+import { supportsVision } from '#lib/ai/vision-capability.js';
 import type { Message } from '#lib/db/index.js';
 import type { TraceEvent, TracedRequestMessage } from './trace';
 
@@ -33,7 +38,7 @@ export interface AgentTurnDeps {
 	) => Promise<void>;
 	appendAssistantText: (
 		content: string,
-		opts?: { model?: string; reasoning?: string }
+		opts?: { model?: string; reasoning?: string; images?: ImageCandidate[] }
 	) => Promise<Message>;
 	appendAssistantToolCall: (p: {
 		toolCallId: string;
@@ -66,6 +71,41 @@ interface CollectedToolCall {
 	toolCallId: string;
 	toolName: string;
 	args: unknown;
+}
+
+function candidateFromFile(file: Record<string, unknown>): ImageCandidate | null {
+	const { mediaType, base64 } = file;
+	if (typeof base64 !== 'string' || base64 === '') return null;
+	// SDK caveat: url-typed file data lands unconverted in the base64 slot.
+	if (/^https?:\/\//.test(base64)) {
+		return typeof mediaType === 'string' ? { mediaType, url: base64 } : { url: base64 };
+	}
+	return {
+		mediaType: typeof mediaType === 'string' ? mediaType : undefined,
+		base64
+	};
+}
+
+/** Recognize image parts (`file`, openai-compatible `raw`) into candidates. */
+function collectStreamImages(p: Record<string, unknown>, into: ImageCandidate[]): void {
+	if (p.type === 'file') {
+		const file = p.file;
+		if (typeof file === 'object' && file !== null) {
+			const c = candidateFromFile(file as Record<string, unknown>);
+			if (c) into.push(c);
+		}
+		return;
+	}
+	if (p.type === 'raw') {
+		const raw = p.rawValue as { choices?: { delta?: { images?: unknown } }[] } | undefined;
+		const wireImages = raw?.choices?.[0]?.delta?.images;
+		if (Array.isArray(wireImages)) {
+			for (const w of wireImages) {
+				const c = wireImageToCandidate(w);
+				if (c) into.push(c);
+			}
+		}
+	}
 }
 
 function buildSdkTools(enabled: boolean, disabledToolIds?: string[]): ToolSet {
@@ -160,14 +200,29 @@ async function consumeStream(
 ): Promise<{
 	finishReason: string;
 	usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null;
+	images: ImageCandidate[];
 }> {
 	let finishReason = '';
 	let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null =
 		null;
+	const images: ImageCandidate[] = [];
 	for await (const part of fullStream) {
 		if (signal.aborted) break;
 		const p = part as Record<string, unknown>;
-		onTrace?.({ kind: 'part', type: p.type as string, payload: p });
+		// Traces never carry image payloads: file parts lose base64/uint8Array,
+		// raw chunks lose rawValue entirely (it duplicates the wire SSE).
+		const tracePayload =
+			p.type === 'file' || p.type === 'reasoning-file'
+				? {
+						type: p.type,
+						file: {
+							mediaType: (p.file as Record<string, unknown> | undefined)?.mediaType
+						}
+					}
+				: p.type === 'raw'
+					? { type: p.type }
+					: p;
+		onTrace?.({ kind: 'part', type: p.type as string, payload: tracePayload });
 		if (p.type === 'text-delta' && typeof p.text === 'string') {
 			onTextDelta(p.text);
 		} else if (p.type === 'tool-call') {
@@ -178,6 +233,8 @@ async function consumeStream(
 			});
 		} else if (p.type === 'reasoning-delta' && typeof p.text === 'string') {
 			onReasoningDelta(p.text);
+		} else if (p.type === 'file' || p.type === 'raw') {
+			collectStreamImages(p, images);
 		} else if (p.type === 'finish') {
 			finishReason = p.finishReason as string;
 			// ai@7 renamed the finish-part usage fields to inputTokens/outputTokens;
@@ -206,7 +263,7 @@ async function consumeStream(
 			throw p.error as Error;
 		}
 	}
-	return { finishReason, usage: usage ?? null };
+	return { finishReason, usage: usage ?? null, images };
 }
 
 interface CriticReport {
@@ -227,7 +284,8 @@ function stripCriticIssue(issue: CriticIssue): { type: string; message: string }
 async function runCriticPhase(
 	buf: string,
 	deps: AgentTurnDeps,
-	ctx: ChatMessage[]
+	ctx: ChatMessage[],
+	images: ImageCandidate[]
 ): Promise<CriticResult> {
 	const initialIssues = await validateTurn(buf);
 	if (initialIssues.length === 0) return { text: buf, report: null };
@@ -246,13 +304,16 @@ async function runCriticPhase(
 
 		deps.updateStreamBuffer('');
 		const sysParts = correctionCtx.filter((m) => m.role === 'system').map((m) => m.content);
-		const messages = projectEntries(correctionCtx);
+		const messages = projectEntries(correctionCtx, {
+			visionCapable: supportsVision(deps.config, deps.config.defaultModel)
+		});
 		const resolved = resolveTurnSettings(deps);
 
 		const result = streamText({
 			model: deps.model,
 			system: sysParts.join('\n\n') || undefined,
 			messages,
+			...(deps.config.kind === 'openai-compatible' ? { includeRawChunks: true } : {}),
 			abortSignal: deps.signal,
 			providerOptions: resolved.providerOptions as never,
 			...resolved.callSettings
@@ -265,6 +326,8 @@ async function runCriticPhase(
 			if (p.type === 'text-delta') {
 				freshBuf += p.text as string;
 				deps.updateStreamBuffer(freshBuf);
+			} else if (p.type === 'file' || p.type === 'raw') {
+				collectStreamImages(p, images);
 			} else if (p.type === 'error') {
 				throw p.error as Error;
 			}
@@ -306,6 +369,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		const turnBudget = { subCalls: 0, maxSubCalls: 1 };
 		let buf = '';
 		let reasoningBuf = '';
+		// Image candidates accumulate across iterations and critic rounds (R-3);
+		// handed to persistence at finalize (T008 persists them).
+		const turnImages: ImageCandidate[] = [];
+		const visionCapable = supportsVision(deps.config, deps.config.defaultModel);
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
 			if (deps.signal.aborted) {
@@ -329,7 +396,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			if (deps.firstTurn) {
 				sysParts.push(buildFirstTurnOrientationPreamble());
 			}
-			const messages = projectEntries(ctx);
+			const messages = projectEntries(ctx, { visionCapable });
 
 			const system = sysParts.join('\n\n');
 			const disabled = deps.disabledToolIds ?? [];
@@ -356,6 +423,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					system: system || undefined,
 					messages,
 					tools: buildSdkTools(toolsEnabled, disabled),
+					...(deps.config.kind === 'openai-compatible' ? { includeRawChunks: true } : {}),
 					abortSignal: deps.signal,
 					providerOptions: resolved.providerOptions as never,
 					...resolved.callSettings
@@ -385,8 +453,13 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				completionTokens?: number;
 				totalTokens?: number;
 			} | null;
+			let iterationImages: ImageCandidate[];
 			try {
-				({ finishReason, usage: streamUsage } = await consumeStream(
+				({
+					finishReason,
+					usage: streamUsage,
+					images: iterationImages
+				} = await consumeStream(
 					result.fullStream,
 					deps.signal,
 					(text) => {
@@ -427,6 +500,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				throw err;
 			}
 
+			turnImages.push(...iterationImages);
+
 			// Persist this iteration's reasoning before any text/tool rows of the same
 			// iteration, so stored order matches the canonical display order (003 US3).
 			if (reasoningBuf) {
@@ -457,11 +532,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 
 			if (finishReason !== 'tool-calls' || toolCalls.length === 0) {
-				const { text: finalBuf, report } = await runCriticPhase(buf, deps, ctx);
+				const { text: finalBuf, report } = await runCriticPhase(buf, deps, ctx, turnImages);
 				if (report && deps.appendSelfCorrected) {
 					await deps.appendSelfCorrected(report, finalBuf.length);
 				}
-				const msg = await deps.appendAssistantText(finalBuf);
+				const msg =
+					turnImages.length > 0
+						? await deps.appendAssistantText(finalBuf, { images: turnImages })
+						: await deps.appendAssistantText(finalBuf);
 				deps.onTrace?.({
 					kind: 'persisted',
 					messageId: msg.id,
@@ -671,11 +749,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 		const ctx = await deps.reassembleContext();
 		const finalBuf = buf + '\n\n_(…tool budget reached; continuing from here.)_';
-		const budgetResult = await runCriticPhase(finalBuf, deps, ctx);
+		const budgetResult = await runCriticPhase(finalBuf, deps, ctx, turnImages);
 		if (budgetResult.report && deps.appendSelfCorrected) {
 			await deps.appendSelfCorrected(budgetResult.report, budgetResult.text.length);
 		}
-		const msg = await deps.appendAssistantText(budgetResult.text);
+		const msg =
+			turnImages.length > 0
+				? await deps.appendAssistantText(budgetResult.text, { images: turnImages })
+				: await deps.appendAssistantText(budgetResult.text);
 		deps.onTrace?.({
 			kind: 'persisted',
 			messageId: msg.id,

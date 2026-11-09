@@ -171,6 +171,15 @@ export interface ProviderConfig {
 	 */
 	vision?: 'auto' | 'on' | 'off';
 	/**
+	 * Per-provider image-output flag (spec 030), sibling of `vision`.
+	 * `'auto'`/undefined → resolved from a static allowlist of image-output
+	 * model-family prefixes (see `src/lib/ai/image-output-capability.ts`).
+	 * `'on'`/`'off'` override. Advisory only: drives UI indication (provider
+	 * select, model-select badge, chat-surface chip); it must never gate,
+	 * block, strip, or rewrite any request or response payload.
+	 */
+	imageOutput?: 'auto' | 'on' | 'off';
+	/**
 	 * Optional provider-declared context window in tokens (positive integer).
 	 * User-declared per provider; absent when unknown. Drives the context
 	 * gauge (feature 023); not a secret.
@@ -333,5 +342,20 @@ export class ImageUnsupportedError extends Error {
 	) {
 		super(message);
 		this.name = 'ImageUnsupportedError';
+	}
+}
+
+/** The active model did not produce an image — refined from a provider
+ *  4xx/5xx that landed on a failed image turn (see `asImageOutputError`,
+ *  spec 030 FR-007). Sibling of `ImageUnsupportedError`, which covers image
+ *  input rejection; this one covers image output failure. */
+export class ImageOutputError extends Error {
+	constructor(
+		message = 'The model did not produce an image.',
+		public readonly modelId?: string,
+		public readonly providerId?: string
+	) {
+		super(message);
+		this.name = 'ImageOutputError';
 	}
 }

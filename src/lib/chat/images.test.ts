@@ -1,14 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { ImagePart } from './kinds';
 import {
+	applyOutputBudget,
 	assertCanAttach,
 	assertInputSize,
 	bytesToDataUrl,
 	dataUrlBytes,
+	fetchImageCandidate,
 	type ImageIntakeOps,
 	intakeImage,
 	MAX_IMAGES_PER_MESSAGE,
 	MAX_INPUT_BYTES,
 	MAX_LONG_EDGE,
+	MAX_OUTPUT_IMAGE_BYTES,
+	MAX_OUTPUT_TOTAL_DATA_URL_BYTES,
 	PASSTHROUGH_MAX_BYTES,
 	planProcessing,
 	resolveMime,
@@ -52,6 +57,8 @@ function makeStubOps(input: {
 	bitmap?: { width: number; height: number };
 	/** Bytes the fake encodeJpeg "produces" (default 16 zero bytes). */
 	encoded?: Uint8Array;
+	/** Per-call encoded-bytes factory overriding the fixed `encoded` payload. */
+	encode?: (width: number, height: number) => Uint8Array;
 }): StubOps {
 	const decodeCalls: Uint8Array[] = [];
 	const encodeCalls: { width: number; height: number }[] = [];
@@ -63,7 +70,10 @@ function makeStubOps(input: {
 		},
 		async encodeJpeg(_source, width, height) {
 			encodeCalls.push({ width, height });
-			return new Blob([(input.encoded ?? new Uint8Array(16)) as BlobPart], { type: 'image/jpeg' });
+			const bytes = input.encode
+				? input.encode(width, height)
+				: (input.encoded ?? new Uint8Array(16));
+			return new Blob([bytes as BlobPart], { type: 'image/jpeg' });
 		}
 	};
 	return { ops, decodeCalls, encodeCalls };
@@ -301,5 +311,160 @@ describe('intakeImage', () => {
 			intakeImage(new Blob([PDF_BYTES as BlobPart], { type: 'application/pdf' }), undefined, ops)
 		).rejects.toThrow(/PNG, JPEG, WebP, and GIF/);
 		expect(decodeCalls).toHaveLength(0);
+	});
+});
+
+/** An output-side ImagePart with realistic dims and a matching data URL payload. */
+function makeOutputImage(decodedBytes: number): ImagePart {
+	const payload = new Uint8Array(decodedBytes);
+	return {
+		type: 'image',
+		data: bytesToDataUrl(payload, 'image/png'),
+		mimeType: 'image/png',
+		width: 1000,
+		height: 1000,
+		bytes: decodedBytes
+	};
+}
+
+describe('applyOutputBudget', () => {
+	it('locks the output cap constants: 1 MiB decoded per image, 8 MiB data URLs per message', () => {
+		expect(MAX_OUTPUT_IMAGE_BYTES).toBe(1024 * 1024);
+		expect(MAX_OUTPUT_TOTAL_DATA_URL_BYTES).toBe(8 * 1024 * 1024);
+	});
+
+	it('returns an empty list unchanged', async () => {
+		const { ops } = makeStubOps({});
+		expect(await applyOutputBudget([], ops)).toEqual([]);
+	});
+
+	it('passes in-budget images through byte-identical without touching the pipeline', async () => {
+		const image = makeOutputImage(500 * 1024);
+		const { ops, decodeCalls, encodeCalls } = makeStubOps({});
+		const result = await applyOutputBudget([image], ops);
+		expect(result[0]).toBe(image); // same object — no re-encode, no generation loss
+		expect(decodeCalls).toHaveLength(0);
+		expect(encodeCalls).toHaveLength(0);
+	});
+
+	it('re-encodes an over-cap image through the pipeline at the long-edge cap', async () => {
+		const image = makeOutputImage(MAX_OUTPUT_IMAGE_BYTES + 1);
+		const encoded = new Uint8Array(200 * 1024);
+		const { ops, decodeCalls, encodeCalls } = makeStubOps({
+			bitmap: { width: 2000, height: 1500 },
+			encoded
+		});
+		const [part] = await applyOutputBudget([image], ops);
+		expect(Array.from(decodeCalls[0])).toEqual(Array.from(dataUrlToBytes(image.data)));
+		expect(encodeCalls).toEqual([{ width: 1568, height: 1176 }]); // 2000×1500 → 1568 long edge
+		expect(part.mimeType).toBe('image/jpeg');
+		expect(part.width).toBe(1568);
+		expect(part.height).toBe(1176);
+		expect(part.bytes).toBe(encoded.byteLength);
+		expect(part.bytes).toBe(dataUrlBytes(part.data));
+		expect(part.bytes).toBeLessThanOrEqual(MAX_OUTPUT_IMAGE_BYTES);
+		expect(part.name).toBeUndefined();
+	});
+
+	it('shrinks iteratively until the re-encode fits the per-image cap', async () => {
+		const image = makeOutputImage(4 * 1024 * 1024);
+		const { ops, encodeCalls } = makeStubOps({
+			bitmap: { width: 2000, height: 2000 },
+			encode: (width, height) => new Uint8Array(width * height * 4) // JPEG bytes track area
+		});
+		const [part] = await applyOutputBudget([image], ops);
+		expect(encodeCalls).toEqual([
+			{ width: 1568, height: 1568 },
+			{ width: 512, height: 512 }
+		]);
+		expect(part.mimeType).toBe('image/jpeg');
+		expect(part.width).toBe(512);
+		expect(part.height).toBe(512);
+		expect(part.bytes).toBeLessThanOrEqual(MAX_OUTPUT_IMAGE_BYTES);
+		expect(part.bytes).toBe(dataUrlBytes(part.data));
+	});
+
+	it('re-encodes later images once the per-message total binds (earlier ones untouched)', async () => {
+		const image = makeOutputImage(MAX_OUTPUT_IMAGE_BYTES); // 1 MiB decoded → ~1.4 MB data URL
+		const images = Array.from({ length: 6 }, () => ({ ...image }));
+		const { ops, encodeCalls } = makeStubOps({
+			bitmap: { width: 1000, height: 1000 },
+			encoded: new Uint8Array(100 * 1024)
+		});
+		const result = await applyOutputBudget(images, ops);
+		for (let i = 0; i < 5; i++) expect(result[i]).toBe(images[i]); // 5 × ~1.4 MB fits 8 MiB
+		expect(encodeCalls).toEqual([{ width: 1000, height: 1000 }]); // only the 6th re-encodes
+		expect(result[5].mimeType).toBe('image/jpeg');
+		expect(result[5].bytes).toBeLessThan(images[5].bytes);
+		expect(result[5].bytes).toBe(dataUrlBytes(result[5].data));
+	});
+
+	it('never rejects: ships the bounded best attempt when the encoder never cooperates', async () => {
+		const image = makeOutputImage(2 * 1024 * 1024);
+		const { ops, encodeCalls } = makeStubOps({
+			bitmap: { width: 3000, height: 3000 },
+			encode: () => new Uint8Array(2 * 1024 * 1024) // fixed 2 MB output at any dims
+		});
+		const [part] = await applyOutputBudget([image], ops);
+		expect(encodeCalls).toHaveLength(12); // bounded attempts, then the best attempt ships
+		expect(part.mimeType).toBe('image/jpeg');
+		expect(part.width).toBeGreaterThan(0);
+		expect(part.height).toBeGreaterThan(0);
+		expect(part.bytes).toBe(dataUrlBytes(part.data));
+	});
+});
+
+describe('fetchImageCandidate', () => {
+	const PNG_URL = 'https://img.example/generations/abc.png';
+
+	function stubFetch(
+		status: number,
+		contentType: string,
+		bytes: Uint8Array
+	): ReturnType<typeof vi.fn> {
+		return vi.fn(
+			async () =>
+				new Response(bytes as BodyInit, { status, headers: { 'content-type': contentType } })
+		);
+	}
+
+	it('fetches the bytes through the injected fetch and returns a base64 candidate', async () => {
+		const bytes = b64ToBytes(TINY_PNG_B64);
+		const fetchImpl = stubFetch(200, 'image/png', bytes);
+		const candidate = await fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch);
+		expect(candidate).toEqual({ mediaType: 'image/png', base64: TINY_PNG_B64 });
+		expect(fetchImpl).toHaveBeenCalledWith(
+			PNG_URL,
+			expect.objectContaining({ signal: expect.any(AbortSignal) })
+		);
+	});
+
+	it('returns null on non-2xx without throwing', async () => {
+		const fetchImpl = stubFetch(404, 'text/plain', TEXT_BYTES);
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('returns null when the fetch throws (network failure)', async () => {
+		const fetchImpl = vi.fn(async () => {
+			throw new TypeError('fetch failed');
+		});
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as unknown as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('guards the content type: a non-image payload returns null', async () => {
+		const fetchImpl = stubFetch(200, 'text/html', TEXT_BYTES);
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('magic bytes win over a mislabeled response content type', async () => {
+		const fetchImpl = stubFetch(200, 'application/octet-stream', b64ToBytes(TINY_PNG_B64));
+		const candidate = await fetchImageCandidate(PNG_URL, undefined, fetchImpl as typeof fetch);
+		expect(candidate).toEqual({ mediaType: 'image/png', base64: TINY_PNG_B64 });
 	});
 });

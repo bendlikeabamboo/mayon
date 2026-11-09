@@ -11,6 +11,7 @@ import {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageOutputError,
 	ImageUnsupportedError,
 	MissingKeyError,
 	NetworkError,
@@ -53,6 +54,15 @@ export function formatProviderError(err: unknown): FormattedProviderError {
 			title: 'No Copilot subscription',
 			message: err.message,
 			hint: 'The authorized GitHub account has no active Copilot subscription.'
+		};
+	}
+	if (err instanceof ImageOutputError) {
+		return {
+			title: 'No image produced',
+			message: err.modelId
+				? `${err.modelId} did not produce an image.`
+				: 'The model did not produce an image.',
+			hint: 'Set "Image output" to "On" in provider settings to force the attempt, or switch to a model that produces images.'
 		};
 	}
 	if (err instanceof ImageUnsupportedError) {
@@ -197,6 +207,29 @@ export function asImageUnsupported(err: Error, modelId?: string, providerId?: st
 	return err;
 }
 
+/**
+ * Fallback classification for failed image turns (spec 030 FR-007): refine an
+ * already-mapped provider 4xx/5xx into `ImageOutputError` when the turn failed
+ * while stream images were still pending finalize (the caller — chat store —
+ * knows via its non-empty `pendingImages`; a failure at that point means the
+ * model was producing images and none persisted). Plain-language on purpose:
+ * the notice names the "Image output" capability toggle instead of echoing a
+ * raw provider dump. Errors already typed `ImageOutputError`, or
+ * `ImageUnsupportedError` from the image-input refinement above, pass through
+ * untouched; rate limits and network failures keep their own notices.
+ */
+export function asImageOutputError(err: Error, modelId?: string, providerId?: string): Error {
+	if (err instanceof ImageOutputError || err instanceof ImageUnsupportedError) return err;
+	if (err instanceof ProviderHttpError && err.status >= 400 && err.status < 600) {
+		return new ImageOutputError(
+			modelId ? `${modelId} did not produce an image.` : undefined,
+			modelId,
+			providerId
+		);
+	}
+	return err;
+}
+
 /** Parse a `Retry-After` header (delta-seconds or HTTP-date) into seconds. */
 function parseRetryAfter(value: string | null): number | undefined {
 	if (!value) return undefined;
@@ -216,6 +249,7 @@ export {
 	CopilotAuthRequiredError,
 	CopilotSubscriptionError,
 	CorsBlockedError,
+	ImageOutputError,
 	ImageUnsupportedError,
 	MissingKeyError,
 	NetworkError,

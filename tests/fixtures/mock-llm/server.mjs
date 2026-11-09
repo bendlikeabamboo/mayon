@@ -62,6 +62,25 @@ const OFFER_TRIGGER = 'this branch feels done';
 const OFFER_REPLY =
 	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
 
+// ---------------------------------------------------------------------------
+// Image-reply dispatch (feature 030, US1) — deterministic constants, same
+// pattern as the grading lever / propagate dispatch: a fixture-only trigger
+// with no product-constant pin, so it lives here. Mirrored for spec
+// assertions in tests/e2e/fixtures/kitchen-sink.ts. Both dialect paths
+// produce the identical logical reply — the caption text plus one inline
+// image — but in the wire shape their dialect expects (research.md R-2
+// addendum): google-kind SSE carries an `inlineData` candidate part, while
+// the openai-compatible dialect carries `choices[0].delta.images[]` data
+// URLs (read back through the raw-chunk shim, since the SDK's chunk schema
+// strips `delta.images`). The PNG is a real 8x8 solid-color image, inlined
+// base64 the way a provider embeds it.
+// ---------------------------------------------------------------------------
+const IMAGE_TRIGGER = 'generate an image';
+const IMAGE_REPLY_TEXT = 'Here is your chart.';
+const IMAGE_PNG_MIME = 'image/png';
+const IMAGE_PNG_BASE64 =
+	'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC';
+
 // How many leading characters of the classification inputs the unknown-kind
 // 400 body and server log expose as hints.
 const HINT_PREFIX_LENGTH = 80;
@@ -106,7 +125,7 @@ function sseFrame(payload) {
 	return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-function streamFrames(res, frames, terminal) {
+function streamFrames(res, frames, terminal, intervalMs = CHUNK_INTERVAL_MS) {
 	res.writeHead(200, {
 		'content-type': 'text/event-stream',
 		'cache-control': 'no-cache',
@@ -121,7 +140,7 @@ function streamFrames(res, frames, terminal) {
 		}
 		if (index < frames.length) {
 			res.write(frames[index++]);
-			setTimeout(writeNext, CHUNK_INTERVAL_MS);
+			setTimeout(writeNext, intervalMs);
 			return;
 		}
 		res.write(terminal);
@@ -189,11 +208,92 @@ function streamToolCallReply(res, id, model, toolName, argsJson) {
 	streamFrames(res, frames, stopTerminal(id, model, 'tool_calls'));
 }
 
+// Streamed image reply (feature 030, openai-compatible dialect): the R-2
+// spike's raw-chunk shape — `choices[0].delta.images[]` with a data URL.
+// `message.images` is never sent: the app only streams.
+//
+// Frames are paced slower than the standard 150ms on purpose: the caption is
+// the first text part, so the e2e live-view assertion can only observe it
+// between the caption frame and finalize. Real image models take seconds per
+// reply; the slower pace is both realistic and gives the browser enough time
+// to flush the live render under CI load (a ~450ms window flaked there).
+const IMAGE_FRAME_INTERVAL_MS = 600;
+
+function streamImageReply(res, id, model) {
+	const frames = [
+		sseFrame({ id, model, choices: [{ delta: { role: 'assistant' }, finish_reason: null }] }),
+		sseFrame({
+			id,
+			model,
+			choices: [{ delta: { content: IMAGE_REPLY_TEXT }, finish_reason: null }]
+		}),
+		sseFrame({
+			id,
+			model,
+			choices: [
+				{
+					delta: {
+						images: [
+							{
+								type: 'image_url',
+								image_url: { url: `data:${IMAGE_PNG_MIME};base64,${IMAGE_PNG_BASE64}` }
+							}
+						]
+					},
+					finish_reason: null
+				}
+			]
+		})
+	];
+	streamFrames(res, frames, stopTerminal(id, model, 'stop'), IMAGE_FRAME_INTERVAL_MS);
+}
+
+// Google GenerateContentRequest: text of the LAST user turn's text parts
+// ('' when none). Gemini requests carry `contents`, not `messages`.
+function lastGoogleUserText(body) {
+	const contents = Array.isArray(body?.contents) ? body.contents : [];
+	for (let i = contents.length - 1; i >= 0; i--) {
+		const c = contents[i];
+		if (c && typeof c === 'object' && c.role === 'user') {
+			const parts = Array.isArray(c.parts) ? c.parts : [];
+			return parts.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('\n');
+		}
+	}
+	return '';
+}
+
+// Streamed image reply (feature 030, google dialect): native Gemini SSE —
+// `candidates[0].content.parts[]` with the caption text part and one
+// `inlineData` part (the SDK maps inlineData to a fullStream `file` part
+// natively, no shim). The trailing [DONE] sentinel streamFrames emits is
+// skipped by the SDK's event-stream parser, same as for openai chunks.
+function streamGoogleImageReply(res) {
+	const frames = [
+		sseFrame({
+			candidates: [
+				{
+					content: {
+						parts: [
+							{ text: IMAGE_REPLY_TEXT },
+							{ inlineData: { mimeType: IMAGE_PNG_MIME, data: IMAGE_PNG_BASE64 } }
+						]
+					}
+				}
+			]
+		}),
+		sseFrame({ candidates: [{ content: { parts: [] }, finishReason: 'STOP' }] })
+	];
+	streamFrames(res, frames, '', IMAGE_FRAME_INTERVAL_MS);
+}
+
 // ---------------------------------------------------------------------------
 // Request-kind classification (stateless — a pure function of the request
 // body, safe under concurrency; no shared mutable state beyond the static
 // fixture library). Ordered, first match wins:
 //
+//   0. stream + IMAGE_TRIGGER ('generate an image') in the LAST user message
+//      → image_reply (030; wire shape chosen by endpoint — google requests
+//      never reach /v1/chat/completions, they hit :streamGenerateContent)
 //   1. no tools  + stream === true  → chat (SSE kitchen-sink stream)
 //   2. no tools  + stream !== true  → chat (single non-streamed completion)
 //   3. tools + stream === true + trigger in LAST user message:
@@ -273,6 +373,15 @@ function firstSystemText(body) {
 }
 
 	function classifyRequest(body) {
+		// Image-reply dispatch (030): the LAST user message carries the
+		// trigger, streamed requests only — image turns stream, and keeping
+		// the check out of the non-stream path preserves the fail-loudly
+		// precedence of the contract kinds below (research.md D7). The phrase
+		// is distinct from the 027 propagate triggers, so ordering against
+		// them cannot matter in practice.
+		if (body?.stream === true && lastUserText(body).toLowerCase().includes(IMAGE_TRIGGER)) {
+			return 'image_reply';
+		}
 		if (!hasTools(body)) {
 			return body?.stream === true ? 'chat_stream' : 'chat_plain';
 		}
@@ -402,6 +511,9 @@ const server = createServer(async (req, res) => {
 			case 'chat_stream':
 				streamReply(res, id, model);
 				return;
+			case 'image_reply':
+				streamImageReply(res, id, model);
+				return;
 			case 'propagate_tool_call':
 				streamToolCallReply(res, id, model, PROPAGATE_TOOL_NAME, PROPAGATE_TOOL_ARGS);
 				return;
@@ -450,6 +562,33 @@ const server = createServer(async (req, res) => {
 				return;
 			}
 		}
+	}
+	// Gemini-native dialect (feature 030): @ai-sdk/google posts to
+	// /models/{model}:streamGenerateContent?alt=sse with a GenerateContent
+	// body (`contents`, not `messages`). Trigger in the last user turn →
+	// google-shaped image reply; anything unmarked fails loudly like the
+	// openai unknown-kind branch (research.md D7).
+	if (req.method === 'POST' && url.pathname.endsWith(':streamGenerateContent')) {
+		let body;
+		try {
+			body = JSON.parse(await readBody(req));
+		} catch {
+			sendJson(res, 400, {
+				error: { message: 'malformed JSON body', type: 'invalid_request_error' }
+			});
+			return;
+		}
+		const userText = lastGoogleUserText(body).toLowerCase();
+		const kind = userText.includes(IMAGE_TRIGGER) ? 'image_reply' : 'unknown';
+		console.log(`[mock-llm] ${req.method} ${url.pathname} -> ${kind}`);
+		if (kind === 'image_reply') {
+			streamGoogleImageReply(res);
+		} else {
+			const hints = [Array.isArray(body?.tools), userText.slice(0, HINT_PREFIX_LENGTH)];
+			console.error(`[mock-llm] unrecognized request kind: ${JSON.stringify({ hints })}`);
+			sendJson(res, 400, { error: 'unrecognized request kind', hints });
+		}
+		return;
 	}
 	sendJson(res, 404, { error: 'not found' });
 });

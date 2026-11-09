@@ -247,6 +247,56 @@ describe('messages repository', () => {
 
 		expect(await repos.messages.listByChat(chat.id)).toHaveLength(0);
 	});
+
+	// 030 (T005): append validates role-agnostically, so these pin the
+	// assistant-row contract the image-reply pipeline (T008) relies on.
+	describe('assistant rows carry parts (030)', () => {
+		it('accepts ordered text+image parts with content = concatenated text', async () => {
+			const chat = await repos.chats.createRoot({ title: 'C' });
+			const parts = [
+				{ type: 'text', text: 'Chart: ' },
+				testImage,
+				{ type: 'text', text: 'shown above' }
+			];
+			const msg = await repos.messages.append(chat.id, 'assistant', 'Chart: shown above', {
+				parts
+			});
+			expect(msg.kind).toBe('assistant_message');
+			expect(msg.content).toBe('Chart: shown above');
+
+			const row = (await repos.messages.listByChat(chat.id))[0]!;
+			expect(partsOf(row)).toEqual(parts);
+			expect(textOf(row)).toBe(row.content);
+		});
+
+		it('rejects more than 8 image parts', async () => {
+			const chat = await repos.chats.createRoot({ title: 'C' });
+			const nineImages = Array.from({ length: 9 }, () => testImage);
+			await expect(
+				repos.messages.append(chat.id, 'assistant', '', { parts: nineImages })
+			).rejects.toThrow('at most 8 image parts');
+			expect(await repos.messages.listByChat(chat.id)).toHaveLength(0);
+		});
+
+		it('rejects text parts that do not concatenate to content', async () => {
+			const chat = await repos.chats.createRoot({ title: 'C' });
+			await expect(
+				repos.messages.append(chat.id, 'assistant', 'content', {
+					parts: [{ type: 'text', text: 'different' }]
+				})
+			).rejects.toThrow('concatenate');
+			expect(await repos.messages.listByChat(chat.id)).toHaveLength(0);
+		});
+
+		it('accepts an image-only assistant row with content empty', async () => {
+			const chat = await repos.chats.createRoot({ title: 'C' });
+			const msg = await repos.messages.append(chat.id, 'assistant', '', { parts: [testImage] });
+			expect(msg.content).toBe('');
+
+			const row = (await repos.messages.listByChat(chat.id))[0]!;
+			expect(partsOf(row)).toEqual([testImage]);
+		});
+	});
 });
 
 describe('settings repository', () => {

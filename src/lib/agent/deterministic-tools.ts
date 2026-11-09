@@ -6,9 +6,12 @@ import {
 	acquirePropagationLatch,
 	releasePropagationLatch,
 	branchArtifactMetadata,
-	buildRawDelta,
+	buildRawPayload,
+	collectPropagatedImages,
+	artifactParts,
 	resolveAnchor
 } from '#lib/chat/propagation.js';
+import type { ImagePart } from '#lib/chat/kinds.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 
 function toolSchema(properties: Record<string, unknown>): Record<string, unknown> {
@@ -288,6 +291,7 @@ export const deterministicTools: Tool[] = [
 				}
 
 				let content: string;
+				let imageParts: ImagePart[];
 				let opts: { mode?: 'raw' | 'summary'; summaryTraceId?: string | null } | undefined;
 				if (mode === 'summary') {
 					try {
@@ -305,15 +309,24 @@ export const deterministicTools: Tool[] = [
 							}`
 						};
 					}
+					imageParts = await collectPropagatedImages(ctx.chatId);
 				} else {
-					content = await buildRawDelta(ctx.chatId);
+					const payload = await buildRawPayload(ctx.chatId);
+					content = payload.content;
+					imageParts = payload.imageParts;
 				}
 
 				const { placement, anchor } = await resolveAnchor(chat);
 				const metadata = branchArtifactMetadata(chat, anchor, opts);
 				await repos.messages.insertAnchored(
 					chat.parentId,
-					{ role: 'user', content, kind: 'branch_artifact', metadata: JSON.stringify(metadata) },
+					{
+						role: 'user',
+						content,
+						kind: 'branch_artifact',
+						metadata: JSON.stringify(metadata),
+						parts: artifactParts(content, imageParts)
+					},
 					placement
 				);
 

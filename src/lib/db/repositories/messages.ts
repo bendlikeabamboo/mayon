@@ -15,6 +15,28 @@ async function insertMessage(input: typeof messages.$inferInsert): Promise<Messa
 	return row!;
 }
 
+/**
+ * Shared parts invariants for every appending path (specs/030-image-generation/contracts/message-parts.md
+ * §1/§3): non-empty, at most 8 image parts, text parts concatenate exactly to
+ * the row's canonical `content`.
+ */
+function validateParts(parts: MessagePart[], content: string): void {
+	if (parts.length === 0) {
+		throw new Error('parts must contain at least one part');
+	}
+	const imageCount = parts.filter((p) => p.type === 'image').length;
+	if (imageCount > 8) {
+		throw new Error('parts must contain at most 8 image parts');
+	}
+	const text = parts
+		.filter((p): p is TextPart => p.type === 'text')
+		.map((p) => p.text)
+		.join('');
+	if (text !== content) {
+		throw new Error('parts text parts must concatenate to content');
+	}
+}
+
 /** Messages repository — content of a single chat, ordered by `ord`. */
 export const messagesRepo = {
 	/** Append a message with the next `ord` computed automatically. */
@@ -33,20 +55,7 @@ export const messagesRepo = {
 		}
 	): Promise<Message> {
 		if (opts?.parts) {
-			if (opts.parts.length === 0) {
-				throw new Error('parts must contain at least one part');
-			}
-			const imageCount = opts.parts.filter((p) => p.type === 'image').length;
-			if (imageCount > 8) {
-				throw new Error('parts must contain at most 8 image parts');
-			}
-			const text = opts.parts
-				.filter((p): p is TextPart => p.type === 'text')
-				.map((p) => p.text)
-				.join('');
-			if (text !== content) {
-				throw new Error('parts text parts must concatenate to content');
-			}
+			validateParts(opts.parts, content);
 		}
 		const db = await awaitDb();
 		const last = await db
@@ -152,6 +161,8 @@ export const messagesRepo = {
 	 * neighbors without touching any existing row.
 	 * `'start'` → minOrd − 1 (0 on an empty chat); `beforeOrd: null` →
 	 * afterOrd + 1; otherwise the midpoint `(afterOrd + beforeOrd) / 2`.
+	 * Optional `parts` (030): same invariants as `append` (≤8 images, text
+	 * parts concatenate to `content`), stored on the inserted row.
 	 */
 	async insertAnchored(
 		chatId: string,
@@ -160,9 +171,11 @@ export const messagesRepo = {
 			content: string;
 			kind: EntryKind;
 			metadata?: string;
+			parts?: MessagePart[];
 		},
 		placement: { afterOrd: number; beforeOrd: number | null } | 'start'
 	): Promise<Message> {
+		if (entry.parts) validateParts(entry.parts, entry.content);
 		const db = await awaitDb();
 		let ord: number;
 		if (placement === 'start') {
@@ -190,6 +203,7 @@ export const messagesRepo = {
 			toolCallId: null,
 			toolName: null,
 			metadata: entry.metadata ?? null,
+			parts: entry.parts ? JSON.stringify(entry.parts) : null,
 			createdAt: now()
 		});
 	},

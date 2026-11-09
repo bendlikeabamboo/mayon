@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ChevronDown, RefreshCw } from '@lucide/svelte';
+	import { isImageOutputModelId } from '#lib/ai/image-output-capability.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatContextWindow } from './format-context-window.svelte';
 	import { filterModels } from './filter-models.svelte';
@@ -85,6 +86,9 @@
 					>
 						{formatContextWindow(contextWindows[model])}
 					</span>
+				{/if}
+				{#if isImageOutputModelId(model)}
+					<span class="shrink-0 text-[11px] text-muted-foreground" title="Image output">img</span>
 				{/if}
 			</ModelSelectItem>
 		{/each}

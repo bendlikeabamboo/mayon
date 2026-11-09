@@ -21,6 +21,7 @@ later feature — no mass migration.
 | `lab.spec.ts`                 | Migration candidate                    | Generation and checklist persistence; the `/lab/[id]` render is the UI part.                                                                                           |
 | `mock-classification.spec.ts` | Migration candidate                    | Quiz/lab generation via the real proxy path; request-kind classification itself is probed manually (see comments in the spec).                                         |
 | `render.spec.ts`              | UI-only behavior                       | Markdown/math/mermaid rendering, copy affordance, theme re-render; the expound selection→offset check needs the DOM alignment layer.                                   |
+| `image-round-trip.spec.ts`    | UI-only behavior                       | Streamed image reply: live marker, pending placeholder, durable thumbnail, reload without provider contact (mock's stdout request log via `docker logs`).              |
 
 No spec is currently camera-style (none takes screenshots for visual review).
 When a visual check is needed, keep it screenshot-plus-review and occasional —
