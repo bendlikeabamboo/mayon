@@ -1,5 +1,6 @@
 import { LAB_FIXTURE } from '../../fixtures/mock-llm/lab-fixture.mjs';
 import { QUIZ_FIXTURE } from '../../fixtures/mock-llm/quiz-fixture.mjs';
+import { IMAGE_PNG_BASE64, IMAGE_PNG_MIME } from '../../fixtures/mock-llm/strings.mjs';
 
 export const MOCK_BASE_URL = 'http://mock-llm:9999/v1';
 export const MODEL_ID = 'mock-sink';
@@ -14,30 +15,18 @@ export const ALIGNED_SENTENCE =
 export const ALIGNED_PARAGRAPH =
 	'Selection mapping needs prose that renders exactly as it is written. Alignment depends on stable plain sentences that render exactly as they are written. Every word here sits in one plain text node, with single spaces and no inline decoration.';
 
-// Request-kind classification markers live in
-// tests/fixtures/mock-llm/markers.mjs (single source of truth, imported by
-// server.mjs and pinned to the product constants by the drift-guard unit test
-// src/lib/ai/generate/classification-markers.test.ts). They were previously
-// mirrored here; that copy drifted-by-hand risk was removed in review. See
-// docs/history/appendices/020-mock-llm-protocol.md for the
-// classification protocol.
+// Fixture-only assertion strings (grading-lever triggers, back-propagation
+// dispatch, image-reply dispatch) live once in
+// tests/fixtures/mock-llm/strings.mjs — server.mjs serves exactly those
+// constants and this module re-exports them for spec assertions; hand-mirroring
+// a served string here is a drift-guard violation. Contract:
+// specs/031-split-text-e2e-tests/contracts/shared-fixtures.md. DOM selectors,
+// URLs, and timing windows stay e2e-local in this file.
+export * from '../../fixtures/mock-llm/strings.mjs';
 
-// Grading lever triggers the mock scans for in the short_grading user block
-// (case-insensitive; neither present grades false by default).
-export const LEVER_TRIGGER_CORRECT = 'should be correct';
-export const LEVER_TRIGGER_WRONG = 'should be wrong';
-
-// Back-propagation dispatch triggers the mock scans for in the LAST user
-// message (feature 027, quickstart V6). The constants live in
-// tests/fixtures/mock-llm/server.mjs next to the grading lever (fixture-only
-// triggers, no product-constant pin); the reply sentence is mirrored here so
-// assertions can never drift from what the mock actually streams.
-export const PROPAGATE_TRIGGER = 'backpropagate this branch';
-export const PROPAGATE_UNAVAILABLE_REPLY =
-	'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
-export const OFFER_TRIGGER = 'this branch feels done';
-export const OFFER_REPLY =
-	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
+// The mock's inlined 8x8 PNG as a data URL — asserting it byte-exact proves
+// the part survives stream → persist → reload intact.
+export const IMAGE_DATA_URL = `data:${IMAGE_PNG_MIME};base64,${IMAGE_PNG_BASE64}`;
 
 // Expected fixture payloads for assertions. The fixture files are the source
 // of truth; these are derived from them so assertions can never drift from
@@ -75,13 +64,3 @@ export const QUIZ_SHORT_RUBRIC = quizShort.payload.rubric;
 export const LAB_TITLE = LAB_FIXTURE.title;
 export const LAB_STEPS = LAB_FIXTURE.steps;
 export const LAB_CHECKLIST_TEXTS = LAB_FIXTURE.checklist.map((item) => item.text);
-
-// Image-reply dispatch (030): fixture-only trigger + reply constants that
-// live in server.mjs next to the propagate dispatch (no product-constant
-// pin), mirrored here so assertions can never drift from what the mock
-// actually streams. The data URL is the mock's inlined 8x8 PNG; asserting it
-// byte-exact proves the part survives stream → persist → reload intact.
-export const IMAGE_TRIGGER = 'generate an image';
-export const IMAGE_REPLY_TEXT = 'Here is your chart.';
-export const IMAGE_DATA_URL =
-	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC';
