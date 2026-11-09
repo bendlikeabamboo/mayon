@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { expect, test } from './fixtures/onboard';
 import { IMAGE_DATA_URL, IMAGE_REPLY_TEXT, IMAGE_TRIGGER } from './fixtures/kitchen-sink';
+import { liveText } from './fixtures/render';
 
 // Image replies stream slower than the standard fixture (600ms per frame, see
 // IMAGE_FRAME_INTERVAL_MS in the mock) so the caption stays live-visible long
@@ -62,13 +63,14 @@ test.describe('mock-llm image reply round trip (030 S5)', () => {
 		await page.getByRole('button', { name: 'Send', exact: true }).click();
 
 		// Text first: the live marker carries the caption before any image
-		// part arrives.
-		const live = page.locator('#msg-live-text');
+		// part arrives. 029 renders per-block live ids (`msg-live-text-0`, …),
+		// so the caption is read off the first live text block.
+		const live = liveText(page).first();
 		await expect(live).toContainText(IMAGE_REPLY_TEXT, { timeout: TURN_TIMEOUT });
 
 		// Finalize: the live view closes and the placeholder was shown while
 		// the image part was pending (the live view carries no base64).
-		await expect(live).toHaveCount(0, { timeout: TURN_TIMEOUT });
+		await expect(liveText(page)).toHaveCount(0, { timeout: TURN_TIMEOUT });
 		expect(
 			await page.evaluate(
 				() => (window as typeof window & { __sawImagePlaceholder?: boolean }).__sawImagePlaceholder
