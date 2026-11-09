@@ -106,7 +106,7 @@ description: "Task list for feature 030 implementation"
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T024 [P] Repoint the four dangling `contracts/message-parts.md` code comments to specs/030-image-generation/contracts/message-parts.md: src/lib/stores/chat.svelte.ts:159,479; src/lib/chat/projection.ts:230; src/lib/chat/projection.test.ts:115.
+- [x] T024 [P] Repoint the four dangling `contracts/message-parts.md` code comments to specs/030-image-generation/contracts/message-parts.md: src/lib/stores/chat.svelte.ts:159,479; src/lib/chat/projection.ts:230; src/lib/chat/projection.test.ts:115.
 - [ ] T025 [P] Perf probe measurement (constitution IV): streaming render with and without pending images via `window.__MAYON_PERF__` + `localStorage.mayon_perf_scenario`; record before/after numbers; confirm no user-perceptible regression for image-less replies.
 - [ ] T026 Full gates + validation: `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm --filter @mayon/server test`, then the full quickstart.md S1–S6 pass (incl. manual S6 smoke on the dev stack).
 
