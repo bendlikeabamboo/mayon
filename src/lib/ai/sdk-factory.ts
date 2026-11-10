@@ -5,7 +5,7 @@ import { createOllama } from 'ollama-ai-provider-v2';
 import type { LanguageModel } from 'ai';
 import { createKeychainFetch } from './sdk-fetch';
 import { createCopilotFetch } from './copilot-fetch';
-import { normalizeHostname } from './llm-target';
+import { normalizeUrlHost } from './llm-target';
 import type { ProviderConfig } from './types';
 import { resolveToolCapability } from '#lib/agent/capability.js';
 
@@ -17,20 +17,6 @@ export interface ActiveProvider {
 
 export interface SdkFactoryDeps {
 	hasKey: () => Promise<boolean>;
-}
-
-/**
- * The credential allowlist host for `config` (032): the provider `baseUrl`'s
- * hostname, normalized for exact-match comparison. The keychain gate attaches
- * the key only to this host, so provider-URL image links carry no credential.
- * An unparseable baseUrl omits the gate (legacy attach-everywhere behavior).
- */
-function baseUrlAuthHost(baseUrl: string): string | undefined {
-	try {
-		return normalizeHostname(new URL(baseUrl).hostname);
-	} catch {
-		return undefined;
-	}
 }
 
 /**
@@ -48,7 +34,7 @@ export function providerFetchFor(config: ProviderConfig): typeof globalThis.fetc
 				header: 'Authorization',
 				scheme: 'Bearer',
 				keyId: config.id,
-				authHost: baseUrlAuthHost(config.baseUrl),
+				authHost: normalizeUrlHost(config.baseUrl),
 				// Keyless openai-compatible endpoints (local runtimes, keyless
 				// gateways) chat without a key; a key saved later upgrades the
 				// connection (the 008 keyless flow).
@@ -58,13 +44,13 @@ export function providerFetchFor(config: ProviderConfig): typeof globalThis.fetc
 			return createKeychainFetch({
 				header: 'x-api-key',
 				keyId: config.id,
-				authHost: baseUrlAuthHost(config.baseUrl)
+				authHost: normalizeUrlHost(config.baseUrl)
 			});
 		case 'gemini':
 			return createKeychainFetch({
 				header: 'x-goog-api-key',
 				keyId: config.id,
-				authHost: baseUrlAuthHost(config.baseUrl)
+				authHost: normalizeUrlHost(config.baseUrl)
 			});
 		default:
 			return undefined;

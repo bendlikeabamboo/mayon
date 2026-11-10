@@ -9,6 +9,7 @@
  */
 import { getCopilotSession } from './copilot-session';
 import { classifyFetchError, httpStatusToError } from './errors';
+import { normalizeUrlHost } from './llm-target';
 import { createKeyStore } from './keystore/client';
 import { MissingKeyError, type ProviderConfig } from './types';
 import { getLlmFetch } from '#lib/services/llm-proxy-fetch.js';
@@ -36,10 +37,14 @@ export function createCopilotFetch(config: ProviderConfig): typeof globalThis.fe
 			headers.set(header, value);
 		}
 
+		// Declare the retargeted endpoint host (032): the session token is valid
+		// for the authoritative endpoint the session names, so that is the host
+		// the relay may forward `Authorization` to.
 		const target = resolveTarget(url, session.endpoint, config.baseUrl);
+		const authHost = normalizeUrlHost(target);
 		let res: Response;
 		try {
-			res = await getLlmFetch(target)(target, { ...init, headers, cache: 'no-store' });
+			res = await getLlmFetch(target, authHost)(target, { ...init, headers, cache: 'no-store' });
 		} catch (err) {
 			throw classifyFetchError(err, target);
 		}

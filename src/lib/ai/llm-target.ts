@@ -28,3 +28,17 @@ export function normalizeHostname(host: string): string {
 export function sameHost(a: string, b: string): boolean {
 	return normalizeHostname(a) === normalizeHostname(b);
 }
+
+/**
+ * Normalized hostname of a parseable URL, or `undefined` when it does not
+ * parse (032): credential producers use this to declare the host their
+ * credentials target (`authHost`), and an unparseable URL omits the gate,
+ * preserving the legacy attach-everywhere behavior.
+ */
+export function normalizeUrlHost(url: string): string | undefined {
+	try {
+		return normalizeHostname(new URL(url).hostname);
+	} catch {
+		return undefined;
+	}
+}
