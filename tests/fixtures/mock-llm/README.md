@@ -64,7 +64,21 @@ fixture; do not bypass the hop.
   `stop` terminal. Without the marker all flows are byte-identical. Spec:
   `specs/029-micro-thoughts/contracts/mock-llm-reasoning.md`.
 - Image-reply dispatch (feature 030, US1) — no fixture file: the
-  `IMAGE_TRIGGER` phrase in the LAST user turn selects an image reply (openai
-  and google dialects), with constants (`IMAGE_TRIGGER`, `IMAGE_REPLY_TEXT`,
-  `IMAGE_PNG_MIME`, `IMAGE_PNG_BASE64`) in [strings.mjs](strings.mjs),
-  re-exported by `kitchen-sink.ts` alongside `IMAGE_DATA_URL`.
+  `IMAGE_TRIGGER` phrase in the LAST user turn classifies the streamed request
+  as `image_reply` (openai and google dialects), with constants
+  (`IMAGE_TRIGGER`, `IMAGE_REPLY_TEXT`, `IMAGE_PNG_MIME`, `IMAGE_PNG_BASE64`)
+  in [strings.mjs](strings.mjs), re-exported by `kitchen-sink.ts` alongside
+  `IMAGE_DATA_URL`. The route splits by dialect: openai-compatible requests
+  stream the image on `POST /v1/chat/completions` as
+  `choices[0].delta.images[]` data-URL frames, while google requests never
+  reach the completions path — they hit
+  `POST /models/{model}:streamGenerateContent?alt=sse` and carry a candidate
+  part `inlineData { mimeType, data }`. Both wire shapes deliver the same
+  logical reply (caption text plus one inline PNG); the openai shape mirrors
+  the provider spike's raw-chunk shape because the SDK strips `delta.images`
+  at its layer — hence the raw-chunk shim — while the SDK maps `inlineData`
+  to a fullStream `file` part natively. Image-frame pacing is deliberately
+  slower than the standard 150 ms cadence (600 ms frames): the caption is the
+  first text part, so the wider window keeps the live caption observable in
+  CI — the browser must flush the live render between the caption frame and
+  finalize (a ~450 ms window flaked under CI load).

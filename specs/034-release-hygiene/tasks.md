@@ -72,8 +72,8 @@ None — this feature has no shared infrastructure; each user story edits disjoi
 
 ### Implementation for User Story 3
 
-- [ ] T012 [P] [US3] Restore `ideas/history-map.md` per contracts/idea-tombstone.md: sentinel `**Last used idea number: 013**` (+ 011-gap aside), directory table rows 001–008 verbatim from `git show 84389bf^:ideas/history-map.md`, new loose-file retirement table for `llm-mocks.md` (delivered → `tests/fixtures/mock-llm/`, specs 017/020) and `security-scan.md` (partially delivered → 019 history + #69; open remainder → `ideas/dependency-vulnerability-backlog.md`), and the deletion/restoration provenance note.
-- [ ] T013 [US3] Verify the tombstone: `pnpm exec prettier --check ideas/history-map.md` (write-format if needed) and run quickstart S3 (sentinel present, both retirements recorded, `git status` shows no idea-file deletion).
+- [x] T012 [P] [US3] Restore `ideas/history-map.md` per contracts/idea-tombstone.md: sentinel `**Last used idea number: 013**` (+ 011-gap aside), directory table rows 001–008 verbatim from `git show 84389bf^:ideas/history-map.md`, new loose-file retirement table for `llm-mocks.md` (delivered → `tests/fixtures/mock-llm/`, specs 017/020) and `security-scan.md` (partially delivered → 019 history + #69; open remainder → `ideas/dependency-vulnerability-backlog.md`), and the deletion/restoration provenance note.
+- [x] T013 [US3] Verify the tombstone: `pnpm exec prettier --check ideas/history-map.md` (write-format if needed) and run quickstart S3 (sentinel present, both retirements recorded, `git status` shows no idea-file deletion).
 
 **Checkpoint**: Idea numbering protected; retirements auditable.
 
@@ -87,8 +87,8 @@ None — this feature has no shared infrastructure; each user story edits disjoi
 
 ### Implementation for User Story 4
 
-- [ ] T014 [P] [US4] Extend the 030 image-dispatch bullet in `tests/fixtures/mock-llm/README.md` (currently lines 66–70) per research.md D11: `image_reply` classification of the trigger phrase; route split (OpenAI-compatible `POST /v1/chat/completions` vs Google `POST /models/{model}:streamGenerateContent?alt=sse` — Google never reaches the completions path); both wire shapes (`choices[0].delta.images[]` data-URL frame; candidate part `inlineData { mimeType, data }`) with the raw-chunk/SDK-strip note; deliberate slower-than-150ms image-frame pacing for CI caption observability. Match the file's prose style (Prettier-ignored directory).
-- [ ] T015 [US4] Run quickstart S4 greps against `tests/fixtures/mock-llm/README.md` (`image_reply`, `delta.images`, `inlineData`, `streamGenerateContent`, pacing all present).
+- [x] T014 [P] [US4] Extend the 030 image-dispatch bullet in `tests/fixtures/mock-llm/README.md` (currently lines 66–70) per research.md D11: `image_reply` classification of the trigger phrase; route split (OpenAI-compatible `POST /v1/chat/completions` vs Google `POST /models/{model}:streamGenerateContent?alt=sse` — Google never reaches the completions path); both wire shapes (`choices[0].delta.images[]` data-URL frame; candidate part `inlineData { mimeType, data }`) with the raw-chunk/SDK-strip note; deliberate slower-than-150ms image-frame pacing for CI caption observability. Match the file's prose style (Prettier-ignored directory).
+- [x] T015 [US4] Run quickstart S4 greps against `tests/fixtures/mock-llm/README.md` (`image_reply`, `delta.images`, `inlineData`, `streamGenerateContent`, pacing all present).
 
 **Checkpoint**: Fixture README is self-sufficient for the 030 dispatch.
 
