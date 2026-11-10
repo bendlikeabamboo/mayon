@@ -97,13 +97,13 @@ back to the previous user message.
 
 ### Tests for User Story 3 ⚠️ FAIL FIRST
 
-- [ ] T009 [P] [US3] Add fail-first tests in `src/lib/chat/entries.test.ts` for new export `lastRegeneratableAssistantId(timeline)`: (a) `[user, reasoning(anchored), assistant_message, reasoning(anchored trailing)]` → the assistant id (today impossible — helper absent, that is the failure); (b) trailing UNanchored reasoning → `null`; (c) text-last single row → id (today's behavior preserved)
-- [ ] T010 [P] [US3] Add fail-first store test in `src/lib/stores/chat.svelte.test.ts`: seed `[user("hi"), reasoning(anchored), assistant("ans"), reasoning(anchored, trailing)]` durably; `chatStore.deleteLastAssistantTurn(assistantRowId)` deletes all three non-user rows, keeps the user row, and returns `{userText: "hi", attachments: []}` (method absent today — that is the failure)
+- [x] T009 [P] [US3] Add fail-first tests in `src/lib/chat/entries.test.ts` for new export `lastRegeneratableAssistantId(timeline)`: (a) `[user, reasoning(anchored), assistant_message, reasoning(anchored trailing)]` → the assistant id (today impossible — helper absent, that is the failure); (b) trailing UNanchored reasoning → `null`; (c) text-last single row → id (today's behavior preserved)
+- [x] T010 [P] [US3] Add fail-first store test in `src/lib/stores/chat.svelte.test.ts`: seed `[user("hi"), reasoning(anchored), assistant("ans"), reasoning(anchored, trailing)]` durably; `chatStore.deleteLastAssistantTurn(assistantRowId)` deletes all three non-user rows, keeps the user row, and returns `{userText: "hi", attachments: []}` (method absent today — that is the failure)
 
 ### Implementation for User Story 3
 
-- [ ] T011 [US3] Export `lastRegeneratableAssistantId(timeline: TimelineItem[]): string | null` from `src/lib/chat/entries.ts` (skip trailing durable `reasoning` items with `metadata.anchored === true` from the end; require the next item to be a durable `assistant_message`; reuse `isAnchoredReasoning` at 303–305); delegate `lastAssistantId` in `src/lib/components/chat/MessageList.svelte:79–83` to it (contracts/regenerate-scope.md)
-- [ ] T012 [US3] Add `deleteLastAssistantTurn(assistantRowId)` to `ChatState` in `src/lib/stores/chat.svelte.ts` (walk back to the previous `user` row capturing `content` + `attachmentsOf(row)`; delete every message strictly after it via `repos.messages.delete`; update `this.messages`; return the resend payload or `null`); rewrite `onRegenerate` in `src/routes/chat/[id]/+page.svelte:579–597` to delegate and re-send
+- [x] T011 [US3] Export `lastRegeneratableAssistantId(timeline: TimelineItem[]): string | null` from `src/lib/chat/entries.ts` (skip trailing durable `reasoning` items with `metadata.anchored === true` from the end; require the next item to be a durable `assistant_message`; reuse `isAnchoredReasoning` at 303–305); delegate `lastAssistantId` in `src/lib/components/chat/MessageList.svelte:79–83` to it (contracts/regenerate-scope.md)
+- [x] T012 [US3] Add `deleteLastAssistantTurn(assistantRowId)` to `ChatState` in `src/lib/stores/chat.svelte.ts` (walk back to the previous `user` row capturing `content` + `attachmentsOf(row)`; delete every message strictly after it via `repos.messages.delete`; update `this.messages`; return the resend payload or `null`); rewrite `onRegenerate` in `src/routes/chat/[id]/+page.svelte:579–597` to delegate and re-send
 
 **Checkpoint**: US3 independently testable; single-row regenerate behavior byte-identical to today.
 

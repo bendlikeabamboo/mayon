@@ -1496,6 +1496,46 @@ describe('035 corrected-persist round-trip (T003)', () => {
 	});
 });
 
+// 035 US3 (T010, contracts/regenerate-scope.md): deleteLastAssistantTurn
+// removes the WHOLE assistant turn — every row strictly after the previous
+// user row (reasoning + text + trailing reasoning, all kinds) — and returns
+// the re-send payload. A whole-turn delete avoids orphan tool-result rows.
+describe('035 deleteLastAssistantTurn (T010)', () => {
+	it('deletes all non-user rows of an interleaved turn, keeps the user row, returns the resend payload', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		const user = await repos.messages.append(root.id, 'user', 'hi');
+		const r1 = await repos.messages.append(root.id, 'assistant', 'think one', {
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		const a1 = await repos.messages.append(root.id, 'assistant', 'ans');
+		const r2 = await repos.messages.append(root.id, 'assistant', ' done thinking.', {
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		await chatStore.load(root.id);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([user.id, r1.id, a1.id, r2.id]);
+
+		const payload = await chatStore.deleteLastAssistantTurn(a1.id);
+
+		expect(payload).toEqual({ userText: 'hi', attachments: [] });
+		const after = await repos.messages.listByChat(root.id);
+		expect(after.map((m) => m.id)).toEqual([user.id]);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([user.id]);
+	});
+
+	it('returns null (no-op) for an unknown row id', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(root.id, 'user', 'hi');
+		await chatStore.load(root.id);
+
+		const payload = await chatStore.deleteLastAssistantTurn('no-such-row');
+
+		expect(payload).toBeNull();
+		expect(await repos.messages.listByChat(root.id)).toHaveLength(1);
+	});
+});
+
 describe('disabledToolsForBrief', () => {
 	it('returns save_brief when root has a brief', () => {
 		const brief: LearningBrief = { goal: 'learn X' };

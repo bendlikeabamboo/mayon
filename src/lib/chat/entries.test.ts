@@ -5,6 +5,7 @@ import {
 	isDurableEntry,
 	isOrphanToolResult,
 	isToolGroup,
+	lastRegeneratableAssistantId,
 	type TimelineItem
 } from './entries';
 import { registerTool, deregisterTool } from '#lib/agent/registry.js';
@@ -912,5 +913,80 @@ describe('029 US3 parity: no-reasoning turn (T018)', () => {
 			'assistant_message:row-a2'
 		]);
 		expect(items.some((i) => isDurableEntry(i) && i.kind === 'reasoning')).toBe(false);
+	});
+});
+
+// 035 US3 (T009, contracts/regenerate-scope.md): the regenerate reveal gate as
+// a pure helper. Anchored rows are positional (reorderTurn never hoists them),
+// so a turn can genuinely end on a trailing anchored thought — the gate must
+// look past it. Every other tail shape keeps today's closed-gate behavior.
+describe('035 US3 regenerate gate: lastRegeneratableAssistantId (T009)', () => {
+	const anchoredMeta = JSON.stringify({ iteration: 0, anchored: true });
+	const legacyMeta = JSON.stringify({ iteration: 0 });
+
+	it('(a) trailing anchored reasoning is skipped → the turn’s last assistant_message id', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'think one',
+				metadata: anchoredMeta,
+				ord: 1
+			}),
+			msg({ id: 'row-a1', role: 'assistant', content: 'part one', ord: 2 }),
+			msg({
+				id: 'row-r2',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: ' done thinking.',
+				metadata: anchoredMeta,
+				ord: 3
+			})
+		]);
+		// Anchored rows stay positional, so the thought really trails the reply.
+		expect(rowIds(items)).toEqual([
+			'user_message:row-u1',
+			'reasoning:row-r1',
+			'assistant_message:row-a1',
+			'reasoning:row-r2'
+		]);
+		expect(lastRegeneratableAssistantId(items)).toBe('row-a1');
+	});
+
+	it('(b) trailing UNanchored reasoning closes the gate → null', () => {
+		// Legacy repair (003 US3) stops at tool rows, so an unanchored thought
+		// after a tool call genuinely trails the timeline — and unanchored
+		// reasoning is NOT skipped by the gate.
+		const items = assembleTimeline([
+			msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 }),
+			msg({ id: 'row-a1', role: 'assistant', content: 'Reply', ord: 1 }),
+			msg({
+				id: 'row-call-1',
+				role: 'assistant',
+				toolCallId: 'call-1',
+				toolName: 'bash',
+				ord: 2
+			}),
+			msg({
+				id: 'row-r1',
+				role: 'assistant',
+				kind: 'reasoning',
+				content: 'legacy after tool',
+				metadata: legacyMeta,
+				ord: 3
+			})
+		]);
+		const last = items[items.length - 1];
+		expect(isDurableEntry(last) && last.kind === 'reasoning').toBe(true);
+		expect(lastRegeneratableAssistantId(items)).toBeNull();
+	});
+
+	it('(c) text-last single row → id (today’s behavior preserved)', () => {
+		const items = assembleTimeline([
+			msg({ id: 'row-a1', role: 'assistant', content: 'Reply', ord: 0 })
+		]);
+		expect(lastRegeneratableAssistantId(items)).toBe('row-a1');
 	});
 });
