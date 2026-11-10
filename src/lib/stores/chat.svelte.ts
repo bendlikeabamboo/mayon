@@ -755,7 +755,20 @@ class ChatState {
 					const aborted = this.controller?.signal.aborted ?? false;
 					// Deferred finalization (research.md D3): on a normal finish the
 					// durable row waits for the eased drain; abort/error persists now.
-					if (pacer && this.streamPreset !== 'standard' && content && !aborted) {
+					// 035 (drain-once, contracts/drain-once.md): the wait applies to
+					// finalize appends only (`final` is the 033 finalize marker —
+					// interim appends never wait), at most once per turn: after any
+					// append the buffer is cleared and the pacer reset, so a further
+					// append with an empty buffer would park in `draining` with
+					// nothing to release and burn the DRAIN_DEADLINE_MS for nothing.
+					if (
+						pacer &&
+						this.streamPreset !== 'standard' &&
+						opts?.final === true &&
+						this.streamBuffer !== '' &&
+						content &&
+						!aborted
+					) {
 						pacer.onStreamEnd();
 						this.streamPhase = pacer.mode;
 						await this.waitForDrain(pacer);

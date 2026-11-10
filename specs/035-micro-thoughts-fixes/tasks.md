@@ -118,11 +118,11 @@ per-block deadline stalls.
 
 ### Tests for User Story 4 ⚠️ FAIL FIRST
 
-- [ ] T013 [P] [US4] Add fail-first test in `src/lib/stores/chat.svelte.test.ts` paced-streaming describe (fake timers, 3327+): paced preset + interleaved two-text-block script (`text-start/delta/end` ×2 with reasoning between, via `mockedStreamText` fullStream) → after the first durable assistant row lands, the second row must appear WITHOUT advancing timers by `DRAIN_DEADLINE_MS` (1200 ms) (today the second append stalls ~1.2 s — that is the failure); assert the existing single-block deferral test ('defers finalize until the drain completes') still passes unchanged
+- [x] T013 [P] [US4] Add fail-first test in `src/lib/stores/chat.svelte.test.ts` paced-streaming describe (fake timers, 3327+): paced preset + interleaved two-text-block script (`text-start/delta/end` ×2 with reasoning between, via `mockedStreamText` fullStream) → after the first durable assistant row lands, the second row must appear WITHOUT advancing timers by `DRAIN_DEADLINE_MS` (1200 ms) (today the second append stalls ~1.2 s — that is the failure); assert the existing single-block deferral test ('defers finalize until the drain completes') still passes unchanged
 
 ### Implementation for User Story 4
 
-- [ ] T014 [US4] In `src/lib/stores/chat.svelte.ts` `appendAssistantText` drain gate (current anchors 740–744): add `opts?.final === true &&` and `this.streamBuffer !== '' &&` to the condition (contracts/drain-once.md; keep `content`/`!aborted`/preset/pacer terms)
+- [x] T014 [US4] In `src/lib/stores/chat.svelte.ts` `appendAssistantText` drain gate (current anchors 740–744): add `opts?.final === true &&` and `this.streamBuffer !== '' &&` to the condition (contracts/drain-once.md; keep `content`/`!aborted`/preset/pacer terms)
 
 **Checkpoint**: US4 independently testable; standard-preset and single-block paced tests unchanged.
 
@@ -137,11 +137,11 @@ trailing thoughts survive.
 
 ### Tests for User Story 5 ⚠️ FAIL FIRST
 
-- [ ] T015 [P] [US5] Create `src/lib/agent/trace.test.ts` (no `+` prefix) with fail-first `TraceBuilder` tests: (a) `[request, reasoning-start, reasoning-delta "  ", reasoning-end, finish]` → `reasoningSegments === []` (today `['  ']` survives — that is the failure); (b) same without `reasoning-end` (closed by `finish`) → `[]`; (c) `[request, reasoning-start, reasoning-delta " done thinking.", finish]` → segment kept
+- [x] T015 [P] [US5] Create `src/lib/agent/trace.test.ts` (no `+` prefix) with fail-first `TraceBuilder` tests: (a) `[request, reasoning-start, reasoning-delta "  ", reasoning-end, finish]` → `reasoningSegments === []` (today `['  ']` survives — that is the failure); (b) same without `reasoning-end` (closed by `finish`) → `[]`; (c) `[request, reasoning-start, reasoning-delta " done thinking.", finish]` → segment kept
 
 ### Implementation for User Story 5
 
-- [ ] T016 [US5] In `src/lib/agent/trace.ts`: extract the pop-if-trailing-whitespace step (currently inline at 186–188) into a private prune on `this.current`; call it on `reasoning-start` (existing), on a new `reasoning-end` branch of the `part` handler, and at `finish` alongside the finishReason capture (198–199); prune condition strictly `!segment.trim()` (research D6)
+- [x] T016 [US5] In `src/lib/agent/trace.ts`: extract the pop-if-trailing-whitespace step (currently inline at 186–188) into a private prune on `this.current`; call it on `reasoning-start` (existing), on a new `reasoning-end` branch of the `part` handler, and at `finish` alongside the finishReason capture (198–199); prune condition strictly `!segment.trim()` (research D6)
 
 **Checkpoint**: US5 independently testable; loop-driven trace tests unaffected.
 

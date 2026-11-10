@@ -3678,6 +3678,70 @@ describe('chatStore paced streaming (022 US1)', () => {
 		expect(chatStore.streamPhase).toBe('idle');
 	});
 
+	it('interleaved text blocks: the second durable row lands without the drain deadline (035 US4 T013)', async () => {
+		chatStore.setStreamPreset('calm');
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'First block answer. ';
+				yield 'Second block answer. ';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-start', id: 't1' };
+				yield { type: 'text-delta', id: 't1', text: 'First block answer. ' };
+				yield { type: 'text-end', id: 't1' };
+				yield { type: 'reasoning-start', id: 'r1' };
+				yield { type: 'reasoning-delta', id: 'r1', text: 'mid thought. ' };
+				yield { type: 'reasoning-end', id: 'r1' };
+				yield { type: 'text-start', id: 't2' };
+				yield { type: 'text-delta', id: 't2', text: 'Second block answer. ' };
+				yield { type: 'text-end', id: 't2' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: 'First block answer. Second block answer. ',
+			response: { id: 'test' }
+		} as never);
+
+		const sendP = chatStore.send('hello');
+		// Block 1 keeps its eased drain: advance until the first durable
+		// assistant row lands (walk order: text row, reasoning row, text row).
+		let firstLanded = false;
+		for (let i = 0; i < 300 && !firstLanded; i++) {
+			await vi.advanceTimersByTimeAsync(16);
+			firstLanded = (await repos.messages.listByChat(root.id)).some((m) => m.role === 'assistant');
+		}
+		expect(firstLanded).toBe(true);
+
+		// Drain-once (contracts/drain-once.md): the second finalize block has
+		// nothing left to release (the first append cleared streamBuffer and
+		// reset the pacer), so it must persist WITHOUT burning the 1200 ms
+		// DRAIN_DEADLINE_MS — 40 × 16 ms (640 ms) stays strictly below it.
+		let secondLanded = false;
+		for (let i = 0; i < 40 && !secondLanded; i++) {
+			await vi.advanceTimersByTimeAsync(16);
+			secondLanded = (await repos.messages.listByChat(root.id)).some(
+				(m) => m.role === 'assistant' && m.content === 'Second block answer. '
+			);
+		}
+		expect(secondLanded).toBe(true);
+
+		await vi.advanceTimersByTimeAsync(50);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+		const msgs = await repos.messages.listByChat(root.id);
+		const rows = msgs.map((m) => [m.role, m.kind, m.content]);
+		expect(rows[0]![0]).toBe('user');
+		expect(rows.slice(1)).toEqual([
+			['assistant', 'assistant_message', 'First block answer. '],
+			['assistant', 'reasoning', 'mid thought. '],
+			['assistant', 'assistant_message', 'Second block answer. ']
+		]);
+		const thought = msgs.find((m) => m.kind === 'reasoning');
+		expect(JSON.parse(thought!.metadata ?? '{}')).toEqual({ iteration: 0, anchored: true });
+	});
+
 	it('abort during a paced stream persists the raw buffer immediately with interrupted:true', async () => {
 		chatStore.setStreamPreset('expressive');
 		let resolveTurn!: () => void;
