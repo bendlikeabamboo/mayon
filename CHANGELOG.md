@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Provider API keys are no longer attached to model-supplied image URLs** —
+  the credential-attaching fetch seams (keychain fetch, streaming HTTP
+  transport) now learn the provider's `baseUrl` host and attach the key only
+  on an exact host match, closing a credential-exfiltration and SSRF path
+  through the LLM proxy: the relay forwards `authorization` / `x-api-key` /
+  `x-goog-api-key` only to the client-declared provider host (`authHost`),
+  strips them for every other target, refuses non-public destinations
+  (loopback/private/link-local/etc. answer `403 blocked target` with no
+  upstream call), never follows redirects, and caps streamed responses at
+  64 MiB; assistant image materialization is size-bounded (32 MiB), with
+  oversized images degrading to the existing "image could not be loaded"
+  notice instead of buffering the whole body.
+
 ## [0.9.0] - 2026-11-03
 
 ### Added

@@ -94,8 +94,9 @@
 
 **Independent Test**: Full suites green + quickstart.md scenarios A–D pass.
 
-- [ ] T017 [US3] Record fail-first evidence and run the quickstart in `specs/032-secure-image-url-fetch/quickstart.md`: confirm scenarios A/B/C were observed failing before their paired implementation tasks (T005/T006/T011/T012) and pass after; note results in the PR description
-- [ ] T018 [P] Document the hardened relay contract in `docs/reference/seams.qmd` (the "No secrets in settings" section's proxy paragraph): credentials ride same-origin to the relay as before, but the relay forwards them only to the client-declared provider host, refuses non-public destinations and redirects, and caps responses at 64 MiB — link `specs/032-secure-image-url-fetch/contracts/llm-proxy.md`
+- [x] T017 [US3] Record fail-first evidence and run the quickstart in `specs/032-secure-image-url-fetch/quickstart.md`: confirm scenarios A/B/C were observed failing before their paired implementation tasks (T005/T006/T011/T012) and pass after; note results in the PR description
+- [x] T018 [P] Document the hardened relay contract in `docs/reference/seams.qmd` (the "No secrets in settings" section's proxy paragraph): credentials ride same-origin to the relay as before, but the relay forwards them only to the client-declared provider host, refuses non-public destinations and redirects, and caps responses at 64 MiB — link `specs/032-secure-image-url-fetch/contracts/llm-proxy.md`
+- [x] T018b [P] (orchestrator addition) Add a CHANGELOG entry under `## [Unreleased]` → `### Fixed` in `CHANGELOG.md` describing the credential-leak + SSRF fix (client authHost gate, relay credential strip / target block / redirect refusal / 64 MiB cap, size-bounded image materialization)
 
 **Checkpoint**: All user stories independently functional
 
@@ -105,7 +106,7 @@
 
 **Purpose**: Merge gates.
 
-- [ ] T019 Run all quality gates one process at a time: `pnpm --filter @mayon/shared build` (if not already current), `pnpm check`, `pnpm lint`, `pnpm test:low-spec`, `pnpm --filter @mayon/server test`; fix fallout (e.g. prettier wrapping in touched files)
+- [x] T019 Run all quality gates one process at a time: `pnpm --filter @mayon/shared build` (if not already current), `pnpm check`, `pnpm lint`, `pnpm test:low-spec`, `pnpm --filter @mayon/server test`; fix fallout (e.g. prettier wrapping in touched files)
 
 ---
 
