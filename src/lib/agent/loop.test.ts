@@ -2206,7 +2206,8 @@ describe('(x) 029 US3 parity: pre-029 shapes unchanged (T018/T019)', () => {
 // 030 image recognition (T003 — specs/030-image-generation US1). scriptedFullStream
 // already accepts arbitrary part shapes, so image-bearing parts flow through as-is.
 // These tests prescribe the finalize handoff for T006: `appendAssistantText` gains
-// an opts bag carrying `images` candidates of `{ mediaType, base64? | url? }`.
+// an opts bag carrying `images` candidates of `{ mediaType, base64? | url? }`,
+// offset-stamped at recognition with the current text length (033, research D5).
 describe('030 image recognition (stream → finalize handoff)', () => {
 	const PNG_B64 = 'QUFB'; // "AAA"
 	const JPEG_B64 = 'QkJC'; // "BBB"
@@ -2251,8 +2252,8 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 			'Here you go',
 			expect.objectContaining({
 				images: [
-					{ mediaType: 'image/png', base64: PNG_B64 },
-					{ mediaType: 'image/jpeg', base64: JPEG_B64 }
+					{ mediaType: 'image/png', base64: PNG_B64, offset: 11 },
+					{ mediaType: 'image/jpeg', base64: JPEG_B64, offset: 11 }
 				]
 			})
 		);
@@ -2291,7 +2292,9 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 
 		expect(deps.appendAssistantText).toHaveBeenCalledWith(
 			'Reply',
-			expect.objectContaining({ images: [{ mediaType: 'image/png', base64: PNG_B64 }] })
+			expect.objectContaining({
+				images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 5 }]
+			})
 		);
 		// The shim only sees raw chunks when they are requested, gated to the
 		// openai-compatible dialect (R-2 addendum).
@@ -2312,7 +2315,9 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 
 		expect(deps.appendAssistantText).toHaveBeenCalledWith(
 			'Reply',
-			expect.objectContaining({ images: [{ url: 'https://img.example.com/out.png' }] })
+			expect.objectContaining({
+				images: [{ url: 'https://img.example.com/out.png', offset: 5 }]
+			})
 		);
 	});
 
@@ -2344,7 +2349,9 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
 		expect(deps.appendAssistantText).toHaveBeenCalledWith(
 			'```mermaid\ngraph TD\nA-->B\n```',
-			expect.objectContaining({ images: [{ mediaType: 'image/png', base64: PNG_B64 }] })
+			expect.objectContaining({
+				images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 14 }]
+			})
 		);
 	});
 

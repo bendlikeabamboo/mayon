@@ -22,6 +22,14 @@ import type { TraceEvent, TracedRequestMessage } from './trace';
 const MAX_ITERATIONS = 6;
 const MAX_CORRECTIONS = 2;
 
+/**
+ * A stream-recognized image candidate stamped with its arrival offset
+ * (feature 033, research D5): `offset` is the current streaming-text length
+ * at the moment of recognition, letting finalize place the image relative to
+ * the turn's text. Optional — critic-round candidates carry none.
+ */
+export type StreamImageCandidate = ImageCandidate & { offset?: number };
+
 export interface AgentTurnDeps {
 	model: LanguageModel;
 	config: ProviderConfig;
@@ -40,8 +48,14 @@ export interface AgentTurnDeps {
 	) => Promise<void>;
 	appendAssistantText: (
 		content: string,
-		opts?: { model?: string; reasoning?: string; images?: ImageCandidate[] }
+		opts?: {
+			model?: string;
+			reasoning?: string;
+			images?: StreamImageCandidate[];
+			final?: boolean;
+		}
 	) => Promise<Message>;
+	onImageRecognized?: (candidate: StreamImageCandidate) => void;
 	appendAssistantToolCall: (p: {
 		toolCallId: string;
 		toolName: string;
@@ -208,16 +222,20 @@ async function consumeStream(
 	onReasoningSegmentStart: () => void,
 	onTextSegmentStart: (startOffset: number) => void,
 	textLength: () => number,
+	imageSink: StreamImageCandidate[],
+	onImageRecognized: ((candidate: StreamImageCandidate) => void) | undefined,
 	onTrace?: (e: TraceEvent) => void
 ): Promise<{
 	finishReason: string;
 	usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null;
-	images: ImageCandidate[];
+	images: StreamImageCandidate[];
 }> {
 	let finishReason = '';
 	let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | null =
 		null;
-	const images: ImageCandidate[] = [];
+	// Caller-owned recognition accumulator (033, research D3): recognized
+	// candidates land here at arrival, so an abort cannot discard them; the
+	// returned `images` array is this sink at normal completion.
 	// Segment state machine (029): reasoning segments are positional (provider
 	// ids are reused/reopened), whitespace-only segments defer their open until
 	// real content arrives, and text splits are recorded at the current buffer
@@ -276,7 +294,17 @@ async function consumeStream(
 				args: p.input ?? p.args
 			});
 		} else if (p.type === 'file' || p.type === 'raw') {
-			collectStreamImages(p, images);
+			// 033 (finalize-composition §1): recognition pushes into the caller-
+			// owned sink, stamping each newly recognized candidate with the
+			// arrival offset (current text length) and firing the recognized-count
+			// signal from recognition time.
+			const firstNew = imageSink.length;
+			collectStreamImages(p, imageSink);
+			for (let k = firstNew; k < imageSink.length; k++) {
+				const c = imageSink[k]!;
+				if (c.offset === undefined) c.offset = textLength();
+				onImageRecognized?.(c);
+			}
 		} else if (p.type === 'finish') {
 			closeReasoningSegment();
 			textOpen = false;
@@ -307,7 +335,7 @@ async function consumeStream(
 			throw p.error as Error;
 		}
 	}
-	return { finishReason, usage: usage ?? null, images };
+	return { finishReason, usage: usage ?? null, images: imageSink };
 }
 
 interface CriticReport {
@@ -454,7 +482,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 
 		// Image candidates accumulate across iterations and critic rounds (R-3);
 		// handed to persistence at finalize (T008 persists them).
-		const turnImages: ImageCandidate[] = [];
+		const turnImages: StreamImageCandidate[] = [];
 		const visionCapable = supportsVision(deps.config, deps.config.defaultModel);
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -537,13 +565,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				completionTokens?: number;
 				totalTokens?: number;
 			} | null;
-			let iterationImages: ImageCandidate[];
+			// Per-iteration sink backing turnImages (033 T002): recognition pushes
+			// into this caller-owned array during streaming; it merges into
+			// turnImages on normal completion.
+			const iterationImages: StreamImageCandidate[] = [];
 			try {
-				({
-					finishReason,
-					usage: streamUsage,
-					images: iterationImages
-				} = await consumeStream(
+				({ finishReason, usage: streamUsage } = await consumeStream(
 					result.fullStream,
 					deps.signal,
 					(text) => {
@@ -573,6 +600,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						deps.onTextSegmentStart?.(startOffset);
 					},
 					() => buf.length,
+					iterationImages,
+					deps.onImageRecognized,
 					deps.onTrace
 				));
 			} catch (err) {

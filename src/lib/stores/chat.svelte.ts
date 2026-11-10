@@ -64,7 +64,7 @@ import {
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '#lib/ai/types.js';
 import { CopilotAuthRequiredError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
-import { runAgentTurn } from '#lib/agent/loop.js';
+import { runAgentTurn, type StreamImageCandidate } from '#lib/agent/loop.js';
 import { getToolDefinitions } from '#lib/agent/registry.js';
 import { generateTitle, DEFAULT_TITLE } from '#lib/ai/generate/generate-title.js';
 import { generateBrief } from '#lib/ai/generate/generate-brief.js';
@@ -169,10 +169,11 @@ class ChatState {
 	liveBlocks = $state<LiveBlock[]>([]);
 	/**
 	 * Image candidates recognized from the in-flight stream (030 R-3),
-	 * pending finalize. Text stays a pure string — the pacer and the rAF
-	 * flush never touch this.
+	 * pending finalize. Entries may carry the arrival `offset` stamped at
+	 * recognition (033 finalize-handoff extension) — composition reads it.
+	 * Text stays a pure string — the pacer and the rAF flush never touch this.
 	 */
-	private pendingImages = $state<ImageCandidate[]>([]);
+	private pendingImages = $state<StreamImageCandidate[]>([]);
 	/**
 	 * Bounded live-placeholder signal (contracts/stream-image-parts.md §2):
 	 * a count only — no base64, no partial frames, ever.

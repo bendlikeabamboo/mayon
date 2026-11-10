@@ -33,7 +33,7 @@ This is the durable storage-and-rendering contract for typed parts on chat messa
 
 ## §5 Provider projection
 
-- `user_message` rows project their image parts onto the wire when the active model is vision-capable (018 behavior, unchanged).
-- `assistant_message` rows project their image parts under the same vision-capability condition (030); otherwise they project text-only, silently.
+- `user_message` rows project their image parts onto the wire when the active model is vision-capable (018 behavior, unchanged), as AI SDK user image parts (`{ type: 'image', image: <stored data URL> }` — legal for user content).
+- `assistant_message` rows project their image parts under the same vision-capability condition (030), as **provider file parts** — the AI SDK's assistant-legal image-bearing shape: `{ type: 'file', mediaType: <full IANA type from the stored part's mimeType>, data: <base64-only body, data-URL prefix stripped> }`. Assistant content accepts no image part (`AssistantContent` in `@ai-sdk/provider-utils@5.0.2` carries text/file/reasoning/tool parts only), so a stored image part must not project as `{ type: 'image' }` on assistant rows. A stored part whose payload cannot produce a base64 body is skipped silently. (Amended in place by feature 033 — see `specs/033-image-output-finalize-paths/contracts/assistant-projection.md`.)
 - `branch_artifact` rows project as text only; images ride the artifact for the user's record, not the model's context.
 - Trace/diagnostic views never emit base64 (placeholder rendering, existing `extractPartContent` behavior).

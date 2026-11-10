@@ -12,7 +12,7 @@
 
 **Purpose**: Align the living 030 contracts with the 033 refinements before code cites them.
 
-- [ ] T001 Amend the two 030 contract files in place per specs/033-image-output-finalize-paths/contracts/: `specs/030-image-generation/contracts/message-parts.md` §5 (assistant wire shape → provider file part) and `specs/030-image-generation/contracts/stream-image-parts.md` §2 (arrival offsets + recognized-count signal), §3 (arrival-order composition, caps with drop notices, image-only rows), §4 (abort persists all completed turn images incl. current iteration). Cross-reference feature 033.
+- [x] T001 Amend the two 030 contract files in place per specs/033-image-output-finalize-paths/contracts/: `specs/030-image-generation/contracts/message-parts.md` §5 (assistant wire shape → provider file part) and `specs/030-image-generation/contracts/stream-image-parts.md` §2 (arrival offsets + recognized-count signal), §3 (arrival-order composition, caps with drop notices, image-only rows), §4 (abort persists all completed turn images incl. current iteration). Cross-reference feature 033.
 
 ---
 
@@ -20,8 +20,8 @@
 
 **Purpose**: The shared recognition→finalize seam changes that four stories depend on. No behavior change yet beyond the seam itself.
 
-- [ ] T002 Extend `consumeStream` in `src/lib/agent/loop.ts` (~:202-311): new `imageSink: ImageCandidate[]` parameter (recognition at the `collectStreamImages` site ~:278-279 pushes into the sink, stamping each candidate with `offset` = current text length via the existing `textLength()` callback), plus optional `onImageRecognized` callback invoked at recognition; the returned `images` array is the sink at normal completion. Update the loop's call site to pass `turnImages`-backed arrays.
-- [ ] T003 Extend the finalize-handoff types in `src/lib/agent/loop.ts` (`AgentTurnDeps.appendAssistantText` opts ~:41-44): `images` entries become `ImageCandidate & { offset?: number }`, add `final?: boolean`; mirror the extension in the store's deps wiring in `src/lib/stores/chat.svelte.ts` (~:694-701) without behavior change. `pnpm check` must pass after this task.
+- [x] T002 Extend `consumeStream` in `src/lib/agent/loop.ts` (~:202-311): new `imageSink: ImageCandidate[]` parameter (recognition at the `collectStreamImages` site ~:278-279 pushes into the sink, stamping each candidate with `offset` = current text length via the existing `textLength()` callback), plus optional `onImageRecognized` callback invoked at recognition; the returned `images` array is the sink at normal completion. Update the loop's call site to pass `turnImages`-backed arrays.
+- [x] T003 Extend the finalize-handoff types in `src/lib/agent/loop.ts` (`AgentTurnDeps.appendAssistantText` opts ~:41-44): `images` entries become `ImageCandidate & { offset?: number }`, add `final?: boolean`; mirror the extension in the store's deps wiring in `src/lib/stores/chat.svelte.ts` (~:694-701) without behavior change. `pnpm check` must pass after this task.
 
 **Checkpoint**: Seam compiles; no story code yet.
 
@@ -34,11 +34,11 @@
 
 ### Tests for User Story 1 (FAIL-FIRST)
 
-- [ ] T004 [US1] FAIL-FIRST tests in `src/lib/chat/projection.test.ts` (assistant parts describe ~:151): (a) vision-capable assistant row with `[text, image]` parts projects to `[{type:'text'}, {type:'file', mediaType:'image/png', data:'<base64 without data: prefix>'}]`; (b) every emitted part `type` is a member of the SDK `AssistantContent` union (assert against the literal set from `@ai-sdk/provider-utils`); (c) `visionCapable: false`/absent stays text-only; (d) user branch keeps the `{type:'image', image}` shape byte-identically.
+- [x] T004 [US1] FAIL-FIRST tests in `src/lib/chat/projection.test.ts` (assistant parts describe ~:151): (a) vision-capable assistant row with `[text, image]` parts projects to `[{type:'text'}, {type:'file', mediaType:'image/png', data:'<base64 without data: prefix>'}]`; (b) every emitted part `type` is a member of the SDK `AssistantContent` union (assert against the literal set from `@ai-sdk/provider-utils`); (c) `visionCapable: false`/absent stays text-only; (d) user branch keeps the `{type:'image', image}` shape byte-identically.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Implement in `src/lib/chat/projection.ts`: `wireContent` gains an assistant mode (or the assistant branch maps parts itself) emitting `{ type: 'file', mediaType: p.mimeType, data: <p.data after the first comma> }` for image parts; user branch unchanged; vision gate unchanged (research D1, contracts/assistant-projection.md).
+- [x] T005 [US1] Implement in `src/lib/chat/projection.ts`: `wireContent` gains an assistant mode (or the assistant branch maps parts itself) emitting `{ type: 'file', mediaType: p.mimeType, data: <p.data after the first comma> }` for image parts; user branch unchanged; vision gate unchanged (research D1, contracts/assistant-projection.md).
 
 **Checkpoint**: Follow-up turns are SDK-shape-valid; MVP shippable.
 
