@@ -13,12 +13,10 @@ describe('POST /api/sandbox/query', () => {
 
 	beforeAll(async () => {
 		memApp = buildApp(':memory:');
-		await memApp.listen({ port: 0, host: '0.0.0.0' });
 
 		tmpDir = mkdtempSync(join(tmpdir(), 'sandbox-db-test-'));
 		dbPath = join(tmpDir, 'test.sqlite');
 		app = buildApp(dbPath);
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {

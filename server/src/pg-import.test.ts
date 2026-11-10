@@ -256,7 +256,6 @@ describe('pg-import', () => {
 			pgReady: true,
 			safetyDir: DATA_DIR
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -463,7 +462,6 @@ describe('pg-import', () => {
 
 	it('no-pool returns 503', async () => {
 		const a = buildApp(':memory:', { databaseUrl: DATA_DIR });
-		await a.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await a.inject({
 				method: 'PUT',

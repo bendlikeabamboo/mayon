@@ -32,7 +32,6 @@ purpose), `retained-live-path` (explicit wire classification), or
 | `render.spec.ts`              | `ui-only`               | Markdown/math/mermaid rendering, copy affordance, theme re-render; expound selection→offset DOM alignment. | Pure rendering/markup logic (`already-covered → src/lib/markdown/*.test.ts`, `src/lib/chat/*.test.ts` where colocated); the DOM alignment layer is the retained UI proof.                                                                                                                                                                                                                               |
 | `image-round-trip.spec.ts`    | `ui-only` + `live-path` | Live marker, pending placeholder, durable thumbnail render.                                                | Reload-serves-from-row (`migrated → src/lib/stores/chat.svelte.test.ts`; e2e mock-log zero-request scrape deleted after the fast home went green) · `image_reply +1` request-count scrape `retained-live-path` (wire composition: the turn issues exactly one classified completion through the proxy) · render `retained-ui`.                                                                          |
 | `backprop-tool.spec.ts`       | `ui-only`               | Approve/Decline UI, tool badges, reload-render persistence, breadcrumb, branch wiring.                     | Offer-turn end-state (`migrated → src/lib/chat/backprop-endstate.test.ts`) · declined-turn end-state (`migrated → src/lib/chat/backprop-endstate.test.ts`) · root-trigger end-state (`migrated → src/lib/chat/backprop-endstate.test.ts`) · approvals/parent-artifact data rows `retained-ui`/`pruned-covered`.                                                                                         |
-| `telemetry.spec.ts`           | `live-path`             | Arming after reload, one thin delivery check per stub path.                                                | Per-turn record fields incl. abort + metadata-no-text (`migrated → src/lib/telemetry/telemetry.test.ts`) · span/OTel mapping and ingest (`already-covered → server/src/telemetry.test.ts`, `server/src/telemetry-ingest.test.ts`) · stub delivery, boot re-read arming, title auto-fire, abort-leg `retained-live-path`.                                                                                |
 
 ## Policy
 
@@ -53,3 +52,12 @@ purpose), `retained-live-path` (explicit wire classification), or
 No spec is currently camera-style (none takes screenshots for visual review).
 When a visual check is needed, keep it screenshot-plus-review and occasional —
 it confirms appearance and does not double as a behavior test.
+
+## Retired specs
+
+- `telemetry.spec.ts` (032 T042) required an external stub receiver and a
+  fixed polling sleep. Ingest/protocol coverage lives in
+  `server/src/telemetry-ingest.test.ts`; the client-emission payload shape is
+  asserted at the MSW boundary by
+  `src/lib/telemetry/emission.browser.test.ts`. The e2e suite no longer needs
+  that external receiver.

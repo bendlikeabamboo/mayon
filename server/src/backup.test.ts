@@ -33,7 +33,6 @@ describe('GET /api/backup/sandbox', () => {
 		tmpDir = mkdtempSync(join(tmpdir(), 'backup-get-test-'));
 		dbPath = join(tmpDir, 'get-test.sqlite');
 		app = buildApp(dbPath);
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -62,7 +61,6 @@ describe('PUT /api/backup/sandbox', () => {
 		tmpDir = mkdtempSync(join(tmpdir(), 'backup-put-test-'));
 		dbPath = join(tmpDir, 'put-test.sqlite');
 		app = buildApp(dbPath);
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -100,7 +98,6 @@ describe('GET /api/health (backup cap)', () => {
 
 	beforeAll(async () => {
 		app = buildApp(':memory:');
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {

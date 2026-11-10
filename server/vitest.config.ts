@@ -9,6 +9,12 @@ export default defineConfig({
 	},
 	test: {
 		include: ['src/**/*.test.ts'],
-		environment: 'node'
+		environment: 'node',
+		// Server handler tests share pglite + Fastify; one capped fork keeps the
+		// suite inside a ~500 MB heap budget on low-spec machines.
+		maxWorkers: 1,
+		fileParallelism: false,
+		pool: 'forks',
+		execArgv: ['--max-old-space-size=500']
 	}
 });

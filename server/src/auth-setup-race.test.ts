@@ -94,7 +94,6 @@ async function startApp(label: string): Promise<TestApp> {
 			'auth-secret'
 		)
 	});
-	await app.listen({ port: 0, host: '0.0.0.0' });
 	return {
 		app,
 		pool,

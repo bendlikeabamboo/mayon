@@ -1,0 +1,28 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Mayon test tier exemptions",
+	"description": "Deliberate exceptions to the guardrail rules in specs/032-test-suite-tiering/contracts/guardrails.md. Keep this list empty unless an exemption has a non-empty justification; an unjustified entry is itself a TT-000 violation.",
+	"type": "array",
+	"items": {
+		"type": "object",
+		"additionalProperties": false,
+		"required": ["file", "rule", "justification"],
+		"properties": {
+			"file": {
+				"type": "string",
+				"minLength": 1,
+				"description": "Repository-relative path of the exempt file."
+			},
+			"rule": {
+				"type": "string",
+				"pattern": "^TT-[0-9]{3}$",
+				"description": "Stable guardrail ID such as TT-002."
+			},
+			"justification": {
+				"type": "string",
+				"minLength": 1,
+				"description": "Why the exemption is needed and when it should be removed."
+			}
+		}
+	}
+}
