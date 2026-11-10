@@ -82,7 +82,8 @@ Rules:
 - `test:ci` owns tier1, tier2, and server; `test:e2e:ci` owns tier3.
 - A missing tier that the current command owns is a failure; a tier owned by another CI job is reported as `deferred`, not failed.
 - `status` is `over-budget` when `measuredSeconds > budgetSeconds`; the owning command exits 3.
-- Tier 3 budget is enforced per shard: each shard ≤ 120 s, four shards ⇒ ≤ 480 s of work and ≤ 120 s wall-clock. The e2e job fails if any shard exceeds 120 s.
+- `budgetSeconds` is the effective budget: the reference budget from `test-budgets.json`, multiplied by `lowSpecMultiplier` (default 2) when the capability gate reports low-spec or unknown. `referenceBudgetSeconds` records the unscaled 8-CPU/8-GiB target.
+- Tier 3 budget is enforced per shard: each shard ≤ 120 s at the reference tier (240 s on low-spec), four shards ⇒ ≤ 480 s of work and ≤ 120 s wall-clock. The e2e job fails if any shard exceeds the effective budget.
 - Budgets live in `test-budgets.json` at the repository root and are the single source of truth.
 - The report is uploaded as a CI artifact even when the job fails.
 

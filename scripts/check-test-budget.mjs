@@ -142,31 +142,45 @@ function formatSeconds(value) {
 
 const ownedTiers = parseArgs(process.argv.slice(2));
 const budgets = readBudgets();
+const multiplier =
+	Number.isFinite(budgets.lowSpecMultiplier) && budgets.lowSpecMultiplier > 0
+		? budgets.lowSpecMultiplier
+		: 1;
+const durations = readDurations();
+const shards = ownedTiers.includes('tier3') ? readShardReports() : [];
+const mode = durations?.capability?.mode ?? shards[0]?.report?.mode ?? 'capable';
+const budgetFactor = mode === 'capable' ? 1 : multiplier;
+const budgetFor = (tier) => budgets[tier] * budgetFactor;
 const failures = [];
 const deferred = ALL_TIERS.filter((tier) => !ownedTiers.includes(tier));
 
 console.log(`[test-budget] owned: ${ownedTiers.join(', ')}`);
+if (budgetFactor !== 1) {
+	console.log(
+		`[test-budget] low-spec x${multiplier}: budgets scaled (mode=${mode}, reference=${budgets.reference ?? '8cpu/8GiB'})`
+	);
+}
 if (deferred.length > 0) {
 	const summary = deferred.map((tier) => `${tier} (${TIER_OWNERS[tier]})`).join(', ');
 	console.log(`[test-budget] deferred: ${summary}`);
 }
 
 for (const tier of ownedTiers) {
-	const budgetSeconds = budgets[tier];
+	const budgetSeconds = budgetFor(tier);
+	const referenceBudgetSeconds = budgets[tier];
 
 	if (tier === 'tier3') {
-		const shardReports = readShardReports();
-		if (shardReports.length === 0) {
+		if (shards.length === 0) {
 			failures.push(
 				`tier3: missing shard report test-results/tier3-shard-<n>.json (owned by ${TIER_OWNERS.tier3} — run pnpm test:e2e:ci --shard=<n>/<total>)`
 			);
 			continue;
 		}
-		for (const { shard, name, report } of shardReports) {
+		for (const { shard, name, report } of shards) {
 			const measured = Number(report.measuredSeconds);
 			const status = measuredStatus(measured, budgetSeconds);
 			console.log(
-				`[test-budget] tier3 shard ${shard}: ${status} ${formatSeconds(measured)}/${budgetSeconds}s (${name})`
+				`[test-budget] tier3 shard ${shard}: ${status} ${formatSeconds(measured)}/${budgetSeconds}s${budgetFactor === 1 ? '' : ` (reference ${referenceBudgetSeconds}s)`} (${name})`
 			);
 			if (status === 'over-budget') {
 				failures.push(
@@ -177,7 +191,6 @@ for (const tier of ownedTiers) {
 		continue;
 	}
 
-	const durations = readDurations();
 	if (!durations) {
 		failures.push(
 			`${tier}: missing report test-results/tier-durations.json (owned by ${TIER_OWNERS[tier]} — run pnpm test:ci)`
@@ -193,7 +206,9 @@ for (const tier of ownedTiers) {
 	}
 	const measured = Number(entry.measuredSeconds);
 	const status = measuredStatus(measured, budgetSeconds);
-	console.log(`[test-budget] ${tier}: ${status} ${formatSeconds(measured)}/${budgetSeconds}s`);
+	console.log(
+		`[test-budget] ${tier}: ${status} ${formatSeconds(measured)}/${budgetSeconds}s${budgetFactor === 1 ? '' : ` (reference ${referenceBudgetSeconds}s)`}`
+	);
 	if (status === 'over-budget') {
 		failures.push(`${tier}: over budget ${formatSeconds(measured)} > ${budgetSeconds}s`);
 	}

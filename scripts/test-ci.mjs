@@ -70,6 +70,12 @@ function run(command, args) {
 }
 
 function writeReport(capacity, budgets, tiers) {
+	const factor =
+		capacity.mode === 'capable'
+			? 1
+			: Number.isFinite(budgets.lowSpecMultiplier) && budgets.lowSpecMultiplier > 0
+				? budgets.lowSpecMultiplier
+				: 1;
 	const report = {
 		generatedAt: new Date().toISOString(),
 		reference: budgets.reference ?? '8cpu/8GiB',
@@ -82,9 +88,10 @@ function writeReport(capacity, budgets, tiers) {
 		},
 		tiers: tiers.map(({ id, measuredSeconds }) => ({
 			id,
-			budgetSeconds: budgets[id],
+			budgetSeconds: budgets[id] * factor,
+			referenceBudgetSeconds: budgets[id],
 			measuredSeconds,
-			status: measuredSeconds > budgets[id] ? 'over-budget' : 'pass'
+			status: measuredSeconds > budgets[id] * factor ? 'over-budget' : 'pass'
 		})),
 		deferred: [{ id: 'tier3', owner: 'test:e2e:ci' }]
 	};

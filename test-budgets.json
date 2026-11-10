@@ -1,5 +1,6 @@
 {
 	"reference": "8cpu/8GiB",
+	"lowSpecMultiplier": 2,
 	"tier1": 60,
 	"tier2": 120,
 	"tier3": 120,

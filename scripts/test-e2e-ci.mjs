@@ -76,7 +76,14 @@ function readTier3Budget() {
 
 const { shard, total } = parseShard(process.argv.slice(2));
 const budgets = readTier3Budget();
-reportCapacity(readCapacity());
+const capacity = reportCapacity(readCapacity());
+const factor =
+	capacity.mode === 'capable'
+		? 1
+		: Number.isFinite(budgets.lowSpecMultiplier) && budgets.lowSpecMultiplier > 0
+			? budgets.lowSpecMultiplier
+			: 1;
+const budgetSeconds = budgets.tier3 * factor;
 
 console.log(`[test:e2e:ci] shard ${shard}/${total}`);
 const start = process.hrtime.bigint();
@@ -92,9 +99,11 @@ if (result.error)
 const report = {
 	shard,
 	total,
-	budgetSeconds: budgets.tier3,
+	mode: capacity.mode,
+	budgetSeconds,
+	referenceBudgetSeconds: budgets.tier3,
 	measuredSeconds,
-	status: measuredSeconds > budgets.tier3 ? 'over-budget' : 'pass'
+	status: measuredSeconds > budgetSeconds ? 'over-budget' : 'pass'
 };
 mkdirSync(RESULTS_DIR, { recursive: true });
 const reportFile = join(RESULTS_DIR, `tier3-shard-${shard}.json`);

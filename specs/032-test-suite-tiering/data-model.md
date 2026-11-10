@@ -134,7 +134,8 @@ The reusable Tier 3 browser state and seed.
 |---|---|---|
 | `tier` | tier id | Unique |
 | `owner` | `'test:ci' \| 'test:e2e:ci'` | The CI job that measures and enforces this tier |
-| `budgetSeconds` | integer | Tier 1 ≤ 60, Tier 2 ≤ 120, Tier 3 ≤ 120 per shard (4 × 120 = 480 total work), server ≤ 120 |
+| `budgetSeconds` | integer | Reference: Tier 1 ≤ 60, Tier 2 ≤ 120, Tier 3 ≤ 120 per shard (4 × 120 = 480 total work), server ≤ 120. Effective budget is `budgetSeconds × lowSpecMultiplier` (default 2) when capability mode is low-spec or unknown |
+| `referenceBudgetSeconds` | integer | Unscaled 8-CPU/8-GiB target, recorded alongside the effective budget |
 | `measuredSeconds` | number | Produced per run by the owning job |
 | `status` | `'pass' \| 'over-budget' \| 'deferred'` | `over-budget` fails the owning job; `deferred` is valid only for a tier owned by another job |
 | `reference` | string | Identifies the reference hardware |
