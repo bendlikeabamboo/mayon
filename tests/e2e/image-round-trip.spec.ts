@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { resolveEngine } from '../../scripts/dev-compose.mjs';
 import { expect, test } from './fixtures/onboard';
 import { IMAGE_DATA_URL, IMAGE_REPLY_TEXT, IMAGE_TRIGGER } from './fixtures/kitchen-sink';
 import { liveText } from './fixtures/render';
@@ -13,24 +14,25 @@ const TURN_TIMEOUT = 30_000;
 // stdout (`[mock-llm] POST /v1/chat/completions -> kind` in server.mjs), so
 // the container's log is the request log the zero-provider assertion reads.
 // Healthcheck GETs to /v1/models never log, so every matched line is a
-// completion request. Resolving the compose project through `docker compose
+// completion request. Resolving the compose project through `<engine> compose
 // ls` (matched against this checkout's dev compose file) stays correct when
 // several dev stacks run side by side. This observes the mock's log only —
 // the request path itself is never intercepted (FR-005 guardrail).
 const COMPOSE_FILE = `${process.cwd()}/docker-compose.dev.yml`;
 const MOCK_REQUEST_LINE = /\[mock-llm\] POST \S+ -> (\S+)/;
+const ENGINE = resolveEngine()?.engine ?? 'docker';
 
 /** Provider completion requests the mock has logged so far, optionally one kind. */
 function mockRequestCount(kind?: string): number {
 	const project = (() => {
 		const projects = JSON.parse(
-			execSync('docker compose ls --format json', { encoding: 'utf8' })
+			execSync(`${ENGINE} compose ls --format json`, { encoding: 'utf8' })
 		) as Array<{ Name: string; ConfigFiles: string }>;
 		const found = projects.find((p) => p.ConfigFiles.split(',').includes(COMPOSE_FILE));
 		if (!found) throw new Error(`no running compose project mounts ${COMPOSE_FILE}`);
 		return found;
 	})();
-	const logs = execSync(`docker logs ${project.Name}-mock-llm-1`, { encoding: 'utf8' });
+	const logs = execSync(`${ENGINE} logs ${project.Name}-mock-llm-1`, { encoding: 'utf8' });
 	return logs
 		.split('\n')
 		.map((line) => MOCK_REQUEST_LINE.exec(line)?.[1])

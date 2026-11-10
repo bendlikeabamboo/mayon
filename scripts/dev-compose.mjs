@@ -53,7 +53,8 @@ function binaryExists(binary) {
 	return probe.status === 0;
 }
 
-function resolveEngine() {
+/** MAYON_DEV_ENGINE override → auto-detect (docker preferred); null if none. */
+export function resolveEngine() {
 	const requested = process.env.MAYON_DEV_ENGINE;
 	if (requested !== undefined && requested !== '') {
 		if (!validEngines.includes(requested)) {
@@ -63,9 +64,7 @@ function resolveEngine() {
 	}
 	if (binaryExists('docker')) return { engine: 'docker', source: 'detected' };
 	if (binaryExists('podman')) return { engine: 'podman', source: 'detected' };
-	fail(
-		'No container engine found. Install one of: docker (https://docs.docker.com/get-docker/) or podman (https://podman.io; also install a compose provider, e.g. the podman-compose package).'
-	);
+	return null;
 }
 
 function main() {
@@ -95,7 +94,13 @@ function main() {
 		env.SHARD_LANGFUSE_PORT ??= String(shardLangfusePort(shard));
 	}
 
-	const { engine, source } = resolveEngine();
+	const resolved = resolveEngine();
+	if (!resolved) {
+		fail(
+			'No container engine found. Install one of: docker (https://docs.docker.com/get-docker/) or podman (https://podman.io; also install a compose provider, e.g. the podman-compose package).'
+		);
+	}
+	const { engine, source } = resolved;
 	console.log(`Using engine: ${engine} (source: ${source})`);
 
 	const fileArgs = composeFiles.flatMap((file) => ['-f', file]);
