@@ -5,6 +5,7 @@ import type { ProviderConfig } from '#lib/ai/types.js';
 import { MissingKeyError, NetworkError, ProviderHttpError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
+import { buildMermaidFixPrompt } from '#lib/markdown/mermaid-repair.js';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
 import { projectEntries } from '#lib/chat/projection.js';
@@ -1808,6 +1809,47 @@ describe('chatStore provider error surfacing (T015)', () => {
 		});
 		expect(chatStore.lastFailedPrompt).toBe('hello');
 	});
+
+	// 036 T004(a) — send preflight (contracts/fix-send-preflight.md): the
+	// provider resolves BEFORE the user-row append, so a rejecting provider
+	// persists nothing (today exactly one orphan user row survives — the
+	// failure this test pins).
+	it('preflight: rejecting provider persists NO user row and arms the retry state', async () => {
+		mockedGetActiveSdkProvider.mockRejectedValue(new MissingKeyError(undefined, 'cop-1'));
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		await chatStore.send('fix this diagram');
+
+		const rows = await repos.messages.listByChat(root.id);
+		expect(rows.filter((m) => m.role === 'user')).toHaveLength(0);
+		expect(rows).toHaveLength(0);
+		expect(chatStore.streaming).toBe(false);
+		expect(chatStore.error).toEqual({
+			title: 'Missing API key',
+			message: 'No API key configured for this provider.',
+			hint: 'Add an API key for this provider in Settings.'
+		});
+		expect(chatStore.lastFailedPrompt).toBe('fix this diagram');
+	});
+
+	// 036 T004(b) — the 028 fix affordance sends through the same path: a
+	// resolvable provider yields exactly one visible (non-hidden) user row.
+	it('fix-prompt send with a resolvable provider persists exactly one visible user row', async () => {
+		mockDefaultProvider();
+		mockStreamReply(['ok']);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		await chatStore.send(buildMermaidFixPrompt('graph TD\n  A -->', 'Error: bad syntax'));
+
+		const rows = await repos.messages.listByChat(root.id);
+		const userRows = rows.filter((m) => m.role === 'user');
+		expect(userRows).toHaveLength(1);
+		const meta = userRows[0]!.metadata;
+		const parsedMeta: Record<string, unknown> = meta === null ? {} : JSON.parse(meta);
+		expect(parsedMeta.hidden).toBeUndefined();
+	});
 });
 
 describe('chatStore durable asks (reload-honesty)', () => {
@@ -2341,7 +2383,11 @@ describe('chatStore send with attachments (T010 — specs/018 User Story 1)', ()
 
 	it('(b) a failed send with attachments leaves no assistant row and arms the retry state', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
-		mockedGetActiveSdkProvider.mockRejectedValue(new Error('boom'));
+		// 036: provider resolution preflights BEFORE the user-row append, so a
+		// provider-rejection mock no longer reaches the post-append failure
+		// path — fail the turn instead to exercise the dangling-row contract.
+		mockDefaultProvider();
+		vi.mocked(runAgentTurn).mockRejectedValueOnce(new Error('boom'));
 		await chatStore.load(root.id);
 
 		const attachments = [makeAttachment(IMAGE_A)];
@@ -2363,7 +2409,10 @@ describe('chatStore send with attachments (T010 — specs/018 User Story 1)', ()
 
 	it('(c) retry re-sends with text AND attachments restored, deleting the dangling user row first', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
-		mockedGetActiveSdkProvider.mockRejectedValue(new Error('boom'));
+		// 036: fail the turn post-append (see (b)) — the preflight owns
+		// provider-rejection failures now, and this flow needs a dangling row.
+		mockDefaultProvider();
+		vi.mocked(runAgentTurn).mockRejectedValueOnce(new Error('boom'));
 		await chatStore.load(root.id);
 
 		const attachments = [makeAttachment(IMAGE_A, 'retry.png'), makeAttachment(IMAGE_B)];

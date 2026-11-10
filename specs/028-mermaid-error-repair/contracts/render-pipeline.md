@@ -39,9 +39,19 @@ Invariants:
 
 - Pure function: `(source: string) => string` (post-repair source; identity when
   no rule matches). No DOM, no imports of mermaid, no state.
-- Rule set is small, explicit, and corpus-tested; must include the spec's example
-  fault class (quoted labels containing embedded double quotes/commas, e.g.
-  `A -->|"sad", "SAD", "sleepy", "del"| B`).
+- Rule set (amended in place by feature 036 —
+  `specs/036-mermaid-repair-integrity/contracts/repair-semantics.md`):
+  family-scoped, single-pass-per-rule, and idempotent. Protected directive
+  (`%%{…}%%`) and comment (`%% …`) lines are never rewritten; rules run in fixed
+  order, each exactly ONE pass (no re-scan loops); label rules are scoped to the
+  flowchart family (`graph`/`flowchart` declared by the first non-protected
+  line), with the quoted-list collapse further scoped to `|…|` edge labels;
+  constructs valid in their family/position (C4 argument lists, xychart data
+  lists, init JSON) are never rewritten — an identity output is what makes the
+  seam reject with the underlying original error. The rule set stays
+  corpus-tested (corpus ∪ first-pass outputs) and must include the spec's
+  example fault class (quoted labels containing embedded double quotes/commas,
+  e.g. `A -->|"sad", "SAD", "sleepy", "del"| B`).
 - Must be idempotent: `repair(repair(x)) === repair(x)`.
 
 ## Caller obligations (`Markdown.svelte`, both passes)

@@ -3,7 +3,7 @@
 	import { renderMarkdown, renderMarkdownLive } from '#lib/markdown/render.js';
 	import { incRender } from '#lib/perf/mark.js';
 	import { hasMermaid, renderMermaidBlock } from '#lib/markdown/mermaid.js';
-	import { buildMermaidFixPrompt } from '#lib/markdown/mermaid-repair.js';
+	import { buildMermaidErrorBlock } from './mermaid-error-block.js';
 	import { themeState } from '#lib/stores/theme.svelte.js';
 	import { isExternalLink } from '#lib/markdown/links.js';
 	import { enhanceFocusable } from '#lib/markdown/focusable.js';
@@ -39,55 +39,6 @@
 	// Serialize mermaid re-renders within this instance so concurrent syncs
 	// (theme effect + in-flight initial renders) cannot interleave renders.
 	let mermaidSync: Promise<void> = Promise.resolve();
-
-	/**
-	 * Contained fallback block for a failed mermaid render (spec 028 US1):
-	 * plain-language notice, failure reason collapsed behind "Why?", and the
-	 * diagram source in a readable pre. Everything stays inside this block —
-	 * no page-level side effects, no inline parser dump.
-	 */
-	function buildMermaidError(source: string, err: unknown): HTMLElement {
-		const block = document.createElement('div');
-		block.className = 'mermaid-error';
-
-		const notice = document.createElement('p');
-		notice.className = 'mermaid-error-notice';
-		notice.textContent = "This diagram couldn't be rendered";
-		block.appendChild(notice);
-
-		const reasonText = err instanceof Error ? err.message : String(err);
-
-		const reason = document.createElement('details');
-		const summary = document.createElement('summary');
-		summary.textContent = 'Why?';
-		const message = document.createElement('code');
-		message.textContent = reasonText;
-		reason.appendChild(summary);
-		reason.appendChild(message);
-		block.appendChild(reason);
-
-		const sourcePre = document.createElement('pre');
-		const sourceCode = document.createElement('code');
-		sourceCode.textContent = source;
-		sourcePre.appendChild(sourceCode);
-		block.appendChild(sourcePre);
-
-		// Fix affordance (spec 028 US3): only when a handler was passed —
-		// no handler (labs, quizzes, user messages, tool results, live) ⇒
-		// no button at all.
-		if (onFixMermaid) {
-			const fixBtn = document.createElement('button');
-			fixBtn.className = 'mermaid-fix-btn';
-			fixBtn.type = 'button';
-			fixBtn.textContent = 'Fix this diagram';
-			fixBtn.addEventListener('click', () => {
-				onFixMermaid(buildMermaidFixPrompt(source, reasonText));
-			});
-			block.appendChild(fixBtn);
-		}
-
-		return block;
-	}
 
 	/**
 	 * Repaired-diagram badge (spec 028 US2): "repaired" chip plus the
@@ -143,7 +94,9 @@
 			} catch (err) {
 				const badge = wrapper.nextElementSibling;
 				if (badge?.classList.contains('mermaid-repaired')) badge.remove();
-				wrapper.replaceWith(buildMermaidError(wrapper.dataset.mermaidSource ?? '', err));
+				wrapper.replaceWith(
+					buildMermaidErrorBlock(wrapper.dataset.mermaidSource ?? '', err, onFixMermaid)
+				);
 			}
 		}
 	}
@@ -202,7 +155,7 @@
 						void syncMermaidTheme(themeState.resolved);
 					})
 					.catch((err) => {
-						placeholder.replaceWith(buildMermaidError(source, err));
+						placeholder.replaceWith(buildMermaidErrorBlock(source, err, onFixMermaid));
 					});
 			});
 		}
@@ -505,9 +458,10 @@
 			height: 2rem;
 		}
 	}
-	/* Failed mermaid render (spec 028): contained fallback block. The block
-	   and its children are runtime-created, so these must stay :global —
-	   scoped selectors never match elements created outside the template. */
+	/* Failed mermaid render (spec 028, rebuilt by 036): contained fallback
+	   block. The block and its children are runtime-created, so these must
+	   stay :global — scoped selectors never match elements created outside
+	   the template. */
 	:global(.mermaid-error) {
 		margin: 0.5em 0;
 		padding: 0.75em 1em;
@@ -522,14 +476,24 @@
 		font-weight: 600;
 		color: var(--foreground);
 	}
+	/* Full failure text, always visible and wrapped (036): the class hook is
+	   what the builder stamps; the wrapping lives here. */
+	:global(.mermaid-error .mermaid-error-reason) {
+		margin: 0 0 0.5em;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		max-width: 100%;
+	}
+	/* Diagram source collapsed behind a details (036). */
+	:global(.mermaid-error details) {
+		margin: 0;
+	}
 	:global(.mermaid-error summary) {
 		cursor: pointer;
 		font-size: 0.8125rem;
 	}
-	:global(.mermaid-error code) {
-		font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-		font-size: 0.8125rem;
-		overflow-wrap: anywhere;
+	:global(.mermaid-error details pre) {
+		margin: 0.35em 0 0;
 	}
 	/* Fix-diagram affordance (spec 028 US3): md-copy-btn vocabulary, but
 	   statically visible inside the error block. Runtime-created ⇒ :global. */

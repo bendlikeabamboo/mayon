@@ -56,7 +56,7 @@ import {
 } from '#lib/chat/propagation.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import { getActiveSdkProvider } from '#lib/ai/client.js';
-import { providerFetchFor } from '#lib/ai/sdk-factory.js';
+import { providerFetchFor, type ActiveProvider } from '#lib/ai/sdk-factory.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
 import { mark, incRender } from '#lib/perf/mark.js';
@@ -529,6 +529,30 @@ class ChatState {
 
 		this.error = null;
 		this.lastMappedError = null;
+
+		const builder = new TraceBuilder();
+		const startTime = Date.now();
+
+		// Send preflight (036, contracts/fix-send-preflight.md): resolve the
+		// provider BEFORE persisting the user row and BEFORE entering the
+		// streaming state. On rejection, mirror the catch path's presentation
+		// and persist NOTHING — no orphan user row from any send entry point
+		// (composer, regenerate, or the mermaid "Fix this diagram" affordance).
+		let sdk: ActiveProvider;
+		try {
+			sdk = await getActiveSdkProvider();
+		} catch (err) {
+			const mapped = mapSdkError(err);
+			this.error = formatProviderError(mapped);
+			this.lastMappedError = mapped;
+			this.lastFailedPrompt = prompt;
+			this.lastFailedAttachments = hasImages ? attachments : null;
+			builder.emit({
+				kind: 'error',
+				message: err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+			});
+			return;
+		}
 		const chatId = this.chatId;
 		const effort: ReasoningEffort = opts?.effort ?? 'on';
 		const hidden = opts?.hidden ?? false;
@@ -587,8 +611,6 @@ class ChatState {
 		this.controller = new AbortController();
 		this.startRenderFlush();
 
-		const builder = new TraceBuilder();
-		const startTime = Date.now();
 		/** Final assistant text of the turn, captured by `appendAssistantText`
 		 *  before buffer teardown (the DEV strategy lint reads it post-turn). */
 		let finalAssistantText = '';
@@ -622,7 +644,9 @@ class ChatState {
 		let mcpSession: { unmountAll: () => void } | null = null;
 
 		try {
-			const [ctx, sdk] = await Promise.all([assembleContext(chatId), getActiveSdkProvider()]);
+			// The provider was already resolved by the preflight above and is
+			// reused for the whole turn (036 contracts/fix-send-preflight.md).
+			const ctx = await assembleContext(chatId);
 			this.lastAssembledChars = ctx.reduce((n, m) => n + m.content.length, 0);
 			model = sdk.model;
 			config = sdk.config;
