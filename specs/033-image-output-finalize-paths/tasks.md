@@ -122,12 +122,12 @@
 
 ### Tests for User Story 6 (FAIL-FIRST)
 
-- [ ] T017 [P] [US6] FAIL-FIRST tests in `src/lib/chat/images.test.ts` (`applyOutputBudget` describe ~:331): (a) an ops stub whose `decode` rejects makes `applyOutputBudget` return a `{ images, dropped }`-shaped result (never throw) with the failing image dropped and in-budget siblings untouched; (b) all-in-budget input keeps the existing passthrough result (update call-site expectations for the new return shape).
-- [ ] T018 [P] [US6] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: one valid candidate + one garbage-base64 candidate + trailing text → row persists with the valid image, the text, and a bracketed per-image notice (today: broken image silently, or finalize rejects and loses everything).
+- [x] T017 [P] [US6] FAIL-FIRST tests in `src/lib/chat/images.test.ts` (`applyOutputBudget` describe ~:331): (a) an ops stub whose `decode` rejects makes `applyOutputBudget` return a `{ images, dropped }`-shaped result (never throw) with the failing image dropped and in-budget siblings untouched; (b) all-in-budget input keeps the existing passthrough result (update call-site expectations for the new return shape).
+- [x] T018 [P] [US6] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: one valid candidate + one garbage-base64 candidate + trailing text → row persists with the valid image, the text, and a bracketed per-image notice (today: broken image silently, or finalize rejects and loses everything).
 
 ### Implementation for User Story 6
 
-- [ ] T019 [US6] Implement in `src/lib/chat/images.ts` + `src/lib/stores/chat.svelte.ts`: export a sniff-gate helper (`sniffImageMime` over the data-URL bytes — decoder-independent); `applyOutputBudget` wraps `reencodeOutputImage` per image in try/catch and returns `{ images, dropped }`; `composeAssistantParts` validates candidates with the sniff gate before decode, aggregates all drop notices (sniff / cap / budget) through the existing bracketed-notice path; leave `candidateToImagePart`'s 0×0 best-effort probe and 032's `fetchImageCandidate` untouched (research D6).
+- [x] T019 [US6] Implement in `src/lib/chat/images.ts` + `src/lib/stores/chat.svelte.ts`: export a sniff-gate helper (`sniffImageMime` over the data-URL bytes — decoder-independent); `applyOutputBudget` wraps `reencodeOutputImage` per image in try/catch and returns `{ images, dropped }`; `composeAssistantParts` validates candidates with the sniff gate before decode, aggregates all drop notices (sniff / cap / budget) through the existing bracketed-notice path; leave `candidateToImagePart`'s 0×0 best-effort probe and 032's `fetchImageCandidate` untouched (research D6).
 
 **Checkpoint**: Damage is contained per image.
 
@@ -140,12 +140,12 @@
 
 ### Tests for User Story 7 (FAIL-FIRST)
 
-- [ ] T020 [US7] FAIL-FIRST test in `src/lib/agent/loop.test.ts`: the `onImageRecognized` dep is invoked once per recognized stream image, before any finalize call.
-- [ ] T021 [US7] FAIL-FIRST store tests in `src/lib/stores/chat.svelte.test.ts`: (a) a turn whose stream recognized an image and then failed with a `ProviderHttpError` 4xx surfaces the typed "No image produced" notice (title/message/hint family), not the raw provider error and not "Network error" (today unreachable — `pendingImages` is empty at catch time); (b) a successful text-only turn against an image-output-expected model (stub `supportsImageOutput` true via config `imageOutput: 'on'`) carries the bracketed no-image notice on the final row; (c) the same turn against a non-expected model carries no notice.
+- [x] T020 [US7] FAIL-FIRST test in `src/lib/agent/loop.test.ts`: the `onImageRecognized` dep is invoked once per recognized stream image, before any finalize call.
+- [x] T021 [US7] FAIL-FIRST store tests in `src/lib/stores/chat.svelte.test.ts`: (a) a turn whose stream recognized an image and then failed with a `ProviderHttpError` 4xx surfaces the typed "No image produced" notice (title/message/hint family), not the raw provider error and not "Network error" (today unreachable — `pendingImages` is empty at catch time); (b) a successful text-only turn against an image-output-expected model (stub `supportsImageOutput` true via config `imageOutput: 'on'`) carries the bracketed no-image notice on the final row; (c) the same turn against a non-expected model carries no notice.
 
 ### Implementation for User Story 7
 
-- [ ] T022 [US7] Implement in `src/lib/stores/chat.svelte.ts` (+ wire the dep in `src/lib/agent/loop.ts` call path): turn-scoped `streamRecognizedImages` counter incremented by `onImageRecognized`, reset at send start; catch-time refinement (~:875-878) rekeys from `pendingImages.length` to the counter; zero-image notice appended to the row content when a `final` append (T003 marker) completes `!aborted`, `content.trim() !== ''`, counter === 0, and `supportsImageOutput(config, config.defaultModel)` (import from `src/lib/ai/image-output-capability.ts`) — advisory only, never blocks (research D7, contracts/finalize-composition.md §4).
+- [x] T022 [US7] Implement in `src/lib/stores/chat.svelte.ts` (+ wire the dep in `src/lib/agent/loop.ts` call path): turn-scoped `streamRecognizedImages` counter incremented by `onImageRecognized`, reset at send start; catch-time refinement (~:875-878) rekeys from `pendingImages.length` to the counter; zero-image notice appended to the row content when a `final` append (T003 marker) completes `!aborted`, `content.trim() !== ''`, counter === 0, and `supportsImageOutput(config, config.defaultModel)` (import from `src/lib/ai/image-output-capability.ts`) — advisory only, never blocks (research D7, contracts/finalize-composition.md §4).
 
 **Checkpoint**: All acceptance bullets of issue #70 hold.
 

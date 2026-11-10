@@ -409,7 +409,15 @@ async function runCriticPhase(
 				freshBuf += p.text as string;
 				deps.updateStreamBuffer(freshBuf);
 			} else if (p.type === 'file' || p.type === 'raw') {
+				// 033 T022 (research D7): critic-round recognitions fire the same
+				// counter dep — the store's refinement and zero-image notice must
+				// see every recognized image of the turn. Offset-less (critic
+				// candidates append after the text at the finalize handoff).
+				const firstNew = images.length;
 				collectStreamImages(p, images);
+				for (let k = firstNew; k < images.length; k++) {
+					deps.onImageRecognized?.(images[k] as StreamImageCandidate);
+				}
 			} else if (p.type === 'error') {
 				throw p.error as Error;
 			}
@@ -518,8 +526,14 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						row.content,
 						final ? { images: rowImages, final: true } : { images: rowImages }
 					);
+				} else if (final && !deps.signal.aborted) {
+					// 033 T022 (research D7): the turn's non-aborted finalize appends
+					// carry the `final` marker — it drives the store's zero-image
+					// notice placement. Image-less abort persists keep the exact
+					// pre-033 1-arg call (finalize-composition §3).
+					msg = await deps.appendAssistantText(row.content, { final: true });
 				} else {
-					// Image-less rows keep the exact 1-arg call.
+					// Image-less interim rows keep the exact 1-arg call.
 					msg = await deps.appendAssistantText(row.content);
 				}
 			}
@@ -723,15 +737,18 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				// ride both paths (030 §3, amended by 033): on the walk each image
 				// rides the row containing its arrival offset; the critic re-emit
 				// drops the stale offsets and appends the images after the
-				// corrected text (finalize-composition §2, best-effort).
+				// corrected text (finalize-composition §2, best-effort). 033 T022
+				// (research D7): the turn's finalize calls are marked `final` on
+				// both paths (the image-only fallback below already is).
 				let msg =
 					finalBuf !== buf
 						? turnImages.length > 0
 							? await deps.appendAssistantText(finalBuf, {
-									images: appendAfterText(turnImages)
+									images: appendAfterText(turnImages),
+									final: true
 								})
-							: await deps.appendAssistantText(finalBuf)
-						: await walkPersist(i, finalBuf, turnImages);
+							: await deps.appendAssistantText(finalBuf, { final: true })
+						: await walkPersist(i, finalBuf, turnImages, true);
 				// 033 T008 (research D2): an image-only finalize (no text row) still
 				// persists — the image-only row (content '') rides the single
 				// finalize point, marked `final`.
@@ -958,10 +975,12 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		if (budgetResult.report && deps.appendSelfCorrected) {
 			await deps.appendSelfCorrected(budgetResult.report, budgetResult.text.length);
 		}
+		// 033 T022 (research D7): the budget-exhaustion path is a finalize call —
+		// its appends carry the `final` marker like the walk/critic paths.
 		const msg =
 			turnImages.length > 0
-				? await deps.appendAssistantText(budgetResult.text, { images: turnImages })
-				: await deps.appendAssistantText(budgetResult.text);
+				? await deps.appendAssistantText(budgetResult.text, { images: turnImages, final: true })
+				: await deps.appendAssistantText(budgetResult.text, { final: true });
 		deps.onTrace?.({
 			kind: 'persisted',
 			messageId: msg.id,

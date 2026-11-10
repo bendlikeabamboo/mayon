@@ -348,7 +348,7 @@ describe('runAgentTurn', () => {
 
 		expect(result).toEqual({ aborted: false });
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world');
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world', { final: true });
 		expect(deps.updateStreamBuffer).toHaveBeenCalledWith('Hello');
 		expect(deps.updateStreamBuffer).toHaveBeenCalledWith('Hello world');
 		expect(deps.appendAssistantToolCall).not.toHaveBeenCalled();
@@ -396,7 +396,7 @@ describe('runAgentTurn', () => {
 			expect.objectContaining({ summary: '1/3 steps done' })
 		);
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('You have 1 of 3 done.');
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('You have 1 of 3 done.', { final: true });
 	});
 
 	it('(c) maxIterations: loop stops at 6; finalizes with exhaustion note; no runaway', async () => {
@@ -624,7 +624,9 @@ describe('runAgentTurn', () => {
 			expect(mockedStreamText).toHaveBeenCalledTimes(2);
 			expect(deps.updateStreamBuffer).toHaveBeenCalledWith('');
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```');
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```', {
+				final: true
+			});
 			expect(appendSC).toHaveBeenCalledOnce();
 			expect(appendSC).toHaveBeenCalledWith(
 				{
@@ -777,7 +779,7 @@ describe('runAgentTurn', () => {
 			expect(result).toEqual({ aborted: false });
 			expect(mockedDisableToolsForSession).toHaveBeenCalledOnce();
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('fallback text');
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('fallback text', { final: true });
 
 			const retryCall = mockedStreamText.mock.calls[1][0];
 			expect(retryCall.tools).toEqual({});
@@ -1213,7 +1215,9 @@ describe('runAgentTurn', () => {
 				expect.objectContaining({ summary: 'user declined' })
 			);
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.');
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Continuing without quiz.', {
+				final: true
+			});
 		});
 
 		it('(s) non-generative high tool unaffected: branch_chat + create_quiz → both approved; branch not budget-gated', async () => {
@@ -1287,7 +1291,8 @@ describe('runAgentTurn', () => {
 
 			const finalCall = allCalls.find((c) => c[0] === 'Final reply');
 			expect(finalCall).toBeDefined();
-			expect(finalCall![1]).toBeUndefined();
+			// 033 T022: the turn's finalize append carries the `final` marker.
+			expect(finalCall![1]).toEqual({ final: true });
 		});
 
 		it('text-only turn with reasoning: single appendReasoning call at iteration 0', async () => {
@@ -1305,7 +1310,7 @@ describe('runAgentTurn', () => {
 			expect(deps.appendReasoning).toHaveBeenCalledOnce();
 			expect(deps.appendReasoning).toHaveBeenCalledWith('hmm', 0);
 			expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-			expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply');
+			expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply', { final: true });
 		});
 
 		it('turn without reasoning: appendReasoning is never called', async () => {
@@ -1454,7 +1459,8 @@ describe('runAgentTurn', () => {
 
 			const calls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
 			expect(calls).toHaveLength(1);
-			expect(calls[0][1]).toBeUndefined();
+			// 033 T022: the turn's finalize append carries the `final` marker.
+			expect(calls[0][1]).toEqual({ final: true });
 		});
 	});
 
@@ -1767,7 +1773,9 @@ describe('generative buf suppression + chip', () => {
 		const lastClearIdx = bufferCalls.findLastIndex((c: unknown[]) => c[0] === '');
 		expect(lastClearIdx).toBeGreaterThanOrEqual(0);
 		expect(deps.appendAssistantText).toHaveBeenCalledTimes(1);
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.');
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Quiz created. Check it out.', {
+			final: true
+		});
 
 		expect(notifyGenerativeStatus).toHaveBeenCalledWith({
 			toolName: 'create_quiz',
@@ -2003,7 +2011,8 @@ describe('(w) persist order (003 US3): reasoning first, per iteration', () => {
 		expect(deps.appendReasoning).toHaveBeenCalledOnce();
 		expect(deps.appendReasoning).toHaveBeenCalledWith('solo thought', 0);
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('answer');
+		// 033 T022: the turn's finalize append carries the `final` marker.
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('answer', { final: true });
 	});
 
 	it('abort mid-interleave persists received blocks in order; nothing after the stop point (029 T011)', async () => {
@@ -2101,8 +2110,9 @@ describe('(x) 029 US3 parity: pre-029 shapes unchanged (T018/T019)', () => {
 		const textCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
 		expect(textCalls).toHaveLength(1);
 		expect(textCalls[0][0]).toBe('answer');
-		// single text block ⇒ no per-block opts — same signature as pre-029
-		expect(textCalls[0][1]).toBeUndefined();
+		// single text block ⇒ one full-buffer row; 033 T022 adds the finalize
+		// `final` marker (the pre-029 row shape itself is unchanged)
+		expect(textCalls[0][1]).toEqual({ final: true });
 		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
 	});
 
@@ -2122,7 +2132,8 @@ describe('(x) 029 US3 parity: pre-029 shapes unchanged (T018/T019)', () => {
 		const textCalls = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock.calls;
 		expect(textCalls).toHaveLength(1);
 		expect(textCalls[0][0]).toBe('answer');
-		expect(textCalls[0][1]).toBeUndefined();
+		// 033 T022: the turn's finalize append carries the `final` marker.
+		expect(textCalls[0][1]).toEqual({ final: true });
 	});
 
 	it('critic correction re-stream discards reasoning deltas; only the corrected text persists (029 T019, research D6)', async () => {
@@ -2157,7 +2168,9 @@ describe('(x) 029 US3 parity: pre-029 shapes unchanged (T018/T019)', () => {
 		expect(mockedStreamText).toHaveBeenCalledTimes(2);
 		expect(deps.appendReasoning).not.toHaveBeenCalled();
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```');
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```', {
+			final: true
+		});
 	});
 
 	it('tool-call closes the open reasoning segment; tool-boundary persist order preserved (029 T019)', async () => {
@@ -2275,7 +2288,7 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 		await runAgentTurn(deps);
 
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply');
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Reply', { final: true });
 	});
 
 	it('raw-chunk delta.images (openai-compatible shim) are recognized; data URLs split into mediaType+base64', async () => {
@@ -2358,7 +2371,10 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 		);
 	});
 
-	it('image-less streams keep the 1-arg finalize call (byte-identical behavior)', async () => {
+	// 033 T022 (research D7): image-less finalize appends carry the `final`
+	// marker (drives the store's zero-image notice); the persisted row shape
+	// itself stays byte-identical (parts omitted).
+	it('image-less finalize streams mark the append final; the row shape is unchanged (033 T022)', async () => {
 		mockedStreamText.mockReturnValue({
 			fullStream: scriptedFullStream([
 				{ type: 'text-delta', text: 'Hello' },
@@ -2371,7 +2387,7 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 		await runAgentTurn(deps);
 
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
-		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world');
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world', { final: true });
 	});
 
 	// 033 T006 (research D2, finalize-composition §2): an images-with-no-text
@@ -2556,6 +2572,44 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 				images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 2 }]
 			})
 		);
-		expect(deps.appendAssistantText).toHaveBeenNthCalledWith(2, 'CD');
+		// both rows are the turn's finalize walk (033 T022 marker): the
+		// image-bearing row's opts pin stays objectContaining-tolerant
+		expect(deps.appendAssistantText).toHaveBeenNthCalledWith(2, 'CD', { final: true });
+	});
+
+	// 033 T020 (US7, finalize-composition §4): the recognition-count dep fires
+	// once per recognized stream image, and every recognition precedes the
+	// finalize append — the store's catch-time refinement and zero-image notice
+	// can only key on a counter that is complete before finalize runs.
+	it('onImageRecognized fires once per recognized stream image, before any finalize call (033 T020)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-delta', text: 'A' },
+				filePart(PNG_B64),
+				filePart(JPEG_B64, 'image/jpeg'),
+				{ type: 'text-delta', text: 'B' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const onImageRecognized = vi.fn();
+		const deps = makeDeps({ onImageRecognized });
+		await runAgentTurn(deps);
+
+		expect(onImageRecognized).toHaveBeenCalledTimes(2);
+		expect(onImageRecognized).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ mediaType: 'image/png', base64: PNG_B64 })
+		);
+		expect(onImageRecognized).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ mediaType: 'image/jpeg', base64: JPEG_B64 })
+		);
+		const recognitionOrders = onImageRecognized.mock.invocationCallOrder;
+		const firstFinalizeOrder = (deps.appendAssistantText as ReturnType<typeof vi.fn>).mock
+			.invocationCallOrder[0] as number;
+		for (const order of recognitionOrders) {
+			expect(order).toBeLessThan(firstFinalizeOrder);
+		}
 	});
 });
