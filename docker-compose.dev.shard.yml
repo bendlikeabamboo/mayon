@@ -1,0 +1,20 @@
+# Per-shard E2E stack override: parameterize the host ports that must differ
+# between concurrently running shard stacks (web for the Playwright runner,
+# langfuse-stub because tests assert on its host-published receiver). Project
+# name (-p mayon-dev-shard-N, set by scripts/dev-shard.mjs) already isolates
+# containers, the network, and named volumes, so ports are the only override.
+# Both variables are required — a shard stack without explicit ports would
+# silently collide, so fail loudly instead:
+#
+#   scripts/dev-shard.mjs up 1/2      # sets both from the shard number
+#
+#   SHARD_WEB_PORT=5301 SHARD_LANGFUSE_PORT=5601 \
+#     docker compose -p mayon-dev-shard-9 \
+#       -f docker-compose.dev.yml -f docker-compose.dev.shard.yml up -d
+services:
+  web:
+    ports: !override
+      - '${SHARD_WEB_PORT:?SHARD_WEB_PORT is required (5200+N for shard N)}:5173'
+  langfuse-stub:
+    ports: !override
+      - '127.0.0.1:${SHARD_LANGFUSE_PORT:?SHARD_LANGFUSE_PORT is required (5500+N for shard N)}:9998'

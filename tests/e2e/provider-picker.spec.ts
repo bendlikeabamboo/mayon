@@ -97,13 +97,14 @@ test.describe('tool capability toggle', () => {
 			toolCapability: 'auto',
 			baseUrl: 'http://localhost:9999/v1'
 		};
-		await page.request.post('/api/db/query', {
+		const legacyRes = await page.request.post('/api/db/query', {
 			data: {
-				op: 'exec',
+				op: 'query',
 				sql: "UPDATE settings SET value = $1 WHERE key = 'providers'",
 				params: [JSON.stringify(stored)]
 			}
 		});
+		expect(legacyRes.ok(), `legacy write failed: ${legacyRes.status()}`).toBeTruthy();
 		await page.goto('/settings#providers');
 		await expect(providerCard.getByLabel('Tool capability')).toHaveValue('off');
 	});
