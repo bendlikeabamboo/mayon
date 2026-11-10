@@ -51,12 +51,12 @@
 
 ### Tests for User Story 2 (FAIL-FIRST)
 
-- [ ] T006 [US2] FAIL-FIRST test in `src/lib/agent/loop.test.ts` (030 recognition describe ~:2206): a scripted stream of only a `file` part (no text deltas, `finishReason: 'stop'`) results in exactly one `appendAssistantText('', { images: [...], final: true })` call (today: zero calls).
-- [ ] T007 [US2] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: same stream through the REAL loop (base implementation, as the attachments describe does) persists one assistant row with `content: ''`, non-null `parts` containing only image parts, and the row is present after `chatStore.load()` reload.
+- [x] T006 [US2] FAIL-FIRST test in `src/lib/agent/loop.test.ts` (030 recognition describe ~:2206): a scripted stream of only a `file` part (no text deltas, `finishReason: 'stop'`) results in exactly one `appendAssistantText('', { images: [...], final: true })` call (today: zero calls).
+- [x] T007 [US2] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: same stream through the REAL loop (base implementation, as the attachments describe does) persists one assistant row with `content: ''`, non-null `parts` containing only image parts, and the row is present after `chatStore.load()` reload.
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] Implement the image-only fallback in `src/lib/agent/loop.ts` finalize path (~:622-647): when `walkPersist` returns null and the turn carries images, call `appendAssistantText('', { images, final: true })` (research D2); verify `composeAssistantParts` in `src/lib/stores/chat.svelte.ts` already omits the empty text part (fix if not) and that the persisted trace event and `builder.empty` semantics stay correct.
+- [x] T008 [US2] Implement the image-only fallback in `src/lib/agent/loop.ts` finalize path (~:622-647): when `walkPersist` returns null and the turn carries images, call `appendAssistantText('', { images, final: true })` (research D2); verify `composeAssistantParts` in `src/lib/stores/chat.svelte.ts` already omits the empty text part (fix if not) and that the persisted trace event and `builder.empty` semantics stay correct.
 
 **Checkpoint**: Image-only replies persist and render.
 
@@ -69,12 +69,12 @@
 
 ### Tests for User Story 3 (FAIL-FIRST)
 
-- [ ] T009 [US3] FAIL-FIRST tests in `src/lib/agent/loop.test.ts` driving the real `consumeStream` abort: (a) stream yields a `file` part + a text delta, then hangs; abort resolves; assert the persist call received the recognized image candidates together with the partial text; (b) abort between iterations (first iteration completes with images + tool-calls, second aborts at once) — images from the first iteration persist; (c) abort with image only (no text) persists an image-only row (depends on T008).
-- [ ] T010 [US3] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts` using the REAL loop (not the mocked turn at ~:2167): scripted image stream → `chatStore.stop()` mid-stream → reloaded chat shows the assistant row with image parts and `metadata.interrupted: true`. Update/replace the mocked "(b) abort after an image arrives" test to keep its intent via the real path.
+- [x] T009 [US3] FAIL-FIRST tests in `src/lib/agent/loop.test.ts` driving the real `consumeStream` abort: (a) stream yields a `file` part + a text delta, then hangs; abort resolves; assert the persist call received the recognized image candidates together with the partial text; (b) abort between iterations (first iteration completes with images + tool-calls, second aborts at once) — images from the first iteration persist; (c) abort with image only (no text) persists an image-only row (depends on T008).
+- [x] T010 [US3] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts` using the REAL loop (not the mocked turn at ~:2167): scripted image stream → `chatStore.stop()` mid-stream → reloaded chat shows the assistant row with image parts and `metadata.interrupted: true`. Update/replace the mocked "(b) abort after an image arrives" test to keep its intent via the real path.
 
 ### Implementation for User Story 3
 
-- [ ] T011 [US3] Implement in `src/lib/agent/loop.ts`: hoist the `turnImages.push(...iterationImages)` merge so both abort paths — the consumeStream AbortError catch (~:583) and the between-iterations check (~:617) — persist with the full turn image set; pass images through `walkPersist` on both abort paths plus the defensive abort branches (~:461-468, ~:515-522); route abort persists through the same image-only fallback as T008; mark abort-path finalize appends `final: true` (research D3, contracts/finalize-composition.md §3).
+- [x] T011 [US3] Implement in `src/lib/agent/loop.ts`: hoist the `turnImages.push(...iterationImages)` merge so both abort paths — the consumeStream AbortError catch (~:583) and the between-iterations check (~:617) — persist with the full turn image set; pass images through `walkPersist` on both abort paths plus the defensive abort branches (~:461-468, ~:515-522); route abort persists through the same image-only fallback as T008; mark abort-path finalize appends `final: true` (research D3, contracts/finalize-composition.md §3).
 
 **Checkpoint**: Abort no longer discards completed images.
 

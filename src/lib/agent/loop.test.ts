@@ -2370,4 +2370,122 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
 		expect(deps.appendAssistantText).toHaveBeenCalledWith('Hello world');
 	});
+
+	// 033 T006 (research D2, finalize-composition §2): an images-with-no-text
+	// reply persists the contract-legal image-only row (content '') through the
+	// single finalize point. Today the finalize path drops the turn entirely.
+	it('image-only stream finalizes as one image-only append (033 T006)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([filePart(PNG_B64), { type: 'finish', finishReason: 'stop' }])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('', {
+			images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 0 }],
+			final: true
+		});
+	});
+
+	// 033 T009 (research D3, finalize-composition §3): both abort paths persist
+	// the full turn image set — including the in-flight iteration's images —
+	// through the same finalize rules. Today the recognized images die with the
+	// aborted stream.
+	it('abort mid-stream persists the recognized image with the partial text (033 T009a)', async () => {
+		const ac = new AbortController();
+		const stream = (async function* () {
+			yield filePart(PNG_B64);
+			yield { type: 'text-delta', text: 'partial reply' };
+			await new Promise<void>((resolve) =>
+				ac.signal.addEventListener('abort', () => resolve(), { once: true })
+			);
+			throw new DOMException('This operation was aborted', 'AbortError');
+		})();
+		mockedStreamText.mockReturnValue({ fullStream: stream } as never);
+
+		const deps = makeDeps({ signal: ac.signal });
+		const turnP = runAgentTurn(deps);
+		await vi.waitFor(() => expect(deps.updateStreamBuffer).toHaveBeenCalledWith('partial reply'));
+		ac.abort();
+		const result = await turnP;
+
+		expect(result).toEqual({ aborted: true });
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('partial reply', {
+			images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 0 }],
+			final: true
+		});
+	});
+
+	it('abort between iterations persists the first iteration images (033 T009b)', async () => {
+		const ac = new AbortController();
+		const secondStream = (async function* () {
+			await new Promise<void>((resolve) =>
+				ac.signal.addEventListener('abort', () => resolve(), { once: true })
+			);
+			// the stream dies with the abort — this part is never consumed
+			// (consumeStream breaks at the top of the loop before tracing it)
+			yield { type: 'finish', finishReason: 'stop' };
+		})();
+		// The second streamText call never happens (the between-iterations abort
+		// check fires first), so the hang is a FALLBACK value, not a queued
+		// mockReturnValueOnce — an unconsumed once-value would leak into the
+		// next test's streamText call.
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'first reply' },
+					filePart(PNG_B64),
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'read_checklist', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValue({ fullStream: secondStream } as never);
+		mockedToolsRun.mockImplementation(async () => {
+			ac.abort();
+			return { ok: true, summary: 'ok' };
+		});
+
+		const deps = makeDeps({ signal: ac.signal });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: true });
+		// the first iteration's text was persisted WITHOUT images (interim
+		// tool-boundary persist defers images to finalize — 033 invariant)
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('first reply');
+		// the first iteration's recognized images survive the abort
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('', {
+			images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 11 }],
+			final: true
+		});
+	});
+
+	it('abort with image only (no text) persists an image-only row (033 T009c)', async () => {
+		const ac = new AbortController();
+		const stream = (async function* () {
+			yield filePart(PNG_B64);
+			await new Promise<void>((resolve) =>
+				ac.signal.addEventListener('abort', () => resolve(), { once: true })
+			);
+			throw new DOMException('This operation was aborted', 'AbortError');
+		})();
+		mockedStreamText.mockReturnValue({ fullStream: stream } as never);
+
+		const deps = makeDeps({ signal: ac.signal, onImageRecognized: vi.fn() });
+		const turnP = runAgentTurn(deps);
+		await vi.waitFor(() =>
+			expect(deps.onImageRecognized as ReturnType<typeof vi.fn>).toHaveBeenCalled()
+		);
+		ac.abort();
+		const result = await turnP;
+
+		expect(result).toEqual({ aborted: true });
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('', {
+			images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 0 }],
+			final: true
+		});
+	});
 });

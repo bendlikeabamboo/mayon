@@ -2164,38 +2164,62 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 		expect(parts[1].mimeType).toBe('image/png');
 	});
 
-	it('(b) abort after an image arrives persists it on the interrupted row', async () => {
+	// 033 T010 (FR-008): exercise the REAL loop abort path (research D3) —
+	// issue #70's core complaint is that the mocked-turn version of this test
+	// never drove the actual consumeStream abort, so the images were lost.
+	// Scripted image stream → chatStore.stop() mid-stream → the interrupted
+	// row reloaded from the DB carries the image parts.
+	it('(b) abort after an image arrives persists it on the interrupted row (real loop path)', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		mockDefaultProvider();
 
-		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
-			deps.updateStreamBuffer('partial reply');
-			await new Promise<void>((resolve) => {
-				deps.signal.addEventListener('abort', () => resolve(), { once: true });
-			});
-			const opts = { images: [{ mediaType: 'image/png', base64: PNG_B64 }] };
-			await deps.appendAssistantText(
-				'partial reply',
-				opts as unknown as Parameters<typeof deps.appendAssistantText>[1]
-			);
-			return { aborted: true };
+		mockedStreamText.mockImplementation((opts?: Record<string, unknown>) => {
+			const signal = opts?.abortSignal as AbortSignal | undefined;
+			return {
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: 'painting partial…' };
+					yield {
+						type: 'file',
+						file: {
+							base64: PNG_B64,
+							uint8Array: new Uint8Array([1, 2, 3]),
+							mediaType: 'image/png'
+						}
+					};
+					await new Promise<void>((resolve) =>
+						signal?.addEventListener('abort', () => resolve(), { once: true })
+					);
+					// the stream dies with the abort: nothing after the stop point
+				})(),
+				text: '',
+				response: { id: 'test' }
+			} as never;
 		});
 
 		await chatStore.load(root.id);
 		const sendP = chatStore.send('draw a quokka');
-		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('partial reply'));
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('painting partial…'));
 		chatStore.stop();
 		await sendP;
 
-		const msgs = await repos.messages.listByChat(root.id);
-		const interrupted = msgs.find(
+		const interrupted = (await repos.messages.listByChat(root.id)).find(
 			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
 		);
 		expect(interrupted).toBeDefined();
-		expect(interrupted!.content).toBe('partial reply');
+		expect(interrupted!.content).toBe('painting partial…');
 		const parts = JSON.parse(interrupted!.parts!);
-		expect(parts[0]).toEqual({ type: 'text', text: 'partial reply' });
+		expect(parts).toHaveLength(2);
+		expect(parts[0]).toEqual({ type: 'text', text: 'painting partial…' });
 		expect(parts[1]).toMatchObject({ type: 'image', data: `data:image/png;base64,${PNG_B64}` });
+
+		// the reloaded chat shows the interrupted image-bearing row
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(reloaded).toBeDefined();
+		expect(reloaded!.id).toBe(interrupted!.id);
+		expect(JSON.parse(reloaded!.parts!)).toHaveLength(2);
 	});
 
 	it('(c) pendingImages never leak: the next image-less turn persists a parts-less assistant row', async () => {
@@ -2243,6 +2267,55 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 		const parts = partsOf(assistant!);
 		expect(parts[0]).toEqual({ type: 'text', text: 'Here you go' });
 		expect(parts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`,
+			mimeType: 'image/png'
+		});
+	});
+
+	// 033 T007 (research D2, finalize-composition §2): an images-with-no-text
+	// reply persists the contract-legal image-only row (content '', image
+	// parts only) through the REAL loop's finalize fallback, and the row is
+	// present after reload. Today the turn persists nothing.
+	it('(e) an image-only stream persists ONE assistant row with only image parts, surviving reload', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield {
+					type: 'file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1, 2, 3]), mediaType: 'image/png' }
+				};
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe('');
+		expect(row.model).toBe('stub-model');
+		const parts = JSON.parse(row.parts!);
+		expect(parts).toHaveLength(1);
+		expect(parts[0].type).toBe('image');
+		expect(parts[0].data).toBe(`data:image/png;base64,${PNG_B64}`);
+		expect(parts[0].mimeType).toBe('image/png');
+
+		// the image-only row survives a reload (data-level)
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find((m) => m.role === 'assistant');
+		expect(reloaded).toBeDefined();
+		expect(reloaded!.id).toBe(row.id);
+		expect(reloaded!.content).toBe('');
+		const reloadedParts = partsOf(reloaded!);
+		expect(reloadedParts).toHaveLength(1);
+		expect(reloadedParts[0]).toMatchObject({
 			type: 'image',
 			data: `data:image/png;base64,${PNG_B64}`,
 			mimeType: 'image/png'

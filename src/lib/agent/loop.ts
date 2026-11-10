@@ -451,7 +451,8 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		const walkPersist = async (
 			iteration: number,
 			textBuf: string,
-			images?: ImageCandidate[]
+			images?: ImageCandidate[],
+			final?: boolean
 		): Promise<Message | null> => {
 			const textStarts: number[] = [];
 			for (const b of blocks) if (b.kind === 'text') textStarts.push(b.start);
@@ -468,9 +469,13 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				if (content) {
 					// 030 §3: collected images ride the last text row — the row the
 					// id/usage plumbing binds to (029 rule 4). Image-less rows keep
-					// the exact 1-arg call.
+					// the exact 1-arg call. On the abort paths the image-bearing
+					// finalize handoff is marked `final` (033, finalize-composition §3).
 					if (images && images.length > 0 && ti === textStarts.length) {
-						msg = await deps.appendAssistantText(content, { images });
+						msg = await deps.appendAssistantText(
+							content,
+							final ? { images, final: true } : { images }
+						);
 					} else {
 						msg = await deps.appendAssistantText(content);
 					}
@@ -480,18 +485,34 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			return msg;
 		};
 
-		// Image candidates accumulate across iterations and critic rounds (R-3);
-		// handed to persistence at finalize (T008 persists them).
+		// Image candidates accumulate across iterations and critic rounds (R-3).
+		// This same caller-owned array is the consumeStream recognition sink
+		// (033, research D3): candidates land here at arrival, so an abort
+		// cannot discard them, and every persist site reads the full turn set.
 		const turnImages: StreamImageCandidate[] = [];
+
+		// 033 T011 (research D3): persist the turn's images through the stop
+		// point — partial text rides the full image set; an image-only abort
+		// persists the image-only row via the D2 fallback. Image-less aborts
+		// keep the exact pre-033 1-arg call shapes.
+		const persistAbortedTurn = async (): Promise<void> => {
+			if (buf) {
+				const msg =
+					turnImages.length > 0
+						? await deps.appendAssistantText(buf, { images: turnImages, final: true })
+						: await deps.appendAssistantText(buf);
+				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
+			} else if (turnImages.length > 0) {
+				const msg = await deps.appendAssistantText('', { images: turnImages, final: true });
+				deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: '', empty: true });
+			}
+			deps.onTrace?.({ kind: 'aborted' });
+		};
 		const visionCapable = supportsVision(deps.config, deps.config.defaultModel);
 
 		for (let i = 0; i < MAX_ITERATIONS; i++) {
 			if (deps.signal.aborted) {
-				if (buf) {
-					const msg = await deps.appendAssistantText(buf);
-					deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
-				}
-				deps.onTrace?.({ kind: 'aborted' });
+				await persistAbortedTurn();
 				return { aborted: true };
 			}
 
@@ -541,11 +562,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				});
 			} catch (err) {
 				if (err instanceof Error && err.name === 'AbortError') {
-					if (buf) {
-						const msg = await deps.appendAssistantText(buf);
-						deps.onTrace?.({ kind: 'persisted', messageId: msg.id, finalText: buf, empty: false });
-					}
-					deps.onTrace?.({ kind: 'aborted' });
+					await persistAbortedTurn();
 					return { aborted: true };
 				}
 				deps.onTrace?.({
@@ -565,10 +582,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				completionTokens?: number;
 				totalTokens?: number;
 			} | null;
-			// Per-iteration sink backing turnImages (033 T002): recognition pushes
-			// into this caller-owned array during streaming; it merges into
-			// turnImages on normal completion.
-			const iterationImages: StreamImageCandidate[] = [];
+			// Caller-owned turn-scoped sink (033, research D3): recognition pushes
+			// straight into turnImages during streaming, so the abort paths below
+			// see the in-flight iteration's images without a post-completion merge.
 			try {
 				({ finishReason, usage: streamUsage } = await consumeStream(
 					result.fullStream,
@@ -600,7 +616,7 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						deps.onTextSegmentStart?.(startOffset);
 					},
 					() => buf.length,
-					iterationImages,
+					turnImages,
 					deps.onImageRecognized,
 					deps.onTrace
 				));
@@ -608,8 +624,13 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				if (err instanceof Error && err.name === 'AbortError') {
 					// 029 T013: persist blocks received so far — completed segments,
 					// the partial in-flight segment, partial text — in arrival order,
-					// nothing after the stop point (FR-008).
-					await walkPersist(i, buf);
+					// nothing after the stop point (FR-008). 033: the full turn image
+					// set rides the persist, and an image-only abort persists the
+					// image-only row via the D2 fallback.
+					const msg = await walkPersist(i, buf, turnImages, true);
+					if (!msg && turnImages.length > 0) {
+						await deps.appendAssistantText('', { images: turnImages, final: true });
+					}
 					reasoningBuf = '';
 					deps.updateReasoningBuffer('');
 					deps.onTrace?.({ kind: 'aborted' });
@@ -621,8 +642,6 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				});
 				throw err;
 			}
-
-			turnImages.push(...iterationImages);
 
 			// Per-block reasoning rows are persisted by walkPersist at the persist
 			// sites below, interleaved with text rows in arrival order (029 T012).
@@ -643,7 +662,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			}
 
 			if (deps.signal.aborted) {
-				await walkPersist(i, buf);
+				const msg = await walkPersist(i, buf, turnImages, true);
+				if (!msg && turnImages.length > 0) {
+					await deps.appendAssistantText('', { images: turnImages, final: true });
+				}
 				deps.onTrace?.({ kind: 'aborted' });
 				return { aborted: true };
 			}
@@ -658,12 +680,18 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				// (contract rules 3/6); otherwise walk the blocks (029 T012). Images
 				// ride both paths (030 §3): collected candidates persist with the
 				// final row — on the walk, the last text row.
-				const msg =
+				let msg =
 					finalBuf !== buf
 						? turnImages.length > 0
 							? await deps.appendAssistantText(finalBuf, { images: turnImages })
 							: await deps.appendAssistantText(finalBuf)
 						: await walkPersist(i, finalBuf, turnImages);
+				// 033 T008 (research D2): an image-only finalize (no text row) still
+				// persists — the image-only row (content '') rides the single
+				// finalize point, marked `final`.
+				if (!msg && turnImages.length > 0) {
+					msg = await deps.appendAssistantText('', { images: turnImages, final: true });
+				}
 				if (msg) {
 					deps.onTrace?.({
 						kind: 'persisted',
