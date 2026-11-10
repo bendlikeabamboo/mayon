@@ -56,7 +56,7 @@ A file may not be deleted without a ledger row. A file may not be relabeled as a
 src/lib/chat/tree.test.ts                         Tier 1
 src/lib/chat/tree.browser.test.ts                 Tier 2 (if interaction is the claim)
 server/src/auth-gate.test.ts                      Tier 1 (Fastify inject)
-tests/e2e/provider-picker.spec.ts                 Tier 3 (multi-step flow)
+tests/e2e/backprop-tool.spec.ts                    Tier 3 (multi-step flow)
 src/lib/components/chat/Breadcrumb.browser.test.ts Tier 2 (replaces Breadcrumb.render.test.ts)
 ```
 

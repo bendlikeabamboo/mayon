@@ -1,0 +1,76 @@
+---
+title: "032 — Test suite tiering"
+---
+
+## 032 — Test suite tiering {#sec-032}
+
+> **Status:** standing
+
+**Goal.** Audit and refactor the test suite into three explicit, enforced tiers so
+feedback arrives at the speed its claim deserves: pure logic and server handlers run
+in-process in Node, component behavior renders in a real browser without the full
+stack, and end-to-end tests shrink to the few flows that genuinely need the real
+browser, server, streaming, and persistence. The audit found the suite reporting
+coverage it did not have: 186 unit/integration files, 32 "component" or "route" files
+that read `.svelte` source with the filesystem and asserted on text, no real
+component-rendering tier, and a 37-case Playwright suite that was serialized, replayed
+onboarding before every test, and contained fixed-duration waits.
+
+**Why.** The daily inner loop paid browser and full-stack costs for claims that could
+be proved in milliseconds, while component interaction went unverified or was pushed
+into the slowest tier. The cost compounded in CI: a serialized end-to-end deck with
+per-test setup made every release candidate slower than the product changes it guarded.
+The feature's bet was that placement, not tooling, was the problem — a test belongs to
+the lowest tier that can prove its claim, and the suite should make that choice obvious
+and machine-enforced.
+
+**Outcome & reversals.** The suite now has three named tiers with distinct suffixes and
+commands: Tier 1 (`*.test.ts`, `pnpm test:unit`), Tier 2 (`*.browser.test.ts`, real
+Chromium through Vitest, `pnpm test:browser`), and Tier 3 (`tests/e2e/*.spec.ts`,
+Playwright, `pnpm test:e2e`). `pnpm test` remains the local merge gate over Tiers 1+2.
+The obvious Tier 2 suffix, `*.svelte.test.ts`, was rejected because it already meant a
+`.svelte.ts` rune-module test and had to stay in Tier 1; the browser tier took
+`*.browser.test.ts` instead. All 32 source-text files were classified in a migration
+ledger as convert (28), promote-static (3), or retain (1); the 28 converted files were
+replaced by real render/interaction tests and then deleted, with three deliberate
+production breaks proving the replacements fail when the behavior is broken. Component
+network calls moved to MSW at the `fetch` boundary, with shared handlers and a worker
+asset served only by the test Vite server.
+
+Tier 3 was pruned rather than parallelized into respectability: 29 cases after the
+telemetry spec retired dropped to 8 cases across 6 specs, a 72% reduction, with every
+removal mapped to lower-tier coverage or a recorded retirement rationale. Onboarding
+and auth state are captured once in `tests/e2e/global-setup.ts` and consumed through the
+shared session fixture; third-party traffic is blocked deterministically; the sharded
+suite went from two shards to four. The telemetry end-to-end flow was retired outright
+rather than made shard-safe — its protocol coverage moved to a Tier 1 ingest test and a
+Tier 2 client-emission test, freeing the suite from the external langfuse-stub port.
+Parallelism is capability-gated: at least 8 logical CPUs and 8 GiB usable RAM (host and
+cgroup minimum) enables parallel execution, while low-spec or unreadable hardware runs
+serially; the gate changes concurrency, never test selection.
+
+Guardrails and budgets closed the loop. `scripts/check-test-tiers.mjs` implements
+`TT-001`–`TT-008` for browser imports in Tier 1, fixed waits and setup replay in Tier 3,
+source-text component assertions, missing session fixtures, ungated concurrency, full-stack
+dependencies in Tier 2, and accidental inclusion of integration tests; each rule was
+verified by injecting a scratch violation and restoring the tree. CI runs `pnpm test:ci`
+and `pnpm test:e2e:ci` per shard, writes tier duration reports, and fails a job that
+exceeds `test-budgets.json` (60 s Tier 1, 120 s Tier 2, 120 s per Tier 3 shard, 120 s
+server). jsdom was deliberately retained: four Tier 1 files still select it for pure DOM
+algorithms (`auth/state`, `markdown/focusable`, `settings/hash-sync`, `utils/media`), and
+those tests are Node DOM emulation, not the browser tier.
+
+**Learnings.**
+
+- Placement is the lever: the same assertions became fast or slow depending on which
+  layer proved them, and naming the tiers made the wrong choice visible in review.
+- A suffix is an interface. Reusing `.svelte.test.ts` for browser tests would have
+  silently reclassified rune-module tests; the awkward new suffix was cheaper than
+  ambiguity.
+- Source-text tests are worse than no tests at the component tier because they report
+  coverage that cannot fail when the rendered behavior breaks. Converting them required
+  proving the new test fails first.
+- End-to-end pruning is a coverage exercise, not a deletion exercise: every removed case
+  needed a lower-tier owner or an explicit retirement rationale in the ledger.
+- Hardware assumptions belong in one gate. The same threshold now drives Vitest,
+  Playwright, and the shard scripts, so local guidance and CI behavior cannot drift.

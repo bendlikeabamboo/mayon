@@ -26,9 +26,19 @@ The default proving path is text-first, with no browser:
 
 The pattern to copy is the chat context assembly test, `src/lib/chat/context.test.ts`. Run with `pnpm test`. This harness is the established testing setup, formalized here as policy — not new tooling.
 
+## Test tiers
+
+Place each test at the lowest tier that can prove its claim; if two tiers can prove it, keep the lower one and delete the higher copy:
+
+- `*.test.ts` — **Tier 1**, `pnpm test:unit`: pure logic, mappers, repositories, and server handlers in Node. No browser, build, or listener. `*.svelte.test.ts` rune-module tests stay here.
+- `*.browser.test.ts` — **Tier 2**, `pnpm test:browser`: rendered component behavior in real Chromium. Supply `$app/*` and store dependencies at the module boundary, mock `fetch` with MSW (`tests/mocks/handlers.ts`), and never require the app server, Postgres, or docker compose.
+- `tests/e2e/*.spec.ts` — **Tier 3**, `pnpm test:e2e`: only flows needing real streaming, persistence, multi-page navigation, hydration, or auth/setup. Reuse the shared session state, use condition-based assertions, never replay onboarding per test, and block third-party traffic.
+
+`pnpm check:tests` enforces the tier boundaries (`TT-001`–`TT-008`). Every removed or migrated source-text and end-to-end case is recorded with its replacement or retirement rationale in `specs/032-test-suite-tiering/migration-ledger.md`; no test is deleted without a ledger row. Parallelism is capability-gated at ≥8 logical CPUs and ≥8 GiB usable RAM, with serial fallback on low-spec or unknown machines.
+
 ## Where the browser is allowed to matter
 
-The browser covers only what logic cannot reach:
+The browser covers only what logic cannot reach, at two costs: Tier 2 renders an isolated component in real Chromium, while Tier 3 keeps the few flows that genuinely need the real server, streaming, and persistence.
 
 - UI-only wiring and behavior — the pixel/animation tier the browser is for.
 - Visual checks are camera-style (screenshot plus review) and rare. They confirm appearance; they do not double as behavior tests that logic-layer tests already prove. The browser is demoted from courtroom to camera, not eliminated.

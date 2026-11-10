@@ -27,7 +27,11 @@ function envBoolean(env: Record<string, string>, name: string, fallback: boolean
 export default defineProject(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '');
 	const capacity = readCapacity(env);
-	const heapMb = envNumber(process.env as Record<string, string>, 'MAYON_TEST_MAX_OLD_SPACE_MB', 500);
+	const heapMb = envNumber(
+		process.env as Record<string, string>,
+		'MAYON_TEST_MAX_OLD_SPACE_MB',
+		500
+	);
 	const pool = env.VITEST_POOL ?? 'forks';
 
 	return {

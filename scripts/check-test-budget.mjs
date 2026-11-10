@@ -7,9 +7,12 @@
 // `test-results/tier3-shard-<n>.json`. A tier listed in --tiers is owned by the
 // current invocation: a missing or over-budget owned tier exits 3. Every other
 // tier is reported as deferred to its owning job and never fails this run.
+// Reports for deferred tiers are not read, so an unrelated stale/malformed
+// artifact cannot fail a job that does not own it.
 //
-// Usage: node scripts/check-test-budget.mjs --tiers=tier1,tier2,server
-//        node scripts/check-test-budget.mjs --tiers=tier3
+// Dependency-free. Usage:
+//   node scripts/check-test-budget.mjs --tiers=tier1,tier2,server
+//   node scripts/check-test-budget.mjs --tiers=tier3
 // Defaults to the non-e2e owner (`tier1,tier2,server`) when --tiers is omitted.
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -42,7 +45,7 @@ function parseArgs(argv) {
 	let tiers = null;
 	for (const arg of argv) {
 		if (arg === '--help' || arg === '-h') {
-			console.log('Usage: node scripts/check-test-budget.mjs --tiers=<tier1,tier2,server>');
+			console.log('Usage: node scripts/check-test-budget.mjs [--tiers=<tier1,tier2,server|tier3>]');
 			process.exit(0);
 		}
 		if (arg.startsWith('--tiers=')) {
@@ -139,14 +142,8 @@ function formatSeconds(value) {
 
 const ownedTiers = parseArgs(process.argv.slice(2));
 const budgets = readBudgets();
-const durations = readDurations();
-const shardReports = readShardReports();
 const failures = [];
-const deferred = [];
-
-for (const tier of ALL_TIERS) {
-	if (!ownedTiers.includes(tier)) deferred.push(tier);
-}
+const deferred = ALL_TIERS.filter((tier) => !ownedTiers.includes(tier));
 
 console.log(`[test-budget] owned: ${ownedTiers.join(', ')}`);
 if (deferred.length > 0) {
@@ -158,9 +155,10 @@ for (const tier of ownedTiers) {
 	const budgetSeconds = budgets[tier];
 
 	if (tier === 'tier3') {
+		const shardReports = readShardReports();
 		if (shardReports.length === 0) {
 			failures.push(
-				`tier3: missing report ${join('test-results', 'tier3-shard-<n>.json')} (owner ${TIER_OWNERS.tier3})`
+				`tier3: missing shard report test-results/tier3-shard-<n>.json (owned by ${TIER_OWNERS.tier3} — run pnpm test:e2e:ci --shard=<n>/<total>)`
 			);
 			continue;
 		}
@@ -179,16 +177,17 @@ for (const tier of ownedTiers) {
 		continue;
 	}
 
+	const durations = readDurations();
 	if (!durations) {
 		failures.push(
-			`${tier}: missing report ${join('test-results', 'tier-durations.json')} (owner ${TIER_OWNERS[tier]})`
+			`${tier}: missing report test-results/tier-durations.json (owned by ${TIER_OWNERS[tier]} — run pnpm test:ci)`
 		);
 		continue;
 	}
 	const entry = durations.tiers.find((candidate) => candidate?.id === tier);
 	if (!entry || !Number.isFinite(entry.measuredSeconds)) {
 		failures.push(
-			`${tier}: missing measurement in ${join('test-results', 'tier-durations.json')} (owner ${TIER_OWNERS[tier]})`
+			`${tier}: missing measurement in test-results/tier-durations.json (owned by ${TIER_OWNERS[tier]} — run pnpm test:ci)`
 		);
 		continue;
 	}
@@ -202,6 +201,9 @@ for (const tier of ownedTiers) {
 
 if (failures.length > 0) {
 	for (const failure of failures) console.error(`[test-budget] FAIL: ${failure}`);
+	console.error(
+		`[test-budget] ${failures.length} owned tier(s) missing or over budget; budgets live in test-budgets.json`
+	);
 	process.exit(EXIT_BUDGET);
 }
 

@@ -86,7 +86,7 @@ Expected:
 Isolation check:
 
 ```bash
-pnpm exec playwright test tests/e2e/provider-picker.spec.ts
+pnpm exec playwright test tests/e2e/quiz.spec.ts
 pnpm exec playwright test tests/e2e/render.spec.ts
 ```
 

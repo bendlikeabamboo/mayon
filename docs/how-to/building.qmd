@@ -30,8 +30,13 @@ No bun.
 | `pnpm check` | Type-check with `svelte-check`. |
 | `pnpm lint` | ESLint (flat config) + Prettier `--check`. |
 | `pnpm format` | Prettier `--write`. |
-| `pnpm test` | Vitest against the pglite (Postgres) test driver — runs once. |
-| `pnpm test:watch` | Vitest in watch mode. |
+| `pnpm test` | Tiers 1+2 (Node + Chromium), capability-gated — the local merge gate. |
+| `pnpm test:unit` | Tier 1: in-process logic, repositories, and server handlers. |
+| `pnpm test:browser` | Tier 2: real-Chromium component tests. |
+| `pnpm test:e2e` | Tier 3: Playwright against a running stack. |
+| `pnpm test:low-spec` | Serial mode for low-spec machines; still selects every test. |
+| `pnpm test:watch` | Vitest in watch mode (Tiers 1+2). |
+| `pnpm check:tests` | Tier guardrails (`TT-001`–`TT-008`). |
 | `pnpm --filter @mayon/server test` | Vitest for the server package. |
 | `pnpm db:generate` | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`. |
 | `pnpm db:studio` | Open Drizzle Studio against the schema. |
@@ -56,38 +61,69 @@ docker compose up   # web on :8080, server + Postgres in containers
 
 ## Testing
 
-Tests use a pglite (Postgres-compatible) test driver — no Docker or browser needed. On a fresh checkout, build the shared package once first (its compiled output is required by tests and is not produced by `pnpm install`):
+Tests are split into three enforced tiers. Place a test at the lowest tier that can
+prove its claim:
+
+1. Pure logic, mappers, repositories, or server handlers → **Tier 1**:
+   colocated `*.test.ts`, run in Node with `pnpm test:unit`.
+2. Rendered markup, clicks/keys/focus, responsive state, or Svelte reactivity →
+   **Tier 2**: colocated `*.browser.test.ts`, run in real Chromium with
+   `pnpm test:browser`.
+3. Real streaming, persistence, multi-page navigation, hydration, or auth/setup →
+   **Tier 3**: `tests/e2e/*.spec.ts`, run with `pnpm test:e2e` against a running
+   stack.
+
+If two tiers can prove the same claim, keep the lower-tier test and delete the
+higher-tier copy. `pnpm test` runs Tiers 1+2. `*.svelte.test.ts` remains a
+rune-module test in Tier 1; Tier 2 uses the `*.browser.test.ts` suffix.
+
+On a fresh checkout, build the shared package once first (its compiled output is
+required by tests and is not produced by `pnpm install`):
 
 ```bash
 pnpm --filter @mayon/shared build
 ```
 
-Run tests with:
+Component tests supply `$app/*` and store dependencies at the module boundary and
+mock `fetch` with MSW; shared handlers live in `tests/mocks/handlers.ts`, and the
+worker asset under `tests/mocks/public/` is served only by the test Vite server —
+it never enters `build/`. Tier 2 must not need the application server, Postgres,
+or docker compose.
 
-```bash
-pnpm test
-```
+Tier 3 keeps only flows that need the real browser, server, and persistence. It
+reuses captured session state (`tests/e2e/global-setup.ts`), never replays
+onboarding per test, and uses condition-based assertions instead of fixed waits.
+Before keeping an end-to-end case, check whether Tier 1 or Tier 2 can prove it;
+remove the duplicate and record the replacement or retirement rationale in
+`specs/032-test-suite-tiering/migration-ledger.md`. Every removed or migrated
+source-text and end-to-end case needs a ledger row.
 
-Tests cover the repository layer, provider adapters, context assembly, transport contracts, and key storage.
+The capability gate parallelizes only at ≥8 logical CPUs and ≥8 GiB usable RAM;
+low-spec or unreadable machines run serially. On a low-spec machine use
+`pnpm test:low-spec` (it sets `MAYON_TEST_PARALLEL=off` and a 500 MB V8 heap);
+`MAYON_TEST_MAX_WORKERS` caps a capable machine. The gate changes concurrency,
+never test selection. `pnpm check:tests` enforces the tier boundaries and CI
+enforces per-tier budgets from `test-budgets.json` via `pnpm check:budget`.
 
 ## Browser E2E tests
 
-The chat experience has Playwright E2E coverage (`tests/e2e/`): provider onboarding through the real
-Settings UI, a full send → receive round trip, and rendering assertions against a deterministic
-kitchen-sink reply. The reply comes from a tests-owned mock LLM service (`mock-llm` in
-`docker-compose.dev.yml`) that speaks the OpenAI chat protocol — no real AI service, no API key, no
-external network. The suite runs automatically in the `e2e` CI job on every pull request.
+The chat experience has Playwright E2E coverage (`tests/e2e/`), deliberately limited to
+flows that need the real browser, server, and persistence: provider onboarding through the
+real Settings UI plus a full send → receive round trip, streamed markdown/mermaid/selection
+rendering, quiz and lab generation, branch back-propagation, and image parts. Lower-tier
+logic and component tests own everything else; every removed case is recorded in
+`specs/032-test-suite-tiering/migration-ledger.md`. The reply comes from a tests-owned mock
+LLM service (`mock-llm` in `docker-compose.dev.yml`) that speaks the OpenAI chat protocol —
+no real AI service, no API key, no external network. The suite runs automatically in the
+`e2e` CI job on every pull request.
 
 Since feature 020 the mock also discriminates request kinds — chat, quiz generation, lab generation,
 short-answer grading, and learning-brief generation — and answers each with its own deterministic
 fixture (short-answer grading is steered by an answer-text lever: answers containing "should be
-correct" grade correct, "should be wrong" grade incorrect). The suite therefore also covers the quiz
-and labs flows end to end (`mock-classification.spec.ts`, `quiz.spec.ts`, `lab.spec.ts`,
-`prompt-contract.spec.ts`), which is what replaces the manual quiz-and-labs pass on release
-candidates. The classification protocol, fixtures, and the no-interception guardrail are specified
-in `tests/fixtures/mock-llm/README.md` and
-`../history/appendices/020-mock-llm-protocol.md` — never stub the provider request
-path with `page.route`; a bypassed hop tests the mocks, not the app.
+correct" grade correct, "should be wrong" grade incorrect). The classification protocol,
+fixtures, and the no-interception guardrail are specified in `tests/fixtures/mock-llm/README.md`
+and `../history/appendices/020-mock-llm-protocol.md` — never stub the provider request path
+with `page.route`; a bypassed hop tests the mocks, not the app.
 
 Prerequisites (fresh checkout):
 
@@ -129,16 +165,13 @@ volumes/network isolated by the project prefix), so there are no shared-state
 races between shards:
 
 ```bash
-pnpm dev:shard:up 1/2    # boot shard-1's stack + readiness waits
-pnpm dev:shard:test 1/2  # playwright --shard=1/2 against that stack
+pnpm dev:shard:up 1/4    # boot shard-1's stack + readiness waits
+pnpm dev:shard:test 1/4  # playwright --shard=1/4 against that stack
 pnpm dev:shard:down 1    # tear the stack down
 ```
 
-Run both shards in two terminals to halve the wall time. The shard override
-file uses the compose merge tag `!override` for its port lists, which requires
-Docker Compose v2.24 or newer. One port to know
-about: `telemetry.spec.ts` asserts on the langfuse-stub receiver at host port
-`9998`, so the runner publishes that port from whichever shard owns the spec
-(detected at `up`); other shards use `5500+N`. If `9998` is already bound —
-say, by a running `mayon-dev` stack — `pnpm dev:shard:up` for the
-telemetry-owning shard fails with instructions; stop the other stack first.
+CI runs four shards; run them in separate terminals to divide the wall time. The
+shard override file uses the compose merge tag `!override` for its port lists,
+which requires Docker Compose v2.24 or newer. The capability gate decides each
+runner's worker count, and sharding only distributes work across runners that
+individually meet the threshold.

@@ -118,13 +118,13 @@
 - [x] T040 [US3] Rewrite `tests/e2e/fixtures/onboard.ts` to consume the shared session state and session fixture, removing the per-test setup/onboarding journey and `90_000` fixture timeout
 - [x] T041 [US3] Update `playwright.config.ts` to add `setup` + `chromium` + `serial` projects, `storageState`, `fullyParallel` from the capability gate, and traces; keep `workers` capability-derived
 - [x] T042 [US3] Remove the `setTimeout` wait and `test.setTimeout(120_000)` usage in `tests/e2e/telemetry.spec.ts`; migrate protocol/ingest coverage to `server/src/telemetry-ingest.test.ts` and a Tier 2 MSW emission test, then retire or rewrite the spec
-- [ ] T043 [US3] Prune and migrate `tests/e2e/provider-picker.spec.ts` and `tests/e2e/render.spec.ts` scenarios that duplicate Tier 2 coverage; record each removal in the ledger
-- [ ] T044 [P] [US3] Prune and migrate `tests/e2e/quiz.spec.ts`, `tests/e2e/lab.spec.ts`, `tests/e2e/onboard.spec.ts`, and `tests/e2e/prompt-contract.spec.ts` where lower-tier coverage exists
-- [ ] T045 [P] [US3] Prune and migrate `tests/e2e/backprop-tool.spec.ts`, `tests/e2e/image-round-trip.spec.ts`, and `tests/e2e/mock-classification.spec.ts`, keeping only flows that need real streaming/server/persistence
-- [ ] T046 [US3] Update `scripts/dev-shard.mjs` to drop the langfuse-stub port ownership logic, respect the capability gate, and support the configured shard count
-- [ ] T047 [US3] Update `.github/workflows/ci.yml` e2e matrix from 2 to 4 shards and pass the capability decision to each shard runner
-- [ ] T048 [US3] Verify isolation: run each e2e spec alone, then the full suite with `fullyParallel`, then every shard; confirm no ordering dependency or shared chat/provider id
-- [ ] T049 [US3] Confirm `tests/e2e` contains zero `waitForTimeout`/sleep calls and zero first-run setup journeys outside `global-setup.ts`
+- [x] T043 [US3] Prune and migrate `tests/e2e/provider-picker.spec.ts` and `tests/e2e/render.spec.ts` scenarios that duplicate Tier 2 coverage; record each removal in the ledger
+- [x] T044 [P] [US3] Prune and migrate `tests/e2e/quiz.spec.ts`, `tests/e2e/lab.spec.ts`, `tests/e2e/onboard.spec.ts`, and `tests/e2e/prompt-contract.spec.ts` where lower-tier coverage exists
+- [x] T045 [P] [US3] Prune and migrate `tests/e2e/backprop-tool.spec.ts`, `tests/e2e/image-round-trip.spec.ts`, and `tests/e2e/mock-classification.spec.ts`, keeping only flows that need real streaming/server/persistence
+- [x] T046 [US3] Update `scripts/dev-shard.mjs` to drop the langfuse-stub port ownership logic, respect the capability gate, and support the configured shard count
+- [x] T047 [US3] Update `.github/workflows/ci.yml` e2e matrix from 2 to 4 shards and pass the capability decision to each shard runner
+- [x] T048 [US3] Verify isolation: run each e2e spec alone, then the full suite with `fullyParallel`, then every shard; confirm no ordering dependency or shared chat/provider id
+- [x] T049 [US3] Confirm `tests/e2e` contains zero `waitForTimeout`/sleep calls and zero first-run setup journeys outside `global-setup.ts`
 
 **Checkpoint**: US3 is independently complete; Tier 3 is lean, parallel, shard-safe, and free of fixed waits.
 
@@ -138,15 +138,15 @@
 
 ### Implementation for User Story 4
 
-- [ ] T050 [US4] Implement `TT-001` through `TT-008` in `scripts/check-test-tiers.mjs` with stable IDs, scan counts, sorted output, and exit code 2 per `contracts/guardrails.md`
-- [ ] T051 [US4] Implement exemption validation (missing/empty justification fails as `TT-000`) in `scripts/check-test-tiers.mjs` against `scripts/test-tier-exemptions.json` (depends on T050)
-- [ ] T052 [P] [US4] Add `scripts/test-capacity.test.ts` covering capable, low-spec, cgroup-mismatch, unknown, and override cases; inject readings into `resolveCapacity` and never read live `/sys` in the test
-- [ ] T053 [US4] Implement `scripts/check-test-budget.mjs` with `--tiers=<csv>` ownership: fail on a missing or over-budget owned tier, ignore deferred tiers, and exit 3
-- [ ] T054 [US4] Wire `pnpm test:ci` (tier1/tier2/server) and `pnpm test:e2e:ci` (tier3 per shard) into `.github/actions/ci` and `.github/workflows/ci.yml`, upload both reports, and run `pnpm check:budget` per owning job
-- [ ] T055 [P] [US4] Update `AGENTS.md` commands/testing tables with the tier commands, suffixes, capacity gate, and ledger policy
-- [ ] T056 [P] [US4] Update `CONTRIBUTING.md` and the relevant `docs/reference/*.qmd` page with the tier decision tree, MSW boundary, and end-to-end pruning rules
-- [ ] T057 [US4] Inject one violation per rule ID into `tests/e2e/__guardrail_scratch.spec.ts` and a temporary `src/lib/__guardrail_scratch.browser.test.ts`, confirm `pnpm check:tests` reports each correct ID, then remove both files
-- [ ] T058 [US4] Add `docs/history/032-test-suite-tiering.qmd` and link it from `docs/history/index.qmd`
+- [x] T050 [US4] Implement `TT-001` through `TT-008` in `scripts/check-test-tiers.mjs` with stable IDs, scan counts, sorted output, and exit code 2 per `contracts/guardrails.md`
+- [x] T051 [US4] Implement exemption validation (missing/empty justification fails as `TT-000`) in `scripts/check-test-tiers.mjs` against `scripts/test-tier-exemptions.json` (depends on T050)
+- [x] T052 [P] [US4] Add `scripts/test-capacity.test.ts` covering capable, low-spec, cgroup-mismatch, unknown, and override cases; inject readings into `resolveCapacity` and never read live `/sys` in the test
+- [x] T053 [US4] Implement `scripts/check-test-budget.mjs` with `--tiers=<csv>` ownership: fail on a missing or over-budget owned tier, ignore deferred tiers, and exit 3
+- [x] T054 [US4] Wire `pnpm test:ci` (tier1/tier2/server) and `pnpm test:e2e:ci` (tier3 per shard) into `.github/actions/ci` and `.github/workflows/ci.yml`, upload both reports, and run `pnpm check:budget` per owning job
+- [x] T055 [P] [US4] Update `AGENTS.md` commands/testing tables with the tier commands, suffixes, capacity gate, and ledger policy
+- [x] T056 [P] [US4] Update `CONTRIBUTING.md` and the relevant `docs/reference/*.qmd` page with the tier decision tree, MSW boundary, and end-to-end pruning rules
+- [x] T057 [US4] Inject one violation per rule ID into `tests/e2e/__guardrail_scratch.spec.ts` and a temporary `src/lib/__guardrail_scratch.browser.test.ts`, confirm `pnpm check:tests` reports each correct ID, then remove both files
+- [x] T058 [US4] Add `docs/history/032-test-suite-tiering.qmd` and link it from `docs/history/index.qmd`
 
 **Checkpoint**: US4 is independently complete; violations fail fast and budgets are visible.
 
@@ -156,14 +156,14 @@
 
 **Purpose**: Final consistency, cleanup, and end-to-end validation
 
-- [ ] T059 [P] Remove `jsdom` and `@types/jsdom` from `package.json` if no Tier 1 test still needs them after migration, and update the lockfile
-- [ ] T060 [P] Scan `src/**/*.test.ts`, `src/**/*.browser.test.ts`, and `tests/**` to ensure no test or helper added by this feature uses a `+` filename prefix
-- [ ] T061 Run `pnpm check` and `pnpm lint`; fix all new type/lint errors in tests and scripts
-- [ ] T062 Run `pnpm test` and `pnpm --filter @mayon/server test` on the reference machine and record the results in `specs/032-test-suite-tiering/migration-ledger.md`
-- [ ] T063 Run `pnpm test:low-spec` (or `MAYON_TEST_PARALLEL=off pnpm test`) and confirm 100% selection, one worker, zero skips via the `[test-capacity]` output and Vitest summary
-- [ ] T064 Run every scenario in `specs/032-test-suite-tiering/quickstart.md` (S1–S9) and record pass/fail in the implementation PR
-- [ ] T065 Verify all 15 success criteria (SC-001–SC-015), including recording the 37-case e2e baseline and confirming ≤ 18 cases remain with every removal mapped in `specs/032-test-suite-tiering/migration-ledger.md`; close the ledger with no `verified = false` rows
-- [ ] T066 Confirm the production build output in `build/` contains no MSW worker asset or test-only mock files
+- [x] T059 [P] Remove `jsdom` and `@types/jsdom` from `package.json` if no Tier 1 test still needs them after migration, and update the lockfile
+- [x] T060 [P] Scan `src/**/*.test.ts`, `src/**/*.browser.test.ts`, and `tests/**` to ensure no test or helper added by this feature uses a `+` filename prefix
+- [x] T061 Run `pnpm check` and `pnpm lint`; fix all new type/lint errors in tests and scripts
+- [x] T062 Run `pnpm test` and `pnpm --filter @mayon/server test` on the reference machine and record the results in `specs/032-test-suite-tiering/migration-ledger.md`
+- [x] T063 Run `pnpm test:low-spec` (or `MAYON_TEST_PARALLEL=off pnpm test`) and confirm 100% selection, one worker, zero skips via the `[test-capacity]` output and Vitest summary
+- [x] T064 Run every scenario in `specs/032-test-suite-tiering/quickstart.md` (S1–S9) and record pass/fail in the implementation PR
+- [x] T065 Verify all 15 success criteria (SC-001–SC-015), including recording the 37-case e2e baseline and confirming ≤ 18 cases remain with every removal mapped in `specs/032-test-suite-tiering/migration-ledger.md`; close the ledger with no `verified = false` rows
+- [x] T066 Confirm the production build output in `build/` contains no MSW worker asset or test-only mock files
 
 ---
 
