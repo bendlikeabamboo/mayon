@@ -35,12 +35,29 @@ topology, and the invariants you must respect when editing.
 | `pnpm check`                       | Type-check with `svelte-check`.                                                                                                                          |
 | `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                                                                                               |
 | `pnpm format`                      | Prettier `--write`.                                                                                                                                      |
-| `pnpm test`                        | Vitest (pglite test driver) — run once.                                                                                                                  |
+| `pnpm test`                        | Vitest (pglite test driver) — run once. Use this or `test:low-spec` per the profile rule below.                                                          |
+| `pnpm test:low-spec`               | Vitest with the low-spec profile (`--mode low-spec` → `.env.low-spec`: 1 worker, no file parallelism).                                                   |
 | `pnpm test:watch`                  | Vitest in watch mode.                                                                                                                                    |
 | `pnpm --filter @mayon/server test` | Vitest for the server package.                                                                                                                           |
 | `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                                                            |
 | `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                                                                  |
 | `docker compose up`                | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first.                                          |
+
+### Choosing the test profile (low-spec vs normal)
+
+Before running any test, **first determine which profile the machine can take**
+by checking its CPU and RAM — never assume `pnpm test` is safe. Check with
+`nproc` (logical CPUs) and `free -h` or `grep MemTotal /proc/meminfo` (usable RAM).
+
+- **Low-spec** → `pnpm test:low-spec`: fewer than **8 logical CPUs** **or**
+  less than **8 GiB RAM**. These boundaries are estimates; when in doubt or
+  anywhere near them (or when other heavy processes are running), prefer
+  low-spec — slower tests beat a thrashed or OOM-killed machine.
+- **Normal** → `pnpm test`: at least **8 logical CPUs** **and** at least
+  **8 GiB RAM**.
+
+The low-spec profile only changes Vitest scheduling (1 worker, no file
+parallelism), never test selection — every test still runs in both profiles.
 
 ## Worktrees
 
