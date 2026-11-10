@@ -8,7 +8,11 @@ import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
 import { projectEntries } from '#lib/chat/projection.js';
-import { assembleTimeline, isDurableEntry } from '#lib/chat/entries.js';
+import {
+	assembleTimeline,
+	isDurableEntry,
+	lastRegeneratableAssistantId
+} from '#lib/chat/entries.js';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
 import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
@@ -1533,6 +1537,146 @@ describe('035 deleteLastAssistantTurn (T010)', () => {
 
 		expect(payload).toBeNull();
 		expect(await repos.messages.listByChat(root.id)).toHaveLength(1);
+	});
+});
+
+// 035 (T017, quickstart V6): the mock's `chat_interleaved` shape — frame order
+// of tests/fixtures/mock-llm/server.mjs:187–205 (reasoning×2 → content×2 →
+// reasoning×2 → content×2 → trailing reasoning), replayed with start/delta/end
+// part framing — through the REAL loop+store. Regression bar: the durable walk
+// lands [reasoning, text, reasoning, text, trailing reasoning], each live
+// thought renders exactly once while streaming, and the 035 US3 regenerate
+// gate resolves on the turn (fails before `lastRegeneratableAssistantId`
+// existed; must pass after Phases 3–5).
+describe('035 interleaved mock shape (T017)', () => {
+	it('real-loop interleaved turn: five-row walk order, one live thought each, regenerate gate resolves', async () => {
+		const R1 = ' considering the question… it is a simple arithmetic sum…';
+		const T1 = 'Sure — 2 + 2 = 4.';
+		const R2 = ' double-checking after answering… the sum holds under recheck…';
+		const T2 = ' That stays 4.';
+		const R3 = ' done thinking.';
+
+		// Park the scripted stream after each segment group so the test can
+		// sample the live view between segments — the loop consumes parts as
+		// fast as microtasks allow, so ungated polling would only ever see the
+		// torn-down state.
+		const releases: Array<() => void> = [];
+		const holds = [0, 1, 2, 3, 4].map(() => new Promise<void>((r) => releases.push(r)));
+
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValueOnce({
+			textStream: (async function* () {
+				yield T1 + T2;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'reasoning-start', id: 'r1' };
+				yield { type: 'reasoning-delta', id: 'r1', text: ' considering the question…' };
+				yield { type: 'reasoning-delta', id: 'r1', text: ' it is a simple arithmetic sum…' };
+				yield { type: 'reasoning-end', id: 'r1' };
+				await holds[0]!;
+				yield { type: 'text-start', id: 't1' };
+				yield { type: 'text-delta', id: 't1', text: 'Sure — ' };
+				yield { type: 'text-delta', id: 't1', text: '2 + 2 = 4.' };
+				yield { type: 'text-end', id: 't1' };
+				await holds[1]!;
+				yield { type: 'reasoning-start', id: 'r2' };
+				yield { type: 'reasoning-delta', id: 'r2', text: ' double-checking after answering…' };
+				yield { type: 'reasoning-delta', id: 'r2', text: ' the sum holds under recheck…' };
+				yield { type: 'reasoning-end', id: 'r2' };
+				await holds[2]!;
+				yield { type: 'text-start', id: 't2' };
+				yield { type: 'text-delta', id: 't2', text: ' That stays ' };
+				yield { type: 'text-delta', id: 't2', text: '4.' };
+				yield { type: 'text-end', id: 't2' };
+				await holds[3]!;
+				yield { type: 'reasoning-start', id: 'r3' };
+				yield { type: 'reasoning-delta', id: 'r3', text: ' done thinking.' };
+				yield { type: 'reasoning-end', id: 'r3' };
+				await holds[4]!;
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: T1 + T2,
+			response: { id: 'test' }
+		} as never);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		// While streaming, every live snapshot holds each thought exactly once:
+		// blocks close as the next segment starts (035 US2) but never duplicate,
+		// and the trailing thought stays open until teardown.
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: true }
+			])
+		);
+		releases[0]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false }
+			])
+		);
+		releases[1]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: true }
+			])
+		);
+		releases[2]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T2, pending: false }
+			])
+		);
+		releases[3]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T2, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R3, streaming: true }
+			])
+		);
+		releases[4]!();
+		await sendP;
+		expect(chatStore.liveItems).toEqual([]);
+
+		// Durable walk order (029 T012 walk + trailing thought last), all three
+		// thoughts anchored to their arrival positions.
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs[0]!.role).toBe('user');
+		expect(msgs.slice(1).map((m) => [m.role, m.kind, m.content])).toEqual([
+			['assistant', 'reasoning', R1],
+			['assistant', 'assistant_message', T1],
+			['assistant', 'reasoning', R2],
+			['assistant', 'assistant_message', T2],
+			['assistant', 'reasoning', R3]
+		]);
+		for (const thought of msgs.filter((m) => m.kind === 'reasoning')) {
+			expect(JSON.parse(thought.metadata ?? '{}')).toEqual({ iteration: 0, anchored: true });
+		}
+
+		// Regenerate gate (035 US3): the trailing anchored thought must not hide
+		// the turn's last text row.
+		const timeline = assembleTimeline(chatStore.messages);
+		expect(timeline.filter(isDurableEntry).map((t) => t.kind)).toEqual([
+			'user_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning'
+		]);
+		const lastText = msgs.find((m) => m.kind === 'assistant_message' && m.content === T2)!;
+		expect(lastRegeneratableAssistantId(timeline)).toBe(lastText.id);
 	});
 });
 
