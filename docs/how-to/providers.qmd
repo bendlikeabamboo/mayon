@@ -29,6 +29,7 @@ Clicking **Add provider** in Settings opens a picker with eighteen built-in temp
 | Z.AI (GLM) | OpenAI-compatible | `https://api.z.ai/api/coding/paas/v4` | Required |
 | Kilo Gateway | OpenAI-compatible | `https://api.kilo.ai/api/gateway` | Required |
 | OpenRouter | OpenAI-compatible | `https://openrouter.ai/api/v1` | Required |
+| Demon Route | OpenAI-compatible | `https://api.demonroute.com/v1` | Required |
 | OpenAI | OpenAI-compatible | `https://api.openai.com/v1` | Required |
 | Anthropic (Claude) | Anthropic | `https://api.anthropic.com` | Required |
 | Google Gemini | Gemini | `https://generativelanguage.googleapis.com` | Required |

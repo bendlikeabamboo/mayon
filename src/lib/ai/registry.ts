@@ -226,6 +226,19 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
 	},
 	{
 		kind: 'openai-compatible',
+		label: 'Demon Route',
+		description:
+			'Prepaid gateway for open-weight models, including uncensored and abliterated fine-tunes. Models discovered automatically.',
+		baseUrl: 'https://api.demonroute.com/v1',
+		defaultModel: 'Qwen/Qwen3.5-397B-A17B',
+		models: ['Qwen/Qwen3.5-397B-A17B', 'huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2'],
+		requiresKey: true,
+		discoverable: true,
+		group: 'gateway',
+		toolCapability: 'on'
+	},
+	{
+		kind: 'openai-compatible',
 		label: 'OpenAI',
 		description: 'OpenAI Chat Completions (also works for any OpenAI-compatible gateway).',
 		baseUrl: 'https://api.openai.com/v1',
