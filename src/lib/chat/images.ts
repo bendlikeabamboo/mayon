@@ -293,18 +293,32 @@ async function reencodeOutputImage(
 }
 
 /**
+ * Per-row result of the output budget pass (033, research D6): `images` are
+ * the kept parts in arrival order; `dropped` holds the images whose re-encode
+ * failed. The pass never rejects — a per-image failure drops that image
+ * instead of rejecting the finalize.
+ */
+export interface OutputBudgetResult {
+	images: ImagePart[];
+	dropped: ImagePart[];
+}
+
+/**
  * Apply the output-side budget to the images of one assistant row before
  * finalize (030 contracts/stream-image-parts.md §3). In-budget images pass
  * through untouched (byte-identical); anything over the per-image cap — or
  * pushing the row past the per-message total — is re-encoded down via the
  * existing canvas pipeline, never rejected. Earlier images keep their bytes;
- * later ones absorb the squeeze when the total binds.
+ * later ones absorb the squeeze when the total binds. A re-encode failure
+ * (decode or encode) drops that image and leaves in-budget siblings
+ * untouched (033 FR-006 containment).
  */
 export async function applyOutputBudget(
 	images: ImagePart[],
 	ops: ImageIntakeOps = browserOps
-): Promise<ImagePart[]> {
+): Promise<OutputBudgetResult> {
 	const kept: ImagePart[] = [];
+	const dropped: ImagePart[] = [];
 	let remaining = MAX_OUTPUT_TOTAL_DATA_URL_BYTES;
 	for (const image of images) {
 		if (image.bytes <= MAX_OUTPUT_IMAGE_BYTES && image.data.length <= remaining) {
@@ -315,11 +329,36 @@ export async function applyOutputBudget(
 		// Base64 expands ~4/3, so the decoded target is 3/4 of what's left; at
 		// least 0 so a drained budget still yields a (tiny) best-effort image.
 		const target = Math.min(MAX_OUTPUT_IMAGE_BYTES, Math.floor((Math.max(remaining, 0) * 3) / 4));
-		const rebuilt = await reencodeOutputImage(image, target, ops);
-		remaining -= rebuilt.data.length;
-		kept.push(rebuilt);
+		try {
+			const rebuilt = await reencodeOutputImage(image, target, ops);
+			remaining -= rebuilt.data.length;
+			kept.push(rebuilt);
+		} catch {
+			dropped.push(image);
+		}
 	}
-	return kept;
+	return { images: kept, dropped };
+}
+
+/**
+ * Decoder-independent validity gate for a base64 image candidate (033,
+ * research D6, finalize-composition §2 cap rule 1): decodes the base64 body
+ * (undecodable base64 is an invalid payload by definition) and resolves the
+ * mime with `resolveMime` — sniffed magic bytes win, a declared supported
+ * media type is the fallback — the same semantics as `fetchImageCandidate`.
+ * Deliberately node-safe: no bitmap decoder is consulted, so a
+ * `candidateToImagePart` dimension-probe failure (no `createImageBitmap` in
+ * node/test runtimes) is never misread as corruption.
+ */
+export function isValidImageCandidate(candidate: { mediaType?: string; base64?: string }): boolean {
+	if (candidate.base64 === undefined) return false;
+	let bytes: Uint8Array;
+	try {
+		bytes = dataUrlToBytes(`data:;base64,${candidate.base64}`);
+	} catch {
+		return false;
+	}
+	return resolveMime(sniffImageMime(bytes), candidate.mediaType ?? null) !== null;
 }
 
 /**

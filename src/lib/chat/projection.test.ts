@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { projectEntries, type ProjectableRow } from './projection';
 import { fixtures, resetOrd, makeRow, type GoldenFixture, type LegacyRow } from './golden/fixtures';
-import type { ModelMessage } from 'ai';
+import type { AssistantContent, ModelMessage } from 'ai';
+
+// 033 T004(b): pin the emitted assistant part-type set against the SDK's own
+// AssistantContent union (@ai-sdk/provider-utils 5.0.2, re-exported by 'ai'):
+// string | Array<TextPart | CustomPart | FilePart | ReasoningPart |
+// ReasoningFilePart | ToolCallPart | ToolResultPart | ToolApprovalRequest>.
+// `as const satisfies` makes any non-member literal (e.g. 'image') a compile
+// error, and `_assistantUnionCovered` fails to compile if the SDK grows a
+// member this set does not cover.
+type AssistantPart = Exclude<AssistantContent, string>[number];
+type AssistantPartType = AssistantPart['type'];
+type UnionCovered = Exclude<AssistantPartType, (typeof ASSISTANT_PART_TYPES)[number]>;
+
+const ASSISTANT_PART_TYPES = [
+	'text',
+	'custom',
+	'file',
+	'reasoning',
+	'reasoning-file',
+	'tool-call',
+	'tool-result',
+	'tool-approval-request'
+] as const satisfies readonly AssistantPartType[];
+
+const _assistantUnionCovered: UnionCovered extends never ? true : never = true;
 
 function pipeline(fixture: GoldenFixture): ModelMessage[] {
 	resetOrd();
@@ -156,12 +180,12 @@ describe('assistant parts projection (T020 — specs/030-image-generation/contra
 			...makeRow({ role: 'assistant', content: 'here is the chart' }),
 			parts: JSON.stringify([
 				{ type: 'text', text: 'here is the chart' },
-				{ type: 'image', data: image }
+				{ type: 'image', data: image, mimeType: 'image/png', width: 4, height: 4, bytes: 3 }
 			])
 		};
 	}
 
-	it('emits ordered assistant parts for a vision-capable target (same wire shapes as the user branch)', () => {
+	it('a vision-capable assistant row with [text, image] parts projects text + a provider file part (033 T004a)', () => {
 		resetOrd();
 		const result = projectEntries([assistantRowWithParts()], { visionCapable: true });
 		expect(result).toEqual([
@@ -169,6 +193,50 @@ describe('assistant parts projection (T020 — specs/030-image-generation/contra
 				role: 'assistant',
 				content: [
 					{ type: 'text', text: 'here is the chart' },
+					{ type: 'file', mediaType: 'image/png', data: 'AAAA' }
+				]
+			}
+		] as ModelMessage[]);
+	});
+
+	it('every emitted assistant part type is a member of the SDK AssistantContent union (033 T004b)', () => {
+		resetOrd();
+		const result = projectEntries([assistantRowWithParts()], { visionCapable: true });
+		for (const msg of result) {
+			if (msg.role !== 'assistant') continue;
+			for (const p of (msg.content as unknown[]) ?? []) {
+				expect(ASSISTANT_PART_TYPES).toContain((p as { type: string }).type);
+			}
+		}
+	});
+
+	it('a stored image part that cannot produce an SDK-valid file part is skipped silently (033 §1)', () => {
+		resetOrd();
+		const row = {
+			...makeRow({ role: 'assistant', content: 'fallback text' }),
+			parts: JSON.stringify([{ type: 'image', data: 'not-a-data-url' }])
+		};
+		const result = projectEntries([row], { visionCapable: true });
+		expect(result).toEqual([
+			{ role: 'assistant', content: [{ type: 'text', text: 'fallback text' }] }
+		] as ModelMessage[]);
+	});
+
+	it('the user branch keeps the byte-identical {type:"image", image} shape (033 T004d)', () => {
+		resetOrd();
+		const row = {
+			...makeRow({ role: 'user', content: 'look at this' }),
+			parts: JSON.stringify([
+				{ type: 'text', text: 'look at this' },
+				{ type: 'image', data: image }
+			])
+		};
+		const result = projectEntries([row] as unknown as readonly ProjectableRow[]);
+		expect(result).toEqual([
+			{
+				role: 'user',
+				content: [
+					{ type: 'text', text: 'look at this' },
 					{ type: 'image', image }
 				]
 			}

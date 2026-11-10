@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Assistant image replies no longer break the chat's follow-up turns**
+  (issue #70 / feature 033) — stored assistant image parts now project onto
+  the wire as AI SDK provider file parts (the assistant-legal image-bearing
+  shape) instead of the user-only `type: 'image'` part, which previously made
+  every subsequent turn of an image-bearing chat fail as an invalid prompt
+  ("Network error"). The finalize/persist path around it was fixed with the
+  same change: image-only replies persist and render as durable image-only
+  rows; aborted turns keep all completed turn images (`interrupted: true`);
+  replies over the eight-image cap persist the first eight with a bracketed
+  drop notice; the text/image arrival order survives reload; corrupt or
+  un-encodable images degrade to a contained per-image notice instead of
+  losing the whole turn; and the typed "No image produced" refinement is
+  reachable during streaming failures (keyed on a turn-scoped recognized
+  image count), with an advisory no-image notice on image-output-expected
+  turns that recognized none.
 - **Provider API keys are no longer attached to model-supplied image URLs** —
   the credential-attaching fetch seams (keychain fetch, streaming HTTP
   transport) now learn the provider's `baseUrl` host and attach the key only

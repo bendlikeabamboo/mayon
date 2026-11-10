@@ -36,7 +36,13 @@ import {
 	type ImagePart,
 	type MessagePart
 } from '#lib/chat/kinds.js';
-import { applyOutputBudget, candidateToImagePart, fetchImageCandidate } from '#lib/chat/images.js';
+import {
+	MAX_IMAGES_PER_MESSAGE,
+	applyOutputBudget,
+	candidateToImagePart,
+	fetchImageCandidate,
+	isValidImageCandidate
+} from '#lib/chat/images.js';
 import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
 import {
 	acquirePropagationLatch,
@@ -53,7 +59,7 @@ import { providerFetchFor } from '#lib/ai/sdk-factory.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
 import { mark, incRender } from '#lib/perf/mark.js';
-import { resolveRequestSettings, type ImageCandidate } from '#lib/ai/dialects.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
 import { mapSdkError } from '#lib/ai/sdk-errors.js';
 import {
 	asImageOutputError,
@@ -61,10 +67,11 @@ import {
 	formatProviderError,
 	type FormattedProviderError
 } from '#lib/ai/errors.js';
+import { supportsImageOutput } from '#lib/ai/image-output-capability.js';
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '#lib/ai/types.js';
 import { CopilotAuthRequiredError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
-import { runAgentTurn } from '#lib/agent/loop.js';
+import { runAgentTurn, type StreamImageCandidate } from '#lib/agent/loop.js';
 import { getToolDefinitions } from '#lib/agent/registry.js';
 import { generateTitle, DEFAULT_TITLE } from '#lib/ai/generate/generate-title.js';
 import { generateBrief } from '#lib/ai/generate/generate-brief.js';
@@ -91,6 +98,16 @@ function isAbortError(err: unknown): boolean {
 }
 
 const WORD_CHAR = /[\p{L}\p{N}_'’-]/u;
+
+/**
+ * Advisory zero-image notice (033, finalize-composition.md §4 / research D7):
+ * appended to a successful final row from an image-output-expected model that
+ * recognized zero stream images. Plain-language and bracketed — the same
+ * family as the typed `ImageOutputError` notice — and purely advisory: it
+ * never blocks or suppresses anything.
+ */
+const NO_IMAGE_NOTICE =
+	'[No image was produced this turn. Set "Image output" to "On" in provider settings, or switch to a model that produces images.]';
 
 /**
  * Safe release boundary for the streaming pacer: `raw.slice(0, index)` must
@@ -169,10 +186,11 @@ class ChatState {
 	liveBlocks = $state<LiveBlock[]>([]);
 	/**
 	 * Image candidates recognized from the in-flight stream (030 R-3),
-	 * pending finalize. Text stays a pure string — the pacer and the rAF
-	 * flush never touch this.
+	 * pending finalize. Entries may carry the arrival `offset` stamped at
+	 * recognition (033 finalize-handoff extension) — composition reads it.
+	 * Text stays a pure string — the pacer and the rAF flush never touch this.
 	 */
-	private pendingImages = $state<ImageCandidate[]>([]);
+	private pendingImages = $state<StreamImageCandidate[]>([]);
 	/**
 	 * Bounded live-placeholder signal (contracts/stream-image-parts.md §2):
 	 * a count only — no base64, no partial frames, ever.
@@ -524,9 +542,11 @@ class ChatState {
 					: null;
 
 		// 1) Persist the user row immediately and reflect it in the UI — one
-		// atomic append carrying text + image parts (specs/030-image-generation/contracts/message-parts.md
-		// §4). Image-less sends write no parts column: the row is byte-identical
-		// to the pre-parts flow.
+		// atomic append carrying text + image parts
+		// (specs/030-image-generation/contracts/message-parts.md §3 — a row is
+		// appended in a single atomic operation carrying text and parts
+		// together). Image-less sends write no parts column: the row is
+		// byte-identical to the pre-parts flow.
 		// Availability snapshot (027 T005): taken before the append below
 		// mutates `this.messages` — an empty branch's first turn must not
 		// offer `propagate_to_parent` (quickstart V4).
@@ -564,6 +584,15 @@ class ChatState {
 		/** Final assistant text of the turn, captured by `appendAssistantText`
 		 *  before buffer teardown (the DEV strategy lint reads it post-turn). */
 		let finalAssistantText = '';
+		/**
+		 * Turn-scoped count of images recognized by the stream (033, research
+		 * D7): incremented by the `onImageRecognized` dep at recognition time,
+		 * reset at send start by initialization. Independent from
+		 * `pendingImages` — which only fills when a finalize append hands
+		 * images over — so the catch-time refinement and the zero-image notice
+		 * can key on recognition even when no append ever ran.
+		 */
+		let streamRecognizedImages = 0;
 		/** Latest provider-reported usage (023); each agent-loop iteration
 		 *  overwrites, so the final iteration wins for the turn persist. */
 		let finalUsage: Extract<TraceEvent, { kind: 'usage' }> | null = null;
@@ -667,6 +696,11 @@ class ChatState {
 					...mcpDisabled
 				],
 				firstTurn: isFirstRootTurn,
+				// 033 (research D7): turn-scoped recognition counter — the
+				// refinement/zero-image signal that exists during streaming.
+				onImageRecognized: () => {
+					streamRecognizedImages += 1;
+				},
 				updateStreamBuffer: (n) => {
 					this.streamBuffer = n;
 					if (n && !this.liveBlocks.some((b) => b.kind === 'text' && b.open)) {
@@ -708,18 +742,44 @@ class ChatState {
 						this.streamPhase = pacer.mode;
 						await this.waitForDrain(pacer);
 					}
-					// Finalize (contracts/stream-image-parts.md §3): compose ordered
-					// parts and persist ONE atomic append. Image-less turns keep
-					// today's exact append shape (parts omitted → NULL column).
+					// Finalize (contracts/stream-image-parts.md §3, amended in place by
+					// 033 — see specs/033-image-output-finalize-paths/contracts/
+					// finalize-composition.md §2): compose ordered parts and persist
+					// ONE atomic append. Image-less turns keep today's exact row
+					// shape (parts omitted → NULL column); the 033 `final` marker may
+					// ride the finalize call's opts on image-less finalize appends,
+					// which changes nothing about the persisted row.
 					const finalized = await this.composeAssistantParts(content, fetchImpl);
+					// 033 §4 (research D7): advisory zero-image notice — a turn's
+					// `final` append completing non-aborted with non-empty text from
+					// an image-output-expected model that recognized zero stream
+					// images. Purely advisory, never blocks; the notice rides the row
+					// content (parts is null — no images were composed, so the text
+					// concat invariant is untouched).
+					const noImageNotice =
+						opts?.final === true &&
+						!aborted &&
+						content.trim() !== '' &&
+						streamRecognizedImages === 0 &&
+						!finalized.parts &&
+						config !== undefined &&
+						supportsImageOutput(config, config.defaultModel)
+							? NO_IMAGE_NOTICE
+							: null;
 					const parts = finalized.parts;
-					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
-						model: opts?.model ?? (parts ? config?.defaultModel : undefined),
-						// 030 §4: an aborted finalize carrying images marks the row
-						// interrupted; image-less aborts keep today's exact shape.
-						...(aborted && parts ? { metadata: JSON.stringify({ interrupted: true }) } : {}),
-						...(parts ? { parts } : {})
-					});
+					const row = await repos.messages.append(
+						chatId,
+						'assistant',
+						noImageNotice ? `${finalized.content}\n\n${noImageNotice}` : finalized.content,
+						{
+							model: opts?.model ?? (parts ? config?.defaultModel : undefined),
+							// 030 §4 (amended by 033, finalize-composition §3): an aborted
+							// finalize carrying images marks the row interrupted; image-less
+							// aborts keep today's exact shape.
+							...(aborted && parts ? { metadata: JSON.stringify({ interrupted: true }) } : {}),
+							...(parts ? { parts } : {})
+						}
+					);
 					this.pendingImages = [];
 					this.messages = [...this.messages, row];
 					this.streamBuffer = '';
@@ -867,13 +927,15 @@ class ChatState {
 				const imageInputRefined = hasImages
 					? asImageUnsupported(mapped, config?.defaultModel)
 					: mapped;
-				// Failed image turn (spec 030 FR-007): pendingImages still held at
-				// catch time means stream images were handed to finalize but the
-				// turn failed before any row persisted — refine into the typed
-				// no-image notice naming the "Image output" toggle, never a raw
-				// provider dump. Same surface path as the vision error above.
+				// Failed image turn (spec 030 FR-007, rekeyed by 033 research D7):
+				// the refinement keys on the turn-scoped RECOGNIZED count — a
+				// provider failure after the stream recognized ≥1 image means the
+				// model was producing images and none persisted (the stream died
+				// before any finalize append, so pendingImages is empty) — refine
+				// into the typed no-image notice naming the "Image output" toggle,
+				// never a raw provider dump. Same surface path as the vision error.
 				const refined =
-					this.pendingImages.length > 0
+					streamRecognizedImages > 0
 						? asImageOutputError(imageInputRefined, config?.defaultModel)
 						: imageInputRefined;
 				this.error = formatProviderError(refined);
@@ -911,8 +973,9 @@ class ChatState {
 			for (const b of this.liveBlocks) b.open = false;
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
-					// 030 §4: complete pendingImages persist with the interrupted
-					// row; images that never completed are dropped silently.
+					// 030 §4 (amended by 033, finalize-composition §3): all completed
+					// turn images persist with the interrupted row; images that never
+					// completed are dropped silently.
 					const finalized = await this.composeAssistantParts(this.streamBuffer, fetchImpl);
 					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
 						metadata: JSON.stringify({ interrupted: true }),
@@ -1004,9 +1067,18 @@ class ChatState {
 
 	/**
 	 * Compose the durable parts of a finalizing assistant row (030 contract
-	 * §3): the text part first, then completed stream images in arrival order,
-	 * with the T002 output budget applied and `generatedImageName` labels
-	 * before composition. Null when the turn carried no images — image-less
+	 * §3, amended in place by 033): the row's text is split at each image's
+	 * clamped arrival offset with image parts interleaved at their positions,
+	 * the T002 output budget applied and `generatedImageName` labels before
+	 * composition. Caps run pre-decode, in arrival order: first the byte
+	 * validity gate (033 FR-006 — magic-byte sniff, decoder-independent;
+	 * invalid payloads drop with a bracketed notice), then the count cap
+	 * (033 FR-004) — the first {@link MAX_IMAGES_PER_MESSAGE} materialized
+	 * candidates keep the row, extras drop with a bracketed notice instead of
+	 * failing the append — then the byte budget, where a per-image re-encode
+	 * failure drops that image with a notice and never rejects (research D6).
+	 * Null when the turn carried no
+	 * images — image-less
 	 * rows keep today's exact shape (parts omitted → NULL column). URL-only
 	 * candidates materialize here through the provider fetch (R-4); an
 	 * un-fetchable link becomes a contained bracketed notice appended to the
@@ -1018,7 +1090,7 @@ class ChatState {
 		content: string,
 		fetchImpl?: typeof globalThis.fetch
 	): Promise<{ content: string; parts: MessagePart[] | null }> {
-		const withBytes: ImageCandidate[] = [];
+		const withBytes: StreamImageCandidate[] = [];
 		const notices: string[] = [];
 		for (const c of this.pendingImages) {
 			if (c.base64 !== undefined) {
@@ -1029,24 +1101,87 @@ class ChatState {
 			if (fetched) withBytes.push(fetched);
 			else notices.push("[Image could not be loaded: the provider's link is no longer available.]");
 		}
+		// 033 FR-006 (research D6): the byte-validity gate runs first, pre-decode,
+		// in arrival order — magic bytes (a declared supported media type as
+		// fallback) decide validity, decoder-independently (node-safe). Invalid
+		// payloads drop with a bracketed notice instead of a decode rejection.
+		const sniffed = withBytes.filter((c) => isValidImageCandidate(c));
+		const sniffDropped = withBytes.length - sniffed.length;
+		if (sniffDropped > 0) {
+			notices.push(
+				`[${sniffDropped} image${sniffDropped === 1 ? ' was' : 's were'} dropped: the image data was not a valid image.]`
+			);
+		}
+		// 033 FR-004 (research D4): the count cap lives here, pre-decode, in
+		// arrival order — extras drop with a bracketed notice so the row always
+		// persists; the repo validateParts ≤8 stays the backstop.
+		let candidates = sniffed;
+		if (sniffed.length > MAX_IMAGES_PER_MESSAGE) {
+			const dropped = sniffed.length - MAX_IMAGES_PER_MESSAGE;
+			candidates = sniffed.slice(0, MAX_IMAGES_PER_MESSAGE);
+			notices.push(
+				`[${dropped} image${dropped === 1 ? ' was' : 's were'} dropped: at most ${MAX_IMAGES_PER_MESSAGE} images can be attached per message.]`
+			);
+		}
+
+		// 033 (research D5): each candidate's arrival offset is relative to the
+		// appended text — the loop's walk stamps the buffer length at
+		// recognition and makes it slice-relative per row, and offset-less
+		// (critic-round) candidates append after the text. Clamp, stable-sort,
+		// and interleave: text parts concatenate byte-for-byte to `content` by
+		// construction (message-parts §1 invariant).
+		const position = (offset: number | undefined): number =>
+			Math.min(Math.max(offset ?? content.length, 0), content.length);
+		const placed = candidates
+			.map((c, i) => ({ i, pos: position(c.offset) }))
+			.sort((a, b) => a.pos - b.pos); // Array#sort is stable — arrival order kept
+		const decoded = await Promise.all(candidates.map((c) => candidateToImagePart(c)));
+		const imageList: { part: ImagePart; pos: number }[] = [];
+		for (const { i, pos } of placed) {
+			const part = decoded[i];
+			if (part) imageList.push({ part, pos });
+		}
+		// 033 FR-006 (research D6): the budget pass never rejects — a per-image
+		// re-encode failure drops that image with a notice; in-budget siblings
+		// ship untouched. `budget.images` preserves the kept entries' order, so
+		// the surviving entries zip positionally with the budgeted parts.
+		const budget = await applyOutputBudget(imageList.map((x) => x.part));
+		if (budget.dropped.length > 0) {
+			const dropped = budget.dropped.length;
+			notices.push(
+				`[${dropped} image${dropped === 1 ? ' was' : 's were'} dropped: the image could not be re-encoded to fit the message size limit.]`
+			);
+		}
+		const droppedParts = new Set(budget.dropped);
+		const keptEntries = imageList.filter((x) => !droppedParts.has(x.part));
+
 		let text = content;
 		for (const notice of notices) {
 			text = text ? `${text}\n\n${notice}` : notice;
 		}
-		if (withBytes.length === 0) return { content: text, parts: null };
-		const decoded = await Promise.all(withBytes.map((c) => candidateToImagePart(c)));
-		const images = await applyOutputBudget(decoded.filter((p): p is ImagePart => p !== null));
-		const textPart: MessagePart[] = text ? [{ type: 'text', text }] : [];
-		return {
-			content: text,
-			parts: [
-				...textPart,
-				...images.map((part, i) => ({
-					...part,
-					name: generatedImageName(part.name, textPart.length + i)
-				}))
-			]
-		};
+		if (candidates.length === 0) return { content: text, parts: null };
+
+		const parts: MessagePart[] = [];
+		let cursor = 0;
+		for (let n = 0; n < keptEntries.length; n++) {
+			const part = budget.images[n]!;
+			const pos = keptEntries[n]!.pos;
+			if (pos > cursor) {
+				const seg = content.slice(cursor, pos);
+				if (seg) parts.push({ type: 'text', text: seg });
+			}
+			parts.push({ ...part, name: generatedImageName(part.name, parts.length) });
+			cursor = pos;
+		}
+		const tail = content.slice(cursor);
+		if (tail) parts.push({ type: 'text', text: tail });
+		if (notices.length > 0) {
+			// The notice text rides separate trailing text part(s) so the text
+			// parts keep concatenating byte-for-byte to the amended content.
+			const joined = notices.join('\n\n');
+			parts.push({ type: 'text', text: `${content ? '\n\n' : ''}${joined}` });
+		}
+		return { content: text, parts };
 	}
 
 	/** Stop the in-flight stream (AbortError is swallowed in `send`). */

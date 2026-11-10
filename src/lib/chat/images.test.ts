@@ -334,18 +334,40 @@ describe('applyOutputBudget', () => {
 		expect(MAX_OUTPUT_TOTAL_DATA_URL_BYTES).toBe(8 * 1024 * 1024);
 	});
 
-	it('returns an empty list unchanged', async () => {
+	it('returns an empty result unchanged', async () => {
 		const { ops } = makeStubOps({});
-		expect(await applyOutputBudget([], ops)).toEqual([]);
+		expect(await applyOutputBudget([], ops)).toEqual({ images: [], dropped: [] });
 	});
 
 	it('passes in-budget images through byte-identical without touching the pipeline', async () => {
 		const image = makeOutputImage(500 * 1024);
 		const { ops, decodeCalls, encodeCalls } = makeStubOps({});
 		const result = await applyOutputBudget([image], ops);
-		expect(result[0]).toBe(image); // same object — no re-encode, no generation loss
+		expect(result.images[0]).toBe(image); // same object — no re-encode, no generation loss
+		expect(result.dropped).toEqual([]); // nothing dropped
 		expect(decodeCalls).toHaveLength(0);
 		expect(encodeCalls).toHaveLength(0);
+	});
+
+	// 033 T017 (research D6, finalize-composition §2 cap rule 3): the budget
+	// pass never rejects — a per-image decode/encode failure drops that image
+	// (counted in `dropped`) and in-budget siblings ship untouched.
+	it('drops an image whose re-encode fails and keeps in-budget siblings untouched, never throwing (033 T017)', async () => {
+		const inBudget = makeOutputImage(500 * 1024);
+		const oversized = makeOutputImage(MAX_OUTPUT_IMAGE_BYTES + 1);
+		const encodeJpeg = vi.fn(async () => new Blob([new Uint8Array(16)], { type: 'image/jpeg' }));
+		const ops: ImageIntakeOps = {
+			decode: async () => {
+				throw new Error('decoder exploded');
+			},
+			encodeJpeg
+		};
+
+		const result = await applyOutputBudget([inBudget, oversized], ops);
+
+		expect(result.images).toEqual([inBudget]); // sibling passed through byte-identically
+		expect(result.dropped).toEqual([oversized]); // failing image dropped, not thrown
+		expect(encodeJpeg).not.toHaveBeenCalled(); // the decode failure contained it
 	});
 
 	it('re-encodes an over-cap image through the pipeline at the long-edge cap', async () => {
@@ -355,7 +377,7 @@ describe('applyOutputBudget', () => {
 			bitmap: { width: 2000, height: 1500 },
 			encoded
 		});
-		const [part] = await applyOutputBudget([image], ops);
+		const [part] = (await applyOutputBudget([image], ops)).images;
 		expect(Array.from(decodeCalls[0])).toEqual(Array.from(dataUrlToBytes(image.data)));
 		expect(encodeCalls).toEqual([{ width: 1568, height: 1176 }]); // 2000×1500 → 1568 long edge
 		expect(part.mimeType).toBe('image/jpeg');
@@ -373,7 +395,7 @@ describe('applyOutputBudget', () => {
 			bitmap: { width: 2000, height: 2000 },
 			encode: (width, height) => new Uint8Array(width * height * 4) // JPEG bytes track area
 		});
-		const [part] = await applyOutputBudget([image], ops);
+		const [part] = (await applyOutputBudget([image], ops)).images;
 		expect(encodeCalls).toEqual([
 			{ width: 1568, height: 1568 },
 			{ width: 512, height: 512 }
@@ -393,11 +415,11 @@ describe('applyOutputBudget', () => {
 			encoded: new Uint8Array(100 * 1024)
 		});
 		const result = await applyOutputBudget(images, ops);
-		for (let i = 0; i < 5; i++) expect(result[i]).toBe(images[i]); // 5 × ~1.4 MB fits 8 MiB
+		for (let i = 0; i < 5; i++) expect(result.images[i]).toBe(images[i]); // 5 × ~1.4 MB fits 8 MiB
 		expect(encodeCalls).toEqual([{ width: 1000, height: 1000 }]); // only the 6th re-encodes
-		expect(result[5].mimeType).toBe('image/jpeg');
-		expect(result[5].bytes).toBeLessThan(images[5].bytes);
-		expect(result[5].bytes).toBe(dataUrlBytes(result[5].data));
+		expect(result.images[5].mimeType).toBe('image/jpeg');
+		expect(result.images[5].bytes).toBeLessThan(images[5].bytes);
+		expect(result.images[5].bytes).toBe(dataUrlBytes(result.images[5].data));
 	});
 
 	it('never rejects: ships the bounded best attempt when the encoder never cooperates', async () => {
@@ -406,7 +428,7 @@ describe('applyOutputBudget', () => {
 			bitmap: { width: 3000, height: 3000 },
 			encode: () => new Uint8Array(2 * 1024 * 1024) // fixed 2 MB output at any dims
 		});
-		const [part] = await applyOutputBudget([image], ops);
+		const [part] = (await applyOutputBudget([image], ops)).images;
 		expect(encodeCalls).toHaveLength(12); // bounded attempts, then the best attempt ships
 		expect(part.mimeType).toBe('image/jpeg');
 		expect(part.width).toBeGreaterThan(0);
