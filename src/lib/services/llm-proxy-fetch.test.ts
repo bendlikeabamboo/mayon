@@ -124,6 +124,41 @@ describe('getLlmFetch', () => {
 		expect(sentBody.body).toBeUndefined();
 	});
 
+	it('forwards authHost verbatim in the proxy body when provided', async () => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
+
+		const fakeRes = new Response('ok', { status: 200 });
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
+
+		const fetchFn = getLlmFetch('https://api.provider.test/v1/chat', 'API.Provider.TEST.');
+		await fetchFn('https://api.provider.test/v1/chat', {
+			method: 'POST',
+			headers: { authorization: 'Bearer k' }
+		});
+
+		const sentBody = JSON.parse(
+			((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit)
+				.body as string
+		);
+		expect(sentBody.authHost).toBe('API.Provider.TEST.');
+	});
+
+	it('omits authHost from the proxy body when not provided', async () => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
+
+		const fakeRes = new Response('ok', { status: 200 });
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
+
+		const fetchFn = getLlmFetch('https://api.provider.test/v1/chat');
+		await fetchFn('https://api.provider.test/v1/chat', { method: 'GET' });
+
+		const sentBody = JSON.parse(
+			((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit)
+				.body as string
+		);
+		expect(sentBody.authHost).toBeUndefined();
+	});
+
 	it.each([
 		['localhost', 'http://localhost:1234/v1/chat'],
 		['127.0.0.1', 'http://127.0.0.1:8080/x'],

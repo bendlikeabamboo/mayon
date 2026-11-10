@@ -1,7 +1,7 @@
 import { serverStatus } from './status.svelte';
 import { isLoopbackUrl } from '#lib/ai/llm-target.js';
 
-function createProxyFetch(): typeof globalThis.fetch {
+function createProxyFetch(authHost?: string): typeof globalThis.fetch {
 	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 		const proxyBody: {
@@ -9,6 +9,7 @@ function createProxyFetch(): typeof globalThis.fetch {
 			method: string;
 			headers: Record<string, string>;
 			body?: string;
+			authHost?: string;
 		} = {
 			url,
 			method: init?.method ?? 'GET',
@@ -17,6 +18,12 @@ function createProxyFetch(): typeof globalThis.fetch {
 
 		if (typeof init?.body === 'string') {
 			proxyBody.body = init.body;
+		}
+
+		// Declared credential host (032): copied verbatim so the relay can decide
+		// which headers stay; absent keeps the keyless/legacy shape.
+		if (authHost !== undefined) {
+			proxyBody.authHost = authHost;
 		}
 
 		const proxyRes = await fetch('/api/llm/proxy', {
@@ -36,10 +43,13 @@ function createProxyFetch(): typeof globalThis.fetch {
 /**
  * Fetch for LLM traffic: proxied through the server (`llm-proxy` cap) unless
  * `url` targets loopback, which the server cannot reach — those go direct.
+ * `authHost` (032) declares the credential-bearing host; when proxying it is
+ * forwarded verbatim in the relay request body so the server can enforce the
+ * credential-forwarding rule, and it is ignored on the browser-direct path.
  */
-export function getLlmFetch(url: string): typeof globalThis.fetch {
+export function getLlmFetch(url: string, authHost?: string): typeof globalThis.fetch {
 	if (serverStatus.has('llm-proxy') && !isLoopbackUrl(url)) {
-		return createProxyFetch();
+		return createProxyFetch(authHost);
 	}
 	return globalThis.fetch;
 }

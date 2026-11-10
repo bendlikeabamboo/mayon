@@ -94,11 +94,10 @@ describe('assertPublicHttpTarget — literal fast path', () => {
 		expect((error as BlockedTargetError).kind).toBe(kind);
 	});
 
-	it.each([
-		'http://93.184.216.34/x',
-		'http://8.8.8.8:8080/x',
-		'http://[2606:4700::6810:85e5]/x'
-	])('allows public literal %s', async (url) => {
-		await expect(assertPublicHttpTarget(url)).resolves.toBeUndefined();
-	});
+	it.each(['http://93.184.216.34/x', 'http://8.8.8.8:8080/x', 'http://[2606:4700::6810:85e5]/x'])(
+		'allows public literal %s',
+		async (url) => {
+			await expect(assertPublicHttpTarget(url)).resolves.toBeUndefined();
+		}
+	);
 });

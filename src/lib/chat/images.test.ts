@@ -7,6 +7,7 @@ import {
 	bytesToDataUrl,
 	dataUrlBytes,
 	fetchImageCandidate,
+	IMAGE_FETCH_MAX_BYTES,
 	type ImageIntakeOps,
 	intakeImage,
 	MAX_IMAGES_PER_MESSAGE,
@@ -466,5 +467,44 @@ describe('fetchImageCandidate', () => {
 		const fetchImpl = stubFetch(200, 'application/octet-stream', b64ToBytes(TINY_PNG_B64));
 		const candidate = await fetchImageCandidate(PNG_URL, undefined, fetchImpl as typeof fetch);
 		expect(candidate).toEqual({ mediaType: 'image/png', base64: TINY_PNG_B64 });
+	});
+
+	it('locks the client image byte cap at 32 MiB', () => {
+		expect(IMAGE_FETCH_MAX_BYTES).toBe(32 * 1024 * 1024);
+	});
+
+	/** A streaming response body: one 1 MiB chunk per pull (first chunk sniffs as PNG). */
+	const STREAM_CHUNK_BYTES = 1024 * 1024;
+	function streamingPngResponse(chunks: number): Response {
+		let next = 0;
+		const stream = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				if (next >= chunks) {
+					controller.close();
+					return;
+				}
+				const chunk = new Uint8Array(STREAM_CHUNK_BYTES);
+				if (next === 0) chunk.set(PNG_BYTES.subarray(0, 8)); // PNG magic for sniffing
+				next++;
+				controller.enqueue(chunk);
+			}
+		});
+		return new Response(stream, { status: 200, headers: { 'content-type': 'image/png' } });
+	}
+
+	it('returns null when the streamed body exceeds IMAGE_FETCH_MAX_BYTES', async () => {
+		const chunkCount = Math.floor(IMAGE_FETCH_MAX_BYTES / STREAM_CHUNK_BYTES) + 1; // 33 MiB > cap
+		const fetchImpl = vi.fn(async () => streamingPngResponse(chunkCount));
+		await expect(
+			fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as unknown as typeof fetch)
+		).resolves.toBeNull();
+	});
+
+	it('materializes a streamed body under the cap', async () => {
+		const totalBytes = 2 * STREAM_CHUNK_BYTES; // 2 MiB < cap
+		const fetchImpl = vi.fn(async () => streamingPngResponse(2));
+		const candidate = await fetchImageCandidate(PNG_URL, 'image/png', fetchImpl as typeof fetch);
+		expect(candidate?.mediaType).toBe('image/png');
+		expect(dataUrlBytes(`data:image/png;base64,${candidate?.base64}`)).toBe(totalBytes);
 	});
 });

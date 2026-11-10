@@ -104,8 +104,7 @@ function parseIPv6(input: string): bigint | null {
 	const sections = s.split('::');
 	if (sections.length > 2) return null;
 	const head = sections[0] === '' ? [] : sections[0].split(':');
-	const tail =
-		sections.length === 2 && sections[1] !== '' ? sections[1].split(':') : [];
+	const tail = sections.length === 2 && sections[1] !== '' ? sections[1].split(':') : [];
 	if (head.some((g) => g === '') || tail.some((g) => g === '')) return null;
 	const missing = 8 - head.length - tail.length;
 	if (missing < 0 || (sections.length === 1 && missing !== 0)) return null;
@@ -137,14 +136,14 @@ export function blockedAddressKind(ip: string): string | null {
 	if (v4 !== null) {
 		for (const range of V4_RANGES) {
 			const mask = (0xffffffff << (32 - range.bits)) >>> 0;
-			if (((v4 & mask) >>> 0) === range.prefix) return range.kind;
+			if ((v4 & mask) >>> 0 === range.prefix) return range.kind;
 		}
 		return null;
 	}
 	const v6 = parseIPv6(literal);
 	if (v6 === null) return null;
 	// IPv4-mapped ::ffff:0:0/96 → recurse into the v4 table.
-	if ((v6 >> 32n) === 0xffffn) {
+	if (v6 >> 32n === 0xffffn) {
 		return blockedAddressKind(ipv4ToString(Number(v6 & 0xffffffffn)));
 	}
 	for (const range of V6_RANGES) {
@@ -167,8 +166,7 @@ export function blockedAddressKind(ip: string): string | null {
 export async function assertPublicHttpTarget(url: string): Promise<void> {
 	const parsed = new URL(url);
 	const rawHost = parsed.hostname;
-	const literal =
-		rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost;
+	const literal = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost;
 	if (isIP(literal) !== 0) {
 		const kind = blockedAddressKind(literal);
 		if (kind !== null) throw new BlockedTargetError(kind);
