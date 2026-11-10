@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Demon Route provider template** — an OpenAI-compatible gateway entry
+  (`https://api.demonroute.com/v1`) in the Gateways group, right after
+  OpenRouter, with live model discovery and a two-model starter list.
+
 ## [0.9.0] - 2026-11-03
 
 ### Added

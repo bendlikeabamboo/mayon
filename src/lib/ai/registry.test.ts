@@ -192,6 +192,25 @@ describe('Requesty template', () => {
 	});
 });
 
+describe('Demon Route template', () => {
+	const t = PROVIDER_TEMPLATES[13];
+
+	it('is at position 13 (after OpenRouter)', () => {
+		expect(t.label).toBe('Demon Route');
+	});
+
+	it('has correct shape', () => {
+		expect(t.kind).toBe('openai-compatible');
+		expect(t.baseUrl).toBe('https://api.demonroute.com/v1');
+		expect(t.requiresKey).toBe(true);
+		expect(t.discoverable).toBe(true);
+		expect(t.toolCapability).toBe('on');
+		expect(t.group).toBe('gateway');
+		expect(t.models).toContain(t.defaultModel);
+		expect(t.models.length).toBe(2);
+	});
+});
+
 describe('PROVIDER_TEMPLATES catalog order and length', () => {
 	const labels = PROVIDER_TEMPLATES.map((t) => t.label);
 
@@ -211,22 +230,22 @@ describe('PROVIDER_TEMPLATES catalog order and length', () => {
 		]);
 	});
 
-	it('total catalog length is 20', () => {
-		expect(labels).toHaveLength(20);
+	it('total catalog length is 21', () => {
+		expect(labels).toHaveLength(21);
 	});
 
-	it('Ollama stays at index 16; LM Studio and vLLM complete the Local group; GitHub Copilot is pinned last', () => {
-		expect(labels[16]).toBe('Ollama (local)');
-		expect(labels[17]).toBe('LM Studio (local)');
-		expect(labels[18]).toBe('vLLM (local)');
-		expect(labels[19]).toBe('GitHub Copilot');
+	it('Ollama stays at index 17; LM Studio and vLLM complete the Local group; GitHub Copilot is pinned last', () => {
+		expect(labels[17]).toBe('Ollama (local)');
+		expect(labels[18]).toBe('LM Studio (local)');
+		expect(labels[19]).toBe('vLLM (local)');
+		expect(labels[20]).toBe('GitHub Copilot');
 	});
 });
 
 describe('GitHub Copilot template', () => {
-	const t = PROVIDER_TEMPLATES[19];
+	const t = PROVIDER_TEMPLATES[20];
 
-	it('is at position 17 (last)', () => {
+	it('is at position 20 (last)', () => {
 		expect(t.label).toBe('GitHub Copilot');
 	});
 
@@ -328,7 +347,8 @@ describe('per-group ordering (data-model assignment table)', () => {
 					'Vercel AI Gateway',
 					'Requesty',
 					'Kilo Gateway',
-					'OpenRouter'
+					'OpenRouter',
+					'Demon Route'
 				]
 			]
 		];
