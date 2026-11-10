@@ -1,6 +1,53 @@
 import type { FastifyInstance } from 'fastify';
 import { Readable } from 'node:stream';
 import type { LlmProxyRequest } from '@mayon/shared';
+import { assertPublicHttpTarget, BlockedTargetError } from './url-target-guard';
+
+/**
+ * Headers that carry provider credentials (032 credential-forwarding rule):
+ * forwarded only when the client's declared `authHost` matches the target
+ * host; otherwise stripped before the upstream fetch.
+ */
+export const CREDENTIAL_HEADERS: readonly string[] = [
+	'authorization',
+	'x-api-key',
+	'x-goog-api-key'
+];
+
+/**
+ * Relay response bound (D6): the piped stream is destroyed once it exceeds
+ * 64 MiB — the client observes a network error mid-body.
+ */
+export const MAX_PROXY_RESPONSE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Hostname normalization for the credential rule (D2 semantics, local
+ * re-implementation — the server never imports SPA code): lowercase, strip
+ * the trailing root dot, strip IPv6 brackets.
+ */
+function normalizeHostname(host: string): string {
+	let normalized = host.trim().toLowerCase();
+	if (normalized.startsWith('[') && normalized.endsWith(']')) {
+		normalized = normalized.slice(1, -1);
+	}
+	while (normalized.endsWith('.')) {
+		normalized = normalized.slice(0, -1);
+	}
+	return normalized;
+}
+
+/**
+ * Credential-forwarding rule (032): credentials ride only to the declared
+ * host. `declared` is null when `authHost` is absent/empty → strip silently;
+ * the request still proceeds (D3).
+ */
+function forwardCredentialHeaders(body: LlmProxyRequest, targetHost: string): boolean {
+	const declared =
+		typeof body.authHost === 'string' && body.authHost.length > 0
+			? normalizeHostname(body.authHost)
+			: null;
+	return declared !== null && declared === targetHost;
+}
 
 const HOP_BY_HOP = new Set([
 	'content-encoding',
@@ -38,15 +85,35 @@ export function registerLlmProxy(app: FastifyInstance): void {
 			return;
 		}
 
+		const forwardCredentials = forwardCredentialHeaders(body, normalizeHostname(parsed.hostname));
+		const headers: Record<string, string> = {};
+		for (const [key, value] of Object.entries(body.headers ?? {})) {
+			if (!forwardCredentials && CREDENTIAL_HEADERS.includes(key.toLowerCase())) {
+				continue;
+			}
+			headers[key] = value;
+		}
+
 		let upstream: Response;
 		try {
+			// Target safety (032 / D4): validate the destination against the
+			// non-public IP range table before any upstream bytes move; resolver
+			// failures fall through to the 502 handler (fail-closed).
+			await assertPublicHttpTarget(body.url);
 			upstream = await fetch(body.url, {
 				method: body.method ?? 'GET',
-				headers: body.headers,
+				headers,
 				body: body.body,
-				cache: 'no-store'
+				cache: 'no-store',
+				// D5: never follow redirects — custom auth headers survive
+				// cross-origin redirects in undici, so only refusal closes it.
+				redirect: 'error'
 			});
 		} catch (err) {
+			if (err instanceof BlockedTargetError) {
+				reply.code(403).send({ error: 'blocked target', detail: err.kind });
+				return;
+			}
 			const detail = err instanceof Error ? err.message : String(err);
 			reply.raw.writeHead(502, { 'content-type': 'application/json' });
 			reply.raw.end(JSON.stringify({ error: 'upstream fetch failed', detail }));
@@ -74,6 +141,15 @@ export function registerLlmProxy(app: FastifyInstance): void {
 			const nodeStream = Readable.fromWeb(upstream.body as import('stream/web').ReadableStream);
 			nodeStream.on('error', () => {
 				reply.raw.destroy();
+			});
+			// D6: count bytes while piping; past the cap destroy the stream (the
+			// error handler above then destroys the reply).
+			let streamed = 0;
+			nodeStream.on('data', (chunk: Buffer) => {
+				streamed += chunk.length;
+				if (streamed > MAX_PROXY_RESPONSE_BYTES) {
+					nodeStream.destroy(new Error('proxy response exceeded MAX_PROXY_RESPONSE_BYTES'));
+				}
 			});
 			nodeStream.pipe(reply.raw);
 		} else {

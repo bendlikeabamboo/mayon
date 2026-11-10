@@ -14,7 +14,7 @@ vi.mock('#lib/services/status.svelte.js', () => ({
 
 import { getLlmFetch } from '#lib/services/llm-proxy-fetch.js';
 import { serverStatus } from '#lib/services/status.svelte.js';
-import { isLoopbackUrl } from '#lib/ai/llm-target.js';
+import { isLoopbackUrl, normalizeHostname, sameHost } from '#lib/ai/llm-target.js';
 
 describe('getLlmFetch', () => {
 	const originalFetch = globalThis.fetch;
@@ -124,6 +124,41 @@ describe('getLlmFetch', () => {
 		expect(sentBody.body).toBeUndefined();
 	});
 
+	it('forwards authHost verbatim in the proxy body when provided', async () => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
+
+		const fakeRes = new Response('ok', { status: 200 });
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
+
+		const fetchFn = getLlmFetch('https://api.provider.test/v1/chat', 'API.Provider.TEST.');
+		await fetchFn('https://api.provider.test/v1/chat', {
+			method: 'POST',
+			headers: { authorization: 'Bearer k' }
+		});
+
+		const sentBody = JSON.parse(
+			((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit)
+				.body as string
+		);
+		expect(sentBody.authHost).toBe('API.Provider.TEST.');
+	});
+
+	it('omits authHost from the proxy body when not provided', async () => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
+
+		const fakeRes = new Response('ok', { status: 200 });
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
+
+		const fetchFn = getLlmFetch('https://api.provider.test/v1/chat');
+		await fetchFn('https://api.provider.test/v1/chat', { method: 'GET' });
+
+		const sentBody = JSON.parse(
+			((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit)
+				.body as string
+		);
+		expect(sentBody.authHost).toBeUndefined();
+	});
+
 	it.each([
 		['localhost', 'http://localhost:1234/v1/chat'],
 		['127.0.0.1', 'http://127.0.0.1:8080/x'],
@@ -145,5 +180,35 @@ describe('isLoopbackUrl', () => {
 		['not a url', false]
 	])('%s → %s', (url, expected) => {
 		expect(isLoopbackUrl(url)).toBe(expected);
+	});
+});
+
+describe('normalizeHostname', () => {
+	it.each([
+		['api.example.test', 'api.example.test'],
+		['API.Example.TEST', 'api.example.test'],
+		['api.example.test.', 'api.example.test'],
+		['api.example.test..', 'api.example.test'],
+		['[::1]', '::1'],
+		['::1', '::1'],
+		['LocalHost', 'localhost'],
+		['[2001:DB8::1]', '2001:db8::1']
+	])('%s → %s', (host, expected) => {
+		expect(normalizeHostname(host)).toBe(expected);
+	});
+});
+
+describe('sameHost', () => {
+	it.each([
+		['api.example.test', 'API.Example.TEST', true],
+		['api.example.test.', 'api.example.test', true],
+		['[2001:DB8::1]', '2001:db8::1', true],
+		['::1', '[::1]', true],
+		['api.example.test', 'sub.api.example.test', false],
+		['example.test', 'example.test.evil.test', false],
+		['api.example.test', 'api.example.org', false],
+		['', 'example.test', false]
+	])('%s vs %s → %s', (a, b, expected) => {
+		expect(sameHost(a, b)).toBe(expected);
 	});
 });

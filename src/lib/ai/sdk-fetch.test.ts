@@ -65,3 +65,44 @@ describe('createKeychainFetch', () => {
 		expect(new Headers((init as RequestInit).headers).get('Authorization')).toBe('Bearer sk-test');
 	});
 });
+
+describe('createKeychainFetch authHost gate', () => {
+	it('sends no auth header when authHost is set and the target host differs', async () => {
+		const { createKeychainFetch } = await withKeyStore('sk-test');
+		const fetchFn = createKeychainFetch({
+			header: 'Authorization',
+			scheme: 'Bearer',
+			keyId: 'p1',
+			authHost: 'api.provider.test'
+		});
+		await fetchFn('https://attacker.example/x.png');
+		const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(new Headers((init as RequestInit).headers).get('Authorization')).toBeNull();
+	});
+
+	it('does not throw MissingKeyError for a foreign host even when the key is required', async () => {
+		const { createKeychainFetch } = await withKeyStore(null);
+		const fetchFn = createKeychainFetch({
+			header: 'Authorization',
+			scheme: 'Bearer',
+			keyId: 'p1',
+			authHost: 'api.provider.test'
+		});
+		await expect(fetchFn('https://attacker.example/x.png')).resolves.toBeInstanceOf(Response);
+		const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(new Headers((init as RequestInit).headers).get('Authorization')).toBeNull();
+	});
+
+	it('still attaches the key when authHost matches the target host', async () => {
+		const { createKeychainFetch } = await withKeyStore('sk-test');
+		const fetchFn = createKeychainFetch({
+			header: 'Authorization',
+			scheme: 'Bearer',
+			keyId: 'p1',
+			authHost: 'api.provider.test'
+		});
+		await fetchFn('https://api.provider.test/v1/x');
+		const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(new Headers((init as RequestInit).headers).get('Authorization')).toBe('Bearer sk-test');
+	});
+});

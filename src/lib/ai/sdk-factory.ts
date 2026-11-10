@@ -5,6 +5,7 @@ import { createOllama } from 'ollama-ai-provider-v2';
 import type { LanguageModel } from 'ai';
 import { createKeychainFetch } from './sdk-fetch';
 import { createCopilotFetch } from './copilot-fetch';
+import { normalizeUrlHost } from './llm-target';
 import type { ProviderConfig } from './types';
 import { resolveToolCapability } from '#lib/agent/capability.js';
 
@@ -33,15 +34,24 @@ export function providerFetchFor(config: ProviderConfig): typeof globalThis.fetc
 				header: 'Authorization',
 				scheme: 'Bearer',
 				keyId: config.id,
+				authHost: normalizeUrlHost(config.baseUrl),
 				// Keyless openai-compatible endpoints (local runtimes, keyless
 				// gateways) chat without a key; a key saved later upgrades the
 				// connection (the 008 keyless flow).
 				optionalKey: config.requiresKey === false
 			});
 		case 'anthropic':
-			return createKeychainFetch({ header: 'x-api-key', keyId: config.id });
+			return createKeychainFetch({
+				header: 'x-api-key',
+				keyId: config.id,
+				authHost: normalizeUrlHost(config.baseUrl)
+			});
 		case 'gemini':
-			return createKeychainFetch({ header: 'x-goog-api-key', keyId: config.id });
+			return createKeychainFetch({
+				header: 'x-goog-api-key',
+				keyId: config.id,
+				authHost: normalizeUrlHost(config.baseUrl)
+			});
 		default:
 			return undefined;
 	}

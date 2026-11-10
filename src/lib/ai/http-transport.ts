@@ -7,6 +7,7 @@
  * (IndexedDB; the env-backed headless store when IndexedDB is absent).
  */
 import { classifyFetchError, httpStatusToError } from './errors';
+import { sameHost } from './llm-target';
 import { createKeyStore } from './keystore/client';
 import type { BrowserKeyStore } from './keystore/browser';
 import { MissingKeyError } from './types';
@@ -19,6 +20,13 @@ export interface HttpStreamRequest {
 	body?: string;
 	/** Transport resolves the secret into this header. */
 	auth?: { header: string; keyId: string; scheme?: string };
+	/**
+	 * Declared provider API host (032): the credential is attached — and a
+	 * missing key is an error — only when the request targets this host, and
+	 * the declaration rides to the relay so it can enforce the same rule
+	 * server-side. Unset keeps the legacy attach-everywhere behavior.
+	 */
+	authHost?: string;
 }
 
 export interface HttpStreamTransport {
@@ -34,7 +42,11 @@ export function createFetchTransport(store: BrowserKeyStore): HttpStreamTranspor
 	return {
 		async request(req, signal) {
 			const headers: Record<string, string> = { ...(req.headers ?? {}) };
-			if (req.auth) {
+			// Credential gate (032): resolve the secret / throw / attach only when
+			// the request targets the declared provider host — a foreign-host
+			// fetch stays credential-free and never fails on a missing key.
+			const isAuthTarget = !req.authHost || sameHost(new URL(req.url).hostname, req.authHost);
+			if (req.auth && isAuthTarget) {
 				const key = await store.get(req.auth.keyId);
 				if (!key) throw new MissingKeyError(undefined, req.auth.keyId);
 				headers[req.auth.header] = req.auth.scheme ? `${req.auth.scheme} ${key}` : key;
@@ -42,7 +54,7 @@ export function createFetchTransport(store: BrowserKeyStore): HttpStreamTranspor
 
 			let res: Response;
 			try {
-				res = await getLlmFetch(req.url)(req.url, {
+				res = await getLlmFetch(req.url, req.authHost)(req.url, {
 					method: req.method ?? 'POST',
 					headers,
 					body: req.body,

@@ -362,13 +362,23 @@ export async function candidateToImagePart(
 export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
 /**
+ * Byte cap on remote-URL image materialization (032): `fetchImageCandidate`
+ * reads via a streaming reader and bails (null) once the body exceeds this,
+ * so an oversized or hostile link can never balloon the tab's heap. Well above
+ * legitimate generated images (request-side ceiling is 16 MiB) and below the
+ * relay's 64 MiB response cap.
+ */
+export const IMAGE_FETCH_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
  * Materialize one remote-URL image candidate (030 R-4) by fetching its bytes
  * through the provider fetch (keychain auth + server proxy apply) and
  * returning a ready `{ mediaType, base64 }` candidate — display never depends
  * on the live link. The caller passes the provider's fetch; tests inject a
  * stub. Returns null when the link is un-fetchable (network error, non-2xx,
- * truncated body, non-image payload) — never throws — so the caller can render
- * a contained inline notice instead of a broken frame or a dropped message.
+ * truncated body, body over IMAGE_FETCH_MAX_BYTES, non-image payload) — never
+ * throws — so the caller can render a contained inline notice instead of a
+ * broken frame or a dropped message.
  */
 export async function fetchImageCandidate(
 	url: string,
@@ -378,7 +388,36 @@ export async function fetchImageCandidate(
 	try {
 		const res = await fetchImpl(url, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
 		if (!res.ok) return null;
-		const bytes = new Uint8Array(await res.arrayBuffer());
+		// Bounded read (032): accumulate chunks and stop (null) past the cap so a
+		// huge body is never fully buffered; plain arrayBuffer only when the
+		// runtime exposes no stream, with the same length check.
+		let bytes: Uint8Array;
+		if (res.body) {
+			const reader = res.body.getReader();
+			const chunks: Uint8Array[] = [];
+			let total = 0;
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				if (!value) continue;
+				total += value.byteLength;
+				if (total > IMAGE_FETCH_MAX_BYTES) {
+					reader.cancel().catch(() => {});
+					return null;
+				}
+				chunks.push(value);
+			}
+			bytes = new Uint8Array(total);
+			let offset = 0;
+			for (const chunk of chunks) {
+				bytes.set(chunk, offset);
+				offset += chunk.byteLength;
+			}
+		} else {
+			const buffer = await res.arrayBuffer();
+			if (buffer.byteLength > IMAGE_FETCH_MAX_BYTES) return null;
+			bytes = new Uint8Array(buffer);
+		}
 		const declared = res.headers.get('content-type')?.split(';')[0]?.trim() || mediaType || null;
 		const mime = resolveMime(sniffImageMime(bytes), declared);
 		if (!mime) return null;

@@ -9,6 +9,9 @@ export default defineConfig({
 	},
 	test: {
 		include: ['src/**/*.test.ts'],
-		environment: 'node'
+		environment: 'node',
+		// PGlite/WASM bootstraps take ~5–6s per fresh instance under a
+		// memory-capped test profile (low-spec wrapper) — above the 5s default.
+		testTimeout: 15000
 	}
 });
