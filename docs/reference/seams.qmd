@@ -71,7 +71,7 @@ Every server route sits behind a single `onRequest` hook (`server/src/auth/gate.
 
 The ancestor-gathering walk in `assembleContext` (`src/lib/chat/context.ts`) is unchanged; it collects rows and delegates per-row conversion to `projectEntries`. The critic's in-memory correction context (`src/lib/agent/loop.ts`) calls the same function.
 
-Rules: `user_message` → `user` text; `assistant_message` → `assistant` text; `tool_call` → `assistant` `tool-call` part; `tool_result` → `tool` `tool-result` part; `choices` → synthesized `tool-call` + `tool-result` pair; `branch_artifact` → framed `user` text; `reasoning`/`approval`/`sampling`/`elicitation`/`self_corrected` → excluded. Adjacent same-role messages merge their parts.
+Rules: `user_message` → `user` text, or ordered text+image parts when the row carries `parts` (user image parts keep the 018 AI SDK image-part shape); `assistant_message` → `assistant` text, or ordered text+image parts **only for vision-capable targets** (the `projectEntries` `visionCapable` option, resolved via `supportsVision`) where each stored image becomes a provider **file part** `{ type:'file', mediaType, data }` (base64-only body) — non-vision or parts-less rows project text-only, silently; `tool_call` → `assistant` `tool-call` part; `tool_result` → `tool` `tool-result` part; `choices` → synthesized `tool-call` + `tool-result` pair; `branch_artifact` → framed `user` text; `reasoning`/`approval`/`sampling`/`elicitation`/`self_corrected` → excluded. Adjacent same-role messages merge their parts.
 
 **Do not** read `role` or `toolCallId`/`toolName` for intent anywhere outside this module. Do not add a second projection path.
 
@@ -180,3 +180,9 @@ The `request` trace event must mirror the projected wire payload (`projectEntrie
 ### Timeline entry authority
 
 Persisted assistant text is authoritative — `appendAssistantText` retires the live stream buffers in the same update (no interval where both render).
+
+### Mermaid render seam (feature 028)
+
+Every diagram renders through one seam: `renderMermaidBlock(source)` (`src/lib/markdown/mermaid.ts`). All initialize+render pairs are serialized on a module-wide chain, so a render can never straddle a theme re-initialize. The success contract is `{ svg, theme, repaired }` (`theme: 'light' | 'dark'`) — the SVG plus the theme it was actually rendered with (callers stamp it so theme sync re-renders only stale diagrams) and whether the displayed SVG came from a repaired source. On a failed original render, exactly one deterministic repair pass runs (`repairMermaidSource`, pure; zero cost for valid diagrams — repair only runs in the failure path): an unchanged repaired source ⇒ reject with the underlying original error; a repaired attempt that still fails ⇒ reject with the repaired attempt's error — no loops, no LLM calls.
+
+Callers contain rejects inside a styled error block (plain-language notice, failure reason behind "Why?", formatted source — never raw inline error text) and, where a chat handler exists, offer a "Fix this diagram" affordance; a success with `repaired: true` is marked with a "repaired" badge plus the original source behind "show original". Detail: `specs/028-mermaid-error-repair/contracts/render-pipeline.md`.
