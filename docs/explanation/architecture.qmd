@@ -75,6 +75,7 @@ One seam makes storage swappable:
 - **Svelte 5 runes** (`$state` / `$derived`) — minimal re-renders, ideal for streaming.
 - **Tailwind v4** + **shadcn-svelte** (on **bits-ui**) — accessible, modern components.
 - **lucide-svelte** icons; unified/remark pipeline for markdown (`remark-parse → remark-gfm → remark-math → remark-rehype → rehype-katex → rehype-highlight → rehype-sanitize`); KaTeX for math, highlight.js for code.
+- **Mermaid rendering (028):** every diagram renders through the `renderMermaidBlock` seam (`src/lib/markdown/mermaid.ts`) — a serialized render chain whose contract result is `{ svg, theme, repaired }`; exactly one deterministic repair pass on failure, and a persistent failure is contained by the caller as a styled error block (plus a fix affordance where a chat handler exists). Contract home: [Mermaid render seam](../reference/seams.qmd#mermaid-render-seam-feature-028); detail in `specs/028-mermaid-error-repair/contracts/render-pipeline.md`.
 - **Expound / source map:** highlight offsets are raw-markdown ("code-space") offsets resolved deterministically against a source map (`src/lib/markdown/sourcemap.ts`, built from mdast positions on the same unified processor as the HTML pipeline) and aligned to the rendered DOM (`src/lib/chat/selection.ts`); underlines wrap via `src/lib/markdown/wrap-range.ts` (no `surroundContents`). Selections touching generated content (math, mermaid, copy-button chrome) disable the menu; stale rows self-heal in memory at render time (no DB write).
 - **Streaming render** of assistant tokens; optimistic UI for branching, checklist ticks, and quiz answers.
 
@@ -289,7 +290,7 @@ Every timeline event is classified by a single durable `kind` column (`EntryKind
 The 11 kinds fall into three lanes derived by `laneOf()`:
 
 - **user** lane: `user_message` — the user's text.
-- **external** lane: `assistant_message` — assistant text rendered for the user.
+- **external** lane: `assistant_message` — assistant text and image parts rendered for the user.
 - **internal** lane: `reasoning`, `tool_call`, `tool_result`, `approval`, `sampling`, `elicitation`, `choices`, `self_corrected`, `branch_artifact` — not authored by the user; collapsed by default.
 
 Internal kinds subdivide into:
@@ -303,8 +304,8 @@ The `role` column records the authoring side only (`user_message`, `branch_artif
 ### Per-kind semantics
 
 - **`user_message`** — the user's text. Hidden prompts carry `metadata.hidden = true` (still provider-visible; filtered at timeline assembly). Chip selections from `choices` offers link back via `metadata.choicesEntryId`.
-- **`assistant_message`** — assistant text. Legacy rows may carry embedded `metadata.reasoning` rendered as a decoration toggle.
-- **`reasoning`** — one entry per agent-loop iteration (`metadata.iteration`, `metadata.model`). Never provider-visible.
+- **`assistant_message`** — ordered text+image parts (`messages.parts`): one row per text segment (segmented rendering, 029), and image-only rows are possible (no text part). Legacy rows are text-only and may carry embedded `metadata.reasoning` rendered as a decoration toggle.
+- **`reasoning`** — one row per reasoning segment, persisted arrival-ordered with `metadata: { iteration, anchored: true }` (`ReasoningMeta`, `src/lib/chat/kinds.ts:86-89`). Legacy per-iteration rows (no `anchored`) remain readable and splice before their assistant row. Never provider-visible.
 - **`tool_call`** + **`tool_result`** — persisted as separate rows, paired at timeline assembly by `toolCallId` into a grouped unit (header + one-line summary + collapsible structured detail, collapsed by default). A `tool_result` whose paired call is a `choices` offer is folded into that offer and never rendered standalone.
 - **`approval` / `sampling` / `elicitation`** — permission and elicitation asks. Persisted when shown (`outcome: null`), resolved in place on the same row via `updateOutcome`. Outcomes: approved/declined/undecided (swept on abort), allowed/denied/undecided, accepted/declined/undecided. Never provider-visible.
 - **`choices`** — single-entry pacing-gate offers (`metadata.nextUnit`, `metadata.options`, `metadata.progress`). No separate tool-call/tool-result rows are written for new turns. The tapped chip is a linked `user_message`. Provider-visible: projection synthesizes a `tool-call` + `tool-result` pair matching the legacy shape.
@@ -327,8 +328,8 @@ Per-kind visibility rules:
 
 | kind | projection |
 |---|---|
-| `user_message` | `user` text part |
-| `assistant_message` | `assistant` text part |
+| `user_message` | `user` text, or ordered text+image parts when the row carries `parts` (user image parts keep the 018 AI SDK image-part shape) |
+| `assistant_message` | `assistant` text, or ordered text+image parts **only for vision-capable targets** (`projectEntries` `visionCapable` option, resolved via `supportsVision`) where each stored image becomes a provider **file part** `{ type:'file', mediaType, data }` (base64-only body) — non-vision or parts-less rows project text-only, silently |
 | `tool_call` | `assistant` `tool-call` part (`input: {}` — see quirks below) |
 | `tool_result` | `tool` `tool-result` part (`output` from `metadata.detail`) |
 | `choices` | synthesized `tool-call` + `tool-result` pair (byte-identical to legacy `present_choices` replay) |

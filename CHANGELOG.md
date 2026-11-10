@@ -7,8 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-10
+
+### Added
+
+- **Back-propagate a branch's outcome into its parent (027)** — the new
+  `propagate_to_parent` tool ships with a shared in-flight latch, per-turn
+  gating and offer-once etiquette in the capabilities preamble, an
+  approve/decline UI, and durable branch-artifact rows; the mock-llm fixture
+  gains dispatch modes and e2e covers the flow (PR #65, commits
+  `20729c6`..`0578fbb`).
+- **Mermaid diagrams that fail to render are contained and self-repaired
+  (028)** — a styled error block replaces raw render errors
+  (`suppressErrorRendering`), backed by pure parse-verified source-repair
+  rules and exactly one deterministic repair pass at the render seam; a
+  "repaired" badge discloses the original source, and a fix-diagram
+  follow-up affordance offers recovery (PR #64, commits `7c41261`..`b6499ae`,
+  `6788baa`, `3238e9b`).
+- **Interleaved micro-thoughts / per-segment reasoning (029)** — segment-aware
+  stream consumption renders live interleaved reasoning/text blocks, anchored
+  per-segment reasoning rows persist arrival-ordered, reorderTurn v2 keeps
+  turns aligned, and per-segment reasoning appears in the turn trace and the
+  diagnostics panel (PR #66, commits `ab57f73`..`5ac35a0`).
+- **Image generation in chat (030)** — vision-gated assistant image parts
+  behind a capability flag and budget, stream recognition of image parts
+  (raw-chunk shim), per-turn pending images with a live placeholder, atomic
+  assistant-parts persistence, URL materialization at finalize, segmented
+  assistant rendering, a shared lightbox with download, and `[image]` markers
+  in back-propagated artifacts (PR #67, commits `24a567d`..`9a52cff`).
+- **Faster, split test suites (031)** — behavior invariants migrate to
+  fast-tier homes (`useFileTestDb()`), the e2e inventory becomes a
+  classification + parity ledger, fixture strings are single-homed with a
+  drift guard, onboarded fixtures seed directly, and per-shard e2e stacks
+  arrive via `pnpm dev:shard:up` (PR #68, commits `5e1846f`..`1589d0f`).
+
 ### Fixed
 
+- **Provider API keys are no longer attached to model-supplied image URLs**
+  (issue #69 / feature 032) — the credential-attaching fetch seams (keychain
+  fetch, streaming HTTP transport) now learn the provider's `baseUrl` host
+  and attach the key only on an exact host match, closing a
+  credential-exfiltration and SSRF path through the LLM proxy: the relay
+  forwards `authorization` / `x-api-key` / `x-goog-api-key` only to the
+  client-declared provider host (`authHost`), strips them for every other
+  target, refuses non-public destinations (loopback/private/link-local/etc.
+  answer `403 blocked target` with no upstream call), never follows
+  redirects, and caps streamed responses at 64 MiB; assistant image
+  materialization is size-bounded (32 MiB), with oversized images degrading
+  to the existing "image could not be loaded" notice instead of buffering
+  the whole body.
 - **Assistant image replies no longer break the chat's follow-up turns**
   (issue #70 / feature 033) — stored assistant image parts now project onto
   the wire as AI SDK provider file parts (the assistant-legal image-bearing
@@ -24,18 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reachable during streaming failures (keyed on a turn-scoped recognized
   image count), with an advisory no-image notice on image-output-expected
   turns that recognized none.
-- **Provider API keys are no longer attached to model-supplied image URLs** —
-  the credential-attaching fetch seams (keychain fetch, streaming HTTP
-  transport) now learn the provider's `baseUrl` host and attach the key only
-  on an exact host match, closing a credential-exfiltration and SSRF path
-  through the LLM proxy: the relay forwards `authorization` / `x-api-key` /
-  `x-goog-api-key` only to the client-declared provider host (`authHost`),
-  strips them for every other target, refuses non-public destinations
-  (loopback/private/link-local/etc. answer `403 blocked target` with no
-  upstream call), never follows redirects, and caps streamed responses at
-  64 MiB; assistant image materialization is size-bounded (32 MiB), with
-  oversized images degrading to the existing "image could not be loaded"
-  notice instead of buffering the whole body.
+- **Image e2e engine hardcoding (PR #77)** — `image-round-trip.spec.ts` now
+  resolves the container engine (Docker or Podman) through the dev-compose
+  seam instead of hardcoding `docker` (`d881d75`).
 
 ## [0.9.0] - 2026-11-03
 

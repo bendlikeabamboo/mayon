@@ -13,6 +13,13 @@ const PORT = Number(process.env.LANGFUSE_STUB_PORT ?? 9998);
 const received = [];
 
 function sendJson(res, status, body) {
+	// Never write into a socket that is already gone: after a mid-body abort
+	// the route's 400 answer would target a destroyed response — that write is
+	// the crash path the old process-wide handlers masked (86e83db). Drop it
+	// silently; every fault is handled here where it occurs, and genuine
+	// faults still crash loudly (no process-level swallowing).
+	if (res.writableEnded || res.destroyed || !res.socket?.writable) return;
+	res.on('error', () => {}); // a write racing the disconnect must not crash
 	res.writeHead(status, {
 		'content-type': 'application/json',
 		'access-control-allow-origin': '*'
@@ -23,11 +30,24 @@ function sendJson(res, status, body) {
 function readBody(req) {
 	return new Promise((resolve, reject) => {
 		let data = '';
+		let settled = false;
+		const settle = (fn, value) => {
+			if (settled) return;
+			settled = true;
+			fn(value);
+		};
 		req.on('data', (chunk) => {
 			data += chunk;
 		});
-		req.on('end', () => resolve(data));
-		req.on('error', reject);
+		req.on('end', () => settle(resolve, data));
+		req.on('error', (err) => settle(reject, err));
+		// Client vanished mid-body: 'aborted'/'close' can fire before 'end'
+		// with no 'error'. Settle here so the route catch answers (or the
+		// dead-socket guard drops) instead of the promise hanging forever —
+		// that pending rejection was what 86e83db swallowed process-wide.
+		const abort = () => settle(reject, new Error('request aborted before body end'));
+		req.on('aborted', abort);
+		req.on('close', abort);
 	});
 }
 
@@ -82,17 +102,9 @@ server.listen(PORT, () => {
 	console.log(`langfuse-stub listening on port ${PORT}`);
 });
 
-// Keep the stub alive through races with in-flight exports: an aborted OTLP
-// body rejects readBody (unhandledRejection) and a dying socket raises
-// clientError — either would otherwise crash the process mid-deck, and the
-// next spec's /__reset would fail with a socket hang up until the container
-// restarts (observed as the telemetry V3 e2e flake).
-process.on('unhandledRejection', (err) => {
-	console.error('[langfuse-stub] swallowed rejection:', err);
-});
-process.on('uncaughtException', (err) => {
-	console.error('[langfuse-stub] swallowed exception:', err);
-});
+// No process-level handlers: abort races are survived at the request path
+// (readBody settles on 'aborted'/'close'; sendJson drops dead sockets), so a
+// crash here is a genuine fault and must be loud in the e2e deck output.
 server.on('clientError', (err, socket) => {
 	console.error('[langfuse-stub] client error:', err.message);
 	if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
