@@ -102,9 +102,9 @@ None — this feature has no shared infrastructure; each user story edits disjoi
 
 ### Implementation for User Story 5
 
-- [ ] T016 [P] [US5] Record the fail-first baseline for `tests/fixtures/langfuse-stub/server.mjs`: run the quickstart S5 static checks against the current tree and capture the failure (two `process.on(` matches; `node --check` passes).
-- [ ] T017 [US5] Rework `tests/fixtures/langfuse-stub/server.mjs` per contracts/stub-fault-surface.md: delete `process.on('unhandledRejection'/'uncaughtException')` (lines 90–95); make `readBody` settle on aborted bodies ('aborted'/'close' before 'end'); guard `sendJson` against dead sockets (`res.writableEnded`/`socket.writable` or `res.on('error')` no-op) so the malformed/abort 400 path (route catch at lines 45–53) never writes to a destroyed response; keep `server.on('clientError')` unchanged.
-- [ ] T018 [US5] Run the standalone probe (quickstart S5): boot the stub on a free port under `/tmp/kilo`; assert malformed body → 400, aborted mid-body request → process alive + no phantom batch in `/__received`, `POST /__reset` → 200; `grep -c "process.on(" server.mjs` → 0; kill the stub.
+- [x] T016 [P] [US5] Record the fail-first baseline for `tests/fixtures/langfuse-stub/server.mjs`: run the quickstart S5 static checks against the current tree and capture the failure (two `process.on(` matches; `node --check` passes).
+- [x] T017 [US5] Rework `tests/fixtures/langfuse-stub/server.mjs` per contracts/stub-fault-surface.md: delete `process.on('unhandledRejection'/'uncaughtException')` (lines 90–95); make `readBody` settle on aborted bodies ('aborted'/'close' before 'end'); guard `sendJson` against dead sockets (`res.writableEnded`/`socket.writable` or `res.on('error')` no-op) so the malformed/abort 400 path (route catch at lines 45–53) never writes to a destroyed response; keep `server.on('clientError')` unchanged.
+- [x] T018 [US5] Run the standalone probe (quickstart S5): boot the stub on a free port under `/tmp/kilo`; assert malformed body → 400, aborted mid-body request → process alive + no phantom batch in `/__received`, `POST /__reset` → 200; `grep -c "process.on(" server.mjs` → 0; kill the stub.
 
 **Checkpoint**: Stub fails loudly on genuine faults; abort races stay non-fatal.
 
@@ -118,7 +118,7 @@ None — this feature has no shared infrastructure; each user story edits disjoi
 
 ### Implementation for User Story 6
 
-- [ ] T019 [P] [US6] Run quickstart S6: `resolveEngine` present in `tests/e2e/image-round-trip.spec.ts`; no hardcoded `docker compose` invocations; `ls tests/e2e/*.spec.ts | wc -l` equals the README ledger row count and includes `backprop-tool.spec.ts`. If (and only if) a mismatch appears, apply the minimal fix and re-run; otherwise change nothing.
+- [x] T019 [P] [US6] Run quickstart S6: `resolveEngine` present in `tests/e2e/image-round-trip.spec.ts`; no hardcoded `docker compose` invocations; `ls tests/e2e/*.spec.ts | wc -l` equals the README ledger row count and includes `backprop-tool.spec.ts`. If (and only if) a mismatch appears, apply the minimal fix and re-run; otherwise change nothing.
 
 **Checkpoint**: Item 6 acceptance closed with evidence.
 
@@ -126,7 +126,7 @@ None — this feature has no shared infrastructure; each user story edits disjoi
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T020 Run the full quickstart (S1–S6) plus `pnpm exec prettier --check package.json server/package.json packages/shared/package.json CHANGELOG.md ideas/history-map.md tests/e2e/README.md`; confirm `git tag --list 'v0.10.0*'` is empty and `git status` shows exactly the intended files changed (CHANGELOG, 3 manifests, 2 docs, tombstone, mock-llm README, stub).
+- [x] T020 Run the full quickstart (S1–S6) plus `pnpm exec prettier --check package.json server/package.json packages/shared/package.json CHANGELOG.md ideas/history-map.md tests/e2e/README.md`; confirm `git tag --list 'v0.10.0*'` is empty and `git status` shows exactly the intended files changed (CHANGELOG, 3 manifests, 2 docs, tombstone, mock-llm README, stub).
 
 ---
 
