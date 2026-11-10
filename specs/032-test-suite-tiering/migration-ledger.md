@@ -787,24 +787,32 @@ files; the current browser selection is the 34/131 derived above.
 |---|---|---|
 | **SC-001** Tier 1 <60 s on 8-CPU/8-GiB reference | **PASS-WITH-CAVEAT** | Budget is wired (`test-budgets.json`, `check:budget`). This host is low-spec; T025 measured 208.62 s for the unit project. The 60 s reference figure is not measurable here. |
 | **SC-002** Tier 2 <2 min on reference | **PASS** | Standalone browser run 29 files / 113 tests in 44.73 s on this low-spec host, below 120 s. Current selection is 34/131 and passed in the combined run. |
-| **SC-003** E2E <8 min across ≥4 shards | **BLOCKED** | No running stack. `docker info` → `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`. No shard was executed; the 4-shard matrix is configured but unverified at runtime. |
+| **SC-003** E2E <8 min across ≥4 shards | **PASS** | GitHub Actions run [42836128942](https://github.com/bendlikeabamboo/mayon/actions/runs/42836128942): e2e shards 1-4 all succeeded. Jobs started 14:38:26; the last completed 14:42:35 (4m09s including stack image builds). Longest shard test run: 36.7s (shard 3); shard budgets passed at 28s/18s/36.7s/2s against the 240s low-spec budget. |
 | **SC-004** Zero browser processes in the fast tier | **PASS** | `vitest.unit.config.ts` excludes `**/*.browser.test.ts`; T025's unit run started no browser. The unit project contains only Node tests. |
 | **SC-005** Zero fixed waits in e2e | **PASS** | T049 audit: zero `waitForTimeout`/`test.setTimeout`/sleep-style calls in `tests/e2e`; `TT-002` enforces it. |
-| **SC-006** Setup/onboarding ≤ once per worker/run, per-test setup zero | **BLOCKED** | Static infrastructure exists (`tests/e2e/global-setup.ts` writes `test-results/.auth/state.json`; fixtures consume it; no per-test onboarding journey), but runtime proof requires a running stack, which Docker permissions block. |
+| **SC-006** Setup/onboarding ≤ once per worker/run, per-test setup zero | **PASS** | Same CI run: each shard ran the `setup` project once, wrote/reused `test-results/.auth/state.json`, and the 8 retained cases passed with no per-test onboarding journey. |
 | **SC-007** ≥50% of e2e cases removed/migrated, 100% traceable | **PASS** | Retained set is 8 cases (9 listed with setup) vs the 29 post-T042 cases (32 listed, 37 historical). 21 removals are each mapped in the pruning ledger; 8/29 remains ≈72% removal (≈78% vs 37). Every removal has a replacement path or retirement rationale. |
 | **SC-008** 100% of component-behavior tests render; zero source-text component assertions | **PASS** | All 28 `convert` rows now point at `*.browser.test.ts` files that render and were verified by deliberate breaks (T035); the old source-text files were deleted (T034). `TT-003` passes and the four remaining non-runtime rows are explicitly `retain`/`promote-static`. |
-| **SC-009** Every e2e spec passes alone and sharded, no ordering dependency | **BLOCKED** | Static isolation audit (T048) found no shared ids or fixed waits, but per-spec and shard execution require the dev stack; Docker socket permission denied. No e2e test was executed. |
+| **SC-009** Every e2e spec passes alone and sharded, no ordering dependency | **PASS-WITH-CAVEAT** | Sharded execution passed on CI (4 shards, 8 cases, no ordering dependency or shared ids). Shards 1 and 4 had zero assigned cases (all cases fell to shards 2/3); each spec was not separately re-run on CI, so the "alone" half is inferred from the independent shard subsets rather than a second full run. |
 | **SC-010** Fast-tier file count = baseline + convert/regression additions, no unexplained increase | **PASS-WITH-CAVEAT** | Baseline 147 → 121 unit-project files: −28 `convert` deletions, +1 split (`format-context-window.test.ts`), +1 new guardrail test (`scripts/test-capacity.test.ts`). Tests: executed selection 2184; T034's collection estimate was 2163 and is superseded by the measured count. All changes are explained. |
 | **SC-011** Guardrail detects an injected violation within 10 s | **PASS** | T057 injected TT-001–TT-008; `pnpm check:tests` exited 2 with every expected ID and runs in ~0.27 s on this repo. Restored to exit 0. |
-| **SC-012** CI reports per-tier durations and fails over budget | **PASS-WITH-CAVEAT** | `scripts/test-ci.mjs` writes `test-results/tier-durations.json`, `scripts/test-e2e-ci.mjs` writes per-shard reports, and `check-test-budget.mjs` exits 3 for missing/over-budget owned tiers (verified). The full CI jobs were not executed in this environment (no Docker/stack). |
+| **SC-012** CI reports per-tier durations and fails over budget | **PASS** | CI run 42836128942 executed `test:ci` (tier1/tier2/server) and all four `test:e2e:ci` shards with `check:budget`; reports were uploaded and the low-spec-scaled budgets passed (`tier1 85.5s/120s`, `tier2 23.9s/120s`, server 82.5s/120s, tier3 shards 2s-37s/240s). |
 | **SC-013** Low-spec runs 100% with one worker, bounded concurrency, never full parallelism | **PASS** | Recorded run: 155 files / 2315 tests, `mode=low-spec`, `workers=1`, `MAYON_TEST_PARALLEL=off`, `VITEST_FILE_PARALLELISM=false`, zero skips. |
 | **SC-014** At/above threshold parallel by default; unknown → serial | **PASS** | `scripts/test-capacity.test.ts` (19 tests) covers capable → parallel, low-spec → serial, unknown/half-unknown → serial, and cgroup-minimum behavior. |
 | **SC-015** Explicit override changes mode and is reported; default unchanged | **PASS** | Capacity tests cover `MAYON_TEST_PARALLEL=off`, forced `on` with an explicit worker cap, and `MAYON_TEST_MAX_WORKERS`; the recorded run reports `override=off` and effective `workers=1` in the stable `[test-capacity]` line. |
 
-**SC summary:** 9 PASS, 3 PASS-WITH-CAVEAT (SC-001, SC-010, SC-012), 3 BLOCKED
-(SC-003, SC-006, SC-009). The three blocked criteria are exactly the ones that
-require a running browser + server + Postgres stack; each is blocked by Docker
-socket permissions in this environment, not by a code or configuration failure.
+**SC summary:** 12 PASS, 3 PASS-WITH-CAVEAT (SC-001, SC-009, SC-010), 0 BLOCKED.
+SC-001's 60 s reference target is enforced against the unscaled budget and is
+not measurable on the low-spec CI runner (85.5 s against the scaled 120 s
+budget); SC-009's sharded half passed on CI and the alone half was not
+separately re-run; SC-010 counts are fully reconciled in the baseline table.
+
+### CI e2e runtime evidence
+
+GitHub Actions run [42836128942](https://github.com/bendlikeabamboo/mayon/actions/runs/42836128942)
+resolved the local Docker blocker: all four e2e shard jobs passed, the web job
+passed, and `dependency-audit` passed. This is the runtime proof for SC-003,
+SC-006, and the sharded half of SC-009.
 
 ### T066 — production build asset check
 
