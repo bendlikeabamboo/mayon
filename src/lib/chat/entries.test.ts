@@ -512,7 +512,7 @@ describe('live items (003 regression)', () => {
 		const items = assembleTimeline(
 			[msg({ id: 'row-u1', role: 'user', content: 'go', ord: 0 })],
 			[
-				{ source: 'live', live: 'live_reasoning', buffer: 'thinking' },
+				{ source: 'live', live: 'live_reasoning', buffer: 'thinking', streaming: true },
 				{ source: 'live', live: 'live_text', buffer: 'reply', pending: false }
 			]
 		);

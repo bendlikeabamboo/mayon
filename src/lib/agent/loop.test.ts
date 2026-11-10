@@ -2291,6 +2291,52 @@ describe('(y) 035 US1: corrected reply keeps original reasoning (T002)', () => {
 	});
 });
 
+// 035 US2 (T005): the loop must signal the store at iteration boundaries —
+// only AFTER an iteration's blocks are persisted — so the live view resets
+// instead of re-showing durable content (contracts/iteration-boundary.md).
+describe('(z) 035 US2: iteration boundary signal (T005)', () => {
+	function orderOf(mock: unknown, nth: number): number {
+		const calls = (mock as ReturnType<typeof vi.fn>).mock.invocationCallOrder as number[];
+		return calls[nth];
+	}
+
+	it('fires once after the tool-iteration interim persist and once at finalize', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'r1' },
+					{ type: 'reasoning-delta', text: 'think-0' },
+					{ type: 'reasoning-end', id: 'r1' },
+					{ type: 'text-delta', text: 'interim' },
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'read_checklist', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Final' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		mockedToolsRun.mockResolvedValue({ ok: true, summary: 'ok' });
+
+		const onIterationBoundary = vi.fn();
+		const deps = makeDeps({ onIterationBoundary });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		// one boundary after the interim persist, one at finalize — no more
+		expect(onIterationBoundary).toHaveBeenCalledTimes(2);
+		// NEVER before a persist: iteration 1's reasoning + text rows are
+		// durable before the first boundary fires, and the finalize row is
+		// durable before the second one fires.
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(onIterationBoundary, 0));
+		expect(orderOf(deps.appendAssistantText, 0)).toBeLessThan(orderOf(onIterationBoundary, 0));
+		expect(orderOf(deps.appendAssistantText, 1)).toBeLessThan(orderOf(onIterationBoundary, 1));
+	});
+});
+
 // 030 image recognition (T003 — specs/030-image-generation US1). scriptedFullStream
 // already accepts arbitrary part shapes, so image-bearing parts flow through as-is.
 // These tests prescribe the finalize handoff for T006: `appendAssistantText` gains

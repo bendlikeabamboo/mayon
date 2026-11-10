@@ -6,7 +6,7 @@
 	import { incRender } from '#lib/perf/mark.js';
 
 	type DurableProps = { item: DurableEntry; live?: false };
-	type LiveProps = { live: true; buffer: string };
+	type LiveProps = { live: true; buffer: string; streaming: boolean };
 
 	let props: DurableProps | LiveProps = $props();
 
@@ -14,6 +14,8 @@
 	const text = $derived(
 		isDurable ? (props as DurableProps).item.entry.content : (props as LiveProps).buffer
 	);
+	// 035 US2: the pulsing dot renders only while the block is still streaming.
+	const streaming = $derived(props.live === true && props.streaming);
 
 	let open = $state(false);
 
@@ -31,7 +33,7 @@
 			class="flex items-center gap-1.5 px-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
 			onclick={() => (open = !open)}
 		>
-			{#if props.live}
+			{#if streaming}
 				<span class="inline-block size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
 			{/if}
 			Thought process

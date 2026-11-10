@@ -355,7 +355,14 @@ class ChatState {
 				const b = blocks[i];
 				if (b.kind === 'reasoning') {
 					if (!b.text.trim()) continue;
-					items.push({ source: 'live', live: 'live_reasoning', buffer: b.text });
+					// 035 US2: the authoritative streaming flag — pulse renders
+					// only while the block is open (no view-side growth heuristics).
+					items.push({
+						source: 'live',
+						live: 'live_reasoning',
+						buffer: b.text,
+						streaming: b.open
+					});
 					continue;
 				}
 				let nextStart: number | null = null;
@@ -717,13 +724,23 @@ class ChatState {
 					if (last?.kind === 'reasoning') last.text = n;
 				},
 				onReasoningSegmentStart: () => {
+					// 035 US2: a new segment closes ALL open blocks — an earlier
+					// reasoning block stops streaming at the next segment start.
+					for (const b of this.liveBlocks) b.open = false;
 					this.liveBlocks.push({ kind: 'reasoning', text: '', open: true });
 				},
 				onTextSegmentStart: (startOffset) => {
-					for (const b of this.liveBlocks) {
-						if (b.kind === 'text' && b.open) b.open = false;
-					}
+					// 035 US2: close ALL open blocks (was text-only) — an earlier
+					// reasoning block stops streaming once the reply text begins.
+					for (const b of this.liveBlocks) b.open = false;
 					this.liveBlocks.push({ kind: 'text', start: startOffset, open: true });
+				},
+				// 035 (iteration-boundary, contracts/iteration-boundary.md): the
+				// loop fires this only AFTER the iteration's rows are durable (or
+				// at critic re-emit start); clearing the list subsumes closing.
+				// Teardown's close-then-clear stays the abort/error safety net.
+				onIterationBoundary: () => {
+					this.liveBlocks = [];
 				},
 				appendAssistantText: async (content, opts) => {
 					// Concatenated whole-turn buffer semantics (029 rule 6): the walk may

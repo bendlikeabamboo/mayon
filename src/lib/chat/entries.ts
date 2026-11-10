@@ -73,6 +73,8 @@ export interface LiveReasoningEntry {
 	source: 'live';
 	live: 'live_reasoning';
 	buffer: string;
+	/** Authoritative pulse gate (035 US2): true only while the block is open. */
+	streaming: boolean;
 }
 
 export interface LiveAskEntry {

@@ -41,6 +41,13 @@ export interface AgentTurnDeps {
 	updateReasoningBuffer: (next: string) => void;
 	onReasoningSegmentStart?: () => void;
 	onTextSegmentStart?: (startOffset: number) => void;
+	/**
+	 * Iteration boundary (035, contracts/iteration-boundary.md): fired only
+	 * AFTER an iteration's blocks are persisted — or at critic re-emit start —
+	 * so durable rows replace the live view with no gap. NEVER fired before a
+	 * persist (that would blank paced live text during the deferred drain).
+	 */
+	onIterationBoundary?: () => void;
 	appendReasoning?: (text: string, iteration: number) => Promise<void>;
 	appendSelfCorrected?: (
 		report: { issues: { type: string; message: string }[]; attempts: number; succeeded: boolean },
@@ -373,6 +380,12 @@ async function runCriticPhase(
 	if (initialIssues.length === 0) return { text: buf, report: null };
 
 	const originalIssues = initialIssues.map(stripCriticIssue);
+	// 035 (iteration-boundary site 4): the re-emit is a fresh stretch — the
+	// pre-correction live blocks' offsets no longer apply, so the store resets
+	// its live view before the first re-stream and opens a fresh text block at
+	// offset 0. Fires only when issues were actually found (no flash on valid
+	// turns).
+	deps.onIterationBoundary?.();
 	let corrected = buf;
 	let attempts = 0;
 
@@ -776,6 +789,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						empty: !finalBuf
 					});
 				}
+				// 035 (iteration-boundary site 2): the finalize persist replaced the
+				// live view — both the corrected-append and walk branches land here,
+				// incl. the image-only fallback above.
+				deps.onIterationBoundary?.();
 				return { aborted: false };
 			}
 
@@ -794,6 +811,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					empty: false
 				});
 			}
+			// 035 (iteration-boundary site 1): iteration i's rows just became
+			// durable — the next iteration must not re-show them live.
+			deps.onIterationBoundary?.();
 			if (hasGenerative) {
 				buf = '';
 				deps.updateStreamBuffer('');
@@ -1000,6 +1020,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			finalText: budgetResult.text,
 			empty: !budgetResult.text
 		});
+		// 035 (iteration-boundary site 3): consistency no-op — the budget
+		// path's blocks were consumed by the walk before this point.
+		deps.onIterationBoundary?.();
 		return { aborted: false };
 	}
 

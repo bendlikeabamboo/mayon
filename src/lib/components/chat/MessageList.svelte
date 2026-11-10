@@ -161,7 +161,7 @@
 		<div id="msg-{itemId(item)}">
 			{#if isLiveEntry(item)}
 				{#if item.live === 'live_reasoning'}
-					<ReasoningEntry live={true} buffer={item.buffer} />
+					<ReasoningEntry live={true} buffer={item.buffer} streaming={item.streaming} />
 				{:else if item.live === 'live_text'}
 					<AssistantMessage live={true} buffer={item.buffer} pending={item.pending} {personaName} />
 					{#if chatStore.pendingImageCount > 0}

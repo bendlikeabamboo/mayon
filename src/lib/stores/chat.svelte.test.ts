@@ -1153,18 +1153,20 @@ describe('029 live blocks (T010)', () => {
 
 		const sendP = chatStore.send('hello');
 		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(4));
+		// 035 US2 amendment: blocks close at the next segment/text start, so the
+		// earlier reasoning blocks are no longer open once a later segment began.
 		expect(chatStore.liveBlocks).toEqual([
-			{ kind: 'reasoning', text: 'thought one', open: true },
+			{ kind: 'reasoning', text: 'thought one', open: false },
 			{ kind: 'text', start: 0, open: false },
-			{ kind: 'reasoning', text: 'thought two', open: true },
+			{ kind: 'reasoning', text: 'thought two', open: false },
 			{ kind: 'text', start: 13, open: true }
 		]);
 
 		await new Promise((r) => setTimeout(r, 100));
 		expect(chatStore.liveItems).toEqual([
-			{ source: 'live', live: 'live_reasoning', buffer: 'thought one' },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought one', streaming: false },
 			{ source: 'live', live: 'live_text', buffer: 'answer part 1', pending: false },
-			{ source: 'live', live: 'live_reasoning', buffer: 'thought two' },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought two', streaming: false },
 			{ source: 'live', live: 'live_text', buffer: 'answer part 2', pending: false }
 		]);
 
@@ -1215,6 +1217,111 @@ describe('029 live blocks (T010)', () => {
 		await sendP;
 
 		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+
+	// 035 US2 (T006a): at an iteration boundary the store clears liveBlocks, so
+	// iteration 2's reasoning streams alone — iteration 1's blocks are durable
+	// rows by then (contracts/iteration-boundary.md).
+	function mockTwoIterationTurn(blocked: Promise<void>): void {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			// iteration 1: reasoning + text, then the loop's interim persist
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('iter-one thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('iter-one answer');
+			await deps.appendReasoning?.('iter-one thought', 0);
+			await deps.appendAssistantText('iter-one answer');
+			// post-T007 the loop fires the boundary here, after the interim persist
+			deps.onIterationBoundary?.();
+			// iteration 2: reasoning streams
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('iter-two thought');
+			await blocked;
+			return { aborted: false };
+		});
+	}
+
+	it('two-iteration turn: iteration 2 reasoning streams alone, no stale live rows from iteration 1 (T006a)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockTwoIterationTurn(turnBlocked);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() =>
+			expect(
+				chatStore.liveBlocks.some((b) => b.kind === 'reasoning' && b.text === 'iter-two thought')
+			).toBe(true)
+		);
+		await new Promise((r) => setTimeout(r, 100));
+
+		// exactly ONE live reasoning entry (iteration 2's), and no stale
+		// empty-buffer live text entry from iteration 1
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_reasoning', buffer: 'iter-two thought', streaming: true }
+		]);
+
+		resolveTurn();
+		await sendP;
+	});
+
+	it('streaming flag: earlier reasoning block closes at the next text segment start and stops streaming (T006b)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('early thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(2));
+
+		const reasoning = chatStore.liveBlocks.find((b) => b.kind === 'reasoning');
+		expect(reasoning?.open).toBe(false);
+		const reasoningItems = chatStore.liveItems.filter((i) => i.live === 'live_reasoning');
+		expect(reasoningItems).toHaveLength(1);
+		expect(reasoningItems[0]).toEqual({
+			source: 'live',
+			live: 'live_reasoning',
+			buffer: 'early thought',
+			streaming: false
+		});
+
+		resolveTurn();
+		await sendP;
+	});
+
+	it('turn teardown still closes and clears all live blocks after iteration boundaries (T006c)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockTwoIterationTurn(turnBlocked);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() =>
+			expect(
+				chatStore.liveBlocks.some((b) => b.kind === 'reasoning' && b.text === 'iter-two thought')
+			).toBe(true)
+		);
+		resolveTurn();
+		await sendP;
+
+		expect(chatStore.liveBlocks).toEqual([]);
 		expect(chatStore.liveItems).toEqual([]);
 	});
 });
