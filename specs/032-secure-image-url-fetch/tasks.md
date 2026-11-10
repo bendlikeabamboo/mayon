@@ -22,7 +22,7 @@
 
 **Purpose**: The one wire-contract change everything else builds on.
 
-- [ ] T001 Add optional `authHost?: string` to `LlmProxyRequest` in `packages/shared/src/protocol.ts` (documented in `specs/032-secure-image-url-fetch/contracts/llm-proxy.md`), then rebuild the package with `pnpm --filter @mayon/shared build` so client and server type-check against it
+- [x] T001 Add optional `authHost?: string` to `LlmProxyRequest` in `packages/shared/src/protocol.ts` (documented in `specs/032-secure-image-url-fetch/contracts/llm-proxy.md`), then rebuild the package with `pnpm --filter @mayon/shared build` so client and server type-check against it
 
 ---
 
@@ -32,9 +32,9 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T002 [P] Add `normalizeHostname(host: string): string` (lowercase, strip trailing `.`, strip IPv6 `[]`) and `sameHost(a: string, b: string): boolean` to `src/lib/ai/llm-target.ts`, with table-driven unit tests appended next to the existing `isLoopbackUrl` block in `src/lib/services/llm-proxy-fetch.test.ts`
-- [ ] T003 [P] Create `server/src/url-target-guard.ts` exporting `blockedAddressKind(ip: string): string | null` (v4 ranges `0.0.0.0/8`, `10/8`, `100.64.0.0/10`, `127/8`, `169.254/16`, `172.16/12`, `192.168/16`, `224.0.0.0/4`, `240.0.0.0/4`; v6 `::`, `::1`, `fe80::/10`, `fc00::/7`, `ff00::/8`, IPv4-mapped `::ffff:0:0/96` recursing the v4 table) and `assertPublicHttpTarget(url: string): Promise<void>` (IP-literal fast path via `node:net` `isIP`; otherwise `dnsPromises.lookup(hostname, { all: true })` from `import { promises as dnsPromises } from 'node:dns'`, validating every address; throws typed errors `BlockedTargetError(kind)` / resolver errors pass through)
-- [ ] T004 [P] Create `server/src/url-target-guard.test.ts`: table-driven classification (every blocked class in v4 + v6 + bracketed/mapped/`0x7f000001`-style literals vs public addresses like `93.184.216.34`, `2606:4700::6810:85e5`), plus `assertPublicHttpTarget` literal fast-path checks
+- [x] T002 [P] Add `normalizeHostname(host: string): string` (lowercase, strip trailing `.`, strip IPv6 `[]`) and `sameHost(a: string, b: string): boolean` to `src/lib/ai/llm-target.ts`, with table-driven unit tests appended next to the existing `isLoopbackUrl` block in `src/lib/services/llm-proxy-fetch.test.ts`
+- [x] T003 [P] Create `server/src/url-target-guard.ts` exporting `blockedAddressKind(ip: string): string | null` (v4 ranges `0.0.0.0/8`, `10/8`, `100.64.0.0/10`, `127/8`, `169.254/16`, `172.16/12`, `192.168/16`, `224.0.0.0/4`, `240.0.0.0/4`; v6 `::`, `::1`, `fe80::/10`, `fc00::/7`, `ff00::/8`, IPv4-mapped `::ffff:0:0/96` recursing the v4 table) and `assertPublicHttpTarget(url: string): Promise<void>` (IP-literal fast path via `node:net` `isIP`; otherwise `dnsPromises.lookup(hostname, { all: true })` from `import { promises as dnsPromises } from 'node:dns'`, validating every address; throws typed errors `BlockedTargetError(kind)` / resolver errors pass through)
+- [x] T004 [P] Create `server/src/url-target-guard.test.ts`: table-driven classification (every blocked class in v4 + v6 + bracketed/mapped/`0x7f000001`-style literals vs public addresses like `93.184.216.34`, `2606:4700::6810:85e5`), plus `assertPublicHttpTarget` literal fast-path checks
 
 **Checkpoint**: Foundation ready — user story implementation can now begin in parallel
 

@@ -47,6 +47,12 @@ export interface LlmProxyRequest {
 	method: string;
 	headers: Record<string, string>;
 	body?: string;
+	/**
+	 * Host the credential headers target (032): the provider `baseUrl`'s
+	 * hostname. Absent or mismatched → the relay strips credential headers.
+	 * See `specs/032-secure-image-url-fetch/contracts/llm-proxy.md`.
+	 */
+	authHost?: string;
 }
 
 /**

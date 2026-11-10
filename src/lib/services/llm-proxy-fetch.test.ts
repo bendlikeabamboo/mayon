@@ -14,7 +14,7 @@ vi.mock('#lib/services/status.svelte.js', () => ({
 
 import { getLlmFetch } from '#lib/services/llm-proxy-fetch.js';
 import { serverStatus } from '#lib/services/status.svelte.js';
-import { isLoopbackUrl } from '#lib/ai/llm-target.js';
+import { isLoopbackUrl, normalizeHostname, sameHost } from '#lib/ai/llm-target.js';
 
 describe('getLlmFetch', () => {
 	const originalFetch = globalThis.fetch;
@@ -145,5 +145,35 @@ describe('isLoopbackUrl', () => {
 		['not a url', false]
 	])('%s → %s', (url, expected) => {
 		expect(isLoopbackUrl(url)).toBe(expected);
+	});
+});
+
+describe('normalizeHostname', () => {
+	it.each([
+		['api.example.test', 'api.example.test'],
+		['API.Example.TEST', 'api.example.test'],
+		['api.example.test.', 'api.example.test'],
+		['api.example.test..', 'api.example.test'],
+		['[::1]', '::1'],
+		['::1', '::1'],
+		['LocalHost', 'localhost'],
+		['[2001:DB8::1]', '2001:db8::1']
+	])('%s → %s', (host, expected) => {
+		expect(normalizeHostname(host)).toBe(expected);
+	});
+});
+
+describe('sameHost', () => {
+	it.each([
+		['api.example.test', 'API.Example.TEST', true],
+		['api.example.test.', 'api.example.test', true],
+		['[2001:DB8::1]', '2001:db8::1', true],
+		['::1', '[::1]', true],
+		['api.example.test', 'sub.api.example.test', false],
+		['example.test', 'example.test.evil.test', false],
+		['api.example.test', 'api.example.org', false],
+		['', 'example.test', false]
+	])('%s vs %s → %s', (a, b, expected) => {
+		expect(sameHost(a, b)).toBe(expected);
 	});
 });
