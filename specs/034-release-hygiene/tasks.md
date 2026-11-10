@@ -20,7 +20,7 @@ present) and must pass after the fix.
 
 **Purpose**: Confirm the verified baseline still holds before editing.
 
-- [ ] T001 Re-verify baseline facts against the working tree: manifests read `0.9.0` (`package.json:3`, `server/package.json:5`, `packages/shared/package.json:3`); `CHANGELOG.md` `## [Unreleased]` holds exactly the #69/#70 Fixed entries; `ideas/history-map.md` absent; `tests/fixtures/langfuse-stub/server.mjs:90-95` has the two process handlers; `tests/e2e/README.md` ledger row count equals spec-file count. If any fact has drifted (later merges), re-check research.md D-references before proceeding — do not edit yet.
+- [x] T001 Re-verify baseline facts against the working tree: manifests read `0.9.0` (`package.json:3`, `server/package.json:5`, `packages/shared/package.json:3`); `CHANGELOG.md` `## [Unreleased]` holds exactly the #69/#70 Fixed entries; `ideas/history-map.md` absent; `tests/fixtures/langfuse-stub/server.mjs:90-95` has the two process handlers; `tests/e2e/README.md` ledger row count equals spec-file count. If any fact has drifted (later merges), re-check research.md D-references before proceeding — do not edit yet.
 
 ## Phase 2: Foundational
 
@@ -36,10 +36,10 @@ None — this feature has no shared infrastructure; each user story edits disjoi
 
 ### Implementation for User Story 1
 
-- [ ] T002 [US1] Author the `### Added` bullets for `## [0.10.0] - 2026-11-10` in `CHANGELOG.md` — five entries (027 back-propagation tool, 028 mermaid containment/repair, 029 micro-thoughts, 030 image generation, 031 split test suites + per-shard e2e) with content and commit references exactly per research.md D9 (no vite/rolldown entry).
-- [ ] T003 [US1] Move the two existing `## [Unreleased]` → `### Fixed` entries (#69 credential/SSRF, #70 assistant image replies) into `## [0.10.0]` → `### Fixed` in `CHANGELOG.md`, add the PR #77 engine-seam Fixed entry, and leave a fresh empty `## [Unreleased]` header above the section (contracts/release-contract.md).
-- [ ] T004 [P] [US1] Set `"version": "0.10.0"` in `package.json`, `server/package.json`, and `packages/shared/package.json` (version field only, no other manifest change).
-- [ ] T005 [US1] Format and verify the release record: `pnpm exec prettier --write CHANGELOG.md package.json server/package.json packages/shared/package.json`, then run quickstart S1 including the no-tag assertion.
+- [x] T002 [US1] Author the `### Added` bullets for `## [0.10.0] - 2026-11-10` in `CHANGELOG.md` — five entries (027 back-propagation tool, 028 mermaid containment/repair, 029 micro-thoughts, 030 image generation, 031 split test suites + per-shard e2e) with content and commit references exactly per research.md D9 (no vite/rolldown entry).
+- [x] T003 [US1] Move the two existing `## [Unreleased]` → `### Fixed` entries (#69 credential/SSRF, #70 assistant image replies) into `## [0.10.0]` → `### Fixed` in `CHANGELOG.md`, add the PR #77 engine-seam Fixed entry, and leave a fresh empty `## [Unreleased]` header above the section (contracts/release-contract.md).
+- [x] T004 [P] [US1] Set `"version": "0.10.0"` in `package.json`, `server/package.json`, and `packages/shared/package.json` (version field only, no other manifest change).
+- [x] T005 [US1] Format and verify the release record: `pnpm exec prettier --write CHANGELOG.md package.json server/package.json packages/shared/package.json`, then run quickstart S1 including the no-tag assertion.
 
 **Checkpoint**: Release contract passes locally; nothing tagged.
 
