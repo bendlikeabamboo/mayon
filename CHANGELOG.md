@@ -85,6 +85,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finalize multi-block turns with at most one eased drain instead of stalling
   ~1.2 s per extra block; and the turn trace prunes phantom whitespace-only
   reasoning segments.
+- **Mermaid repair no longer mangles valid syntax, and its failure path is
+  readable and orphan-free** (issue #72 / feature 036) — the pure repair pass
+  is redesigned as surgical, idempotent, single-pass-per-rule rules scoped by
+  diagram family that never rewrite `%%{…}%%` directive/comment lines or valid
+  C4/xychart/init syntax (unrepairable faults stay identity and surface the
+  real error instead of a false "repaired" render); a provider-less send
+  preflights provider resolution before persisting, so "Fix this diagram" and
+  every other entry point surface the usual configuration guidance and leave
+  no orphan user row; the render-failure block shows the full wrapped failure
+  text (`name: message`) with the diagram source collapsed behind a
+  disclosure; and the sourcemap coverage test derives its excluded-selector
+  list from the live `EXCLUDED_CHROME_SELECTORS` export instead of a hardcoded
+  copy.
 
 ## [0.9.0] - 2026-11-03
 
