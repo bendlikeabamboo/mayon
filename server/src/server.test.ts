@@ -20,7 +20,6 @@ describe('server (pg-down default)', () => {
 
 	beforeAll(async () => {
 		app = buildApp(':memory:');
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -49,7 +48,6 @@ describe('server with a pg pool (pgReady: true)', () => {
 	beforeAll(async () => {
 		pool = mockPool();
 		app = buildApp(':memory:', { pgPool: pool.pool, pgReady: true });
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -81,7 +79,6 @@ describe('server with a pg pool (pgReady: true)', () => {
 	it('closes the pg pool on shutdown', async () => {
 		const local = mockPool();
 		const shutdownApp = buildApp(':memory:', { pgPool: local.pool, pgReady: true });
-		await shutdownApp.listen({ port: 0, host: '0.0.0.0' });
 		await shutdownApp.close();
 		expect(local.end).toHaveBeenCalledTimes(1);
 	});
@@ -92,7 +89,6 @@ describe('server without a pg pool (pgReady: false)', () => {
 
 	beforeAll(async () => {
 		app = buildApp(':memory:', { pgReady: false });
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {

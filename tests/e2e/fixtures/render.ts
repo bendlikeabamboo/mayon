@@ -19,26 +19,6 @@ export async function openKitchenSinkReply(page: Page): Promise<Locator> {
 	return body;
 }
 
-/**
- * Cycle the real ThemeToggle until the app preference is "system", so the
- * resolved theme follows the OS-level (emulated) color scheme. The starting
- * preference is unknowable: it hydrates from the settings KV on a shared DB.
- */
-export async function setThemePreferenceToSystem(page: Page): Promise<void> {
-	const toggle = page.getByRole('button', { name: /Theme: .* \(click to switch\)/ });
-	await expect
-		.poll(
-			async () => {
-				const label = (await toggle.getAttribute('aria-label')) ?? '';
-				if (label.includes('Theme: system')) return true;
-				await toggle.click();
-				return false;
-			},
-			{ timeout: 15_000 }
-		)
-		.toBe(true);
-}
-
 export async function expectMarkdownStructure(body: Locator): Promise<void> {
 	await expect(
 		body.getByRole('heading', { level: 1, name: 'The Kitchen-Sink Fixture' })
@@ -54,13 +34,6 @@ export async function expectMarkdownStructure(body: Locator): Promise<void> {
 	await expect(body.locator('a[href="https://mermaid.js.org"]')).toHaveCount(1);
 }
 
-export async function expectMath(body: Locator): Promise<void> {
-	// The pipeline renders both $…$ and $$…$$ via KaTeX; $$…$$ does not get a
-	// .katex-display wrapper in this app, so assert the two formulas rendered.
-	await expect(body.locator('.katex')).toHaveCount(2);
-	await expect(body.locator('.katex').first()).toBeVisible();
-}
-
 export async function expectMermaidDiagram(body: Locator): Promise<void> {
 	await expect(body.locator('.mermaid-svg svg')).toBeVisible({ timeout: 30_000 });
 	// Diagrams are stamped with the resolved theme they were rendered under.
@@ -69,15 +42,6 @@ export async function expectMermaidDiagram(body: Locator): Promise<void> {
 		/^(light|dark)$/
 	);
 	await expect(body.locator('code.language-mermaid')).toHaveCount(0);
-}
-
-export async function expectCopyAffordance(page: Page, body: Locator): Promise<void> {
-	const buttons = body.locator('pre .md-copy-btn');
-	await expect(buttons).toHaveCount(2);
-	const codeText = (await body.locator('pre code').first().textContent()) ?? '';
-	await buttons.first().click();
-	const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-	expect(clipboard.startsWith(codeText)).toBe(true);
 }
 
 export async function selectParagraph(page: Page, body: Locator, text: string): Promise<void> {

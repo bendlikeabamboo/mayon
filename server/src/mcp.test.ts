@@ -145,6 +145,7 @@ describe('MCP bridge', () => {
 
 	beforeAll(async () => {
 		app = buildApp(':memory:');
+		// Real listener: websocket upgrade and MCP frame transport are the subject.
 		await app.listen({ port: 0, host: '0.0.0.0' });
 		const addr = app.server.address();
 		if (typeof addr === 'object' && addr) {
@@ -413,6 +414,7 @@ describe('MCP bridge', () => {
 			process.env.MCP_MAX_CHILDREN = '1';
 			resetLiveChildren();
 			capApp = buildApp(':memory:');
+			// Real listener: the websocket child-cap rejection is a transport subject.
 			await capApp.listen({ port: 0, host: '0.0.0.0' });
 			const addr = capApp.server.address();
 			if (typeof addr === 'object' && addr) {

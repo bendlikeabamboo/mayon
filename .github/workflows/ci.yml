@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -79,11 +79,36 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @mayon/shared build
       - run: pnpm exec playwright install --with-deps chromium
+      # Resolve the capability gate once per runner and pass the decision to
+      # every shard process. Spec files are independent (no shared ports, chat
+      # ids, or provider ids), so four runners can run four shards safely.
+      - name: Resolve test capability gate
+        shell: bash
+        run: |
+          node --input-type=module -e '
+            import { appendFileSync } from "node:fs";
+            import { readCapacity, formatCapacityReport } from "./scripts/test-capacity.mjs";
+            const capacity = readCapacity();
+            console.log(formatCapacityReport(capacity));
+            appendFileSync(process.env.GITHUB_ENV, `MAYON_TEST_MAX_WORKERS=${capacity.workers}\n`);
+          '
       # One dev stack per shard (project mayon-dev-shard-N, web :5200+N) so
-      # shards run with zero shared-state races; the runner resolves which
-      # shard publishes the host-side langfuse-stub port (9998).
-      - run: pnpm dev:shard:up ${{ matrix.shard }}/2
-      - run: pnpm dev:shard:test ${{ matrix.shard }}/2
+      # shards run with zero shared-state races.
+      - run: pnpm dev:shard:up ${{ matrix.shard }}/4
+      - name: Run e2e shard and check its budget
+        env:
+          E2E_BASE_URL: http://127.0.0.1:520${{ matrix.shard }}
+        run: pnpm test:e2e:ci --shard=${{ matrix.shard }}/4
+      - if: always()
+        run: pnpm dev:shard:down ${{ matrix.shard }}
+      - name: Upload tier 3 shard report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tier3-shard-${{ matrix.shard }}
+          path: test-results/tier3-shard-*.json
+          retention-days: 7
+          if-no-files-found: ignore
       - if: failure()
         uses: actions/upload-artifact@v7
         with:

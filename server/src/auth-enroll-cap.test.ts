@@ -86,7 +86,6 @@ async function startApp(): Promise<TestApp> {
 		authNow: () => clock.now,
 		authKeyPath: path.join(mkdtempSync(path.join(tmpdir(), 'mayon-auth-enrollcap-')), 'auth-secret')
 	});
-	await app.listen({ port: 0, host: '0.0.0.0' });
 	return {
 		app,
 		pool,

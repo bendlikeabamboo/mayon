@@ -1,50 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import http from 'node:http';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
-import { migrate } from 'drizzle-orm/pglite/migrator';
 import { generateSync } from 'otplib';
 import WebSocket from 'ws';
-import { buildApp, getSecurityMode, setSecurityMode } from './server';
+import { buildApp, getSecurityMode } from './server';
 import { setRestoring } from './pg';
 import { hashPassword, randomToken, sha256Hex } from './auth/crypto';
 import { PUBLIC_ALLOWLIST } from './auth/gate';
 import { createAuthStore, type AuthStore } from './auth/store';
+import { createPglitePool, createTestApp, type TestApp } from './testing/build-app';
 import type { AuthIdentityStatus } from '@mayon/schema';
 import type { PgPoolLike } from './pg';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, '../../drizzle');
 const STUB_PATH = fileURLToPath(
 	new URL('../../tests/fixtures/stub-mcp-server.mjs', import.meta.url)
 );
-
-async function createPglitePool(): Promise<PgPoolLike> {
-	const client = new PGlite();
-	await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_DIR });
-	return {
-		query: async (text, params) => {
-			const res = await client.query(text, params as unknown[]);
-			return {
-				rows: res.rows as Record<string, unknown>[],
-				fields: res.fields as { name: string }[],
-				rowCount: res.affectedRows ?? res.rows.length
-			};
-		},
-		connect: async () => {
-			throw new Error('pglite test pool does not support connect()');
-		},
-		end: async () => {
-			await client.close();
-		}
-	};
-}
 
 type SweepMethod = 'GET' | 'POST' | 'PUT';
 
@@ -172,11 +145,10 @@ function brokenPool(): PgPoolLike {
 }
 
 describe('auth gate — open mode parity', () => {
-	let app: ReturnType<typeof buildApp>;
+	let app: TestApp['app'];
 
 	beforeAll(async () => {
-		app = buildApp(':memory:');
-		await app.listen({ port: 0, host: '0.0.0.0' });
+		({ app } = await createTestApp({ pg: false }));
 	});
 
 	afterAll(async () => {
@@ -228,7 +200,7 @@ describe('auth gate — open mode parity', () => {
 });
 
 describe('auth gate — locked mode (store-backed)', () => {
-	let app: ReturnType<typeof buildApp>;
+	let app: TestApp['app'];
 	let pool: PgPoolLike;
 	let store: AuthStore;
 	const clock = { now: 1_756_000_000_000 };
@@ -258,15 +230,10 @@ describe('auth gate — locked mode (store-backed)', () => {
 	const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 	beforeAll(async () => {
-		pool = await createPglitePool();
-		store = createAuthStore(pool, () => clock.now);
-		await pool.query(
-			`INSERT INTO settings(key,value) VALUES('security.mode',$1)
-			 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`,
-			[JSON.stringify('locked')]
-		);
-		app = buildApp(':memory:', { pgPool: pool, authNow: () => clock.now });
-		await app.listen({ port: 0, host: '0.0.0.0' });
+		const testApp = await createTestApp({ clock, securityMode: 'locked' });
+		app = testApp.app;
+		pool = testApp.pool!;
+		store = testApp.store;
 	});
 
 	afterAll(async () => {
@@ -440,21 +407,16 @@ describe('auth gate — locked mode (store-backed)', () => {
 });
 
 describe('auth gate — locked mode sweep over every registered route (SC-001/SC-002)', () => {
-	let app: ReturnType<typeof buildApp>;
-	let pool: PgPoolLike;
+	let app: TestApp['app'];
 	let store: AuthStore;
 	let basePort = 0;
 	const clock = { now: 1_756_050_000_000 };
 
 	beforeAll(async () => {
-		pool = await createPglitePool();
-		store = createAuthStore(pool, () => clock.now);
-		await setSecurityMode(pool, 'locked', () => clock.now);
-		app = buildApp(':memory:', {
-			pgPool: pool,
-			authNow: () => clock.now,
-			authKeyPath: path.join(mkdtempSync(path.join(tmpdir(), 'mayon-auth-gate-')), 'auth-secret')
-		});
+		const testApp = await createTestApp({ clock, securityMode: 'locked' });
+		app = testApp.app;
+		store = testApp.store;
+		// Real listener only because the websocket-upgrade case is a transport subject.
 		await app.listen({ port: 0, host: '0.0.0.0' });
 		const addr = app.server.address();
 		if (typeof addr === 'object' && addr) {
@@ -590,6 +552,7 @@ describe('auth gate — locked mode sweep over every registered route (SC-001/SC
 	});
 
 	it('rejects session-less websocket upgrades with 401 before dispatch', { timeout: 15000 }, () => {
+		// Real websocket upgrade: the transport handshake is the subject.
 		return new Promise<void>((resolve, reject) => {
 			const ws = new WebSocket(`ws://127.0.0.1:${basePort}/ws/mcp`);
 			ws.once('error', (err: Error) => {
@@ -606,7 +569,7 @@ describe('auth gate — locked mode sweep over every registered route (SC-001/SC
 });
 
 describe('auth gate — locked mode with-session pass-through', () => {
-	let app: ReturnType<typeof buildApp>;
+	let app: TestApp['app'];
 	let store: AuthStore;
 	let basePort = 0;
 	let upstream: http.Server;
@@ -616,10 +579,10 @@ describe('auth gate — locked mode with-session pass-through', () => {
 	let mintSession: ReturnType<typeof sessionMinter>;
 
 	beforeAll(async () => {
-		const pool = await createPglitePool();
-		store = createAuthStore(pool, () => clock.now);
+		const testApp = await createTestApp({ clock, securityMode: 'locked' });
+		store = testApp.store;
 		mintSession = sessionMinter(store, clock);
-		await setSecurityMode(pool, 'locked', () => clock.now);
+		// Real upstream HTTP server: the proxy's streaming transport is the subject.
 		upstream = http.createServer((_req, res) => {
 			upstreamHits++;
 			res.writeHead(200, { 'content-type': 'text/plain' });
@@ -631,7 +594,8 @@ describe('auth gate — locked mode with-session pass-through', () => {
 		});
 		await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
 		upstreamPort = (upstream.address() as AddressInfo).port;
-		app = buildApp(':memory:', { pgPool: pool, authNow: () => clock.now });
+		app = testApp.app;
+		// Real listener only because the websocket-upgrade case below is a transport subject.
 		await app.listen({ port: 0, host: '0.0.0.0' });
 		const addr = app.server.address();
 		if (typeof addr === 'object' && addr) {
@@ -684,6 +648,7 @@ describe('auth gate — locked mode with-session pass-through', () => {
 	});
 
 	it('GET /ws/mcp upgrade with a session connects and MCP frames flow', { timeout: 15000 }, () => {
+		// Real websocket upgrade: frame transport through the socket is the subject.
 		return new Promise<void>((resolve, reject) => {
 			void mintSession().then(({ token }) => {
 				const ws = new WebSocket(`ws://127.0.0.1:${basePort}/ws/mcp`, {
@@ -729,17 +694,16 @@ describe('auth gate — locked mode with-session pass-through', () => {
 });
 
 describe('auth gate — restore ordering (auth before restore)', () => {
-	let app: ReturnType<typeof buildApp>;
+	let app: TestApp['app'];
 	let store: AuthStore;
 	const clock = { now: 1_756_200_000_000 };
 	let mintSession: ReturnType<typeof sessionMinter>;
 
 	beforeAll(async () => {
-		const pool = await createPglitePool();
-		store = createAuthStore(pool, () => clock.now);
+		const testApp = await createTestApp({ clock, securityMode: 'locked' });
+		store = testApp.store;
 		mintSession = sessionMinter(store, clock);
-		await setSecurityMode(pool, 'locked', () => clock.now);
-		app = buildApp(':memory:', { pgPool: pool, authNow: () => clock.now });
+		app = testApp.app;
 	});
 
 	afterAll(async () => {

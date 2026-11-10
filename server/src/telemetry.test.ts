@@ -34,7 +34,6 @@ describe('PUT /api/telemetry/config', () => {
 
 	beforeAll(async () => {
 		app = buildApp(':memory:');
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -61,7 +60,6 @@ describe('PUT /api/telemetry/config', () => {
 	it('accepts a valid config, persists the telemetry settings row, and returns 200 {ok, config}', async () => {
 		const { pool, query } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'PUT',
@@ -97,7 +95,6 @@ describe('PUT /api/telemetry/config', () => {
 	it('replaces the config cache so a read after an accepted write returns the new config without a re-query', async () => {
 		const { pool, query } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			await telemetryApp.inject({
 				method: 'PUT',
@@ -169,7 +166,6 @@ describe('PUT /api/telemetry/config', () => {
 	it('accepts a disable without host/key shape requirements and persists enabled:false', async () => {
 		const { pool, query } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'PUT',
@@ -191,7 +187,9 @@ describe('PUT /api/telemetry/config', () => {
 	it('invokes the pipeline reset hook synchronously on disable, never on enable', async () => {
 		const { pool } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
+		// Routes register lazily on first boot; ready() must run before the test
+		// overrides the reset hook, otherwise registration replaces the mock.
+		await telemetryApp.ready();
 		const reset = vi.fn();
 		setTelemetryReset(reset);
 		try {
@@ -221,7 +219,6 @@ describe('PUT /api/telemetry/config', () => {
 		vi.stubGlobal('fetch', fetchMock);
 		const { pool, query } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'PUT',
@@ -266,7 +263,6 @@ describe('PUT /api/telemetry/config', () => {
 		};
 		const { pool, query } = mockPool([{ value: JSON.stringify(stored) }]);
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'PUT',
@@ -292,7 +288,6 @@ describe('PUT /api/telemetry/config', () => {
 	it('rejects 401 and 403 probe outcomes with 409 {error: "credentials rejected"} and does not persist', async () => {
 		const { pool, query } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			for (const status of [401, 403]) {
 				vi.stubGlobal(
@@ -323,7 +318,6 @@ describe('PUT /api/telemetry/config', () => {
 		vi.stubGlobal('fetch', fetchMock);
 		const { pool, query } = mockPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'PUT',
@@ -358,7 +352,6 @@ describe('PUT /api/telemetry/config', () => {
 		vi.stubGlobal('fetch', fetchMock);
 		const { pool, query } = mockPool([{ value: JSON.stringify(stored) }]);
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'PUT',
@@ -459,7 +452,6 @@ describe('POST /api/telemetry/events', () => {
 	it('rejects 400 {error: "content in metadata mode"} for a batch carrying input and enqueues nothing', async () => {
 		const { pool } = metadataPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -480,7 +472,6 @@ describe('POST /api/telemetry/events', () => {
 	it('rejects a record carrying output in metadata mode', async () => {
 		const { pool } = metadataPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -502,7 +493,6 @@ describe('POST /api/telemetry/events', () => {
 		);
 		const { pool } = metadataPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const before = getTelemetryPipelineStatus().queueDepth;
 			const res = await telemetryApp.inject({
@@ -521,7 +511,6 @@ describe('POST /api/telemetry/events', () => {
 
 	it('rejects 409 {error: "telemetry disabled"} when unconfigured', async () => {
 		const telemetryApp = buildApp(':memory:');
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -539,7 +528,6 @@ describe('POST /api/telemetry/events', () => {
 	it('rejects 409 when the stored config is disabled', async () => {
 		const { pool } = mockPool([{ value: JSON.stringify({ ...DEFAULT_TELEMETRY_CONFIG }) }]);
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -560,7 +548,6 @@ describe('POST /api/telemetry/events', () => {
 		);
 		const { pool } = enabledPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const before = getTelemetryPipelineStatus().queueDepth;
 			const res = await telemetryApp.inject({
@@ -580,7 +567,6 @@ describe('POST /api/telemetry/events', () => {
 	it('rejects 400 invalid records on a per-record shape violation', async () => {
 		const { pool } = enabledPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -598,7 +584,6 @@ describe('POST /api/telemetry/events', () => {
 	it('rejects 400 when the batch exceeds 50 records', async () => {
 		const { pool } = enabledPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -615,7 +600,6 @@ describe('POST /api/telemetry/events', () => {
 	it('rejects 400 when the body exceeds the 2MiB limit', async () => {
 		const { pool } = enabledPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await telemetryApp.inject({
 				method: 'POST',
@@ -672,7 +656,6 @@ describe('GET /api/telemetry/status', () => {
 	it('projects healthy pipeline state truthfully and never contains secret material', async () => {
 		const { pool } = statusPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			// Simulate a delivered batch: 20 records flush immediately.
 			for (let i = 0; i < 20; i++) {
@@ -717,7 +700,6 @@ describe('GET /api/telemetry/status', () => {
 		);
 		const { pool } = statusPool();
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			for (let i = 0; i < 20; i++) {
 				enqueueTelemetry({
@@ -753,7 +735,6 @@ describe('GET /api/telemetry/status', () => {
 		delete process.env.MAYON_LANGFUSE_SECRET_KEY;
 		const { pool } = mockPool([]);
 		const telemetryApp = buildApp(':memory:', { pgPool: pool });
-		await telemetryApp.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const { statusCode, body } = await getStatus(telemetryApp);
 			expect(statusCode).toBe(200);

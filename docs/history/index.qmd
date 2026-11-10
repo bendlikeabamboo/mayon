@@ -13,13 +13,13 @@ today*, read [architecture](../explanation/architecture.qmd) and [seams](../refe
 
 Each feature now has its own page — this page is the map, one table per arc, plus the arc
 narrative: the intros, transitions, and retrospectives that turn the entries into one
-story. The twenty-five features fall into five arcs: the agent surface taking shape, the
-AI plumbing industrializing, platform and delivery polish, trust, gates, and the
-industrialized practice, and surface, reach, and the docs themselves. Within each arc the
-entries flow chronologically; reversals are stated openly wherever they happened —
-including several decisions that were built and then replaced inside their own feature
-before landing. Contracts the narrative points at are preserved verbatim under
-`appendices/`.
+story. The twenty-six documented features fall into six arcs: the agent surface taking
+shape, the AI plumbing industrializing, platform and delivery polish, trust, gates, and
+the industrialized practice, surface, reach, and the docs themselves, and finally the
+suite turning on itself. Within each arc the entries flow chronologically; reversals are
+stated openly wherever they happened — including several decisions that were built and
+then replaced inside their own feature before landing. Contracts the narrative points at
+are preserved verbatim under `appendices/`.
 
 ## Arc A — The agent surface takes shape
 
@@ -146,7 +146,7 @@ discipline applied to itself.
 
 ## Arc E — Surface, reach & the docs themselves
 
-The final arc widened what the surface can do and how far the product reaches — and made
+The surface arc widened what the surface can do and how far the product reaches — and made
 the docs themselves into a shipped feature. Settings gained navigation around a
 deliberately frozen page; a six-card idea deck traded the fully designed floating reply
 outline for its leaner sibling, the section peek strip, which shipped the panel's contract
@@ -178,18 +178,38 @@ stretch: 015 was fully designed and never built, its contract realized by a sibl
 consumed it, the floating panel kept on the books as the recorded upgrade path — declined
 winners recorded as upgrade paths, not dead ends.
 
+## Arc F — The suite turns on itself
+
+The practice the project had applied to product features was finally applied to the tests
+that prove them: three enforced execution tiers, a capability gate instead of assumed
+hardware, source-text "component" tests replaced by real browser renders, a lean sharded
+end-to-end deck, and guardrails plus budgets that make the structure self-enforcing.
+
+| Feature | Status |
+| --- | --- |
+| [032 — Test suite tiering](032-test-suite-tiering.qmd#sec-032) | standing |
+
+*Arc F in retrospect:* the suite stopped reporting coverage it did not have. Tier
+placement became a reviewable decision, browser cost was split by intent, end-to-end
+cases had to justify their existence against lower-tier evidence, and the ledger made
+every removal auditable. The parallel lesson was the same one Arc D taught about trust:
+make the desired property structural — a guardrail, a budget, a gate — instead of asking
+each contributor to remember it.
+
 ## Where the story stands
 
-Twenty-five features in three weeks of calendar time, with one recurring shape: invent
+Twenty-six features in three weeks of calendar time, with one recurring shape: invent
 narrowly, prove broadly, revise without ceremony. The durable mechanics — typed entries,
 derived states, written contracts, catalog-driven extensibility, offset-sanctified
 selection, evidenced styling rulings — now function as the platform every future feature
-inherits. Arcs D and E hardened and widened that platform: releases ship through
+inherits. Arcs D, E, and F hardened and widened that platform: releases ship through
 automated gates driven by a protocol-exact mock, the product sits behind one centrally
 enforced authentication gate with always-on security posture detection, reach grew
-through Copilot, image parts, and branch back-propagation, and the documentation became
+through Copilot, image parts, and branch back-propagation, the documentation became
 the Diátaxis website you are reading — then audited claim by claim against the shipped
-product. Not everything is built, and the record says so:
+product — and the test suite itself became three enforced tiers with capability-gated
+parallelism, a migration ledger, and per-tier budgets. Not everything is built, and the
+record says so:
 the floating reply outline remains what a where-am-I marker on the strip would grow into;
 voice, video, and file support stay recorded as future work, not abandoned; and push
 protection's enforcement gap and the login rate limiter's forwarded-header mismatch are

@@ -110,7 +110,6 @@ describe('GET /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
@@ -124,7 +123,6 @@ describe('GET /api/backup/db', () => {
 
 	it('returns 503 when pool is absent', async () => {
 		const a = buildApp(':memory:', { databaseUrl: DB_URL });
-		await a.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await a.inject({ method: 'GET', url: '/api/backup/db' });
 			expect(res.statusCode).toBe(503);
@@ -173,7 +171,6 @@ describe('PUT /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await app.inject({
 				method: 'PUT',
@@ -197,7 +194,6 @@ describe('PUT /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 			const res = await app.inject({
@@ -226,7 +222,6 @@ describe('PUT /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 			const res = await app.inject({
@@ -265,7 +260,6 @@ describe('PUT /api/backup/db', () => {
 				databaseUrl: DB_URL,
 				pgReady: true
 			});
-			await app.listen({ port: 0, host: '0.0.0.0' });
 			try {
 				const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 				const res = await app.inject({
@@ -298,7 +292,6 @@ describe('PUT /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 			const res = await app.inject({
@@ -334,7 +327,6 @@ describe('PUT /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 			const res = await app.inject({
@@ -370,7 +362,6 @@ describe('PUT /api/backup/db', () => {
 				databaseUrl: DB_URL,
 				pgReady: true
 			});
-			await app.listen({ port: 0, host: '0.0.0.0' });
 			try {
 				const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 				const res = await app.inject({
@@ -406,7 +397,6 @@ describe('PUT /api/backup/db', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 			const res = await app.inject({
@@ -484,7 +474,6 @@ describe('PUT /api/backup/db drizzle filtering', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const payload = Buffer.concat([PGDMP_BYTES, Buffer.alloc(100)]);
 			const res = await app.inject({
@@ -538,7 +527,6 @@ describe('maintenance flag', () => {
 				databaseUrl: DB_URL,
 				pgReady: true
 			});
-			await app.listen({ port: 0, host: '0.0.0.0' });
 			try {
 				const res = await app.inject({
 					method: 'POST',
@@ -567,7 +555,6 @@ describe('GET /api/backup/safety', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await app.inject({
 				method: 'GET',
@@ -585,7 +572,6 @@ describe('GET /api/backup/safety', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await app.inject({
 				method: 'GET',
@@ -606,7 +592,6 @@ describe('GET /api/backup/safety', () => {
 			databaseUrl: DB_URL,
 			pgReady: true
 		});
-		await app.listen({ port: 0, host: '0.0.0.0' });
 		try {
 			const res = await app.inject({
 				method: 'GET',

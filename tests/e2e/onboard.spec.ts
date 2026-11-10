@@ -1,13 +1,6 @@
-import { expect, modelListFooter, settledModelFooter, test } from './fixtures/onboard';
+import { expect, test } from './fixtures/onboard';
 import { liveText } from './fixtures/render';
-import {
-	EARLY_MARKER,
-	HEADING_PROBE,
-	LATE_MARKER,
-	MOCK_BASE_URL,
-	MODEL_ID,
-	PROSE_PROBE
-} from './fixtures/kitchen-sink';
+import { EARLY_MARKER, HEADING_PROBE, LATE_MARKER, PROSE_PROBE } from './fixtures/kitchen-sink';
 
 test.describe('mock-llm onboarding and round trip', () => {
 	test('onboards the mock provider and completes a deterministic round trip', async ({
@@ -28,38 +21,5 @@ test.describe('mock-llm onboarding and round trip', () => {
 		await expect(page.getByRole('heading', { level: 1, name: HEADING_PROBE })).toBeVisible();
 		await expect(page.locator('.markdown-body', { hasText: PROSE_PROBE })).toBeVisible();
 		await expect(page.locator('div[class*="border-red-500/40"]')).toHaveCount(0);
-	});
-
-	test('discovers the mock catalog through the proxy', async ({ onboarded }) => {
-		const { page, providerCard } = onboarded;
-		await page.goto('/settings#providers');
-		await expect(providerCard.getByLabel('Base URL')).toHaveValue(MOCK_BASE_URL);
-		await providerCard.getByRole('button', { name: 'Refresh model list' }).click();
-		await expect(modelListFooter(providerCard)).toHaveText(settledModelFooter(3));
-		await providerCard.locator('button[aria-haspopup="dialog"]').click();
-		await expect(page.getByRole('option', { name: MODEL_ID })).toBeVisible();
-		await page.keyboard.press('Escape');
-	});
-
-	test('connects LM Studio as a keyless local provider', async ({ onboarded }) => {
-		const { page } = onboarded;
-		await page.goto('/settings#providers');
-		await page.getByRole('button', { name: 'Add provider' }).click();
-		await page.getByRole('button', { name: /LM Studio \(local\)/ }).click();
-		// The onboarded fixture added LiteLLM first; the new card appends last.
-		const providerCard = page.locator('#providers li').last();
-		await expect(providerCard).toBeVisible();
-
-		const baseUrl = providerCard.getByLabel('Base URL');
-		await baseUrl.fill(MOCK_BASE_URL);
-		await baseUrl.press('Tab');
-
-		await providerCard.getByRole('button', { name: 'Test connection' }).click();
-		await expect(page.getByText('Connection OK — 1 model found.')).toBeVisible();
-		await expect(modelListFooter(providerCard)).toHaveText(settledModelFooter(1));
-		await expect(providerCard.getByLabel('API key (stored locally)')).toHaveCount(0);
-		await providerCard.locator('button[aria-haspopup="dialog"]').click();
-		await expect(page.getByRole('option', { name: MODEL_ID })).toBeVisible();
-		await page.keyboard.press('Escape');
 	});
 });

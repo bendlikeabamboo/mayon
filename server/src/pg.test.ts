@@ -117,7 +117,6 @@ describe('POST /api/db/query body limit', () => {
 	beforeAll(async () => {
 		pool = mockPool();
 		app = buildApp(':memory:', { pgPool: pool.pool, pgReady: true });
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {
