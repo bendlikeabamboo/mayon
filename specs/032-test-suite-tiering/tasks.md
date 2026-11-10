@@ -123,7 +123,7 @@
 - [x] T045 [P] [US3] Prune and migrate `tests/e2e/backprop-tool.spec.ts`, `tests/e2e/image-round-trip.spec.ts`, and `tests/e2e/mock-classification.spec.ts`, keeping only flows that need real streaming/server/persistence
 - [x] T046 [US3] Update `scripts/dev-shard.mjs` to drop the langfuse-stub port ownership logic, respect the capability gate, and support the configured shard count
 - [x] T047 [US3] Update `.github/workflows/ci.yml` e2e matrix from 2 to 4 shards and pass the capability decision to each shard runner
-- [x] T048 [US3] Verify isolation: run each e2e spec alone, then the full suite with `fullyParallel`, then every shard; confirm no ordering dependency or shared chat/provider id
+- [ ] T048 [US3] Verify isolation: run each e2e spec alone, then the full suite with `fullyParallel`, then every shard; confirm no ordering dependency or shared chat/provider id — BLOCKED: Docker socket permission denied (`/var/run/docker.sock`); static isolation audit passed, runtime run pending a running stack
 - [x] T049 [US3] Confirm `tests/e2e` contains zero `waitForTimeout`/sleep calls and zero first-run setup journeys outside `global-setup.ts`
 
 **Checkpoint**: US3 is independently complete; Tier 3 is lean, parallel, shard-safe, and free of fixed waits.
