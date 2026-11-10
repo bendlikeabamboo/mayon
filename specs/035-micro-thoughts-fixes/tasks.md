@@ -33,7 +33,7 @@ git mutations.
 
 **Purpose**: Confirm the touched suites are green before any edit.
 
-- [ ] T001 Baseline: run the three existing touched suites green under the capped runner — `src/lib/agent/loop.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/chat/entries.test.ts` (the fourth, `src/lib/agent/trace.test.ts`, is created by T015)
+- [x] T001 Baseline: run the three existing touched suites green under the capped runner — `src/lib/agent/loop.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/chat/entries.test.ts` (the fourth, `src/lib/agent/trace.test.ts`, is created by T015)
 
 ---
 
@@ -56,12 +56,12 @@ the corrected text row; no-correction turns persist reasoning exactly once.
 
 ### Tests for User Story 1 ⚠️ FAIL FIRST
 
-- [ ] T002 [P] [US1] Add fail-first loop test in `src/lib/agent/loop.test.ts`: original stream `[reasoning-start/delta "thinking…", text-delta broken-mermaid, finish]` + mocked `validateTurn` (1 issue, then none) + corrected re-stream → expect `appendReasoning('thinking…', 0)` ordered BEFORE `appendAssistantText(corrected, {final:true})` (use the `orderOf` helper; today `appendReasoning` is never called on this path — that is the failure); plus a no-correction case asserting `appendReasoning` exactly once
-- [ ] T003 [P] [US1] Add fail-first store round-trip test in `src/lib/stores/chat.svelte.test.ts`: same two-stream script through the real loop → `repos.messages.listByChat` yields `[reasoning(anchored), assistant(corrected)]`, identical after a fresh `chatStore.load()`; today the reasoning row is missing (that is the failure)
+- [x] T002 [P] [US1] Add fail-first loop test in `src/lib/agent/loop.test.ts`: original stream `[reasoning-start/delta "thinking…", text-delta broken-mermaid, finish]` + mocked `validateTurn` (1 issue, then none) + corrected re-stream → expect `appendReasoning('thinking…', 0)` ordered BEFORE `appendAssistantText(corrected, {final:true})` (use the `orderOf` helper; today `appendReasoning` is never called on this path — that is the failure); plus a no-correction case asserting `appendReasoning` exactly once
+- [x] T003 [P] [US1] Add fail-first store round-trip test in `src/lib/stores/chat.svelte.test.ts`: same two-stream script through the real loop → `repos.messages.listByChat` yields `[reasoning(anchored), assistant(corrected)]`, identical after a fresh `chatStore.load()`; today the reasoning row is missing (that is the failure)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] In `src/lib/agent/loop.ts` finalize branch (current anchors: lines 729–767, ternary 743–751): on the `finalBuf !== buf` (corrected) arm, first flush the original iteration's reasoning blocks — for each `blocks` entry of `kind 'reasoning'` with non-whitespace `text`, `await deps.appendReasoning(text, i)` in arrival order, then set `blocks = []` — immediately BEFORE the corrected `appendAssistantText`; leave the `finalBuf === buf` arm (walkPersist) and the tool-budget path (972–990) untouched (contracts/corrected-persist.md)
+- [x] T004 [US1] In `src/lib/agent/loop.ts` finalize branch (current anchors: lines 729–767, ternary 743–751): on the `finalBuf !== buf` (corrected) arm, first flush the original iteration's reasoning blocks — for each `blocks` entry of `kind 'reasoning'` with non-whitespace `text`, `await deps.appendReasoning(text, i)` in arrival order, then set `blocks = []` — immediately BEFORE the corrected `appendAssistantText`; leave the `finalBuf === buf` arm (walkPersist) and the tool-budget path (972–990) untouched (contracts/corrected-persist.md)
 
 **Checkpoint**: US1 fully functional and independently testable (capped V1 run: both new tests green, T002's sibling `loop.test.ts:2139` still green).
 

@@ -2216,6 +2216,81 @@ describe('(x) 029 US3 parity: pre-029 shapes unchanged (T018/T019)', () => {
 	});
 });
 
+// 035 US1 (T002): a critic correction must not drop the ORIGINAL stream's
+// reasoning — the corrected branch flushes those blocks before the corrected
+// text row (contracts/corrected-persist.md).
+describe('(y) 035 US1: corrected reply keeps original reasoning (T002)', () => {
+	function orderOf(mock: unknown, nth: number): number {
+		const calls = (mock as ReturnType<typeof vi.fn>).mock.invocationCallOrder as number[];
+		return calls[nth];
+	}
+
+	it('critic correction: original-stream reasoning persists once, before the corrected final text row', async () => {
+		let validateCount = 0;
+		mockedValidateTurn.mockImplementation(async () => {
+			validateCount++;
+			if (validateCount === 1) return [{ type: 'mermaid', message: 'parse error' }];
+			return [];
+		});
+
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'r' },
+					{ type: 'reasoning-delta', text: 'thinking…' },
+					{ type: 'reasoning-end', id: 'r' },
+					{ type: 'text-delta', text: '```mermaid\nbad' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'reasoning-start', id: 'rc' },
+					{ type: 'reasoning-delta', text: 'corrective thought' },
+					{ type: 'reasoning-end', id: 'rc' },
+					{ type: 'text-delta', text: '```mermaid\ngraph TD\nA-->B\n```' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		const deps = makeDeps({ onReasoningSegmentStart: vi.fn(), onTextSegmentStart: vi.fn() });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(mockedStreamText).toHaveBeenCalledTimes(2);
+		// exactly the original stream's reasoning; the correction's own deltas
+		// stay discarded (029 D6)
+		expect(deps.appendReasoning).toHaveBeenCalledTimes(1);
+		expect(deps.appendReasoning).toHaveBeenCalledWith('thinking…', 0);
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('```mermaid\ngraph TD\nA-->B\n```', {
+			final: true
+		});
+		expect(orderOf(deps.appendReasoning, 0)).toBeLessThan(orderOf(deps.appendAssistantText, 0));
+	});
+
+	it('no-correction turn with reasoning: appendReasoning exactly once (walk path unchanged)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'reasoning-start', id: 'r' },
+				{ type: 'reasoning-delta', text: 'thinking…' },
+				{ type: 'reasoning-end', id: 'r' },
+				{ type: 'text-delta', text: 'valid reply' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({ onReasoningSegmentStart: vi.fn(), onTextSegmentStart: vi.fn() });
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendReasoning).toHaveBeenCalledOnce();
+		expect(deps.appendReasoning).toHaveBeenCalledWith('thinking…', 0);
+		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		expect(deps.appendAssistantText).toHaveBeenCalledWith('valid reply', { final: true });
+	});
+});
+
 // 030 image recognition (T003 — specs/030-image-generation US1). scriptedFullStream
 // already accepts arbitrary part shapes, so image-bearing parts flow through as-is.
 // These tests prescribe the finalize handoff for T006: `appendAssistantText` gains

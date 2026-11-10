@@ -84,6 +84,18 @@ vi.mock('#lib/agent/loop.js', async (importOriginal) => {
 	};
 });
 
+// Real critic except validateTurn, which tests override per-call (delegates to
+// the real implementation by default, so unmocked suites keep native behavior).
+vi.mock('#lib/agent/critic.js', async (importOriginal) => {
+	const real = await importOriginal<typeof import('#lib/agent/critic.js')>();
+	return {
+		...real,
+		validateTurn: vi.fn((markdown: string) => real.validateTurn(markdown))
+	};
+});
+
+const { validateTurn } = await import('#lib/agent/critic.js');
+
 const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
 
@@ -1306,6 +1318,74 @@ describe('029 reload fidelity (T017)', () => {
 			.filter(isDurableEntry)
 			.map((t) => t.kind);
 		expect(kinds).toEqual(['user_message', 'reasoning', 'assistant_message']);
+	});
+});
+
+// 035 US1 (T003): the critic-corrected turn persists the ORIGINAL stream's
+// reasoning row before the corrected text row and survives a fresh load
+// (contracts/corrected-persist.md).
+describe('035 corrected-persist round-trip (T003)', () => {
+	afterEach(() => {
+		vi.mocked(validateTurn).mockClear();
+	});
+
+	it('critic-corrected turn persists [reasoning(anchored), assistant(corrected)], identical after fresh load', async () => {
+		vi.mocked(validateTurn)
+			.mockResolvedValueOnce([{ type: 'mermaid', message: 'parse error' }])
+			.mockResolvedValueOnce([]);
+
+		const original = '```mermaid\nbad';
+		const corrected = '```mermaid\ngraph TD\nA-->B\n```';
+		mockedStreamText
+			.mockReturnValueOnce({
+				textStream: (async function* () {
+					yield original;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'reasoning-start', id: 'r' };
+					yield { type: 'reasoning-delta', text: 'thinking…' };
+					yield { type: 'reasoning-end', id: 'r' };
+					yield { type: 'text-delta', text: original };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: original,
+				response: { id: 'test' }
+			} as never)
+			.mockReturnValueOnce({
+				textStream: (async function* () {
+					yield corrected;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: corrected };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: corrected,
+				response: { id: 'test' }
+			} as never);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const turn = msgs.filter((m) => m.role === 'assistant');
+		// self_corrected label first (loop call site precedes the persist branch),
+		// then the flushed original-stream reasoning, then the corrected text row
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['self_corrected', expect.any(String)],
+			['reasoning', 'thinking…'],
+			['assistant_message', corrected]
+		]);
+		const reasoning = turn.find((m) => m.kind === 'reasoning')!;
+		expect(JSON.parse(reasoning.metadata!)).toEqual({ iteration: 0, anchored: true });
+		expect(msgs.find((m) => m.role === 'user')!.content).toBe('hello');
+
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages
+			.filter((m) => m.role === 'assistant')
+			.map((m) => [m.kind, m.content]);
+		expect(reloaded).toEqual(turn.map((m) => [m.kind, m.content]));
 	});
 });
 

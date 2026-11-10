@@ -731,6 +731,19 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				if (report && deps.appendSelfCorrected) {
 					await deps.appendSelfCorrected(report, finalBuf.length);
 				}
+				// 035 (corrected-persist): the corrected reply is one fresh stretch,
+				// so the walk's stale block offsets don't apply — flush the ORIGINAL
+				// iteration's reasoning rows in arrival order, then persist the
+				// corrected text as a single row. Mutually exclusive with the walk
+				// arm below, so reasoning persists exactly once.
+				if (finalBuf !== buf) {
+					for (const b of blocks) {
+						if (b.kind === 'reasoning' && b.text.trim()) {
+							await deps.appendReasoning?.(b.text, i);
+						}
+					}
+					blocks = [];
+				}
 				// A critic correction re-emits the reply as one stretch — the stream's
 				// block offsets no longer apply, so it persists as a single row
 				// (contract rules 3/6); otherwise walk the blocks (029 T012). Images
