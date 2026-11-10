@@ -30,7 +30,7 @@ One process at a time. Never plain `pnpm test`/vitest/watch. No Docker, no `pnpm
 
 **Purpose**: Confirm the touched suites are green before any edit.
 
-- [ ] T001 Baseline: run the four existing touched suites green under the capped runner — `src/lib/markdown/mermaid-repair.test.ts`, `src/lib/markdown/mermaid.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/markdown/sourcemap.test.ts` (one capped invocation, files listed together)
+- [x] T001 Baseline: run the four existing touched suites green under the capped runner — `src/lib/markdown/mermaid-repair.test.ts`, `src/lib/markdown/mermaid.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/markdown/sourcemap.test.ts` (one capped invocation, files listed together)
 
 ---
 
@@ -54,7 +54,7 @@ protected lines or valid C4/xychart/init syntax; 028 seam contract untouched.
 
 ### Tests for User Story 1 ⚠️ FAIL FIRST
 
-- [ ] T002 [US1] Add fail-first tests in `src/lib/markdown/mermaid-repair.test.ts` (extend the existing corpus block at lines 15–26):
+- [x] T002 [US1] Add fail-first tests in `src/lib/markdown/mermaid-repair.test.ts` (extend the existing corpus block at lines 15–26):
   (a) **preservation fixtures** (fail on current rules — probe-verified 2026-11-10): a `graph TD` diagram failing only via a missing `end` while containing `%%{init: {"theme":"dark", "logLevel": 1}}%%` asserts `repairMermaidSource(x) === x`; a `C4Context` diagram with `Person_Ext(pA, "Alice", "External user")` + `Container(c1, "DB", "Stores data")` asserts identity; an `xychart-beta` diagram with `x-axis "months" ["Jan", "Feb", "Mar"]` + `bar [10, 20, 30]` asserts identity;
   (b) **idempotence property**: for every corpus entry AND every first-pass output `repair(x)`, `repair(repair(x)) === repair(x)` (closure over outputs; add adversarial entries: `A[,] --> B`, `-->|"", ""|`, `A[the "best", "worst" thing] --> B`, an 8-element quoted chain, smart-quote + comma mixes);
   (c) **single-pass chain collapse**: `-->|"a", "b", …, "h"|` repairs to exactly `-->|"a, b, …, h"|` (one quoted label);
@@ -63,7 +63,7 @@ protected lines or valid C4/xychart/init syntax; 028 seam contract untouched.
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Redesign `repairMermaidSource` in `src/lib/markdown/mermaid-repair.ts` (current rules at 10–30, composition + while-loop at 32–42) per `contracts/repair-semantics.md`: partition protected lines (`%%{…}%%`, `%% …`); apply, in fixed order, each exactly once — smart-quote normalization (non-protected lines), quoted-list collapse scoped to `|…|` edge labels of flowchart-family diagrams (first non-protected line declares `graph|flowchart`), embedded-quote `#quot;` escape scoped to `[…]`/`(…)`/`|…|` label spans (flowchart family, non-protected lines), unquoted-comma node-label wrap scoped to identifier-preceded `[label]` brackets (flowchart family); delete the `while` loop (34–36); leave `buildMermaidFixPrompt` (50–61) and `src/lib/markdown/mermaid.ts` failure path (86–93, identity-reject at 88) untouched; T002 + the existing suites (028 corpus, `mermaid.test.ts` seam contract) must be green under the capped runner.
+- [x] T003 [US1] Redesign `repairMermaidSource` in `src/lib/markdown/mermaid-repair.ts` (current rules at 10–30, composition + while-loop at 32–42) per `contracts/repair-semantics.md`: partition protected lines (`%%{…}%%`, `%% …`); apply, in fixed order, each exactly once — smart-quote normalization (non-protected lines), quoted-list collapse scoped to `|…|` edge labels of flowchart-family diagrams (first non-protected line declares `graph|flowchart`), embedded-quote `#quot;` escape scoped to `[…]`/`(…)`/`|…|` label spans (flowchart family, non-protected lines), unquoted-comma node-label wrap scoped to identifier-preceded `[label]` brackets (flowchart family); delete the `while` loop (34–36); leave `buildMermaidFixPrompt` (50–61) and `src/lib/markdown/mermaid.ts` failure path (86–93, identity-reject at 88) untouched; T002 + the existing suites (028 corpus, `mermaid.test.ts` seam contract) must be green under the capped runner.
 
 **Checkpoint**: US1 independently testable — preservation fixtures green, idempotence property green, seam contract tests unchanged and green.
 
