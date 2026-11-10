@@ -2347,10 +2347,13 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 		await runAgentTurn(deps);
 
 		expect(deps.appendAssistantText).toHaveBeenCalledOnce();
+		// 033 T016 (finalize-composition §2): the corrected reply is one fresh
+		// stretch, so the pre-critic candidate's stale arrival offset is dropped
+		// and the image appends after the corrected text.
 		expect(deps.appendAssistantText).toHaveBeenCalledWith(
 			'```mermaid\ngraph TD\nA-->B\n```',
 			expect.objectContaining({
-				images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 14 }]
+				images: [{ mediaType: 'image/png', base64: PNG_B64 }]
 			})
 		);
 	});
@@ -2487,5 +2490,72 @@ describe('030 image recognition (stream → finalize handoff)', () => {
 			images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 0 }],
 			final: true
 		});
+	});
+
+	// 033 T014 (research D5, finalize-composition §2 arrival ordering).
+	// (a) formalizes the arrival-offset stamp G1 introduced: it equals the
+	// buffer length at recognition, observable both at the recognition signal
+	// and on the finalize handoff.
+	it('an image recognized after a first text stretch carries offset = buffer length at arrival (033 T014a)', async () => {
+		const recognized: unknown[] = [];
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-start', id: 't1' },
+				{ type: 'text-delta', text: 'Here is' },
+				{ type: 'text-delta', text: ' the sketch' },
+				filePart(PNG_B64),
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps({ onImageRecognized: (c) => recognized.push(c) });
+		await runAgentTurn(deps);
+
+		// recognition time: offset 7 + 11 = 18 == the buffer length at arrival
+		expect(recognized).toHaveLength(1);
+		expect(recognized[0]).toMatchObject({
+			mediaType: 'image/png',
+			base64: PNG_B64,
+			offset: 18
+		});
+		// finalize handoff carries the same stamp
+		expect(deps.appendAssistantText).toHaveBeenNthCalledWith(
+			1,
+			'Here is the sketch',
+			expect.objectContaining({
+				images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 18 }]
+			})
+		);
+	});
+
+	// 033 T014b: in a two-text-block iteration, an image whose arrival offset
+	// falls inside the first block's slice must ride the FIRST row's append.
+	// Today every image rides the last text row, so the first row persists
+	// image-less and the last row holds the image.
+	it('in a two-text-block iteration an image inside the first slice rides the FIRST row (033 T014b)', async () => {
+		mockedStreamText.mockReturnValue({
+			fullStream: scriptedFullStream([
+				{ type: 'text-start', id: 't1' },
+				{ type: 'text-delta', text: 'AA' },
+				filePart(PNG_B64), // recognized at buffer length 2 — inside block 1 [0,4)
+				{ type: 'text-delta', text: 'BB' },
+				{ type: 'text-start', id: 't2' },
+				{ type: 'text-delta', text: 'CD' },
+				{ type: 'finish', finishReason: 'stop' }
+			])
+		} as never);
+
+		const deps = makeDeps();
+		await runAgentTurn(deps);
+
+		expect(deps.appendAssistantText).toHaveBeenCalledTimes(2);
+		expect(deps.appendAssistantText).toHaveBeenNthCalledWith(
+			1,
+			'AABB',
+			expect.objectContaining({
+				images: [{ mediaType: 'image/png', base64: PNG_B64, offset: 2 }]
+			})
+		);
+		expect(deps.appendAssistantText).toHaveBeenNthCalledWith(2, 'CD');
 	});
 });

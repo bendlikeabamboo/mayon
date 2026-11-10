@@ -36,7 +36,12 @@ import {
 	type ImagePart,
 	type MessagePart
 } from '#lib/chat/kinds.js';
-import { applyOutputBudget, candidateToImagePart, fetchImageCandidate } from '#lib/chat/images.js';
+import {
+	MAX_IMAGES_PER_MESSAGE,
+	applyOutputBudget,
+	candidateToImagePart,
+	fetchImageCandidate
+} from '#lib/chat/images.js';
 import type { ContextGaugeCandidate } from '#lib/chat/context-usage.js';
 import {
 	acquirePropagationLatch,
@@ -53,7 +58,7 @@ import { providerFetchFor } from '#lib/ai/sdk-factory.js';
 import type { StreamPreset } from '#lib/chat/streaming/pref.js';
 import { createPacer, type Pacer, type PacerMode } from '#lib/chat/streaming/pacer.js';
 import { mark, incRender } from '#lib/perf/mark.js';
-import { resolveRequestSettings, type ImageCandidate } from '#lib/ai/dialects.js';
+import { resolveRequestSettings } from '#lib/ai/dialects.js';
 import { mapSdkError } from '#lib/ai/sdk-errors.js';
 import {
 	asImageOutputError,
@@ -1005,9 +1010,14 @@ class ChatState {
 
 	/**
 	 * Compose the durable parts of a finalizing assistant row (030 contract
-	 * §3): the text part first, then completed stream images in arrival order,
-	 * with the T002 output budget applied and `generatedImageName` labels
-	 * before composition. Null when the turn carried no images — image-less
+	 * §3, amended in place by 033): the row's text is split at each image's
+	 * clamped arrival offset with image parts interleaved at their positions,
+	 * the T002 output budget applied and `generatedImageName` labels before
+	 * composition. Caps run pre-decode, in arrival order: first the count cap
+	 * (033 FR-004) — the first {@link MAX_IMAGES_PER_MESSAGE} materialized
+	 * candidates keep the row, extras drop with a bracketed notice instead of
+	 * failing the append — then the byte budget. Null when the turn carried no
+	 * images — image-less
 	 * rows keep today's exact shape (parts omitted → NULL column). URL-only
 	 * candidates materialize here through the provider fetch (R-4); an
 	 * un-fetchable link becomes a contained bracketed notice appended to the
@@ -1019,7 +1029,7 @@ class ChatState {
 		content: string,
 		fetchImpl?: typeof globalThis.fetch
 	): Promise<{ content: string; parts: MessagePart[] | null }> {
-		const withBytes: ImageCandidate[] = [];
+		const withBytes: StreamImageCandidate[] = [];
 		const notices: string[] = [];
 		for (const c of this.pendingImages) {
 			if (c.base64 !== undefined) {
@@ -1030,24 +1040,62 @@ class ChatState {
 			if (fetched) withBytes.push(fetched);
 			else notices.push("[Image could not be loaded: the provider's link is no longer available.]");
 		}
+		// 033 FR-004 (research D4): the count cap lives here, pre-decode, in
+		// arrival order — extras drop with a bracketed notice so the row always
+		// persists; the repo validateParts ≤8 stays the backstop.
+		let candidates = withBytes;
+		if (withBytes.length > MAX_IMAGES_PER_MESSAGE) {
+			const dropped = withBytes.length - MAX_IMAGES_PER_MESSAGE;
+			candidates = withBytes.slice(0, MAX_IMAGES_PER_MESSAGE);
+			notices.push(
+				`[${dropped} image${dropped === 1 ? ' was' : 's were'} dropped: at most ${MAX_IMAGES_PER_MESSAGE} images can be attached per message.]`
+			);
+		}
 		let text = content;
 		for (const notice of notices) {
 			text = text ? `${text}\n\n${notice}` : notice;
 		}
-		if (withBytes.length === 0) return { content: text, parts: null };
-		const decoded = await Promise.all(withBytes.map((c) => candidateToImagePart(c)));
-		const images = await applyOutputBudget(decoded.filter((p): p is ImagePart => p !== null));
-		const textPart: MessagePart[] = text ? [{ type: 'text', text }] : [];
-		return {
-			content: text,
-			parts: [
-				...textPart,
-				...images.map((part, i) => ({
-					...part,
-					name: generatedImageName(part.name, textPart.length + i)
-				}))
-			]
-		};
+		if (candidates.length === 0) return { content: text, parts: null };
+
+		// 033 (research D5): each candidate's arrival offset is relative to the
+		// appended text — the loop's walk stamps the buffer length at
+		// recognition and makes it slice-relative per row, and offset-less
+		// (critic-round) candidates append after the text. Clamp, stable-sort,
+		// and interleave: text parts concatenate byte-for-byte to `content` by
+		// construction (message-parts §1 invariant).
+		const position = (offset: number | undefined): number =>
+			Math.min(Math.max(offset ?? content.length, 0), content.length);
+		const placed = candidates
+			.map((c, i) => ({ i, pos: position(c.offset) }))
+			.sort((a, b) => a.pos - b.pos); // Array#sort is stable — arrival order kept
+		const decoded = await Promise.all(candidates.map((c) => candidateToImagePart(c)));
+		const imageList: { part: ImagePart; pos: number }[] = [];
+		for (const { i, pos } of placed) {
+			const part = decoded[i];
+			if (part) imageList.push({ part, pos });
+		}
+		const budgeted = await applyOutputBudget(imageList.map((x) => x.part));
+		const parts: MessagePart[] = [];
+		let cursor = 0;
+		for (let n = 0; n < imageList.length; n++) {
+			const part = budgeted[n]!;
+			const pos = imageList[n]!.pos;
+			if (pos > cursor) {
+				const seg = content.slice(cursor, pos);
+				if (seg) parts.push({ type: 'text', text: seg });
+			}
+			parts.push({ ...part, name: generatedImageName(part.name, parts.length) });
+			cursor = pos;
+		}
+		const tail = content.slice(cursor);
+		if (tail) parts.push({ type: 'text', text: tail });
+		if (notices.length > 0) {
+			// The notice text rides separate trailing text part(s) so the text
+			// parts keep concatenating byte-for-byte to the amended content.
+			const joined = notices.join('\n\n');
+			parts.push({ type: 'text', text: `${content ? '\n\n' : ''}${joined}` });
+		}
+		return { content: text, parts };
 	}
 
 	/** Stop the in-flight stream (AbortError is swallowed in `send`). */

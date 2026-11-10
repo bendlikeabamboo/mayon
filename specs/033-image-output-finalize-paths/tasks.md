@@ -87,11 +87,11 @@
 
 ### Tests for User Story 4 (FAIL-FIRST)
 
-- [ ] T012 [US4] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: finalize with nine base64 candidates → one row with exactly 8 image parts and a bracketed notice naming the dropped count; no throw (today: `validateParts` rejects the append and the turn is lost).
+- [x] T012 [US4] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: finalize with nine base64 candidates → one row with exactly 8 image parts and a bracketed notice naming the dropped count; no throw (today: `validateParts` rejects the append and the turn is lost).
 
 ### Implementation for User Story 4
 
-- [ ] T013 [US4] Implement the count cap in `composeAssistantParts` in `src/lib/stores/chat.svelte.ts` (~:1017-1050): slice materialized candidates to `MAX_IMAGES_PER_MESSAGE` (import from `src/lib/chat/images.ts`) before decode; append the drop notice via the existing notices mechanism (research D4).
+- [x] T013 [US4] Implement the count cap in `composeAssistantParts` in `src/lib/stores/chat.svelte.ts` (~:1017-1050): slice materialized candidates to `MAX_IMAGES_PER_MESSAGE` (import from `src/lib/chat/images.ts`) before decode; append the drop notice via the existing notices mechanism (research D4).
 
 **Checkpoint**: Over-cap replies degrade gracefully.
 
@@ -104,12 +104,12 @@
 
 ### Tests for User Story 5 (FAIL-FIRST)
 
-- [ ] T014 [US5] FAIL-FIRST tests in `src/lib/agent/loop.test.ts`: (a) an image recognized after a first text stretch carries `offset` equal to the buffer length at arrival; (b) in a two-text-block iteration, an image whose offset falls inside the first block's slice is handed to the FIRST row's append (today: all images ride the last text row).
-- [ ] T015 [US5] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: `text → image → text` stream persists ONE row with parts `[text-a, image, text-b]` (text parts concatenate to `content`), and reload reproduces that parts order (data-level assertion; the renderer already interleaves).
+- [x] T014 [US5] FAIL-FIRST tests in `src/lib/agent/loop.test.ts`: (a) an image recognized after a first text stretch carries `offset` equal to the buffer length at arrival; (b) in a two-text-block iteration, an image whose offset falls inside the first block's slice is handed to the FIRST row's append (today: all images ride the last text row).
+- [x] T015 [US5] FAIL-FIRST store test in `src/lib/stores/chat.svelte.test.ts`: `text → image → text` stream persists ONE row with parts `[text-a, image, text-b]` (text parts concatenate to `content`), and reload reproduces that parts order (data-level assertion; the renderer already interleaves).
 
 ### Implementation for User Story 5
 
-- [ ] T016 [US5] Implement in `src/lib/agent/loop.ts` + `src/lib/stores/chat.svelte.ts`: `walkPersist` assigns each image to the text row whose slice contains its offset (last row absorbs overflow; no-text → image-only row from T008); `composeAssistantParts` splits the row text at clamped, stable-sorted offsets and interleaves image parts (critic-replacement re-emit appends images after the corrected text — documented best-effort) (research D5, contracts/finalize-composition.md §2).
+- [x] T016 [US5] Implement in `src/lib/agent/loop.ts` + `src/lib/stores/chat.svelte.ts`: `walkPersist` assigns each image to the text row whose slice contains its offset (last row absorbs overflow; no-text → image-only row from T008); `composeAssistantParts` splits the row text at clamped, stable-sorted offsets and interleaves image parts (critic-replacement re-emit appends images after the corrected text — documented best-effort) (research D5, contracts/finalize-composition.md §2).
 
 **Checkpoint**: Ordering fidelity restored.
 

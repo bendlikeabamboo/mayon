@@ -2321,6 +2321,113 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 			mimeType: 'image/png'
 		});
 	});
+
+	// 033 T012 (research D4, finalize-composition §2 cap rule 2): over-cap
+	// finalize degrades gracefully — the first MAX_IMAGES_PER_MESSAGE (8) images
+	// keep the row, the rest drop with a bracketed notice, and nothing throws.
+	// Today the ninth image makes repos.messages.append's validateParts reject
+	// the append, so the turn is lost entirely.
+	it('(f) nine base64 candidates finalize capped: one row, exactly 8 image parts, a bracketed drop notice, no throw (033 T012)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'Nine images' };
+				for (let n = 0; n < 9; n++) {
+					yield {
+						type: 'file',
+						file: {
+							base64: PNG_B64,
+							uint8Array: new Uint8Array([1, 2, 3]),
+							mediaType: 'image/png'
+						}
+					};
+				}
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw nine quokkas');
+
+		expect(chatStore.error).toBeNull();
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe(
+			'Nine images\n\n[1 image was dropped: at most 8 images can be attached per message.]'
+		);
+		const parts = JSON.parse(row.parts!) as MessagePart[];
+		expect(parts.filter((p) => p.type === 'image')).toHaveLength(8);
+		expect(parts.filter((p) => p.type === 'text')).toEqual([
+			{ type: 'text', text: 'Nine images' },
+			{
+				type: 'text',
+				text: '\n\n[1 image was dropped: at most 8 images can be attached per message.]'
+			}
+		]);
+	});
+
+	// 033 T015 (research D5, finalize-composition §2 arrival order): a
+	// `text → image → text` stream persists ONE row whose parts run
+	// [text-a, image, text-b] — the row text split at the image's arrival
+	// offset — and reload reproduces that order. Text parts concatenate
+	// byte-for-byte to `content`. Today all images ride the single text row's
+	// tail: parts come out [full-text, image].
+	it('(g) text → image → text persists one row with parts [text-a, image, text-b], surviving reload (033 T015)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'Halfway' };
+				yield {
+					type: 'file',
+					file: {
+						base64: PNG_B64,
+						uint8Array: new Uint8Array([1, 2, 3]),
+						mediaType: 'image/png'
+					}
+				};
+				yield { type: 'text-delta', text: ' and done.' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw one quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe('Halfway and done.');
+		const parts = JSON.parse(row.parts!) as MessagePart[];
+		expect(parts[0]).toEqual({ type: 'text', text: 'Halfway' });
+		expect(parts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`,
+			mimeType: 'image/png'
+		});
+		expect(parts[2]).toEqual({ type: 'text', text: ' and done.' });
+
+		// reload reproduces the parts order (data-level; renderer interleaves)
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find((m) => m.role === 'assistant');
+		expect(reloaded).toBeDefined();
+		expect(reloaded!.id).toBe(row.id);
+		const reloadedParts = partsOf(reloaded!);
+		expect(reloadedParts[0]).toEqual({ type: 'text', text: 'Halfway' });
+		expect(reloadedParts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`
+		});
+		expect(reloadedParts[2]).toEqual({ type: 'text', text: ' and done.' });
+	});
 });
 
 // T009 (specs/030 US1, contract stream-image-parts.md §1): URL-only candidates

@@ -349,6 +349,16 @@ interface CriticResult {
 	report: CriticReport | null;
 }
 
+/**
+ * Critic-round re-emit (033 contract §2, best-effort, documented): the
+ * corrected reply is one fresh stretch, so the pre-critic candidates' arrival
+ * offsets no longer apply to it — drop them and let the images append after
+ * the corrected text instead of splitting it at stale positions.
+ */
+function appendAfterText(images: StreamImageCandidate[]): StreamImageCandidate[] {
+	return images.map(({ offset: _stale, ...candidate }) => candidate);
+}
+
 function stripCriticIssue(issue: CriticIssue): { type: string; message: string } {
 	return { type: issue.type, message: issue.message };
 }
@@ -448,14 +458,40 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 		// except a single-text-block iteration persists one row with the full
 		// buffer (byte-identical to pre-029). Empty/whitespace blocks make no
 		// rows. Returns the last text row (anchor for id/usage plumbing).
+		// 033 T016 (research D5): each image rides the text row whose slice
+		// contains its arrival offset, converted to a row-relative offset so
+		// the store can split that row's text at it (arrival ordering).
+		// Overflowing offsets and offset-less (critic-round) candidates ride
+		// the last text row with text — they append after its text.
 		const walkPersist = async (
 			iteration: number,
 			textBuf: string,
-			images?: ImageCandidate[],
+			images?: StreamImageCandidate[],
 			final?: boolean
 		): Promise<Message | null> => {
-			const textStarts: number[] = [];
-			for (const b of blocks) if (b.kind === 'text') textStarts.push(b.start);
+			const textRows: { start: number; content: string }[] = [];
+			let nextStart = textBuf.length;
+			for (let k = blocks.length - 1; k >= 0; k--) {
+				const b = blocks[k]!;
+				if (b.kind !== 'text') continue;
+				textRows.unshift({ start: b.start, content: textBuf.slice(b.start, nextStart) });
+				nextStart = b.start;
+			}
+			const lastTextRow = (() => {
+				for (let k = textRows.length - 1; k >= 0; k--) if (textRows[k]!.content) return k;
+				return -1;
+			})();
+			const rides: StreamImageCandidate[][] = textRows.map(() => []);
+			for (const img of images ?? []) {
+				let row = lastTextRow;
+				if (row !== -1 && img.offset !== undefined && img.offset < textBuf.length) {
+					const inside = textRows.findIndex(
+						(r) => r.content && img.offset! < r.start + r.content.length
+					);
+					if (inside !== -1) row = inside;
+				}
+				if (row !== -1) rides[row]!.push(img);
+			}
 			let msg: Message | null = null;
 			let ti = 0;
 			for (const b of blocks) {
@@ -463,22 +499,28 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					if (b.text.trim()) await deps.appendReasoning?.(b.text, iteration);
 					continue;
 				}
-				const end = ti + 1 < textStarts.length ? textStarts[ti + 1]! : textBuf.length;
-				const content = textBuf.slice(b.start, end);
+				const row = textRows[ti]!;
 				ti++;
-				if (content) {
-					// 030 §3: collected images ride the last text row — the row the
-					// id/usage plumbing binds to (029 rule 4). Image-less rows keep
-					// the exact 1-arg call. On the abort paths the image-bearing
-					// finalize handoff is marked `final` (033, finalize-composition §3).
-					if (images && images.length > 0 && ti === textStarts.length) {
-						msg = await deps.appendAssistantText(
-							content,
-							final ? { images, final: true } : { images }
-						);
-					} else {
-						msg = await deps.appendAssistantText(content);
-					}
+				if (!row.content) continue;
+				const rowImages = rides[ti - 1]!.map((img) =>
+					img.offset === undefined
+						? { ...img }
+						: {
+								...img,
+								offset: Math.min(Math.max(img.offset - row.start, 0), row.content.length)
+							}
+				);
+				if (rowImages.length > 0) {
+					// 030 §3 (amended by 033): image-bearing appends carry their
+					// slice's assigned candidates; on the abort paths the finalize
+					// handoff is marked `final` (033, finalize-composition §3).
+					msg = await deps.appendAssistantText(
+						row.content,
+						final ? { images: rowImages, final: true } : { images: rowImages }
+					);
+				} else {
+					// Image-less rows keep the exact 1-arg call.
+					msg = await deps.appendAssistantText(row.content);
 				}
 			}
 			blocks = [];
@@ -678,12 +720,16 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				// A critic correction re-emits the reply as one stretch — the stream's
 				// block offsets no longer apply, so it persists as a single row
 				// (contract rules 3/6); otherwise walk the blocks (029 T012). Images
-				// ride both paths (030 §3): collected candidates persist with the
-				// final row — on the walk, the last text row.
+				// ride both paths (030 §3, amended by 033): on the walk each image
+				// rides the row containing its arrival offset; the critic re-emit
+				// drops the stale offsets and appends the images after the
+				// corrected text (finalize-composition §2, best-effort).
 				let msg =
 					finalBuf !== buf
 						? turnImages.length > 0
-							? await deps.appendAssistantText(finalBuf, { images: turnImages })
+							? await deps.appendAssistantText(finalBuf, {
+									images: appendAfterText(turnImages)
+								})
 							: await deps.appendAssistantText(finalBuf)
 						: await walkPersist(i, finalBuf, turnImages);
 				// 033 T008 (research D2): an image-only finalize (no text row) still
