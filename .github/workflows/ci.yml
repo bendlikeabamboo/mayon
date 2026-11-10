@@ -97,7 +97,7 @@ jobs:
       - run: pnpm dev:shard:up ${{ matrix.shard }}/4
       - name: Run e2e shard and check its budget
         env:
-          E2E_BASE_URL: ${{ format('http://127.0.0.1:{0}', 5200 + matrix.shard) }}
+          E2E_BASE_URL: http://127.0.0.1:520${{ matrix.shard }}
         run: pnpm test:e2e:ci --shard=${{ matrix.shard }}/4
       - if: always()
         run: pnpm dev:shard:down ${{ matrix.shard }}
