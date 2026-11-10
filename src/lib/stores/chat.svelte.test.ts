@@ -8,7 +8,11 @@ import { chatStore, ExcerptOverlapError } from './chat.svelte';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
 import { projectEntries } from '#lib/chat/projection.js';
-import { assembleTimeline, isDurableEntry } from '#lib/chat/entries.js';
+import {
+	assembleTimeline,
+	isDurableEntry,
+	lastRegeneratableAssistantId
+} from '#lib/chat/entries.js';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
 import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
@@ -83,6 +87,18 @@ vi.mock('#lib/agent/loop.js', async (importOriginal) => {
 		})
 	};
 });
+
+// Real critic except validateTurn, which tests override per-call (delegates to
+// the real implementation by default, so unmocked suites keep native behavior).
+vi.mock('#lib/agent/critic.js', async (importOriginal) => {
+	const real = await importOriginal<typeof import('#lib/agent/critic.js')>();
+	return {
+		...real,
+		validateTurn: vi.fn((markdown: string) => real.validateTurn(markdown))
+	};
+});
+
+const { validateTurn } = await import('#lib/agent/critic.js');
 
 const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
@@ -1141,18 +1157,20 @@ describe('029 live blocks (T010)', () => {
 
 		const sendP = chatStore.send('hello');
 		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(4));
+		// 035 US2 amendment: blocks close at the next segment/text start, so the
+		// earlier reasoning blocks are no longer open once a later segment began.
 		expect(chatStore.liveBlocks).toEqual([
-			{ kind: 'reasoning', text: 'thought one', open: true },
+			{ kind: 'reasoning', text: 'thought one', open: false },
 			{ kind: 'text', start: 0, open: false },
-			{ kind: 'reasoning', text: 'thought two', open: true },
+			{ kind: 'reasoning', text: 'thought two', open: false },
 			{ kind: 'text', start: 13, open: true }
 		]);
 
 		await new Promise((r) => setTimeout(r, 100));
 		expect(chatStore.liveItems).toEqual([
-			{ source: 'live', live: 'live_reasoning', buffer: 'thought one' },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought one', streaming: false },
 			{ source: 'live', live: 'live_text', buffer: 'answer part 1', pending: false },
-			{ source: 'live', live: 'live_reasoning', buffer: 'thought two' },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought two', streaming: false },
 			{ source: 'live', live: 'live_text', buffer: 'answer part 2', pending: false }
 		]);
 
@@ -1203,6 +1221,111 @@ describe('029 live blocks (T010)', () => {
 		await sendP;
 
 		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+
+	// 035 US2 (T006a): at an iteration boundary the store clears liveBlocks, so
+	// iteration 2's reasoning streams alone — iteration 1's blocks are durable
+	// rows by then (contracts/iteration-boundary.md).
+	function mockTwoIterationTurn(blocked: Promise<void>): void {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			// iteration 1: reasoning + text, then the loop's interim persist
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('iter-one thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('iter-one answer');
+			await deps.appendReasoning?.('iter-one thought', 0);
+			await deps.appendAssistantText('iter-one answer');
+			// post-T007 the loop fires the boundary here, after the interim persist
+			deps.onIterationBoundary?.();
+			// iteration 2: reasoning streams
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('iter-two thought');
+			await blocked;
+			return { aborted: false };
+		});
+	}
+
+	it('two-iteration turn: iteration 2 reasoning streams alone, no stale live rows from iteration 1 (T006a)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockTwoIterationTurn(turnBlocked);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() =>
+			expect(
+				chatStore.liveBlocks.some((b) => b.kind === 'reasoning' && b.text === 'iter-two thought')
+			).toBe(true)
+		);
+		await new Promise((r) => setTimeout(r, 100));
+
+		// exactly ONE live reasoning entry (iteration 2's), and no stale
+		// empty-buffer live text entry from iteration 1
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_reasoning', buffer: 'iter-two thought', streaming: true }
+		]);
+
+		resolveTurn();
+		await sendP;
+	});
+
+	it('streaming flag: earlier reasoning block closes at the next text segment start and stops streaming (T006b)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('early thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(2));
+
+		const reasoning = chatStore.liveBlocks.find((b) => b.kind === 'reasoning');
+		expect(reasoning?.open).toBe(false);
+		const reasoningItems = chatStore.liveItems.filter((i) => i.live === 'live_reasoning');
+		expect(reasoningItems).toHaveLength(1);
+		expect(reasoningItems[0]).toEqual({
+			source: 'live',
+			live: 'live_reasoning',
+			buffer: 'early thought',
+			streaming: false
+		});
+
+		resolveTurn();
+		await sendP;
+	});
+
+	it('turn teardown still closes and clears all live blocks after iteration boundaries (T006c)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockTwoIterationTurn(turnBlocked);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() =>
+			expect(
+				chatStore.liveBlocks.some((b) => b.kind === 'reasoning' && b.text === 'iter-two thought')
+			).toBe(true)
+		);
+		resolveTurn();
+		await sendP;
+
+		expect(chatStore.liveBlocks).toEqual([]);
 		expect(chatStore.liveItems).toEqual([]);
 	});
 });
@@ -1306,6 +1429,254 @@ describe('029 reload fidelity (T017)', () => {
 			.filter(isDurableEntry)
 			.map((t) => t.kind);
 		expect(kinds).toEqual(['user_message', 'reasoning', 'assistant_message']);
+	});
+});
+
+// 035 US1 (T003): the critic-corrected turn persists the ORIGINAL stream's
+// reasoning row before the corrected text row and survives a fresh load
+// (contracts/corrected-persist.md).
+describe('035 corrected-persist round-trip (T003)', () => {
+	afterEach(() => {
+		vi.mocked(validateTurn).mockClear();
+	});
+
+	it('critic-corrected turn persists [reasoning(anchored), assistant(corrected)], identical after fresh load', async () => {
+		vi.mocked(validateTurn)
+			.mockResolvedValueOnce([{ type: 'mermaid', message: 'parse error' }])
+			.mockResolvedValueOnce([]);
+
+		const original = '```mermaid\nbad';
+		const corrected = '```mermaid\ngraph TD\nA-->B\n```';
+		mockedStreamText
+			.mockReturnValueOnce({
+				textStream: (async function* () {
+					yield original;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'reasoning-start', id: 'r' };
+					yield { type: 'reasoning-delta', text: 'thinking…' };
+					yield { type: 'reasoning-end', id: 'r' };
+					yield { type: 'text-delta', text: original };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: original,
+				response: { id: 'test' }
+			} as never)
+			.mockReturnValueOnce({
+				textStream: (async function* () {
+					yield corrected;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: corrected };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: corrected,
+				response: { id: 'test' }
+			} as never);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const turn = msgs.filter((m) => m.role === 'assistant');
+		// self_corrected label first (loop call site precedes the persist branch),
+		// then the flushed original-stream reasoning, then the corrected text row
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['self_corrected', expect.any(String)],
+			['reasoning', 'thinking…'],
+			['assistant_message', corrected]
+		]);
+		const reasoning = turn.find((m) => m.kind === 'reasoning')!;
+		expect(JSON.parse(reasoning.metadata!)).toEqual({ iteration: 0, anchored: true });
+		expect(msgs.find((m) => m.role === 'user')!.content).toBe('hello');
+
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages
+			.filter((m) => m.role === 'assistant')
+			.map((m) => [m.kind, m.content]);
+		expect(reloaded).toEqual(turn.map((m) => [m.kind, m.content]));
+	});
+});
+
+// 035 US3 (T010, contracts/regenerate-scope.md): deleteLastAssistantTurn
+// removes the WHOLE assistant turn — every row strictly after the previous
+// user row (reasoning + text + trailing reasoning, all kinds) — and returns
+// the re-send payload. A whole-turn delete avoids orphan tool-result rows.
+describe('035 deleteLastAssistantTurn (T010)', () => {
+	it('deletes all non-user rows of an interleaved turn, keeps the user row, returns the resend payload', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		const user = await repos.messages.append(root.id, 'user', 'hi');
+		const r1 = await repos.messages.append(root.id, 'assistant', 'think one', {
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		const a1 = await repos.messages.append(root.id, 'assistant', 'ans');
+		const r2 = await repos.messages.append(root.id, 'assistant', ' done thinking.', {
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		await chatStore.load(root.id);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([user.id, r1.id, a1.id, r2.id]);
+
+		const payload = await chatStore.deleteLastAssistantTurn(a1.id);
+
+		expect(payload).toEqual({ userText: 'hi', attachments: [] });
+		const after = await repos.messages.listByChat(root.id);
+		expect(after.map((m) => m.id)).toEqual([user.id]);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([user.id]);
+	});
+
+	it('returns null (no-op) for an unknown row id', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(root.id, 'user', 'hi');
+		await chatStore.load(root.id);
+
+		const payload = await chatStore.deleteLastAssistantTurn('no-such-row');
+
+		expect(payload).toBeNull();
+		expect(await repos.messages.listByChat(root.id)).toHaveLength(1);
+	});
+});
+
+// 035 (T017, quickstart V6): the mock's `chat_interleaved` shape — frame order
+// of tests/fixtures/mock-llm/server.mjs:187–205 (reasoning×2 → content×2 →
+// reasoning×2 → content×2 → trailing reasoning), replayed with start/delta/end
+// part framing — through the REAL loop+store. Regression bar: the durable walk
+// lands [reasoning, text, reasoning, text, trailing reasoning], each live
+// thought renders exactly once while streaming, and the 035 US3 regenerate
+// gate resolves on the turn (fails before `lastRegeneratableAssistantId`
+// existed; must pass after Phases 3–5).
+describe('035 interleaved mock shape (T017)', () => {
+	it('real-loop interleaved turn: five-row walk order, one live thought each, regenerate gate resolves', async () => {
+		const R1 = ' considering the question… it is a simple arithmetic sum…';
+		const T1 = 'Sure — 2 + 2 = 4.';
+		const R2 = ' double-checking after answering… the sum holds under recheck…';
+		const T2 = ' That stays 4.';
+		const R3 = ' done thinking.';
+
+		// Park the scripted stream after each segment group so the test can
+		// sample the live view between segments — the loop consumes parts as
+		// fast as microtasks allow, so ungated polling would only ever see the
+		// torn-down state.
+		const releases: Array<() => void> = [];
+		const holds = [0, 1, 2, 3, 4].map(() => new Promise<void>((r) => releases.push(r)));
+
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValueOnce({
+			textStream: (async function* () {
+				yield T1 + T2;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'reasoning-start', id: 'r1' };
+				yield { type: 'reasoning-delta', id: 'r1', text: ' considering the question…' };
+				yield { type: 'reasoning-delta', id: 'r1', text: ' it is a simple arithmetic sum…' };
+				yield { type: 'reasoning-end', id: 'r1' };
+				await holds[0]!;
+				yield { type: 'text-start', id: 't1' };
+				yield { type: 'text-delta', id: 't1', text: 'Sure — ' };
+				yield { type: 'text-delta', id: 't1', text: '2 + 2 = 4.' };
+				yield { type: 'text-end', id: 't1' };
+				await holds[1]!;
+				yield { type: 'reasoning-start', id: 'r2' };
+				yield { type: 'reasoning-delta', id: 'r2', text: ' double-checking after answering…' };
+				yield { type: 'reasoning-delta', id: 'r2', text: ' the sum holds under recheck…' };
+				yield { type: 'reasoning-end', id: 'r2' };
+				await holds[2]!;
+				yield { type: 'text-start', id: 't2' };
+				yield { type: 'text-delta', id: 't2', text: ' That stays ' };
+				yield { type: 'text-delta', id: 't2', text: '4.' };
+				yield { type: 'text-end', id: 't2' };
+				await holds[3]!;
+				yield { type: 'reasoning-start', id: 'r3' };
+				yield { type: 'reasoning-delta', id: 'r3', text: ' done thinking.' };
+				yield { type: 'reasoning-end', id: 'r3' };
+				await holds[4]!;
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: T1 + T2,
+			response: { id: 'test' }
+		} as never);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		// While streaming, every live snapshot holds each thought exactly once:
+		// blocks close as the next segment starts (035 US2) but never duplicate,
+		// and the trailing thought stays open until teardown.
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: true }
+			])
+		);
+		releases[0]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false }
+			])
+		);
+		releases[1]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: true }
+			])
+		);
+		releases[2]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T2, pending: false }
+			])
+		);
+		releases[3]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T2, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R3, streaming: true }
+			])
+		);
+		releases[4]!();
+		await sendP;
+		expect(chatStore.liveItems).toEqual([]);
+
+		// Durable walk order (029 T012 walk + trailing thought last), all three
+		// thoughts anchored to their arrival positions.
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs[0]!.role).toBe('user');
+		expect(msgs.slice(1).map((m) => [m.role, m.kind, m.content])).toEqual([
+			['assistant', 'reasoning', R1],
+			['assistant', 'assistant_message', T1],
+			['assistant', 'reasoning', R2],
+			['assistant', 'assistant_message', T2],
+			['assistant', 'reasoning', R3]
+		]);
+		for (const thought of msgs.filter((m) => m.kind === 'reasoning')) {
+			expect(JSON.parse(thought.metadata ?? '{}')).toEqual({ iteration: 0, anchored: true });
+		}
+
+		// Regenerate gate (035 US3): the trailing anchored thought must not hide
+		// the turn's last text row.
+		const timeline = assembleTimeline(chatStore.messages);
+		expect(timeline.filter(isDurableEntry).map((t) => t.kind)).toEqual([
+			'user_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning'
+		]);
+		const lastText = msgs.find((m) => m.kind === 'assistant_message' && m.content === T2)!;
+		expect(lastRegeneratableAssistantId(timeline)).toBe(lastText.id);
 	});
 });
 
@@ -3449,6 +3820,70 @@ describe('chatStore paced streaming (022 US1)', () => {
 		const assistant = msgs.find((m) => m.role === 'assistant');
 		expect(assistant!.content).toBe('Deferred drain reply ');
 		expect(chatStore.streamPhase).toBe('idle');
+	});
+
+	it('interleaved text blocks: the second durable row lands without the drain deadline (035 US4 T013)', async () => {
+		chatStore.setStreamPreset('calm');
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'First block answer. ';
+				yield 'Second block answer. ';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-start', id: 't1' };
+				yield { type: 'text-delta', id: 't1', text: 'First block answer. ' };
+				yield { type: 'text-end', id: 't1' };
+				yield { type: 'reasoning-start', id: 'r1' };
+				yield { type: 'reasoning-delta', id: 'r1', text: 'mid thought. ' };
+				yield { type: 'reasoning-end', id: 'r1' };
+				yield { type: 'text-start', id: 't2' };
+				yield { type: 'text-delta', id: 't2', text: 'Second block answer. ' };
+				yield { type: 'text-end', id: 't2' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: 'First block answer. Second block answer. ',
+			response: { id: 'test' }
+		} as never);
+
+		const sendP = chatStore.send('hello');
+		// Block 1 keeps its eased drain: advance until the first durable
+		// assistant row lands (walk order: text row, reasoning row, text row).
+		let firstLanded = false;
+		for (let i = 0; i < 300 && !firstLanded; i++) {
+			await vi.advanceTimersByTimeAsync(16);
+			firstLanded = (await repos.messages.listByChat(root.id)).some((m) => m.role === 'assistant');
+		}
+		expect(firstLanded).toBe(true);
+
+		// Drain-once (contracts/drain-once.md): the second finalize block has
+		// nothing left to release (the first append cleared streamBuffer and
+		// reset the pacer), so it must persist WITHOUT burning the 1200 ms
+		// DRAIN_DEADLINE_MS — 40 × 16 ms (640 ms) stays strictly below it.
+		let secondLanded = false;
+		for (let i = 0; i < 40 && !secondLanded; i++) {
+			await vi.advanceTimersByTimeAsync(16);
+			secondLanded = (await repos.messages.listByChat(root.id)).some(
+				(m) => m.role === 'assistant' && m.content === 'Second block answer. '
+			);
+		}
+		expect(secondLanded).toBe(true);
+
+		await vi.advanceTimersByTimeAsync(50);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+		const msgs = await repos.messages.listByChat(root.id);
+		const rows = msgs.map((m) => [m.role, m.kind, m.content]);
+		expect(rows[0]![0]).toBe('user');
+		expect(rows.slice(1)).toEqual([
+			['assistant', 'assistant_message', 'First block answer. '],
+			['assistant', 'reasoning', 'mid thought. '],
+			['assistant', 'assistant_message', 'Second block answer. ']
+		]);
+		const thought = msgs.find((m) => m.kind === 'reasoning');
+		expect(JSON.parse(thought!.metadata ?? '{}')).toEqual({ iteration: 0, anchored: true });
 	});
 
 	it('abort during a paced stream persists the raw buffer immediately with interrupted:true', async () => {

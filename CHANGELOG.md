@@ -74,6 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image e2e engine hardcoding (PR #77)** — `image-round-trip.spec.ts` now
   resolves the container engine (Docker or Podman) through the dev-compose
   seam instead of hardcoding `docker` (`d881d75`).
+- **Micro-thoughts follow-ups: interleaved reasoning survives corrections,
+  renders once, and regenerates cleanly** (issue #71 / feature 035) —
+  critic-corrected replies keep the original stream's reasoning rows before
+  the corrected text; live thought blocks reset at iteration boundaries and
+  stop pulsing once finished instead of lingering beside their durable rows;
+  regenerate handles multi-row interleaved turns (the reveal gate skips
+  trailing anchored thoughts, and the whole-turn delete removes every row
+  after the previous user message instead of orphaning them); paced presets
+  finalize multi-block turns with at most one eased drain instead of stalling
+  ~1.2 s per extra block; and the turn trace prunes phantom whitespace-only
+  reasoning segments.
 
 ## [0.9.0] - 2026-11-03
 

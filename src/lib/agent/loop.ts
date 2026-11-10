@@ -41,6 +41,13 @@ export interface AgentTurnDeps {
 	updateReasoningBuffer: (next: string) => void;
 	onReasoningSegmentStart?: () => void;
 	onTextSegmentStart?: (startOffset: number) => void;
+	/**
+	 * Iteration boundary (035, contracts/iteration-boundary.md): fired only
+	 * AFTER an iteration's blocks are persisted — or at critic re-emit start —
+	 * so durable rows replace the live view with no gap. NEVER fired before a
+	 * persist (that would blank paced live text during the deferred drain).
+	 */
+	onIterationBoundary?: () => void;
 	appendReasoning?: (text: string, iteration: number) => Promise<void>;
 	appendSelfCorrected?: (
 		report: { issues: { type: string; message: string }[]; attempts: number; succeeded: boolean },
@@ -373,6 +380,12 @@ async function runCriticPhase(
 	if (initialIssues.length === 0) return { text: buf, report: null };
 
 	const originalIssues = initialIssues.map(stripCriticIssue);
+	// 035 (iteration-boundary site 4): the re-emit is a fresh stretch — the
+	// pre-correction live blocks' offsets no longer apply, so the store resets
+	// its live view before the first re-stream and opens a fresh text block at
+	// offset 0. Fires only when issues were actually found (no flash on valid
+	// turns).
+	deps.onIterationBoundary?.();
 	let corrected = buf;
 	let attempts = 0;
 
@@ -731,6 +744,19 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 				if (report && deps.appendSelfCorrected) {
 					await deps.appendSelfCorrected(report, finalBuf.length);
 				}
+				// 035 (corrected-persist): the corrected reply is one fresh stretch,
+				// so the walk's stale block offsets don't apply — flush the ORIGINAL
+				// iteration's reasoning rows in arrival order, then persist the
+				// corrected text as a single row. Mutually exclusive with the walk
+				// arm below, so reasoning persists exactly once.
+				if (finalBuf !== buf) {
+					for (const b of blocks) {
+						if (b.kind === 'reasoning' && b.text.trim()) {
+							await deps.appendReasoning?.(b.text, i);
+						}
+					}
+					blocks = [];
+				}
 				// A critic correction re-emits the reply as one stretch — the stream's
 				// block offsets no longer apply, so it persists as a single row
 				// (contract rules 3/6); otherwise walk the blocks (029 T012). Images
@@ -763,6 +789,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 						empty: !finalBuf
 					});
 				}
+				// 035 (iteration-boundary site 2): the finalize persist replaced the
+				// live view — both the corrected-append and walk branches land here,
+				// incl. the image-only fallback above.
+				deps.onIterationBoundary?.();
 				return { aborted: false };
 			}
 
@@ -781,6 +811,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 					empty: false
 				});
 			}
+			// 035 (iteration-boundary site 1): iteration i's rows just became
+			// durable — the next iteration must not re-show them live.
+			deps.onIterationBoundary?.();
 			if (hasGenerative) {
 				buf = '';
 				deps.updateStreamBuffer('');
@@ -987,6 +1020,9 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 			finalText: budgetResult.text,
 			empty: !budgetResult.text
 		});
+		// 035 (iteration-boundary site 3): consistency no-op — the budget
+		// path's blocks were consumed by the walk before this point.
+		deps.onIterationBoundary?.();
 		return { aborted: false };
 	}
 

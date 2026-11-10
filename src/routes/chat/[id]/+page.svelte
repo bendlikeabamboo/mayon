@@ -45,7 +45,6 @@
 	import { getStreamPreset } from '#lib/chat/streaming/pref.js';
 	import type { Chat, Lab, Quiz, BranchSource } from '#lib/db/index.js';
 	import type { ComposerAttachment } from '#lib/chat/kinds.js';
-	import { attachmentsOf } from '#lib/chat/kinds.js';
 	import type { ResolvedOffsets } from '#lib/chat/selection.js';
 	import type { ExpoundOptions } from '#lib/chat/expound.js';
 	import { getActiveSdkProvider } from '#lib/ai/client.js';
@@ -576,24 +575,16 @@
 		await goto(`/chat/${childId}`);
 	}
 
-	async function onRegenerate(interruptedId: string) {
-		const msgs = chatStore.messages;
-		const idx = msgs.findIndex((m) => m.id === interruptedId);
-		if (idx < 0) return;
-		let userText = '';
-		let attachments: ComposerAttachment[] = [];
-		for (let i = idx - 1; i >= 0; i--) {
-			if (msgs[i].role === 'user') {
-				userText = msgs[i].content;
-				// Re-send the same images (018 US1): parts of the preceding user row
-				// become attachments so the regenerated turn sees them again.
-				attachments = attachmentsOf(msgs[i]);
-				break;
-			}
+	async function onRegenerate(messageId: string) {
+		// 035 US3 (contracts/regenerate-scope.md): the store deletes the WHOLE
+		// assistant turn back to the previous user row (all kinds — no orphan
+		// tool rows) and returns the re-send payload (user text + the 018 US1
+		// image attachments of that row).
+		const payload = await chatStore.deleteLastAssistantTurn(messageId);
+		if (!payload) return;
+		if (payload.userText || payload.attachments.length > 0) {
+			void chatStore.send(payload.userText, { attachments: payload.attachments });
 		}
-		await repos.messages.delete(interruptedId);
-		chatStore.messages = chatStore.messages.filter((m) => m.id !== interruptedId);
-		if (userText || attachments.length > 0) void chatStore.send(userText, { attachments });
 	}
 
 	async function onGenerateLab() {

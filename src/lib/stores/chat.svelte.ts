@@ -30,6 +30,7 @@ import {
 	kindOf,
 	parseMetadata,
 	generatedImageName,
+	attachmentsOf,
 	type ComposerAttachment,
 	type BranchArtifactMetadata,
 	type SharedMetadata,
@@ -355,7 +356,14 @@ class ChatState {
 				const b = blocks[i];
 				if (b.kind === 'reasoning') {
 					if (!b.text.trim()) continue;
-					items.push({ source: 'live', live: 'live_reasoning', buffer: b.text });
+					// 035 US2: the authoritative streaming flag — pulse renders
+					// only while the block is open (no view-side growth heuristics).
+					items.push({
+						source: 'live',
+						live: 'live_reasoning',
+						buffer: b.text,
+						streaming: b.open
+					});
 					continue;
 				}
 				let nextStart: number | null = null;
@@ -717,13 +725,23 @@ class ChatState {
 					if (last?.kind === 'reasoning') last.text = n;
 				},
 				onReasoningSegmentStart: () => {
+					// 035 US2: a new segment closes ALL open blocks — an earlier
+					// reasoning block stops streaming at the next segment start.
+					for (const b of this.liveBlocks) b.open = false;
 					this.liveBlocks.push({ kind: 'reasoning', text: '', open: true });
 				},
 				onTextSegmentStart: (startOffset) => {
-					for (const b of this.liveBlocks) {
-						if (b.kind === 'text' && b.open) b.open = false;
-					}
+					// 035 US2: close ALL open blocks (was text-only) — an earlier
+					// reasoning block stops streaming once the reply text begins.
+					for (const b of this.liveBlocks) b.open = false;
 					this.liveBlocks.push({ kind: 'text', start: startOffset, open: true });
+				},
+				// 035 (iteration-boundary, contracts/iteration-boundary.md): the
+				// loop fires this only AFTER the iteration's rows are durable (or
+				// at critic re-emit start); clearing the list subsumes closing.
+				// Teardown's close-then-clear stays the abort/error safety net.
+				onIterationBoundary: () => {
+					this.liveBlocks = [];
 				},
 				appendAssistantText: async (content, opts) => {
 					// Concatenated whole-turn buffer semantics (029 rule 6): the walk may
@@ -737,7 +755,20 @@ class ChatState {
 					const aborted = this.controller?.signal.aborted ?? false;
 					// Deferred finalization (research.md D3): on a normal finish the
 					// durable row waits for the eased drain; abort/error persists now.
-					if (pacer && this.streamPreset !== 'standard' && content && !aborted) {
+					// 035 (drain-once, contracts/drain-once.md): the wait applies to
+					// finalize appends only (`final` is the 033 finalize marker —
+					// interim appends never wait), at most once per turn: after any
+					// append the buffer is cleared and the pacer reset, so a further
+					// append with an empty buffer would park in `draining` with
+					// nothing to release and burn the DRAIN_DEADLINE_MS for nothing.
+					if (
+						pacer &&
+						this.streamPreset !== 'standard' &&
+						opts?.final === true &&
+						this.streamBuffer !== '' &&
+						content &&
+						!aborted
+					) {
 						pacer.onStreamEnd();
 						this.streamPhase = pacer.mode;
 						await this.waitForDrain(pacer);
@@ -1255,6 +1286,44 @@ class ChatState {
 		if (last.role !== 'user') return;
 		await repos.messages.delete(last.id);
 		this.messages = msgs.filter((m) => m.id !== last.id);
+	}
+
+	/**
+	 * Regenerate scope (035 US3, contracts/regenerate-scope.md): delete the
+	 * WHOLE assistant turn that ends with `assistantRowId` — every message
+	 * strictly after the nearest preceding `user` row, all kinds (reasoning,
+	 * assistant_message, self_corrected, tool rows, asks, choices) — so no
+	 * half-deleted tool groups orphan tool-result entries. Captures the user
+	 * row's text + `attachmentsOf` (018 US1 image re-send) as the re-send
+	 * payload; the route delegates here and re-sends. Unknown id → `null`
+	 * (no-op); a top-of-chat assistant turn with no previous user row deletes
+	 * from the row's position onward (degenerate, kept for totality).
+	 */
+	async deleteLastAssistantTurn(
+		assistantRowId: string
+	): Promise<{ userText: string; attachments: ComposerAttachment[] } | null> {
+		const msgs = this.messages;
+		const idx = msgs.findIndex((m) => m.id === assistantRowId);
+		if (idx < 0) return null;
+		let userIdx = -1;
+		let userText = '';
+		let attachments: ComposerAttachment[] = [];
+		for (let i = idx - 1; i >= 0; i--) {
+			if (msgs[i].role === 'user') {
+				userIdx = i;
+				userText = msgs[i].content;
+				// Re-send the same images (018 US1): parts of the preceding user
+				// row become attachments so the regenerated turn sees them again.
+				attachments = attachmentsOf(msgs[i]);
+				break;
+			}
+		}
+		const start = userIdx >= 0 ? userIdx + 1 : idx;
+		for (const m of msgs.slice(start)) {
+			await repos.messages.delete(m.id);
+		}
+		this.messages = msgs.slice(0, start);
+		return { userText, attachments };
 	}
 
 	async deleteChat(chatId: string): Promise<void> {

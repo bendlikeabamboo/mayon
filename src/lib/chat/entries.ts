@@ -73,6 +73,8 @@ export interface LiveReasoningEntry {
 	source: 'live';
 	live: 'live_reasoning';
 	buffer: string;
+	/** Authoritative pulse gate (035 US2): true only while the block is open. */
+	streaming: boolean;
 }
 
 export interface LiveAskEntry {
@@ -345,4 +347,31 @@ export function isDurableEntry(item: TimelineItem): item is DurableEntry {
 
 export function isLiveEntry(item: TimelineItem): item is LiveEntry {
 	return item.source === 'live';
+}
+
+/**
+ * Regenerate reveal gate (035 US3, contracts/regenerate-scope.md): scan the
+ * timeline from the end while items are durable `reasoning` rows anchored to
+ * their position (`ReasoningMeta.anchored === true` — a trailing thought is
+ * part of the last assistant turn) and return the id of the assistant text
+ * row that then surfaces. Anything else — trailing unanchored/legacy
+ * reasoning (whose 003 repair never crosses tool rows, so it can genuinely
+ * trail), tool group, choices, live tail, user row, empty timeline — closes
+ * the gate (`null`), matching the pre-035 behavior outside the new case.
+ * `MessageList` keeps its streaming/empty guards and delegates the tail walk
+ * here.
+ */
+export function lastRegeneratableAssistantId(timeline: TimelineItem[]): string | null {
+	let i = timeline.length - 1;
+	while (i >= 0) {
+		const item = timeline[i];
+		if (isDurableEntry(item) && item.kind === 'reasoning' && isAnchoredReasoning(item.entry)) {
+			i--;
+			continue;
+		}
+		break;
+	}
+	if (i < 0) return null;
+	const item = timeline[i];
+	return isDurableEntry(item) && item.kind === 'assistant_message' ? item.entry.id : null;
 }
