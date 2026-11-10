@@ -153,8 +153,9 @@
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T023 Update load-bearing code comments that cite 030 contract sections whose wording T001 amended (`src/lib/chat/projection.ts` §5 cites, `src/lib/agent/loop.ts` 030 §3/§4 cites, `src/lib/stores/chat.svelte.ts` finalize comments) so citations match the amended contracts; no behavior change.
-- [ ] T024 Run the full validation loop under the capped wrapper (quickstart.md): the four touched suites (`projection.test.ts`, `loop.test.ts`, `images.test.ts`, `chat.svelte.test.ts`) one process at a time, then `pnpm check` and `pnpm lint`.
+- [x] T023 Update load-bearing code comments that cite 030 contract sections whose wording T001 amended (`src/lib/chat/projection.ts` §5 cites, `src/lib/agent/loop.ts` 030 §3/§4 cites, `src/lib/stores/chat.svelte.ts` finalize comments) so citations match the amended contracts; no behavior change.
+- [x] T024 Run the full validation loop under the capped wrapper (quickstart.md): the four touched suites (`projection.test.ts`, `loop.test.ts`, `images.test.ts`, `chat.svelte.test.ts`) one process at a time, then `pnpm check` and `pnpm lint`.
+- [x] T025 (added by orchestrator) Add the CHANGELOG entry for issue #70 under `## [Unreleased]` → `### Fixed` in `CHANGELOG.md`, matching the existing entry style.
 
 ---
 

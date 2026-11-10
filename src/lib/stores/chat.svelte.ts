@@ -542,9 +542,11 @@ class ChatState {
 					: null;
 
 		// 1) Persist the user row immediately and reflect it in the UI — one
-		// atomic append carrying text + image parts (specs/030-image-generation/contracts/message-parts.md
-		// §4). Image-less sends write no parts column: the row is byte-identical
-		// to the pre-parts flow.
+		// atomic append carrying text + image parts
+		// (specs/030-image-generation/contracts/message-parts.md §3 — a row is
+		// appended in a single atomic operation carrying text and parts
+		// together). Image-less sends write no parts column: the row is
+		// byte-identical to the pre-parts flow.
 		// Availability snapshot (027 T005): taken before the append below
 		// mutates `this.messages` — an empty branch's first turn must not
 		// offer `propagate_to_parent` (quickstart V4).
@@ -740,9 +742,13 @@ class ChatState {
 						this.streamPhase = pacer.mode;
 						await this.waitForDrain(pacer);
 					}
-					// Finalize (contracts/stream-image-parts.md §3): compose ordered
-					// parts and persist ONE atomic append. Image-less turns keep
-					// today's exact append shape (parts omitted → NULL column).
+					// Finalize (contracts/stream-image-parts.md §3, amended in place by
+					// 033 — see specs/033-image-output-finalize-paths/contracts/
+					// finalize-composition.md §2): compose ordered parts and persist
+					// ONE atomic append. Image-less turns keep today's exact row
+					// shape (parts omitted → NULL column); the 033 `final` marker may
+					// ride the finalize call's opts on image-less finalize appends,
+					// which changes nothing about the persisted row.
 					const finalized = await this.composeAssistantParts(content, fetchImpl);
 					// 033 §4 (research D7): advisory zero-image notice — a turn's
 					// `final` append completing non-aborted with non-empty text from
@@ -767,8 +773,9 @@ class ChatState {
 						noImageNotice ? `${finalized.content}\n\n${noImageNotice}` : finalized.content,
 						{
 							model: opts?.model ?? (parts ? config?.defaultModel : undefined),
-							// 030 §4: an aborted finalize carrying images marks the row
-							// interrupted; image-less aborts keep today's exact shape.
+							// 030 §4 (amended by 033, finalize-composition §3): an aborted
+							// finalize carrying images marks the row interrupted; image-less
+							// aborts keep today's exact shape.
 							...(aborted && parts ? { metadata: JSON.stringify({ interrupted: true }) } : {}),
 							...(parts ? { parts } : {})
 						}
@@ -966,8 +973,9 @@ class ChatState {
 			for (const b of this.liveBlocks) b.open = false;
 			if (wasAborted && this.streamBuffer.trim()) {
 				try {
-					// 030 §4: complete pendingImages persist with the interrupted
-					// row; images that never completed are dropped silently.
+					// 030 §4 (amended by 033, finalize-composition §3): all completed
+					// turn images persist with the interrupted row; images that never
+					// completed are dropped silently.
 					const finalized = await this.composeAssistantParts(this.streamBuffer, fetchImpl);
 					const row = await repos.messages.append(chatId, 'assistant', finalized.content, {
 						metadata: JSON.stringify({ interrupted: true }),
