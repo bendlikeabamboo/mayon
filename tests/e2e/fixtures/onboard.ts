@@ -1,5 +1,5 @@
 import { expect, test as base, type Locator, type Page } from '@playwright/test';
-import { MODEL_ID, MOCK_BASE_URL, PLACEHOLDER_KEY } from './kitchen-sink';
+import { MODEL_ID, MOCK_BASE_URL } from './kitchen-sink';
 
 export interface Onboarded {
 	page: Page;
@@ -23,13 +23,58 @@ export function settledModelFooter(count: number): RegExp {
 export const test = base.extend<{ onboarded: Onboarded }>({
 	onboarded: [
 		async ({ page, request }, use) => {
-			await request.post('/api/db/query', {
+			const cleared = await request.post('/api/db/query', {
 				data: {
 					op: 'exec',
 					sql: "DELETE FROM settings WHERE key IN ('providers', 'activeProvider')"
 				}
 			});
-			await page.goto('/settings#providers');
+			expect(
+				cleared.ok(),
+				`seed failed (delete): ${cleared.status()} ${await cleared.text()}`
+			).toBeTruthy();
+			// Seed the exact settings rows the old UI journey produced: a
+			// LiteLLM (self-hosted) card (registry.ts template fallbacks are
+			// ['gpt-4o-mini', 'claude-sonnet-4-5']) whose catalog settled to the
+			// mock discovery merge (discovered ids first) with 'mock-sink'
+			// picked and active. Written through the same /api/db/query seam as
+			// the provider-picker legacy writes; `settingsRepo.set` stores
+			// JSON.stringify of the value under each key.
+			const providerId = 'e2e-litellm-mock';
+			const providers = {
+				[providerId]: {
+					id: providerId,
+					kind: 'openai-compatible',
+					name: 'LiteLLM (self-hosted)',
+					baseUrl: MOCK_BASE_URL,
+					defaultModel: MODEL_ID,
+					models: [MODEL_ID, 'gpt-4o-mini', 'claude-sonnet-4-5'],
+					discoverable: true,
+					group: 'gateway',
+					requiresKey: false,
+					toolCapability: 'on'
+				}
+			};
+			// op 'query' (not 'exec'): the server passes params only for the query
+			// op — exec drops them, and request.post does not throw on 400, so an
+			// exec INSERT would silently no-op and leave providers unseeded.
+			const seeded = await request.post('/api/db/query', {
+				data: {
+					op: 'query',
+					sql: 'INSERT INTO settings (key, value) VALUES ($1, $2), ($3, $4)',
+					params: [
+						'providers',
+						JSON.stringify(providers),
+						'activeProvider',
+						JSON.stringify(providerId)
+					]
+				}
+			});
+			expect(
+				seeded.ok(),
+				`seed failed (insert): ${seeded.status()} ${await seeded.text()}`
+			).toBeTruthy();
+			await page.goto('/chat');
 			// First-run security setup gate (skippable): boot does not start until
 			// dismissed, and the prompt renders after the async auth check — wait
 			// for either the gate or the app shell before proceeding. Auth
@@ -37,7 +82,7 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 			// through a reload before giving up.
 			const bootGate = page
 				.getByRole('button', { name: 'Skip' })
-				.or(page.getByRole('button', { name: 'Add provider' }));
+				.or(page.getByRole('button', { name: 'New chat' }));
 			try {
 				await expect(bootGate).toBeVisible({ timeout: 15_000 });
 			} catch {
@@ -48,62 +93,12 @@ export const test = base.extend<{ onboarded: Onboarded }>({
 			if (await skipSetup.isVisible()) {
 				await skipSetup.click();
 			}
-			const addProvider = page.getByRole('button', { name: 'Add provider' });
-			await expect(addProvider).toBeVisible();
-			await addProvider.click();
-			await page.getByRole('button', { name: /LiteLLM \(self-hosted\)/ }).click();
-			const providerCard = page.locator('#providers li').first();
-			await expect(providerCard).toBeVisible();
-
-			// Commit the endpoint edit with an explicit blur before any card
-			// clicks: the commit re-renders the card, and a physical click that
-			// straddles that re-render is silently lost (mousedown hits the old
-			// node, mouseup lands on its parent).
-			const baseUrl = providerCard.getByLabel('Base URL');
-			await baseUrl.fill(MOCK_BASE_URL);
-			await baseUrl.press('Tab');
-			const footer = modelListFooter(providerCard);
-			// The add-time discovery failed against the template URL, so the
-			// template's 2 fallback models are all the card knows. Loopback
-			// targets fetch browser-direct and can be silently dropped by
-			// restrictive networks, so allow the (now deadline-bounded)
-			// discovery to fail before asserting the settled fallback count.
-			// Which URL the add-time discovery read (template URL before the
-			// edit, or the edited mock URL) is a timing race; both settle states
-			// are valid here — only the settled (non-refreshing) footer matters.
-			await expect(footer).toHaveText(/\d+ models\s*·\s*click ⟳ to refresh$/, {
-				timeout: 25_000
-			});
-
-			await providerCard.getByRole('button', { name: 'Refresh model list' }).click();
-			// This exact state only renders once the mock catalog has been
-			// discovered and merged over the template's 2 fallback models.
-			await expect(footer).toHaveText(settledModelFooter(3));
-			await providerCard.locator('button[aria-haspopup="dialog"]').click();
-			await page.getByRole('option', { name: MODEL_ID }).click();
-
-			// LiteLLM is keyless (requiresKey: false), so the key section renders
-			// only for key-required providers. Save a placeholder key when the
-			// field exists; keyless setups skip straight to activation.
-			const keyField = providerCard.getByLabel('API key (stored locally)');
-			if (await keyField.isVisible()) {
-				await keyField.fill(PLACEHOLDER_KEY);
-				await providerCard.getByRole('button', { name: 'Save key' }).click();
-				await expect(providerCard.getByLabel(/Replace API key/)).toBeVisible();
-				// Saving a key re-runs discovery; let it settle before more clicks.
-				await expect(footer).toHaveText(settledModelFooter(3));
-			}
-
-			const setActive = providerCard.getByRole('button', { name: 'Set active' });
-			if (await setActive.isVisible()) {
-				await setActive.click();
-			}
-
-			await page.goto('/chat');
 			await page.getByRole('button', { name: 'New chat' }).click();
 			await page.getByRole('button', { name: /Just start chatting/ }).click();
 			await expect(page.getByPlaceholder(/Message the active provider/)).toBeVisible();
-			await use({ page, providerCard });
+			// providerCard resolves lazily: consumers that use it navigate to
+			// /settings#providers first, where the seeded card is the only item.
+			await use({ page, providerCard: page.locator('#providers li').first() });
 		},
 		{ timeout: 90_000 }
 	]

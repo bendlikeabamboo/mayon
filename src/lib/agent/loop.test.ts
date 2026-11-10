@@ -3,6 +3,8 @@ import type { LanguageModel } from 'ai';
 import type { Message } from '#lib/db/schema.js';
 import type { ProviderConfig } from '#lib/ai/types.js';
 import type { AgentTurnDeps } from './loop';
+import { TraceBuilder } from './trace';
+import type { TraceEvent } from './trace';
 
 vi.mock('ai', () => {
 	const toolFn = vi.fn(() => ({}));
@@ -546,6 +548,49 @@ describe('runAgentTurn', () => {
 		expect(callArgs.system).toContain('tiers');
 		expect(mockedBuildCapabilitiesPreamble).toHaveBeenCalledOnce();
 		expect(mockedBuildFirstTurnOrientationPreamble).not.toHaveBeenCalled();
+	});
+
+	it('(e4) capability flip: turning the provider tool capability off ⇒ the next turn’s persisted agent trace records 0 tool iterations (provider-picker parity)', async () => {
+		// Mirror the store's persistence path exactly (chat.svelte.ts): every
+		// onTrace event feeds a real TraceBuilder, toJSON() is what lands in
+		// agent_traces.trace and what the e2e spec polls.
+		const buildPersistedTrace = async (toolCapability: 'on' | 'off') => {
+			mockedStreamText.mockReturnValue({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Hello' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+			const events: Array<{ kind: string; [k: string]: unknown }> = [];
+			const deps = makeDeps({
+				config: makeConfig({ toolCapability }),
+				onTrace: (e) => events.push(e as never)
+			});
+			await runAgentTurn(deps);
+
+			const builder = new TraceBuilder();
+			for (const e of events) builder.emit(e as TraceEvent);
+			return JSON.parse(builder.toJSON()) as {
+				iterations: Array<{
+					request: { tools: string[] };
+					toolCalls: unknown[];
+					toolResults: unknown[];
+				}>;
+			};
+		};
+
+		// Enabled side: the loop offers tools on this turn (some iteration carries a non-empty tool list).
+		const enabled = await buildPersistedTrace('on');
+		expect(enabled.iterations.some((i) => i.request.tools.length > 0)).toBe(true);
+
+		// Flip: same turn again — every iteration is tool-less end to end.
+		const disabled = await buildPersistedTrace('off');
+		expect(disabled.iterations.length).toBeGreaterThan(0);
+		expect(disabled.iterations.every((i) => i.request.tools.length === 0)).toBe(true);
+		expect(
+			disabled.iterations.every((i) => i.toolCalls.length === 0 && i.toolResults.length === 0)
+		).toBe(true);
 	});
 
 	describe('(f) critic', () => {

@@ -119,3 +119,26 @@ docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml 
 E2E_BASE_URL=http://127.0.0.1:5174 pnpm test:e2e
 docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml down
 ```
+
+### Sharded runs
+
+The suite can be split across concurrently running Playwright shards (this is
+how the `e2e` CI job runs — one shard job each with its own stack). Each shard
+gets its own compose project (`mayon-dev-shard-N`, web on host port `5200+N`,
+volumes/network isolated by the project prefix), so there are no shared-state
+races between shards:
+
+```bash
+pnpm dev:shard:up 1/2    # boot shard-1's stack + readiness waits
+pnpm dev:shard:test 1/2  # playwright --shard=1/2 against that stack
+pnpm dev:shard:down 1    # tear the stack down
+```
+
+Run both shards in two terminals to halve the wall time. The shard override
+file uses the compose merge tag `!override` for its port lists, which requires
+Docker Compose v2.24 or newer. One port to know
+about: `telemetry.spec.ts` asserts on the langfuse-stub receiver at host port
+`9998`, so the runner publishes that port from whichever shard owns the spec
+(detected at `up`); other shards use `5500+N`. If `9998` is already bound —
+say, by a running `mayon-dev` stack — `pnpm dev:shard:up` for the
+telemetry-owning shard fails with instructions; stop the other stack first.

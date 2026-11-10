@@ -65,6 +65,10 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -75,32 +79,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @mayon/shared build
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm dev:up
-      - name: Wait for web
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:5173 >/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "web did not become ready on :5173" >&2
-          exit 1
-      - name: Wait for mock-llm
-        run: |
-          for i in $(seq 1 60); do
-            if docker compose -p mayon-dev exec -T server wget -qO- http://mock-llm:9999/v1/models >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "mock-llm did not become reachable from the server container" >&2
-          exit 1
-      - run: pnpm test:e2e
+      # One dev stack per shard (project mayon-dev-shard-N, web :5200+N) so
+      # shards run with zero shared-state races; the runner resolves which
+      # shard publishes the host-side langfuse-stub port (9998).
+      - run: pnpm dev:shard:up ${{ matrix.shard }}/2
+      - run: pnpm dev:shard:test ${{ matrix.shard }}/2
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-artifacts
+          name: playwright-artifacts-shard-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/

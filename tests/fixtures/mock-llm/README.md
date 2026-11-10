@@ -7,6 +7,18 @@ is specified in
 [docs/history/appendices/020-mock-llm-protocol.md](../../../docs/history/appendices/020-mock-llm-protocol.md) The classification markers themselves live once in [markers.mjs](markers.mjs) — imported by `server.mjs` and pinned to the product constants by `src/lib/ai/generate/classification-markers.test.ts`; never re-type them.,
 which is the source of truth for this directory.
 
+## Import rules: single-source fixture strings
+
+The fixture-only assertion strings (grading-lever triggers, back-propagation
+dispatch, image reply) live once in [strings.mjs](strings.mjs): `server.mjs`
+serves exactly those constants, e2e specs get them via the
+`tests/e2e/fixtures/kitchen-sink.ts` re-export, and fast-tier tests import
+dynamically via `fileURLToPath` (this directory is tsconfig-excluded). The
+drift guard is
+`src/lib/ai/generate/classification-markers.test.ts`. Hand-mirroring a served
+string anywhere is a violation — the full consumer rules and guard contract:
+[specs/031-split-text-e2e-tests/contracts/shared-fixtures.md](../../../specs/031-split-text-e2e-tests/contracts/shared-fixtures.md).
+
 ## FR-005 guardrail: the real request path only
 
 Every request must travel the real path: browser → placeholder key from
@@ -37,9 +49,9 @@ fixture; do not bypass the hop.
   `propagate_to_parent`; streams an OpenAI-style `propagate_to_parent` tool
   call with arguments `{"mode":"raw"}`) or `propagate_unavailable` (tool
   absent — root chats; streams the manual-control sentence). The trigger and
-  reply constants live in `server.mjs` next to the grading lever
-  (fixture-only, no product-constant pin, so not in `markers.mjs`) and are
-  mirrored for spec assertions in `tests/e2e/fixtures/kitchen-sink.ts`
+  reply constants live in [strings.mjs](strings.mjs) (fixture-only, no
+  product-constant pin, so not in `markers.mjs`) and are re-exported for spec
+  assertions by `tests/e2e/fixtures/kitchen-sink.ts`
   (`PROPAGATE_TRIGGER`, `PROPAGATE_UNAVAILABLE_REPLY`, `OFFER_TRIGGER`,
   `OFFER_REPLY`).
 - Interleaved reasoning (feature 029, `chat_interleaved`) — no fixture file:
@@ -51,3 +63,8 @@ fixture; do not bypass the hop.
   `reasoning_content` delta with no trailing content — before the unchanged
   `stop` terminal. Without the marker all flows are byte-identical. Spec:
   `specs/029-micro-thoughts/contracts/mock-llm-reasoning.md`.
+- Image-reply dispatch (feature 030, US1) — no fixture file: the
+  `IMAGE_TRIGGER` phrase in the LAST user turn selects an image reply (openai
+  and google dialects), with constants (`IMAGE_TRIGGER`, `IMAGE_REPLY_TEXT`,
+  `IMAGE_PNG_MIME`, `IMAGE_PNG_BASE64`) in [strings.mjs](strings.mjs),
+  re-exported by `kitchen-sink.ts` alongside `IMAGE_DATA_URL`.

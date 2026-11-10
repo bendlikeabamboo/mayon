@@ -3,7 +3,7 @@ import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import type { TelemetryConfig, TelemetryEventRecord } from '@mayon/shared';
 import { telemetryState } from './state.svelte';
-import { buildChatTurnRecord, captureChatTurn, emitTelemetry } from './capture';
+import { buildChatTurnRecord, captureChatTurn, captureGenerator, emitTelemetry } from './capture';
 import { relayTelemetry } from './relay';
 
 const testDb = useFileTestDb();
@@ -276,6 +276,142 @@ describe('capture + relay pipeline', () => {
 			provider: 'openai-compatible',
 			output: 'yo'
 		});
+	});
+
+	it('a composed turn relays the chat-turn and title records with session, model, usage, and content intact', async () => {
+		telemetryState.applyConfig(config({ enabled: true }));
+		captureChatTurn({
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			startedAt: '2026-10-31T00:00:00.000Z',
+			durationMs: 11,
+			outcome: 'success',
+			input: {
+				system: 'sys',
+				messages: [{ role: 'user', content: 'TURN-PROMPT' }]
+			},
+			output: 'TURN-REPLY',
+			usage: { input: 1, output: 1, total: 2 }
+		});
+		// Side generator on turn one: auto-title rides the same chat session.
+		captureGenerator('title', {
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			startedAt: Date.now() - 10,
+			input: {
+				system: 'You generate titles.',
+				messages: [{ role: 'user', content: 'TURN-PROMPT' }]
+			},
+			output: 'The Title',
+			usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+		});
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as {
+			records: TelemetryEventRecord[];
+		};
+		expect(body.records).toHaveLength(2);
+		const [turn, title] = body.records;
+		expect(turn).toMatchObject({
+			kind: 'chat-turn',
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			outcome: 'success',
+			usage: { input: 1, output: 1, total: 2 }
+		});
+		expect(turn.errorDetail).toBeUndefined();
+		expect(turn.output).toBe('TURN-REPLY');
+		expect((turn.input as { messages: Array<{ content: string }> }).messages.at(-1)?.content).toBe(
+			'TURN-PROMPT'
+		);
+		expect(title).toMatchObject({
+			kind: 'title',
+			// Session grouping: the title span shares the chat's session id.
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			outcome: 'success',
+			usage: { input: 1, output: 1, total: 2 }
+		});
+		expect(title.output).toBe('The Title');
+	});
+
+	it('an aborted turn relays the aborted chat-turn record without an error detail', async () => {
+		telemetryState.applyConfig(config({ enabled: true }));
+		captureChatTurn({
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			startedAt: '2026-10-31T00:00:00.000Z',
+			durationMs: 3,
+			outcome: 'aborted',
+			output: 'partial text'
+		});
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as {
+			records: TelemetryEventRecord[];
+		};
+		expect(body.records).toHaveLength(1);
+		const rec = body.records[0];
+		expect(rec.outcome).toBe('aborted');
+		expect(rec.model).toBe('mock-sink');
+		// Aborted is not an error: no error detail rides the record.
+		expect('errorDetail' in rec).toBe(false);
+		expect(rec.output).toBe('partial text');
+	});
+
+	it('metadata mode relays a composed turn whose delivered payload never carries conversation text', async () => {
+		const PASSPHRASE = 'ZEBRA-42-TELEMETRY';
+		telemetryState.applyConfig(config({ enabled: true, captureMode: 'metadata' }));
+		captureChatTurn({
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			startedAt: '2026-10-31T00:00:00.000Z',
+			durationMs: 5,
+			outcome: 'success',
+			input: {
+				system: 'sys',
+				messages: [{ role: 'user', content: `Remember ${PASSPHRASE} for later` }]
+			},
+			output: `I will keep ${PASSPHRASE} secret`,
+			usage: { input: 1, output: 1, total: 2 }
+		});
+		captureGenerator('title', {
+			chatId: 'chat-42',
+			model: 'mock-sink',
+			provider: 'openai-compatible',
+			startedAt: Date.now() - 10,
+			input: {
+				system: 'You generate titles.',
+				messages: [{ role: 'user', content: `Remember ${PASSPHRASE}` }]
+			},
+			output: 'A Secret Chat',
+			usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+		});
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const raw = (fetchMock.mock.calls[0]![1] as RequestInit).body as string;
+		// SC-005: the passphrase appears nowhere in anything delivered.
+		expect(raw).not.toContain(PASSPHRASE);
+		const body = JSON.parse(raw) as { records: TelemetryEventRecord[] };
+		expect(body.records).toHaveLength(2);
+		for (const rec of body.records) {
+			// Absent, not empty, on every record kind in the batch.
+			expect('input' in rec).toBe(false);
+			expect('output' in rec).toBe(false);
+			// Structure stays intact per mode semantics.
+			expect(rec.kind === 'chat-turn' || rec.kind === 'title').toBe(true);
+			expect(rec.chatId).toBe('chat-42');
+			expect(rec.model).toBe('mock-sink');
+			expect(rec.provider).toBe('openai-compatible');
+			expect(rec.outcome).toBe('success');
+			expect(rec.usage).toEqual({ input: 1, output: 1, total: 2 });
+		}
 	});
 
 	it('captureChatTurn never throws into the caller when relaying fails', async () => {

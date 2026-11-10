@@ -13,6 +13,23 @@ import {
 	QUIZ_CONTRACT_OPENING
 } from './markers.mjs';
 import { QUIZ_FIXTURE } from './quiz-fixture.mjs';
+import {
+	IMAGE_PNG_BASE64,
+	IMAGE_PNG_MIME,
+	IMAGE_REPLY_TEXT,
+	IMAGE_TRIGGER,
+	LEVER_FEEDBACK_CORRECT,
+	LEVER_FEEDBACK_DEFAULT,
+	LEVER_FEEDBACK_WRONG,
+	LEVER_TRIGGER_CORRECT,
+	LEVER_TRIGGER_WRONG,
+	OFFER_REPLY,
+	OFFER_TRIGGER,
+	PROPAGATE_TOOL_ARGS,
+	PROPAGATE_TOOL_NAME,
+	PROPAGATE_TRIGGER,
+	PROPAGATE_UNAVAILABLE_REPLY
+} from './strings.mjs';
 
 const PORT = Number(process.env.MOCK_LLM_PORT ?? 9999);
 const MODEL_ID = 'mock-sink';
@@ -27,40 +44,21 @@ const BLOCKS_PER_CHUNK = 3;
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Grading lever (short_grading kind) — fixed, deterministic constants. The
-// verdict shape mirrors GradedAnswerSchema (src/lib/ai/generate/quiz.ts):
-// { isCorrect, feedback }. Trigger precedence: when BOTH triggers appear in
-// the scanned text, 'should be wrong' wins — a false verdict is the
-// fail-unsafe direction (research.md D3: an unmarked or ambiguous answer can
-// never fake a green score).
+// Grading lever (short_grading kind) — fixed, deterministic constants served
+// from ./strings.mjs. The verdict shape mirrors GradedAnswerSchema
+// (src/lib/ai/generate/quiz.ts): { isCorrect, feedback }. Trigger precedence:
+// when BOTH triggers appear in the scanned text, the WRONG trigger wins — a
+// false verdict is the fail-unsafe direction (research.md D3: an unmarked or
+// ambiguous answer can never fake a green score).
 // ---------------------------------------------------------------------------
-const LEVER_TRIGGER_CORRECT = 'should be correct';
-const LEVER_TRIGGER_WRONG = 'should be wrong';
-const LEVER_FEEDBACK_CORRECT =
-	'Deterministic mock verdict: the lever matched, so this answer is graded correct.';
-const LEVER_FEEDBACK_WRONG =
-	'Deterministic mock verdict: the lever matched, so this answer is graded incorrect.';
-const LEVER_FEEDBACK_DEFAULT =
-	'Deterministic mock default: the answer carried no lever trigger, so it is not correct.';
 
 // ---------------------------------------------------------------------------
 // Back-propagation dispatch (feature 027, quickstart V6) — deterministic
-// constants, same pattern as the grading lever: fixture-only triggers with no
-// product-constant pin, so they live here instead of markers.mjs (the
-// drift-guard only pins markers that mirror product constants). Mirrored for
-// spec assertions in tests/e2e/fixtures/kitchen-sink.ts.
+// constants served from ./strings.mjs, same pattern as the grading lever:
+// fixture-only triggers with no product-constant pin, so they live there
+// instead of markers.mjs (the drift-guard only pins markers that mirror
+// product constants). kitchen-sink.ts re-exports them for spec assertions.
 // ---------------------------------------------------------------------------
-const PROPAGATE_TRIGGER = 'backpropagate this branch';
-const PROPAGATE_TOOL_NAME = 'propagate_to_parent';
-const PROPAGATE_TOOL_ARGS = '{"mode":"raw"}';
-const PROPAGATE_UNAVAILABLE_REPLY =
-	'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
-// Offer-once dispatch (027 US2): a completion signal without an explicit
-// request gets one plain-text offer (manual-control fallback + an explicit
-// ask) and never a tool call — propagation requires the learner's agreement.
-const OFFER_TRIGGER = 'this branch feels done';
-const OFFER_REPLY =
-	'This branch looks wrapped up. I can send its outcome to the parent chat — the manual back-propagate control in the message menu does the same thing. Want me to back-propagate it?';
 
 // Interleaved reasoning script (feature 029): marker-triggered plain chat
 // stream exercising reasoning/text interleaving on the openai-compatible wire
@@ -72,10 +70,10 @@ const OFFER_REPLY =
 const INTERLEAVED_MARKER = '[[interleaved-thoughts]]';
 
 // ---------------------------------------------------------------------------
-// Image-reply dispatch (feature 030, US1) — deterministic constants, same
-// pattern as the grading lever / propagate dispatch: a fixture-only trigger
-// with no product-constant pin, so it lives here. Mirrored for spec
-// assertions in tests/e2e/fixtures/kitchen-sink.ts. Both dialect paths
+// Image-reply dispatch (feature 030, US1) — deterministic constants served
+// from ./strings.mjs, same pattern as the grading lever / propagate dispatch:
+// a fixture-only trigger with no product-constant pin, so it lives there.
+// kitchen-sink.ts re-exports them for spec assertions. Both dialect paths
 // produce the identical logical reply — the caption text plus one inline
 // image — but in the wire shape their dialect expects (research.md R-2
 // addendum): google-kind SSE carries an `inlineData` candidate part, while
@@ -84,11 +82,6 @@ const INTERLEAVED_MARKER = '[[interleaved-thoughts]]';
 // strips `delta.images`). The PNG is a real 8x8 solid-color image, inlined
 // base64 the way a provider embeds it.
 // ---------------------------------------------------------------------------
-const IMAGE_TRIGGER = 'generate an image';
-const IMAGE_REPLY_TEXT = 'Here is your chart.';
-const IMAGE_PNG_MIME = 'image/png';
-const IMAGE_PNG_BASE64 =
-	'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC';
 
 // How many leading characters of the classification inputs the unknown-kind
 // 400 body and server log expose as hints.
@@ -325,7 +318,7 @@ function streamGoogleImageReply(res) {
 // body, safe under concurrency; no shared mutable state beyond the static
 // fixture library). Ordered, first match wins:
 //
-//   0. stream + IMAGE_TRIGGER ('generate an image') in the LAST user message
+//   0. stream + IMAGE_TRIGGER in the LAST user message
 //      → image_reply (030; wire shape chosen by endpoint — google requests
 //      never reach /v1/chat/completions, they hit :streamGenerateContent)
 //   1. no tools  + stream === true  → chat (SSE kitchen-sink stream), or
@@ -334,7 +327,7 @@ function streamGoogleImageReply(res) {
 //   2. no tools  + stream !== true  → chat (single non-streamed completion)
 //   3. tools + stream === true + trigger in LAST user message:
 //      - offer trigger → propagate_offer (plain-text single offer; 027 US2)
-//      - propagate trigger + tools contain propagate_to_parent →
+//      - propagate trigger + tools contain PROPAGATE_TOOL_NAME →
 //        propagate_tool_call (streamed tool call; 027)
 //      - propagate trigger otherwise → propagate_unavailable
 //        (manual-control sentence; 027)
@@ -489,8 +482,8 @@ function firstSystemText(body) {
  */
 function gradeAnswer(body) {
 	const text = lastUserText(body).toLowerCase();
-	// Precedence: 'should be wrong' is tested FIRST so it wins when both
-	// triggers are present (fail-unsafe; see the constants block above).
+	// Precedence: the WRONG trigger is tested FIRST so it wins when both
+	// triggers are present (fail-unsafe; see the strings.mjs block above).
 	if (text.includes(LEVER_TRIGGER_WRONG)) {
 		return { isCorrect: false, feedback: LEVER_FEEDBACK_WRONG };
 	}

@@ -28,6 +28,7 @@ topology, and the invariants you must respect when editing.
 | `pnpm dev:up`                      | Same as `pnpm dev` but detached (`-d`). Engine selectable via `MAYON_DEV_ENGINE`.                                                                        |
 | `pnpm dev:down`                    | Stop and remove the dev stack (keeps `pg-data-dev`/`server-data-dev` volumes).                                                                           |
 | `pnpm dev:build`                   | Rebuild the dev images (after deps, config, or `@mayon/shared` changes). Engine selectable via `MAYON_DEV_ENGINE`.                                       |
+| `pnpm dev:shard:up 1/2`            | Boot a per-shard e2e stack (project `mayon-dev-shard-1`, web :5201) incl. readiness waits; used with `pnpm dev:shard:test`/`:down` for sharded e2e runs. |
 | `pnpm dev:vite`                    | Run Vite directly — used **inside** the dev `web` container.                                                                                             |
 | `pnpm --filter @mayon/server dev`  | Run the server (`tsx watch`) — used **inside** the dev `server` container.                                                                               |
 | `pnpm build`                       | Build the SPA into `build/`.                                                                                                                             |
