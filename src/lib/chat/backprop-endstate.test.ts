@@ -5,6 +5,7 @@ import type { ProviderConfig } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { fileURLToPath } from 'node:url';
 import { chatStore } from '../stores/chat.svelte';
+import { toastState } from '../stores/toasts.svelte';
 
 // The composed backprop end-states migrated from
 // tests/e2e/backprop-tool.spec.ts (specs/031-split-text-e2e-tests T007–T009):
@@ -225,6 +226,13 @@ describe('backprop declined-turn end-state (031 US1)', () => {
 		const rowsBefore = await countRows(childId);
 		const streamCallsBefore = mockedStreamText.mock.calls.length;
 
+		// 038 US3 (FR-005): the toast layer must stay empty across the whole
+		// declined journey — the store tier is the authoritative no-toast proof
+		// (037's "toast never lies" guarantee), observed on the same
+		// `toastState` singleton the store pushes into.
+		toastState.clear();
+		expect(toastState.toasts).toHaveLength(0);
+
 		mockStreamToolCallThenReply(
 			strings.PROPAGATE_TOOL_NAME,
 			JSON.parse(strings.PROPAGATE_TOOL_ARGS),
@@ -232,8 +240,13 @@ describe('backprop declined-turn end-state (031 US1)', () => {
 		);
 		const turn = chatStore.send(`I'm done here — ${strings.PROPAGATE_TRIGGER}.`);
 		await vi.waitFor(() => expect(chatStore.pendingApprovals).toHaveLength(1));
+		expect(toastState.toasts).toHaveLength(0);
 		chatStore.decline(chatStore.pendingApprovals[0]!.toolCallId);
 		await turn;
+
+		// Declining pushed nothing: no toast at ask time, and none after the
+		// continuation settles the turn.
+		expect(toastState.toasts).toHaveLength(0);
 
 		// The tool executor was never entered: the loop synthesized the
 		// declined result itself.

@@ -44,9 +44,27 @@ describe('toastState', () => {
 	});
 
 	it('dismiss of unknown id is a no-op', () => {
-		toastState.push({ title: 'A' });
+		const id = toastState.push({ title: 'A' });
 		toastState.dismiss('does-not-exist');
 		expect(toastState.toasts).toHaveLength(1);
+		// 038 US3 negative: an unknown-id dismiss never adds (or re-adds) a
+		// toast — the collection keeps exactly the original entry.
+		toastState.dismiss('does-not-exist');
+		toastState.dismiss('');
+		expect(toastState.toasts).toHaveLength(1);
+		expect(toastState.toasts.map((t) => t.id)).toEqual([id]);
+		expect(toastState.toasts[0].title).toBe('A');
+	});
+
+	it('a manually dismissed toast never re-emits after the auto-dismiss timer fires', () => {
+		const id = toastState.push({ title: 'Manual' });
+		toastState.dismiss(id);
+		expect(toastState.toasts).toHaveLength(0);
+
+		// Past the original toast's auto-dismiss deadline the dismissed entry
+		// must not resurrect.
+		vi.advanceTimersByTime(5000);
+		expect(toastState.toasts).toHaveLength(0);
 	});
 
 	it('clear removes all toasts and cancels all timers', () => {
