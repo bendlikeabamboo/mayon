@@ -97,12 +97,12 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Tests for User Story 4
 
-- [ ] T010 [P] [US4] **FAIL-FIRST** — extend `src/lib/ai/model-discovery.test.ts` with `mergeDiscoveredModels` unit tests (contracts/test-helpers.md §2): discovered order first + dedupe + manual tail (`['b','a']` × `['manual','a']` → `['b','a','manual']`); empty discovered → existing unchanged; empty both → empty; duplicate manuals collapse. Observe red (export missing) before T011.
+- [x] T010 [P] [US4] **FAIL-FIRST** — extend `src/lib/ai/model-discovery.test.ts` with `mergeDiscoveredModels` unit tests (contracts/test-helpers.md §2): discovered order first + dedupe + manual tail (`['b','a']` × `['manual','a']` → `['b','a','manual']`); empty discovered → existing unchanged; empty both → empty; duplicate manuals collapse. Observe red (export missing) before T011.
 
 ### Implementation for User Story 4
 
-- [ ] T011 [US4] Implement `mergeDiscoveredModels` in `src/lib/ai/model-discovery.ts` (formula verbatim from `ProviderConfig.svelte:215`; sibling of `mergeModelContextWindows:82`) until T010 is green.
-- [ ] T012 [US4] Consume the helper at both call sites — `src/lib/components/ai/ProviderConfig.svelte:215` (`refreshModels`) and `:272` (`testConnection`) — and rewrite `src/lib/ai/connection-test.test.ts:352` to call it instead of the inline formula. Verify: capped run of `src/lib/ai/connection-test.test.ts` (the `['a','b','manual-keep']` expectation is the behavior net) + `rg -n '\.\.\.discovered,' src/` matches only `model-discovery.ts`.
+- [x] T011 [US4] Implement `mergeDiscoveredModels` in `src/lib/ai/model-discovery.ts` (formula verbatim from `ProviderConfig.svelte:215`; sibling of `mergeModelContextWindows:82`) until T010 is green.
+- [x] T012 [US4] Consume the helper at both call sites — `src/lib/components/ai/ProviderConfig.svelte:215` (`refreshModels`) and `:272` (`testConnection`) — and rewrite `src/lib/ai/connection-test.test.ts:352` to call it instead of the inline formula. Verify: capped run of `src/lib/ai/connection-test.test.ts` (the `['a','b','manual-keep']` expectation is the behavior net) + `rg -n '\.\.\.discovered,' src/` matches only `model-discovery.ts`.
 
 **Checkpoint**: Parity by construction; `pnpm check` confirms the component refactor type-checks.
 
@@ -143,7 +143,7 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Tests for User Story 7
 
-- [ ] T016 [US7] Extend the reload-hydration test (d) in `src/lib/stores/chat.svelte.test.ts:2674-2698` (research D9): capture `mockedStreamText` (:2681) PLUS `mockedGenerateObject`/`mockedGenerateText` call lengths after the turn; assert all three unchanged after the re-`load()` (:2686). Mocks already exist (:61-63, :121-123). Mutation red-proof (scratch + revert): call `mockedGenerateText` inside the hydration block — must go red. Update the test's comment to state the pin is total over the three entry points.
+- [x] T016 [US7] Extend the reload-hydration test (d) in `src/lib/stores/chat.svelte.test.ts:2674-2698` (research D9): capture `mockedStreamText` (:2681) PLUS `mockedGenerateObject`/`mockedGenerateText` call lengths after the turn; assert all three unchanged after the re-`load()` (:2686). Mocks already exist (:61-63, :121-123). Mutation red-proof (scratch + revert): call `mockedGenerateText` inside the hydration block — must go red. Update the test's comment to state the pin is total over the three entry points.
 
 ---
 
