@@ -23,7 +23,7 @@ one process at a time.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 Establish green baseline before any edit: run `pnpm check`, then the capped runner over the eight affected test files — `src/lib/chat/propagation.test.ts`, `src/lib/agent/deterministic-tools.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/chat/brief.test.ts`, `src/lib/db/repositories/messages.test.ts`, `src/lib/components/chat/PropagatedArtifact.test.ts`, `src/lib/agent/loop.test.ts`, `src/lib/chat/context.test.ts`
+- [x] T001 Establish green baseline before any edit: run `pnpm check`, then the capped runner over the eight affected test files — `src/lib/chat/propagation.test.ts`, `src/lib/agent/deterministic-tools.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/chat/brief.test.ts`, `src/lib/db/repositories/messages.test.ts`, `src/lib/components/chat/PropagatedArtifact.test.ts`, `src/lib/agent/loop.test.ts`, `src/lib/chat/context.test.ts`
 
 ---
 
@@ -41,13 +41,13 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 1 ⚠️ write first, verify FAIL
 
-- [ ] T002 [P] [US1] Fail-first chrome-exclusion test in `src/lib/chat/propagation.test.ts`: `buildRawPayload`/`renderRawTurns` omit rows with `toolName === 'propagate_to_parent'` (tool_call row shape from `appendAssistantToolCall` — role `assistant`, content `''`; approval row `kind: 'approval'`; tool_result row role `tool`) while other tools' rows render verbatim; chrome images are not collected
-- [ ] T003 [P] [US1] Fail-first parity test in `src/lib/agent/deterministic-tools.test.ts`: run `propagate_to_parent` on a branch seeded with content + chrome rows; assert the landed artifact `content` is byte-identical to `buildRawDelta` of a content-only twin branch and to the manual-path payload for the same content
-- [ ] T005 [P] [US1] Fail-first store test in `src/lib/stores/chat.svelte.test.ts`: manual `propagateToParent('raw')` on a branch carrying a declined propagation attempt's rows produces the same payload as the content-only twin (manual-side parity, incl. declined chrome)
+- [x] T002 [P] [US1] Fail-first chrome-exclusion test in `src/lib/chat/propagation.test.ts`: `buildRawPayload`/`renderRawTurns` omit rows with `toolName === 'propagate_to_parent'` (tool_call row shape from `appendAssistantToolCall` — role `assistant`, content `''`; approval row `kind: 'approval'`; tool_result row role `tool`) while other tools' rows render verbatim; chrome images are not collected
+- [x] T003 [P] [US1] Fail-first parity test in `src/lib/agent/deterministic-tools.test.ts`: run `propagate_to_parent` on a branch seeded with content + chrome rows; assert the landed artifact `content` is byte-identical to `buildRawDelta` of a content-only twin branch and to the manual-path payload for the same content
+- [x] T005 [P] [US1] Fail-first store test in `src/lib/stores/chat.svelte.test.ts`: manual `propagateToParent('raw')` on a branch carrying a declined propagation attempt's rows produces the same payload as the content-only twin (manual-side parity, incl. declined chrome)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Implement the chrome predicate and apply it in `src/lib/chat/propagation.ts` — filter rows in `buildRawPayload` (lines 98-107) and `collectPropagatedImages` (lines 119-122); export nothing new beyond what tests import (predicate or filtered builder)
+- [x] T004 [US1] Implement the chrome predicate and apply it in `src/lib/chat/propagation.ts` — filter rows in `buildRawPayload` (lines 98-107) and `collectPropagatedImages` (lines 119-122); export nothing new beyond what tests import (predicate or filtered builder)
 
 **Checkpoint**: Tool and manual artifacts are chrome-free and byte-identical; T002/T003/T005 green.
 

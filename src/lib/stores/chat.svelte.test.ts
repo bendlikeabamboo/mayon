@@ -25,7 +25,11 @@ import type {
 	TextPart
 } from '#lib/chat/kinds.js';
 import { attachmentsOf, partsOf } from '#lib/chat/kinds.js';
-import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import {
+	acquirePropagationLatch,
+	buildRawDelta,
+	releasePropagationLatch
+} from '#lib/chat/propagation.js';
 import { toolsRun } from '#lib/agent/registry.js';
 import type { ToolContext } from '#lib/agent/registry.js';
 
@@ -3545,6 +3549,69 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 		await expect(chatStore.propagateToParent('raw')).rejects.toThrow('not a branch');
 
 		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('manual raw propagation on a branch carrying a declined attempt excludes that chrome — parity with the content-only twin (037 US1)', async () => {
+		// Twin: content-only branch — same anchor + turns, no propagation chrome.
+		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });
+		const twinAnchor = await repos.messages.append(twinParent.id, 'user', 'hello');
+		const twin = await repos.chats.createChild({
+			parentId: twinParent.id,
+			branchPointMessageId: twinAnchor.id,
+			title: 'Twin branch'
+		});
+		await repos.messages.append(twin.id, 'user', 'branch question');
+		await repos.messages.append(twin.id, 'assistant', 'branch answer');
+
+		// Branch carrying a declined propagation attempt's chrome rows.
+		const { parent, child } = await seedBranch();
+		await repos.messages.append(child.id, 'assistant', '', {
+			toolCallId: 'tc-declined',
+			toolName: 'propagate_to_parent',
+			metadata: JSON.stringify({ mode: 'raw' })
+		});
+		await repos.messages.append(
+			child.id,
+			'assistant',
+			'propagate_to_parent — back-propagate this branch',
+			{
+				kind: 'approval',
+				toolCallId: 'tc-declined',
+				toolName: 'propagate_to_parent',
+				metadata: JSON.stringify({
+					toolName: 'propagate_to_parent',
+					description: 'back-propagate this branch',
+					args: {},
+					outcome: null
+				})
+			}
+		);
+		await repos.messages.appendToolResult(child.id, {
+			toolCallId: 'tc-declined',
+			toolName: 'propagate_to_parent',
+			summary: 'user declined',
+			ok: false
+		});
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(art.content).toBe(await buildRawDelta(twin.id));
+		expect(art.content).toBe(
+			[
+				'[excerpt]',
+				'hello',
+				'[/excerpt]',
+				'',
+				'[user] branch question',
+				'[assistant] branch answer'
+			].join('\n')
+		);
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
 	});
 });
 

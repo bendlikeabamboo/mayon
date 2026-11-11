@@ -7,6 +7,7 @@ import {
 	buildRawDelta,
 	buildRawPayload,
 	acquirePropagationLatch,
+	collectPropagatedImages,
 	releasePropagationLatch,
 	renderRawTurns,
 	resolveAnchor,
@@ -374,5 +375,145 @@ describe('propagation latch (027 T002)', () => {
 		expect(acquirePropagationLatch()).toBe(true);
 		expect(attempt).toThrow('boom');
 		expect(acquirePropagationLatch()).toBe(true);
+	});
+});
+
+describe('propagation chrome exclusion (037 US1)', () => {
+	function img(tag: string): ImagePart {
+		return {
+			type: 'image',
+			data: `data:image/png;base64,${tag}`,
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+	}
+
+	/**
+	 * One declined propagation attempt's chrome rows, exactly as the loop and
+	 * approval flow persist them: the pre-execution tool_call row
+	 * (appendAssistantToolCall — role assistant, content ''), the approval ask
+	 * (kind 'approval'), and the declined tool_result row. All three carry
+	 * toolName 'propagate_to_parent'.
+	 */
+	async function seedDeclinedAttempt(chatId: string, callId: string): Promise<void> {
+		await repos.messages.append(chatId, 'assistant', '', {
+			toolCallId: callId,
+			toolName: 'propagate_to_parent',
+			metadata: JSON.stringify({ mode: 'raw' })
+		});
+		await repos.messages.append(
+			chatId,
+			'assistant',
+			'propagate_to_parent — back-propagate this branch',
+			{
+				kind: 'approval',
+				toolCallId: callId,
+				toolName: 'propagate_to_parent',
+				metadata: JSON.stringify({
+					toolName: 'propagate_to_parent',
+					description: 'back-propagate this branch',
+					args: {},
+					outcome: null
+				})
+			}
+		);
+		await repos.messages.appendToolResult(chatId, {
+			toolCallId: callId,
+			toolName: 'propagate_to_parent',
+			summary: 'user declined',
+			ok: false
+		});
+	}
+
+	it('buildRawDelta omits every propagate_to_parent row (tool_call, approval, declined tool_result) while other tools render verbatim', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await seedBranch(parent.id, null);
+		await repos.messages.append(child.id, 'user', 'run it');
+		await seedDeclinedAttempt(child.id, 'tc-p1');
+		await repos.messages.append(child.id, 'assistant', '', {
+			toolCallId: 'tc-b1',
+			toolName: 'bash'
+		});
+		await repos.messages.appendToolResult(child.id, {
+			toolCallId: 'tc-b1',
+			toolName: 'bash',
+			summary: 'all green',
+			detail: { exit: 0 }
+		});
+		await repos.messages.append(child.id, 'assistant', 'Done.');
+
+		expect(await buildRawDelta(child.id)).toBe(
+			['[user] run it', '[assistant] ', '[tool: bash] {"exit":0}', '[assistant] Done.'].join('\n')
+		);
+	});
+
+	it('buildRawPayload excludes chrome rows from content and images — byte-identical to the content-only twin', async () => {
+		// Twin: identical content rows, no chrome.
+		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });
+		const twinAnchor = await repos.messages.append(twinParent.id, 'assistant', 'The anchor reply.');
+		const twin = await seedBranch(twinParent.id, twinAnchor.id);
+		await repos.branchSources.create({
+			sourceMessageId: twinAnchor.id,
+			startChar: 0,
+			endChar: 9,
+			excerpt: 'The anchor',
+			branchChatId: twin.id
+		});
+		await repos.messages.append(twin.id, 'user', 'branch question');
+		await repos.messages.append(twin.id, 'assistant', 'see  pic', {
+			parts: [{ type: 'text', text: 'see ' }, img('REAL'), { type: 'text', text: ' pic' }]
+		});
+
+		// Chrome-bearing branch: same content + a declined attempt whose
+		// tool_result row carries an image part (must not be collected).
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const anchor = await repos.messages.append(parent.id, 'assistant', 'The anchor reply.');
+		const child = await seedBranch(parent.id, anchor.id);
+		await repos.branchSources.create({
+			sourceMessageId: anchor.id,
+			startChar: 0,
+			endChar: 9,
+			excerpt: 'The anchor',
+			branchChatId: child.id
+		});
+		await repos.messages.append(child.id, 'user', 'branch question');
+		await repos.messages.append(child.id, 'assistant', 'see  pic', {
+			parts: [{ type: 'text', text: 'see ' }, img('REAL'), { type: 'text', text: ' pic' }]
+		});
+		await seedDeclinedAttempt(child.id, 'tc-p1');
+		// An even earlier attempt whose result row carries an image part —
+		// chrome rows must not feed the collected image set either.
+		await repos.messages.append(child.id, 'tool', 'user declined', {
+			toolCallId: 'tc-p0',
+			toolName: 'propagate_to_parent',
+			kind: 'tool_result',
+			metadata: JSON.stringify({ ok: false }),
+			parts: [{ type: 'text', text: 'user declined' }, img('CHROME')]
+		});
+
+		const payload = await buildRawPayload(child.id);
+		expect(payload.content).toBe(await buildRawDelta(twin.id));
+		expect(payload.content).toBe(
+			[
+				'[excerpt]',
+				'The anchor',
+				'[/excerpt]',
+				'',
+				'[user] branch question',
+				'[assistant] see [image] pic'
+			].join('\n')
+		);
+		expect(payload.imageParts.map((p) => p.data)).toEqual([img('REAL').data]);
+		expect(await collectPropagatedImages(child.id)).toEqual([img('REAL')]);
+	});
+
+	it('a branch whose rows are all chrome yields the empty-turns payload (excerpt rules unchanged)', async () => {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await seedBranch(parent.id, null);
+		await seedDeclinedAttempt(child.id, 'tc-p1');
+
+		expect(await buildRawPayload(child.id)).toEqual({ content: '', imageParts: [] });
 	});
 });

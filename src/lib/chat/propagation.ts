@@ -8,7 +8,8 @@
  *
  * Raw-delta format (docs/history/appendices/020-branch-backprop-data-model.md): the anchored
  * excerpt (omitted when unresolvable) followed by every branch row rendered
- * verbatim in `ord` order — `[user] `, `[assistant] `, `[tool: <name>] `.
+ * verbatim in `ord` order — `[user] `, `[assistant] `, `[tool: <name>] `
+ * (propagation chrome excluded, see `isPropagationChrome`).
  * Image parts render as positioned `[image]` markers (030 T021).
  * No truncation, ever.
  */
@@ -24,6 +25,17 @@ import {
 
 const asImage = (p: MessagePart): p is ImagePart => p.type === 'image';
 const asText = (p: MessagePart): p is TextPart => p.type === 'text';
+
+/**
+ * Propagation chrome (037 US1): the `propagate_to_parent` tool's own branch
+ * timeline rows — its tool_call row, approval ask, and tool_result (declined
+ * included) — all of which carry its `toolName`. Excluded from every payload
+ * projection so the tool path and the manual path stay byte-identical for the
+ * same content (specs/037-backprop-tool-integrity/contracts/payload-parity.md).
+ */
+function isPropagationChrome(row: Message): boolean {
+	return row.toolName === 'propagate_to_parent';
+}
 
 /** Placement accepted by `messagesRepo.insertAnchored`. */
 export type ArtifactPlacement = { afterOrd: number; beforeOrd: number | null } | 'start';
@@ -101,8 +113,9 @@ export async function buildRawPayload(branchChatId: string): Promise<RawPayload>
 		repos.messages.listByChat(branchChatId)
 	]);
 	if (!branch) throw new Error(`Branch chat ${branchChatId} not found`);
-	const content = renderRawDelta(rows, await resolveExcerpt(branch));
-	const imageParts = rows.flatMap((r) => partsOf(r).filter(asImage)).slice(0, 8);
+	const payloadRows = rows.filter((r) => !isPropagationChrome(r));
+	const content = renderRawDelta(payloadRows, await resolveExcerpt(branch));
+	const imageParts = payloadRows.flatMap((r) => partsOf(r).filter(asImage)).slice(0, 8);
 	return { content, imageParts };
 }
 
@@ -114,11 +127,15 @@ export async function buildRawDelta(branchChatId: string): Promise<string> {
 /**
  * Image parts of a branch's own turns (030): turn order, first 8 kept.
  * Standalone read for summary mode, whose payload comes from the LLM instead
- * of the raw renderer.
+ * of the raw renderer. Chrome rows are excluded (037 US1), matching
+ * `buildRawPayload`'s collection.
  */
 export async function collectPropagatedImages(branchChatId: string): Promise<ImagePart[]> {
 	const rows = await repos.messages.listByChat(branchChatId);
-	return rows.flatMap((r) => partsOf(r).filter(asImage)).slice(0, 8);
+	return rows
+		.filter((r) => !isPropagationChrome(r))
+		.flatMap((r) => partsOf(r).filter(asImage))
+		.slice(0, 8);
 }
 
 /**

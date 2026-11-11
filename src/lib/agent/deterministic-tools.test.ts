@@ -7,7 +7,12 @@ import type { LanguageModel } from 'ai';
 import type { ProviderConfig } from '#lib/ai/types.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import type { BranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
-import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import {
+	acquirePropagationLatch,
+	buildRawDelta,
+	buildRawPayload,
+	releasePropagationLatch
+} from '#lib/chat/propagation.js';
 import type { BranchArtifactMetadata, ImagePart, MessagePart, TextPart } from '#lib/chat/kinds.js';
 
 vi.mock('#lib/ai/generate/generate-branch-artifact-summary.js', () => ({
@@ -306,6 +311,62 @@ describe('propagate_to_parent', () => {
 		const firstAgain = afterRows.find((m) => m.id === art.id)!;
 		expect(firstAgain.content).toBe(art.content);
 		expect(firstAgain.metadata).toBe(art.metadata);
+	});
+
+	it('US1 payload parity: chrome-bearing branch lands the content-only twin payload byte-identically (037 T003)', async () => {
+		// Twin: content-only branch — same anchor + turns, no propagation chrome.
+		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });
+		const twinAnchor = await repos.messages.append(twinParent.id, 'user', 'hello');
+		await repos.messages.append(twinParent.id, 'assistant', 'world');
+		const twin = await repos.chats.createChild({
+			parentId: twinParent.id,
+			branchPointMessageId: twinAnchor.id,
+			title: 'Twin branch'
+		});
+		await repos.messages.append(twin.id, 'user', 'branch question');
+		await repos.messages.append(twin.id, 'assistant', 'branch answer');
+
+		// Chrome-bearing branch: same content rows + one declined earlier
+		// attempt (tool_call, approval ask, declined tool_result).
+		const { parent, child } = await seedBranch();
+		await repos.messages.append(child.id, 'assistant', '', {
+			toolCallId: 'tc-old',
+			toolName: 'propagate_to_parent',
+			metadata: JSON.stringify({ mode: 'raw' })
+		});
+		await repos.messages.append(
+			child.id,
+			'assistant',
+			'propagate_to_parent — back-propagate this branch',
+			{
+				kind: 'approval',
+				toolCallId: 'tc-old',
+				toolName: 'propagate_to_parent',
+				metadata: JSON.stringify({
+					toolName: 'propagate_to_parent',
+					description: 'back-propagate this branch',
+					args: {},
+					outcome: null
+				})
+			}
+		);
+		await repos.messages.appendToolResult(child.id, {
+			toolCallId: 'tc-old',
+			toolName: 'propagate_to_parent',
+			summary: 'user declined',
+			ok: false
+		});
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+		expect(result.ok).toBe(true);
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		const twinDelta = await buildRawDelta(twin.id);
+		const manualPayload = await buildRawPayload(twin.id);
+		expect(art.content).toBe(twinDelta);
+		expect(art.content).toBe(manualPayload.content);
 	});
 
 	it("carries the branch turns' image parts on the artifact row (030 T021)", async () => {
