@@ -37,6 +37,23 @@ function isPropagationChrome(row: Message): boolean {
 	return row.toolName === 'propagate_to_parent';
 }
 
+/**
+ * Deduplicate collected image parts by `data` (037 US5): first occurrence
+ * wins, order preserved. Applied BEFORE the 8-image cap in both collection
+ * paths so duplicates cannot crowd out distinct images
+ * (specs/037-backprop-tool-integrity/contracts/payload-parity.md).
+ */
+function dedupeImageParts(images: readonly ImagePart[]): ImagePart[] {
+	const seen = new Set<string>();
+	const kept: ImagePart[] = [];
+	for (const part of images) {
+		if (seen.has(part.data)) continue;
+		seen.add(part.data);
+		kept.push(part);
+	}
+	return kept;
+}
+
 /** Placement accepted by `messagesRepo.insertAnchored`. */
 export type ArtifactPlacement = { afterOrd: number; beforeOrd: number | null } | 'start';
 
@@ -97,9 +114,9 @@ export async function resolveExcerpt(branch: Chat): Promise<string | null> {
 
 /**
  * The complete raw-delta payload plus the branch's own image parts (030 T021):
- * images are collected in turn order from the branch rows, first 8 kept (the
- * repo-wide image cap, applied at collection so the artifact insert cannot
- * fail validation).
+ * images are collected in turn order from the branch rows, deduplicated by
+ * `data` (037 US5), first 8 kept (the repo-wide image cap, applied at
+ * collection so the artifact insert cannot fail validation).
  */
 export interface RawPayload {
 	content: string;
@@ -115,7 +132,8 @@ export async function buildRawPayload(branchChatId: string): Promise<RawPayload>
 	if (!branch) throw new Error(`Branch chat ${branchChatId} not found`);
 	const payloadRows = rows.filter((r) => !isPropagationChrome(r));
 	const content = renderRawDelta(payloadRows, await resolveExcerpt(branch));
-	const imageParts = payloadRows.flatMap((r) => partsOf(r).filter(asImage)).slice(0, 8);
+	const collected = payloadRows.flatMap((r) => partsOf(r).filter(asImage));
+	const imageParts = dedupeImageParts(collected).slice(0, 8);
 	return { content, imageParts };
 }
 
@@ -125,17 +143,17 @@ export async function buildRawDelta(branchChatId: string): Promise<string> {
 }
 
 /**
- * Image parts of a branch's own turns (030): turn order, first 8 kept.
- * Standalone read for summary mode, whose payload comes from the LLM instead
- * of the raw renderer. Chrome rows are excluded (037 US1), matching
- * `buildRawPayload`'s collection.
+ * Image parts of a branch's own turns (030): turn order, deduplicated by
+ * `data` (037 US5), first 8 kept. Standalone read for summary mode, whose
+ * payload comes from the LLM instead of the raw renderer. Chrome rows are
+ * excluded (037 US1), matching `buildRawPayload`'s collection.
  */
 export async function collectPropagatedImages(branchChatId: string): Promise<ImagePart[]> {
 	const rows = await repos.messages.listByChat(branchChatId);
-	return rows
+	const collected = rows
 		.filter((r) => !isPropagationChrome(r))
-		.flatMap((r) => partsOf(r).filter(asImage))
-		.slice(0, 8);
+		.flatMap((r) => partsOf(r).filter(asImage));
+	return dedupeImageParts(collected).slice(0, 8);
 }
 
 /**

@@ -19,6 +19,13 @@ vi.mock('#lib/ai/generate/generate-branch-artifact-summary.js', () => ({
 	generateBranchArtifactSummary: vi.fn()
 }));
 
+// 037 T010: wrap `buildRawPayload` in a vi.fn (real behavior by default) so the
+// raw-mode mid-tool abort test can abort the signal while generation resolves.
+vi.mock('#lib/chat/propagation.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/chat/propagation.js')>();
+	return { ...actual, buildRawPayload: vi.fn(actual.buildRawPayload) };
+});
+
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
 beforeEach(() => testDb.reset());
@@ -447,6 +454,50 @@ describe('propagate_to_parent', () => {
 		expect(result).toEqual({ ok: false, summary: 'aborted' });
 		const after = await repos.messages.listByChat(parent.id);
 		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('aborted between summary generation and the write: generation resolving anyway returns aborted, zero writes, latch released (037 T010)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		const ctrl = new AbortController();
+		vi.mocked(generateBranchArtifactSummary).mockImplementationOnce(async () => {
+			ctrl.abort();
+			return { summary: 'late summary', traceId: 'trace-abort' };
+		});
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'summary' },
+			{ ...ctx(child.id, parent.id), signal: ctrl.signal }
+		);
+
+		expect(result).toEqual({ ok: false, summary: 'aborted' });
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(after.filter((m) => m.kind === 'branch_artifact')).toHaveLength(0);
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('aborted between raw payload and the write: payload resolving anyway returns aborted, zero writes, latch released (037 T010)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		const ctrl = new AbortController();
+		vi.mocked(buildRawPayload).mockImplementationOnce(async () => {
+			ctrl.abort();
+			return { content: 'raw delta text', imageParts: [] };
+		});
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'raw' },
+			{ ...ctx(child.id, parent.id), signal: ctrl.signal }
+		);
+
+		expect(result).toEqual({ ok: false, summary: 'aborted' });
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(after.filter((m) => m.kind === 'branch_artifact')).toHaveLength(0);
 		expect(acquirePropagationLatch()).toBe(true);
 	});
 

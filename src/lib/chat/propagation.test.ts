@@ -517,3 +517,73 @@ describe('propagation chrome exclusion (037 US1)', () => {
 		expect(await buildRawPayload(child.id)).toEqual({ content: '', imageParts: [] });
 	});
 });
+
+describe('image dedupe (037 US5)', () => {
+	function img(tag: string, name?: string): ImagePart {
+		return {
+			type: 'image',
+			data: `data:image/png;base64,${tag}`,
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8,
+			...(name === undefined ? {} : { name })
+		};
+	}
+
+	/** Branch with `images` split across two rows (turn order preserved). */
+	async function seedImages(images: ImagePart[]): Promise<string> {
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const child = await seedBranch(parent.id, null);
+		const mid = Math.ceil(images.length / 2);
+		await repos.messages.append(child.id, 'assistant', 'first half', {
+			parts: [{ type: 'text', text: 'first half' }, ...images.slice(0, mid)]
+		});
+		await repos.messages.append(child.id, 'assistant', 'second half', {
+			parts: [{ type: 'text', text: 'second half' }, ...images.slice(mid)]
+		});
+		return child.id;
+	}
+
+	it('keeps one copy per distinct data — first occurrence wins, order preserved — in both collection paths', async () => {
+		const chatId = await seedImages([
+			img('A', 'first A'),
+			img('B'),
+			img('A', 'second A'),
+			img('C'),
+			img('B', 'second B')
+		]);
+
+		const collected = await collectPropagatedImages(chatId);
+		expect(collected.map((p) => p.data)).toEqual([img('A').data, img('B').data, img('C').data]);
+		expect(collected[0]).toEqual(img('A', 'first A'));
+
+		expect((await buildRawPayload(chatId)).imageParts).toEqual(collected);
+	});
+
+	it('dedupe applies before the 8-image cap: duplicates within the first 8 do not crowd out the 9th distinct image', async () => {
+		const chatId = await seedImages([
+			img('A'),
+			img('A'),
+			img('B'),
+			img('C'),
+			img('D'),
+			img('E'),
+			img('F'),
+			img('G'),
+			img('H')
+		]);
+
+		const expected = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((t) => img(t).data);
+		expect((await collectPropagatedImages(chatId)).map((p) => p.data)).toEqual(expected);
+		expect((await buildRawPayload(chatId)).imageParts.map((p) => p.data)).toEqual(expected);
+	});
+
+	it('the cap still applies after dedupe: more than 8 distinct images keeps the first 8', async () => {
+		const chatId = await seedImages(Array.from({ length: 10 }, (_, i) => img(`I${i}`)));
+
+		const expected = Array.from({ length: 8 }, (_, i) => img(`I${i}`).data);
+		expect((await collectPropagatedImages(chatId)).map((p) => p.data)).toEqual(expected);
+		expect((await buildRawPayload(chatId)).imageParts.map((p) => p.data)).toEqual(expected);
+	});
+});

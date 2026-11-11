@@ -27,4 +27,10 @@ describe('PropagatedArtifact wiring (020 T012/T014/T020)', () => {
 		expect(source).toMatch(/onRegenerate\?\.\(entry\.id\)/);
 		expect(source).toMatch(/onDelete\?\.\(entry\.id\)/);
 	});
+
+	it('image grid each-key is composite — data + index, Composer pattern — not solely image.data (037 US5)', () => {
+		const source = fs.readFileSync(COMPONENT, 'utf-8');
+		expect(source).toMatch(/\{#each images as image, i \(image\.data \+ ':' \+ i\)\}/);
+		expect(source).not.toMatch(/as image \(image\.data\)/);
+	});
 });

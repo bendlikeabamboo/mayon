@@ -97,11 +97,11 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 4 ⚠️ write first, verify FAIL
 
-- [ ] T010 [P] [US4] Fail-first mid-tool abort test in `src/lib/agent/deterministic-tools.test.ts`: summary mode — mock `generateBranchArtifactSummary` to abort the controller and still RESOLVE; raw mode — abort during the repo awaits before insert; both → `{ok:false, summary:'aborted'}`, zero `branch_artifact` rows in the parent, latch acquirable afterwards
+- [x] T010 [P] [US4] Fail-first mid-tool abort test in `src/lib/agent/deterministic-tools.test.ts`: summary mode — mock `generateBranchArtifactSummary` to abort the controller and still RESOLVE; raw mode — abort during the repo awaits before insert; both → `{ok:false, summary:'aborted'}`, zero `branch_artifact` rows in the parent, latch acquirable afterwards
 
 ### Implementation for User Story 4
 
-- [ ] T011 [US4] Add the pre-write abort re-check in `src/lib/agent/deterministic-tools.ts` `propagate_to_parent.run`: `if (ctx.signal?.aborted) return { ok: false, summary: 'aborted' };` immediately before `resolveAnchor` (line 319), covering raw and summary modes; existing `finally` releases the latch
+- [x] T011 [US4] Add the pre-write abort re-check in `src/lib/agent/deterministic-tools.ts` `propagate_to_parent.run`: `if (ctx.signal?.aborted) return { ok: false, summary: 'aborted' };` immediately before `resolveAnchor` (line 319), covering raw and summary modes; existing `finally` releases the latch
 
 **Checkpoint**: No artifact is written after a stop; entry-abort behavior unchanged.
 
@@ -115,12 +115,12 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 5 ⚠️ write first, verify FAIL
 
-- [ ] T012 [P] [US5] Fail-first dedupe tests in `src/lib/chat/propagation.test.ts`: `buildRawPayload`/`collectPropagatedImages` keep one copy per distinct `data` (first occurrence, order preserved), dedupe applies BEFORE the 8-image cap, distinct images all survive
-- [ ] T013 [P] [US5] Fail-first wiring test in `src/lib/components/chat/PropagatedArtifact.test.ts`: the image-grid each-key is composite (`image.data + ':' + index`, Composer pattern) — not solely `image.data`
+- [x] T012 [P] [US5] Fail-first dedupe tests in `src/lib/chat/propagation.test.ts`: `buildRawPayload`/`collectPropagatedImages` keep one copy per distinct `data` (first occurrence, order preserved), dedupe applies BEFORE the 8-image cap, distinct images all survive
+- [x] T013 [P] [US5] Fail-first wiring test in `src/lib/components/chat/PropagatedArtifact.test.ts`: the image-grid each-key is composite (`image.data + ':' + index`, Composer pattern) — not solely `image.data`
 
 ### Implementation for User Story 5
 
-- [ ] T014 [US5] Implement the shared dedupe helper in `src/lib/chat/propagation.ts` (used by both collection paths, before the cap) and change the grid key at `src/lib/components/chat/PropagatedArtifact.svelte:119` to `image.data + ':' + i` (same file order as T004's filter — sequence after it)
+- [x] T014 [US5] Implement the shared dedupe helper in `src/lib/chat/propagation.ts` (used by both collection paths, before the cap) and change the grid key at `src/lib/components/chat/PropagatedArtifact.svelte:119` to `image.data + ':' + i` (same file order as T004's filter — sequence after it)
 
 **Checkpoint**: Duplicate images render one thumbnail; legacy duplicate parts render without crashing.
 
