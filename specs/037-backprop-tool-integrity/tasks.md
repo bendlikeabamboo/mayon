@@ -166,9 +166,9 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T021 Update `docs/reference/tool-map.qmd` in the same change: the propagate entry's byte-identical note (~line 54) gains the chrome-exclusion wording; the approval/decline flow (~line 77) documents the durable `declined` marker (`specs/037-backprop-tool-integrity/contracts/decline-surface.md`)
-- [ ] T022 [P] Add CHANGELOG entries inside `## [0.10.0]` → `### Fixed` in `CHANGELOG.md`: one line per issue-#73 item (payload chrome, false toast, root brief dead end, mid-tool abort, duplicate image keys, stale parts on regeneration, declined re-offering)
-- [ ] T023 Full validation per `specs/037-backprop-tool-integrity/quickstart.md`: `pnpm check`, `pnpm lint`, capped low-spec runs of quickstart scenarios V1-V7 and then the full suite
+- [x] T021 Update `docs/reference/tool-map.qmd` in the same change: the propagate entry's byte-identical note (~line 54) gains the chrome-exclusion wording; the approval/decline flow (~line 77) documents the durable `declined` marker (`specs/037-backprop-tool-integrity/contracts/decline-surface.md`)
+- [x] T022 [P] Add CHANGELOG entries inside `## [0.10.0]` → `### Fixed` in `CHANGELOG.md`: one line per issue-#73 item (payload chrome, false toast, root brief dead end, mid-tool abort, duplicate image keys, stale parts on regeneration, declined re-offering)
+- [x] T023 Full validation per `specs/037-backprop-tool-integrity/quickstart.md`: `pnpm check`, `pnpm lint`, capped low-spec runs of quickstart scenarios V1-V7 and then the full suite
 
 ---
 
