@@ -1,11 +1,21 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { modelMessageSchema } from 'ai';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { modelMessageSchema, type LanguageModel } from 'ai';
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { repos } from '#lib/db/index.js';
 import type { Message } from '#lib/db/schema.js';
+import type { ProviderConfig } from '#lib/ai/types.js';
 import { assembleContext } from './context';
 import { projectEntries, type ProjectableRow } from './projection';
 import type { LearningBrief } from './brief';
+
+vi.mock('ai', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('ai')>();
+	return { ...actual, streamText: vi.fn() };
+});
+
+const { streamText } = await import('ai');
+const mockedStreamText = vi.mocked(streamText);
+const { runAgentTurn } = await import('#lib/agent/loop.js');
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
@@ -735,5 +745,108 @@ describe('branch_artifact steering (020 US2 / T016)', () => {
 
 		const ctx = await assembleContext(late.id);
 		expect(ctx.map((m) => m.content)).toEqual(['u0', 'a1', ARTIFACT, 'l0']);
+	});
+});
+
+describe('declined tool-result reassembly (037 US7)', () => {
+	function scriptedFullStream(parts: Array<Record<string, unknown>>): AsyncIterable<unknown> {
+		return (async function* () {
+			for (const p of parts) yield p;
+		})();
+	}
+
+	/**
+	 * Drive a REAL agent turn whose high-risk call is declined: the loop's own
+	 * declined synthesis persists the tool_result through the real repo seam,
+	 * so the reassembled surface below reflects what the loop actually wrote.
+	 */
+	async function runDeclinedTurn(chatId: string): Promise<void> {
+		mockedStreamText.mockReset();
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{
+						type: 'tool-call',
+						toolCallId: 'tc-decline',
+						toolName: 'branch_chat',
+						args: { topic: 'Deep dive' }
+					},
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Okay, continuing.' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		const config: ProviderConfig = {
+			id: 'stub',
+			kind: 'openai-compatible',
+			name: 'stub',
+			baseUrl: 'http://stub',
+			defaultModel: 'stub-model',
+			models: ['stub-model'],
+			toolCapability: 'on'
+		};
+
+		await runAgentTurn({
+			model: {} as LanguageModel,
+			config,
+			chatId,
+			rootChatId: chatId,
+			signal: new AbortController().signal,
+			effort: 'on',
+			updateStreamBuffer: () => {},
+			updateReasoningBuffer: () => {},
+			appendAssistantText: async (content) => repos.messages.append(chatId, 'assistant', content),
+			appendAssistantToolCall: async (p) =>
+				repos.messages.append(chatId, 'assistant', '', {
+					toolCallId: p.toolCallId,
+					toolName: p.toolName,
+					metadata: JSON.stringify(p.args)
+				}),
+			appendToolResult: async (r) => repos.messages.appendToolResult(chatId, r),
+			reassembleContext: () => assembleContext(chatId),
+			requestApproval: async () => ({ approved: false }),
+			notifyLowRisk: () => {}
+		});
+	}
+
+	it('the loop-declined row reassembles with toolResult {"declined":true,"ok":false} (metadata shadows content); a plain failure row carries no declined key', async () => {
+		const chat = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(chat.id, 'user', 'take this deeper');
+
+		await runDeclinedTurn(chat.id);
+
+		const declinedRow = (await repos.messages.listByChat(chat.id)).find(
+			(r) => r.kind === 'tool_result' && r.toolCallId === 'tc-decline'
+		);
+		expect(declinedRow).toBeDefined();
+		expect(declinedRow!.content).toBe('user declined');
+		expect(JSON.parse(declinedRow!.metadata!)).toEqual({ declined: true, ok: false });
+
+		const failureRow = await repos.messages.appendToolResult(chat.id, {
+			toolCallId: 'tc-fail',
+			toolName: 'create_lab',
+			summary: 'lab generation failed',
+			ok: false
+		});
+		expect(JSON.parse(failureRow.metadata!)).toEqual({ ok: false });
+
+		const ctx = await assembleContext(chat.id);
+
+		const declinedMsg = ctx.find((m) => m.role === 'tool' && m.toolCallId === 'tc-decline');
+		expect(declinedMsg).toBeDefined();
+		expect(declinedMsg!.toolResult).toBe('{"declined":true,"ok":false}');
+		expect(JSON.parse(declinedMsg!.toolResult!)).toEqual({ declined: true, ok: false });
+		expect(declinedMsg!.content).toBe('user declined');
+
+		const failedMsg = ctx.find((m) => m.role === 'tool' && m.toolCallId === 'tc-fail');
+		expect(failedMsg).toBeDefined();
+		expect(failedMsg!.toolResult).toBe('{"ok":false}');
+		const failedResult: Record<string, unknown> = JSON.parse(failedMsg!.toolResult!);
+		expect('declined' in failedResult).toBe(false);
 	});
 });

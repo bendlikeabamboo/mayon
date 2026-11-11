@@ -153,12 +153,12 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 7 ⚠️ write first, verify FAIL
 
-- [ ] T018 [P] [US7] Fail-first loop test in `src/lib/agent/loop.test.ts`: declined high-risk call persists a tool_result whose metadata is exactly `{"declined":true,"ok":false}` (content `'user declined'` unchanged)
-- [ ] T019 [P] [US7] Fail-first context test in `src/lib/chat/context.test.ts`: reassembled `toolResult` for the declined row surfaces `declined: true` (metadata shadows content); a plain failure row's toolResult carries no `declined` key
+- [x] T018 [P] [US7] Fail-first loop test in `src/lib/agent/loop.test.ts`: declined high-risk call persists a tool_result whose metadata is exactly `{"declined":true,"ok":false}` (content `'user declined'` unchanged)
+- [x] T019 [P] [US7] Fail-first context test in `src/lib/chat/context.test.ts`: reassembled `toolResult` for the declined row surfaces `declined: true` (metadata shadows content); a plain failure row's toolResult carries no `declined` key
 
 ### Implementation for User Story 7
 
-- [ ] T020 [US7] Add `detail: { declined: true }` to the loop-synthesized declined result in `src/lib/agent/loop.ts` (line 913); leave abort/failure syntheses untouched
+- [x] T020 [US7] Add `detail: { declined: true }` to the loop-synthesized declined result in `src/lib/agent/loop.ts` (line 913); leave abort/failure syntheses untouched
 
 **Checkpoint**: Next-turn model context distinguishes declines from failures.
 

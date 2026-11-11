@@ -881,6 +881,66 @@ describe('runAgentTurn', () => {
 		);
 	});
 
+	it('(i2) high declined (037 US7): persisted tool_result carries detail {declined:true} + ok:false — metadata exactly {"declined":true,"ok":false}', async () => {
+		mockedStreamText
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'tool-call', toolCallId: 'tc1', toolName: 'branch_chat', args: {} },
+					{ type: 'finish', finishReason: 'tool-calls' }
+				])
+			} as never)
+			.mockReturnValueOnce({
+				fullStream: scriptedFullStream([
+					{ type: 'text-delta', text: 'Okay, continuing.' },
+					{ type: 'finish', finishReason: 'stop' }
+				])
+			} as never);
+
+		const deps = makeDeps({
+			requestApproval: vi.fn(async () => ({ approved: false }))
+		});
+
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: false });
+		expect(deps.appendToolResult).toHaveBeenCalledOnce();
+		const call = (deps.appendToolResult as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+		expect(call).toEqual({
+			toolCallId: 'tc1',
+			toolName: 'branch_chat',
+			summary: 'user declined',
+			ok: false,
+			detail: { declined: true }
+		});
+		expect(JSON.stringify({ ...(call.detail as object), ok: call.ok })).toBe(
+			'{"declined":true,"ok":false}'
+		);
+	});
+
+	it('(i3) high abort decision (037 US7 rule 2): synthesized abort result carries no declined marker', async () => {
+		mockedStreamText.mockReturnValueOnce({
+			fullStream: scriptedFullStream([
+				{ type: 'tool-call', toolCallId: 'tc1', toolName: 'branch_chat', args: {} },
+				{ type: 'finish', finishReason: 'tool-calls' }
+			])
+		} as never);
+
+		const deps = makeDeps({
+			requestApproval: vi.fn(async () => ({ approved: true, aborted: true }))
+		});
+
+		const result = await runAgentTurn(deps);
+
+		expect(result).toEqual({ aborted: true });
+		expect(deps.appendToolResult).toHaveBeenCalledOnce();
+		expect(deps.appendToolResult).toHaveBeenCalledWith({
+			toolCallId: 'tc1',
+			toolName: 'branch_chat',
+			summary: 'aborted',
+			ok: false
+		});
+	});
+
 	it('(j) two parallel high: both requestApproval fire; approve one, decline other; results in emitted order', async () => {
 		mockedStreamText
 			.mockReturnValueOnce({
