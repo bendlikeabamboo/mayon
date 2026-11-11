@@ -1863,10 +1863,14 @@ class ChatState {
 	 * Regenerate a summary-mode `branch_artifact` in place (020 US3, FR-007):
 	 * re-run summary generation against the source branch, then replace only
 	 * `content` (+ `regeneratedAt`/`summaryTraceId`) — id, ord and anchor are
-	 * unchanged. Refuses with the error state (nothing touched) unless the row
-	 * is an artifact with `mode: 'summary'`; regeneration is summary-only by
-	 * contract. Status/abort semantics mirror `propagateToParent` — the same
-	 * `propagationController`, aborted by `load()`/`clearActiveView()`.
+	 * unchanged. The artifact's `parts` are refreshed with the branch's
+	 * current collected images (037 US6: chrome-excluded, deduped, capped —
+	 * same collection rules as fresh propagation), cleared to NULL when the
+	 * branch has none. Refuses with the error state (nothing touched) unless
+	 * the row is an artifact with `mode: 'summary'`; regeneration is
+	 * summary-only by contract. Status/abort semantics mirror
+	 * `propagateToParent` — the same `propagationController`, aborted by
+	 * `load()`/`clearActiveView()`.
 	 */
 	async regenerateArtifact(id: string): Promise<void> {
 		if (this.propagationStatus === 'running') return;
@@ -1897,10 +1901,19 @@ class ChatState {
 				sourceChatId,
 				this.propagationController.signal
 			);
-			const updated = await repos.messages.updateArtifactContent(id, summary, {
-				regeneratedAt: new Date().toISOString(),
-				summaryTraceId: traceId
-			});
+			// Regeneration mirrors fresh propagation's collection rules (037
+			// US6): the branch's current chrome-excluded, deduped, capped
+			// images ride the same atomic UPDATE; an image-less branch clears.
+			const collected = await collectPropagatedImages(sourceChatId);
+			const updated = await repos.messages.updateArtifactContent(
+				id,
+				summary,
+				{
+					regeneratedAt: new Date().toISOString(),
+					summaryTraceId: traceId
+				},
+				artifactParts(summary, collected) ?? null
+			);
 			if (updated) {
 				this.messages = this.messages.map((m) => (m.id === id ? updated : m));
 			}

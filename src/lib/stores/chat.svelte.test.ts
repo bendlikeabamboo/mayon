@@ -3758,6 +3758,97 @@ describe('chatStore artifact management (020 US3)', () => {
 		expect(chatStore.propagationError).toContain('summary');
 	});
 
+	it("regenerate replaces stale parts with the source branch's current collected images (037 US6)", async () => {
+		const { child, art } = await seedArtifact('summary');
+		const imgA: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,AAAA',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		const imgB: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,BBBB',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		expect(art.parts).toBeNull();
+		// Image-set change on the source branch: image A twice (duplicate data,
+		// distinct names — dedupe keeps the first), then image B.
+		await repos.messages.append(child.id, 'assistant', 'first ', {
+			parts: [
+				{ type: 'text', text: 'first ' },
+				{ ...imgA, name: 'one' }
+			]
+		});
+		await repos.messages.append(child.id, 'assistant', '', {
+			parts: [{ ...imgA, name: 'two' }, imgB]
+		});
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const updated = (await repos.messages.getById(art.id))!;
+		expect(updated.content).toBe('Regenerated summary');
+		const parts = JSON.parse(updated.parts!) as MessagePart[];
+		expect(parts[0]).toEqual({ type: 'text', text: 'Regenerated summary' });
+		// Current collected set: deduped by data (one imgA — the first name
+		// survives), order preserved — mirrors fresh propagation's collection.
+		expect(parts.filter((p) => p.type === 'image')).toEqual([{ ...imgA, name: 'one' }, imgB]);
+		// The store's view carries the refreshed row too.
+		expect(JSON.parse(chatStore.messages.find((m) => m.id === art.id)!.parts!)).toEqual(parts);
+		expect(chatStore.propagationStatus).toBe('idle');
+	});
+
+	it('regenerate clears parts when the source branch no longer has images (037 US6)', async () => {
+		// Seeded inline so the artifact is propagated while the branch still
+		// carries an image — then the image-set empties.
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		const img: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,Zm9v',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		const imageRow = await repos.messages.append(child.id, 'assistant', 'pic ', {
+			parts: [{ type: 'text', text: 'pic ' }, img]
+		});
+		await chatStore.load(child.id);
+		mockDefaultProvider();
+		mockedGenerateText.mockResolvedValueOnce({ text: 'First summary' } as never);
+		await chatStore.propagateToParent('summary');
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(JSON.parse(art.parts!)).toHaveLength(2);
+		await chatStore.load(parent.id);
+
+		// The branch's only image-bearing row is gone: the branch has no images.
+		await repos.messages.delete(imageRow.id);
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const updated = (await repos.messages.getById(art.id))!;
+		expect(updated.content).toBe('Regenerated summary');
+		expect(updated.parts).toBeNull();
+		expect(chatStore.messages.find((m) => m.id === art.id)!.parts).toBeNull();
+		expect(chatStore.propagationStatus).toBe('idle');
+	});
+
 	it('delete removes only the artifact row; parent composition no longer contains it', async () => {
 		const { parent, a, b, art } = await seedArtifact('summary');
 		const ctxBefore = await assembleContext(parent.id);

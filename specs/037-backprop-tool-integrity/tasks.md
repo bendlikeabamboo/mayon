@@ -134,12 +134,12 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 6 ⚠️ write first, verify FAIL
 
-- [ ] T015 [P] [US6] Fail-first repo tests in `src/lib/db/repositories/messages.test.ts`: `updateArtifactContent` with a parts array validates (rejects >8 images, text≠content) and stores parts atomically with content+metadata; `null` clears the column; `undefined` leaves it untouched; non-artifact rows still refused
-- [ ] T016 [P] [US6] Fail-first store test in `src/lib/stores/chat.svelte.test.ts`: `regenerateArtifact` leaves the artifact with the source branch's current collected images after an image-set change, and clears parts when the branch has none (depends on the US5 dedupe helper for "current collected" semantics)
+- [x] T015 [P] [US6] Fail-first repo tests in `src/lib/db/repositories/messages.test.ts`: `updateArtifactContent` with a parts array validates (rejects >8 images, text≠content) and stores parts atomically with content+metadata; `null` clears the column; `undefined` leaves it untouched; non-artifact rows still refused
+- [x] T016 [P] [US6] Fail-first store test in `src/lib/stores/chat.svelte.test.ts`: `regenerateArtifact` leaves the artifact with the source branch's current collected images after an image-set change, and clears parts when the branch has none (depends on the US5 dedupe helper for "current collected" semantics)
 
 ### Implementation for User Story 6
 
-- [ ] T017 [US6] Extend `updateArtifactContent` in `src/lib/db/repositories/messages.ts` (lines 217-239) with the optional `parts?: MessagePart[] | null` parameter (validate via the existing `validateParts`, one UPDATE for content+metadata+parts); pass `artifactParts(summary, collected) ?? null` from `regenerateArtifact` in `src/lib/stores/chat.svelte.ts` (lines 1891-1894)
+- [x] T017 [US6] Extend `updateArtifactContent` in `src/lib/db/repositories/messages.ts` (lines 217-239) with the optional `parts?: MessagePart[] | null` parameter (validate via the existing `validateParts`, one UPDATE for content+metadata+parts); pass `artifactParts(summary, collected) ?? null` from `regenerateArtifact` in `src/lib/stores/chat.svelte.ts` (lines 1891-1894)
 
 **Checkpoint**: Regenerated artifacts' image sets match their source branch.
 
