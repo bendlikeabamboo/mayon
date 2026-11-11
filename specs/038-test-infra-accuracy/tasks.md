@@ -60,11 +60,11 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Tests for User Story 2
 
-- [ ] T005 [P] [US2] Extend `src/lib/ai/generate/classification-markers.test.ts` with the `MIRRORS` registry + one `it` per entry (contracts/test-helpers.md §3; research D3): read each mirror's source (same `readFileSync`+`fileURLToPath` pattern as :21-28) and assert byte-containment of each listed constant's value. Registry per contract. Mutation red-proof (scratch + revert, recorded in the commit message): flip the lever trigger in `src/lib/stores/quizzes.svelte.test.ts:486` and observe the guard fail naming both files.
+- [x] T005 [P] [US2] Extend `src/lib/ai/generate/classification-markers.test.ts` with the `MIRRORS` registry + one `it` per entry (contracts/test-helpers.md §3; research D3): read each mirror's source (same `readFileSync`+`fileURLToPath` pattern as :21-28) and assert byte-containment of each listed constant's value. Registry per contract. Mutation red-proof (scratch + revert, recorded in the commit message): flip the lever trigger in `src/lib/stores/quizzes.svelte.test.ts:486` and observe the guard fail naming both files.
 
 ### Implementation for User Story 2
 
-- [ ] T006 [P] [US2] Update the stale mirror rationale comments to point at the guard: `src/lib/stores/quizzes.svelte.test.ts:419-421` ("keep the two in sync" → "kept in sync by the drift guard, classification-markers.test.ts MIRRORS"), `src/lib/stores/chat.svelte.test.ts:922-926` (same pointer), and the `tests/fixtures/mock-llm/strings.mjs` header ("fast-tier tests import from here" → document the mirror patrol + where the registry lives).
+- [x] T006 [P] [US2] Update the stale mirror rationale comments to point at the guard: `src/lib/stores/quizzes.svelte.test.ts:419-421` ("keep the two in sync" → "kept in sync by the drift guard, classification-markers.test.ts MIRRORS"), `src/lib/stores/chat.svelte.test.ts:922-926` (same pointer), and the `tests/fixtures/mock-llm/strings.mjs` header ("fast-tier tests import from here" → document the mirror patrol + where the registry lives).
 
 **Checkpoint**: Guard patrols 5 files (2 producers + 3 mirrors); registry is the single add-a-mirror point.
 
@@ -78,12 +78,12 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Tests for User Story 3
 
-- [ ] T007 [P] [US3] In `src/lib/stores/chat.svelte.test.ts`, add zero-toast assertions observing `toastState` (import from `#lib/stores/toasts.svelte.js`, the same singleton the store pushes into, `chat.svelte.ts:1648-1650`): (a) declined propagate-approval turn (reuse the `backprop-endstate.test.ts:221-272` scripting pattern in the store suite, or assert in `src/lib/chat/backprop-endstate.test.ts` where the journey already lives) — `toastState.toasts` stays length 0 across the turn; (b) second `propagateToParent` while the latch is held — no push, `lastPropagation` cleared, exactly one `branch_artifact` row in the parent. Mutation red-proof (scratch + revert): push a toast on the declined path — must go red.
-- [ ] T008 [P] [US3] In `src/lib/stores/toasts.svelte.test.ts`, add negative assertions: dismissing an unknown id pushes nothing new (extends :46-50 to assert no re-add), and a manually dismissed toast never re-emits after the auto-dismiss timer fires.
+- [x] T007 [P] [US3] In `src/lib/stores/chat.svelte.test.ts`, add zero-toast assertions observing `toastState` (import from `#lib/stores/toasts.svelte.js`, the same singleton the store pushes into, `chat.svelte.ts:1648-1650`): (a) declined propagate-approval turn (reuse the `backprop-endstate.test.ts:221-272` scripting pattern in the store suite, or assert in `src/lib/chat/backprop-endstate.test.ts` where the journey already lives) — `toastState.toasts` stays length 0 across the turn; (b) second `propagateToParent` while the latch is held — no push, `lastPropagation` cleared, exactly one `branch_artifact` row in the parent. Mutation red-proof (scratch + revert): push a toast on the declined path — must go red.
+- [x] T008 [P] [US3] In `src/lib/stores/toasts.svelte.test.ts`, add negative assertions: dismissing an unknown id pushes nothing new (extends :46-50 to assert no re-add), and a manually dismissed toast never re-emits after the auto-dismiss timer fires.
 
 ### Implementation for User Story 3
 
-- [ ] T009 [US3] Add the maintainer-verified e2e sweeps to `tests/e2e/backprop-tool.spec.ts`: in the declined-propagation test (:151-190) and the approval-success test (:82-113), assert the toast layer stays absent — `await expect(page.locator('button[aria-label="Dismiss"]')).toHaveCount(0)` after the journey settles (selector unique to `Toaster.svelte:30-37`; brief-intake Dismiss buttons are text-labelled, `+page.svelte:937`). Comment the Docker/shard-stack requirement (035 T018 pattern; never skipped).
+- [x] T009 [US3] Add the maintainer-verified e2e sweeps to `tests/e2e/backprop-tool.spec.ts`: in the declined-propagation test (:151-190) and the approval-success test (:82-113), assert the toast layer stays absent — `await expect(page.locator('button[aria-label="Dismiss"]')).toHaveCount(0)` after the journey settles (selector unique to `Toaster.svelte:30-37`; brief-intake Dismiss buttons are text-labelled, `+page.svelte:937`). Comment the Docker/shard-stack requirement (035 T018 pattern; never skipped).
 
 **Checkpoint**: The 037 "toast never lies" guarantee is pinned at the store tier (fleet-verifiable) and swept in e2e (maintainer).
 

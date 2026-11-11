@@ -418,7 +418,8 @@ describe('quizzesStore.loadList / loadQuiz', () => {
 describe('quizzesStore.answerShort grading buckets (mock-llm fixture payloads)', () => {
 	// Mirrors tests/fixtures/mock-llm/quiz-fixture.mjs (QUIZ_FIXTURE). Values
 	// are duplicated (not imported) so vitest never depends on the e2e fixture
-	// tree; keep the two in sync.
+	// tree; kept in sync by the drift guard, classification-markers.test.ts
+	// MIRRORS.
 	const fixtureQuiz: GeneratedQuiz = {
 		questions: [
 			{
