@@ -316,6 +316,8 @@ export const deterministicTools: Tool[] = [
 					imageParts = payload.imageParts;
 				}
 
+				if (ctx.signal?.aborted) return { ok: false, summary: 'aborted' };
+
 				const { placement, anchor } = await resolveAnchor(chat);
 				const metadata = branchArtifactMetadata(chat, anchor, opts);
 				await repos.messages.insertAnchored(

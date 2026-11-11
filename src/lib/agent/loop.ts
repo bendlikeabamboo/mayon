@@ -910,7 +910,10 @@ export async function runAgentTurn(deps: AgentTurnDeps): Promise<{ aborted: bool
 							if (getToolDefinition(tc.toolName)?.generative) {
 								deps.notifyGenerativeStatus?.(null);
 							}
-							results.push({ tc, result: { ok: false, summary: 'user declined' } });
+							results.push({
+								tc,
+								result: { ok: false, summary: 'user declined', detail: { declined: true } }
+							});
 						} else {
 							const def = getToolDefinition(tc.toolName);
 							if (def?.generative && turnBudget.subCalls >= turnBudget.maxSubCalls) {

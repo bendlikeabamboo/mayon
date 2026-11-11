@@ -25,7 +25,11 @@ import type {
 	TextPart
 } from '#lib/chat/kinds.js';
 import { attachmentsOf, partsOf } from '#lib/chat/kinds.js';
-import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import {
+	acquirePropagationLatch,
+	buildRawDelta,
+	releasePropagationLatch
+} from '#lib/chat/propagation.js';
 import { toolsRun } from '#lib/agent/registry.js';
 import type { ToolContext } from '#lib/agent/registry.js';
 
@@ -3546,6 +3550,90 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 
 		expect(acquirePropagationLatch()).toBe(true);
 	});
+
+	it('latch refusal clears the prior success record; latch-free success still sets it (037 US2)', async () => {
+		const { parent, child } = await seedBranch();
+		await chatStore.load(child.id);
+
+		// First run owns the latch, lands, and sets the record.
+		await chatStore.propagateToParent('raw');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+
+		// A foreign path now holds the latch; the refused second call must not
+		// leave the previous run's record observable (037 D2) — the page toasts
+		// iff the record is set after its call returns.
+		expect(acquirePropagationLatch()).toBe(true);
+		await chatStore.propagateToParent('raw');
+
+		expect(chatStore.lastPropagation).toBeNull();
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.propagationError).toBeNull();
+		// The refusing call did not steal or free the foreign path's latch.
+		expect(acquirePropagationLatch()).toBe(false);
+	});
+
+	it('manual raw propagation on a branch carrying a declined attempt excludes that chrome — parity with the content-only twin (037 US1)', async () => {
+		// Twin: content-only branch — same anchor + turns, no propagation chrome.
+		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });
+		const twinAnchor = await repos.messages.append(twinParent.id, 'user', 'hello');
+		const twin = await repos.chats.createChild({
+			parentId: twinParent.id,
+			branchPointMessageId: twinAnchor.id,
+			title: 'Twin branch'
+		});
+		await repos.messages.append(twin.id, 'user', 'branch question');
+		await repos.messages.append(twin.id, 'assistant', 'branch answer');
+
+		// Branch carrying a declined propagation attempt's chrome rows.
+		const { parent, child } = await seedBranch();
+		await repos.messages.append(child.id, 'assistant', '', {
+			toolCallId: 'tc-declined',
+			toolName: 'propagate_to_parent',
+			metadata: JSON.stringify({ mode: 'raw' })
+		});
+		await repos.messages.append(
+			child.id,
+			'assistant',
+			'propagate_to_parent — back-propagate this branch',
+			{
+				kind: 'approval',
+				toolCallId: 'tc-declined',
+				toolName: 'propagate_to_parent',
+				metadata: JSON.stringify({
+					toolName: 'propagate_to_parent',
+					description: 'back-propagate this branch',
+					args: {},
+					outcome: null
+				})
+			}
+		);
+		await repos.messages.appendToolResult(child.id, {
+			toolCallId: 'tc-declined',
+			toolName: 'propagate_to_parent',
+			summary: 'user declined',
+			ok: false
+		});
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(art.content).toBe(await buildRawDelta(twin.id));
+		expect(art.content).toBe(
+			[
+				'[excerpt]',
+				'hello',
+				'[/excerpt]',
+				'',
+				'[user] branch question',
+				'[assistant] branch answer'
+			].join('\n')
+		);
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+	});
 });
 
 describe('propagate_to_parent availability gating (027 V4)', () => {
@@ -3668,6 +3756,97 @@ describe('chatStore artifact management (020 US3)', () => {
 		expect(mockedGenerateText).not.toHaveBeenCalled();
 		expect(chatStore.propagationStatus).toBe('error');
 		expect(chatStore.propagationError).toContain('summary');
+	});
+
+	it("regenerate replaces stale parts with the source branch's current collected images (037 US6)", async () => {
+		const { child, art } = await seedArtifact('summary');
+		const imgA: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,AAAA',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		const imgB: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,BBBB',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		expect(art.parts).toBeNull();
+		// Image-set change on the source branch: image A twice (duplicate data,
+		// distinct names — dedupe keeps the first), then image B.
+		await repos.messages.append(child.id, 'assistant', 'first ', {
+			parts: [
+				{ type: 'text', text: 'first ' },
+				{ ...imgA, name: 'one' }
+			]
+		});
+		await repos.messages.append(child.id, 'assistant', '', {
+			parts: [{ ...imgA, name: 'two' }, imgB]
+		});
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const updated = (await repos.messages.getById(art.id))!;
+		expect(updated.content).toBe('Regenerated summary');
+		const parts = JSON.parse(updated.parts!) as MessagePart[];
+		expect(parts[0]).toEqual({ type: 'text', text: 'Regenerated summary' });
+		// Current collected set: deduped by data (one imgA — the first name
+		// survives), order preserved — mirrors fresh propagation's collection.
+		expect(parts.filter((p) => p.type === 'image')).toEqual([{ ...imgA, name: 'one' }, imgB]);
+		// The store's view carries the refreshed row too.
+		expect(JSON.parse(chatStore.messages.find((m) => m.id === art.id)!.parts!)).toEqual(parts);
+		expect(chatStore.propagationStatus).toBe('idle');
+	});
+
+	it('regenerate clears parts when the source branch no longer has images (037 US6)', async () => {
+		// Seeded inline so the artifact is propagated while the branch still
+		// carries an image — then the image-set empties.
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		const img: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,Zm9v',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		const imageRow = await repos.messages.append(child.id, 'assistant', 'pic ', {
+			parts: [{ type: 'text', text: 'pic ' }, img]
+		});
+		await chatStore.load(child.id);
+		mockDefaultProvider();
+		mockedGenerateText.mockResolvedValueOnce({ text: 'First summary' } as never);
+		await chatStore.propagateToParent('summary');
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(JSON.parse(art.parts!)).toHaveLength(2);
+		await chatStore.load(parent.id);
+
+		// The branch's only image-bearing row is gone: the branch has no images.
+		await repos.messages.delete(imageRow.id);
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const updated = (await repos.messages.getById(art.id))!;
+		expect(updated.content).toBe('Regenerated summary');
+		expect(updated.parts).toBeNull();
+		expect(chatStore.messages.find((m) => m.id === art.id)!.parts).toBeNull();
+		expect(chatStore.propagationStatus).toBe('idle');
 	});
 
 	it('delete removes only the artifact row; parent composition no longer contains it', async () => {

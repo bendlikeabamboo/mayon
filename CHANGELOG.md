@@ -98,6 +98,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disclosure; and the sourcemap coverage test derives its excluded-selector
   list from the live `EXCLUDED_CHROME_SELECTORS` export instead of a hardcoded
   copy.
+- **Back-propagated artifacts no longer embed the propagation tool's own
+  timeline chrome** (issue #73 / feature 037) — the shared payload builder now
+  drops rows with `toolName === 'propagate_to_parent'` (its tool_call,
+  approval, and tool_result rows), and because the filter lives inside the
+  propagation helpers both paths use, tool artifacts are byte-identical to
+  manually back-propagated ones by construction.
+- **A latched second propagation no longer toasts a stale success record**
+  (issue #73) — a latch-refused `propagateToParent` call clears
+  `lastPropagation` on return, so the page's "toast iff record set" logic
+  can no longer fire off the previous run's success.
+- **Root-chat guidance no longer dead-ends at the manual back-propagate
+  control** (issue #73) — the capabilities preamble's fallback now splits
+  by case: a root chat is told it needs a child context (offer to branch),
+  while the manual-control pointer survives only for the
+  provider-without-tools-on-a-branch case.
+- **Stopping the agent mid-propagation no longer writes the artifact**
+  (issue #73) — an abort re-check immediately before the artifact write
+  closes the generation→write gap in both modes: an aborted run returns
+  `{ok: false, summary: 'aborted'}`, inserts nothing, and releases the
+  latch.
+- **Duplicate image data no longer crashes the propagated-artifact grid**
+  (issue #73) — image collection dedupes by part data (first occurrence,
+  order preserved) before the eight-image cap, and the artifact grid's keyed
+  each uses a composite `data + ':' + index` key so legacy rows that already
+  store duplicates render without duplicate-key errors.
+- **Summary-artifact regeneration no longer leaves stale image parts**
+  (issue #73) — `updateArtifactContent` accepts an optional validated
+  `parts` array in the same atomic update (null clears, undefined leaves
+  untouched), and regeneration passes the source branch's current
+  chrome-excluded, deduped image set — or none.
+- **A declined tool call is now durably legible to the model** (issue #73) —
+  the loop-synthesized declined result carries `detail: {declined: true}`,
+  persisting metadata `{"declined":true,"ok":false}` that next-turn context
+  reassembly surfaces verbatim, so the model can tell "the learner declined
+  this" from an ordinary failure and stops re-offering declined actions.
 
 ## [0.9.0] - 2026-11-03
 

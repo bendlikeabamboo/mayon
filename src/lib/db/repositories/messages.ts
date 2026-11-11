@@ -211,17 +211,23 @@ export const messagesRepo = {
 	/**
 	 * Kind-guarded artifact update (020): only `branch_artifact` rows may be
 	 * rewritten — content plus a metadata JSON patch merged over the existing
-	 * metadata. Returns the updated row, or null when the id is missing or the
-	 * row is not an artifact.
+	 * metadata. Optional `parts` (037 US6): an array is validated (030
+	 * invariants via `validateParts`) and stored atomically with content +
+	 * metadata in ONE update; `null` clears the column (image-less result);
+	 * `undefined` leaves it untouched (backwards compatible). Returns the
+	 * updated row, or null when the id is missing or the row is not an
+	 * artifact.
 	 */
 	async updateArtifactContent(
 		id: string,
 		content: string,
-		metadataPatch: Partial<BranchArtifactMetadata>
+		metadataPatch: Partial<BranchArtifactMetadata>,
+		parts?: MessagePart[] | null
 	): Promise<Message | null> {
 		const db = await awaitDb();
 		const [existing] = await db.select().from(messages).where(eq(messages.id, id));
 		if (!existing || existing.kind !== 'branch_artifact') return null;
+		if (parts) validateParts(parts, content);
 		let meta: Record<string, unknown> = {};
 		if (existing.metadata) {
 			try {
@@ -230,9 +236,11 @@ export const messagesRepo = {
 				/* corrupt → default empty */
 			}
 		}
+		const nextParts =
+			parts === undefined ? existing.parts : parts === null ? null : JSON.stringify(parts);
 		const [updated] = await db
 			.update(messages)
-			.set({ content, metadata: JSON.stringify({ ...meta, ...metadataPatch }) })
+			.set({ content, metadata: JSON.stringify({ ...meta, ...metadataPatch }), parts: nextParts })
 			.where(and(eq(messages.id, id), eq(messages.kind, 'branch_artifact')))
 			.returning();
 		return updated ?? null;

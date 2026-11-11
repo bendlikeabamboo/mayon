@@ -66,6 +66,6 @@ describe('US5: AssistantMessage hover-revealed action row', () => {
 		expect(source).toContain('canRegenerate');
 		const list = fs.readFileSync(MESSAGE_LIST, 'utf-8');
 		expect(list).toContain('canRegenerate={item.entry.id === lastAssistantId}');
-		expect(list).toContain("last.kind === 'assistant_message'");
+		expect(list).toContain('lastRegeneratableAssistantId(timeline)');
 	});
 });
