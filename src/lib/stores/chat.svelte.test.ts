@@ -3551,6 +3551,27 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 		expect(acquirePropagationLatch()).toBe(true);
 	});
 
+	it('latch refusal clears the prior success record; latch-free success still sets it (037 US2)', async () => {
+		const { parent, child } = await seedBranch();
+		await chatStore.load(child.id);
+
+		// First run owns the latch, lands, and sets the record.
+		await chatStore.propagateToParent('raw');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+
+		// A foreign path now holds the latch; the refused second call must not
+		// leave the previous run's record observable (037 D2) — the page toasts
+		// iff the record is set after its call returns.
+		expect(acquirePropagationLatch()).toBe(true);
+		await chatStore.propagateToParent('raw');
+
+		expect(chatStore.lastPropagation).toBeNull();
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.propagationError).toBeNull();
+		// The refusing call did not steal or free the foreign path's latch.
+		expect(acquirePropagationLatch()).toBe(false);
+	});
+
 	it('manual raw propagation on a branch carrying a declined attempt excludes that chrome — parity with the content-only twin (037 US1)', async () => {
 		// Twin: content-only branch — same anchor + turns, no propagation chrome.
 		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });

@@ -61,11 +61,11 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 2 ⚠️ write first, verify FAIL
 
-- [ ] T006 [P] [US2] Fail-first latch-refusal test in `src/lib/stores/chat.svelte.test.ts`: complete one propagation (record set), hold the latch via `acquirePropagationLatch()`, call `propagateToParent` again → on return `lastPropagation === null` (stale record cleared); latch-free success still sets the record
+- [x] T006 [P] [US2] Fail-first latch-refusal test in `src/lib/stores/chat.svelte.test.ts`: complete one propagation (record set), hold the latch via `acquirePropagationLatch()`, call `propagateToParent` again → on return `lastPropagation === null` (stale record cleared); latch-free success still sets the record
 
 ### Implementation for User Story 2
 
-- [ ] T007 [US2] Clear the stale record on the latch-refusal early return in `src/lib/stores/chat.svelte.ts` `propagateToParent` (line 1787): set `this.lastPropagation = null` before returning; leave `propagationStatus`/`propagationError` untouched
+- [x] T007 [US2] Clear the stale record on the latch-refusal early return in `src/lib/stores/chat.svelte.ts` `propagateToParent` (line 1787): set `this.lastPropagation = null` before returning; leave `propagationStatus`/`propagationError` untouched
 
 **Checkpoint**: Second-run toast cannot fire; first-run toast unaffected.
 
@@ -79,11 +79,11 @@ None — every fix lands in existing modules; no shared infrastructure precedes 
 
 ### Tests for User Story 3 ⚠️ write first, verify FAIL
 
-- [ ] T008 [P] [US3] Fail-first preamble test in `src/lib/chat/brief.test.ts`: root-chat fallback line references needing a child context (branch) and does not mention the manual back-propagate control for the root case; provider-without-tools-on-branch case still points at the manual control; "never imitate propagation in prose" preserved in both
+- [x] T008 [P] [US3] Fail-first preamble test in `src/lib/chat/brief.test.ts`: root-chat fallback line references needing a child context (branch) and does not mention the manual back-propagate control for the root case; provider-without-tools-on-branch case still points at the manual control; "never imitate propagation in prose" preserved in both
 
 ### Implementation for User Story 3
 
-- [ ] T009 [US3] Replace the single fallback line at `src/lib/chat/brief.ts:260` with the two-case split from `specs/027-backprop-tool/contracts/propagate-tool.md` preamble item 5 (already amended): root → child context/branch offer; provider-without-tools on a branch → manual control
+- [x] T009 [US3] Replace the single fallback line at `src/lib/chat/brief.ts:260` with the two-case split from `specs/027-backprop-tool/contracts/propagate-tool.md` preamble item 5 (already amended): root → child context/branch offer; provider-without-tools on a branch → manual control
 
 **Checkpoint**: Root guidance is followable; branch fallback unchanged.
 

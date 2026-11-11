@@ -1777,14 +1777,23 @@ class ChatState {
 	 *
 	 * Holds the shared in-flight latch (027 D5) ahead of the reactive
 	 * `propagationStatus` guard: a concurrent propagation from the tool path
-	 * (or another manual call) makes this return silently — the reactive state
-	 * is left untouched so a foreign path's run never corrupts the UI.
+	 * (or another manual call) makes this return silently — the stale
+	 * `lastPropagation` record is cleared (037 US2: a refused call must not
+	 * leave the prior run's success observable) while `propagationStatus`/
+	 * `propagationError` stay untouched so a foreign path's run never
+	 * corrupts the UI.
 	 */
 	async propagateToParent(mode: 'raw' | 'summary'): Promise<void> {
 		const chat = this.chat;
 		const chatId = this.chatId;
 		if (!chat || !chatId) return;
-		if (!acquirePropagationLatch()) return;
+		if (!acquirePropagationLatch()) {
+			// A foreign path owns the latch: drop the stale success record so the
+			// page's toast-iff-record logic stays truthful (037 US2/D2). Status
+			// and error are left exactly as the foreign path set them.
+			this.lastPropagation = null;
+			return;
+		}
 		try {
 			if (this.propagationStatus === 'running') return;
 			if (chat.parentId === null) {
