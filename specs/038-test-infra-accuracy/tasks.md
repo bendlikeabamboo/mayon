@@ -23,7 +23,7 @@ one process at a time. Docker/Playwright/CI legs are maintainer-verifiable — w
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 Establish green baseline before any edit: run `pnpm check`, then the capped runner over the five affected fast-tier files — `src/lib/ai/generate/classification-markers.test.ts`, `src/lib/stores/toasts.svelte.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/ai/model-discovery.test.ts`, `src/lib/ai/connection-test.test.ts` — plus the container-free shard listing `pnpm exec playwright test --list --shard=1/2` (expect 21/12, the imbalance being fixed)
+- [x] T001 Establish green baseline before any edit: run `pnpm check`, then the capped runner over the five affected fast-tier files — `src/lib/ai/generate/classification-markers.test.ts`, `src/lib/stores/toasts.svelte.test.ts`, `src/lib/stores/chat.svelte.test.ts`, `src/lib/ai/model-discovery.test.ts`, `src/lib/ai/connection-test.test.ts` — plus the container-free shard listing `pnpm exec playwright test --list --shard=1/2` (expect 21/12, the imbalance being fixed)
 
 ---
 
@@ -41,12 +41,12 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Tests for User Story 1
 
-- [ ] T002 [P] [US1] **FAIL-FIRST** — write `src/lib/dev/compose-project.test.ts` per contracts/test-helpers.md §1: sibling shards + base stack concurrent listing selects the base-URL-implied project (both directions); base-stack-only listing selects `mayon-dev`; unknown port throws; expected-name project missing throws naming it; name present but `ConfigFiles` missing this checkout's files throws; shard project requires base+shard-override files. Observe red (module does not exist) before T003.
+- [x] T002 [P] [US1] **FAIL-FIRST** — write `src/lib/dev/compose-project.test.ts` per contracts/test-helpers.md §1: sibling shards + base stack concurrent listing selects the base-URL-implied project (both directions); base-stack-only listing selects `mayon-dev`; unknown port throws; expected-name project missing throws naming it; name present but `ConfigFiles` missing this checkout's files throws; shard project requires base+shard-override files. Observe red (module does not exist) before T003.
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Implement `src/lib/dev/compose-project.ts` (`expectedComposeProjectName` + `selectComposeProject`, research D1/D2) until T002 is green under the capped runner.
-- [ ] T004 [US1] Rewire `tests/e2e/image-round-trip.spec.ts` `mockRequestCount` (:26-40): keep `compose ls --format json` + `logs`, but resolve the project via `selectComposeProject` (pass `E2E_BASE_URL`); delete the inline `projects.find` (:31). Update the comment block (:13-20) to describe name-from-base-URL selection. Verified by T002 + `pnpm check`/`pnpm lint` (Playwright leg is maintainer-verified on a shard stack).
+- [x] T003 [US1] Implement `src/lib/dev/compose-project.ts` (`expectedComposeProjectName` + `selectComposeProject`, research D1/D2) until T002 is green under the capped runner.
+- [x] T004 [US1] Rewire `tests/e2e/image-round-trip.spec.ts` `mockRequestCount` (:26-40): keep `compose ls --format json` + `logs`, but resolve the project via `selectComposeProject` (pass `E2E_BASE_URL`); delete the inline `projects.find` (:31). Update the comment block (:13-20) to describe name-from-base-URL selection. Verified by T002 + `pnpm check`/`pnpm lint` (Playwright leg is maintainer-verified on a shard stack).
 
 **Checkpoint**: With sibling stacks running, the spec provably targets its own stack (unit-proven; maintainer confirms via `pnpm dev:shard:up 1/2 && pnpm dev:shard:up 2/2` + per-shard run).
 
