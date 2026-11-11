@@ -2680,12 +2680,18 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 
 		await chatStore.load(root.id);
 		await chatStore.send('draw a quokka');
-		const callsAfterTurn = mockedStreamText.mock.calls.length;
+		const streamCallsAfterTurn = mockedStreamText.mock.calls.length;
+		const objectCallsAfterTurn = mockedGenerateObject.mock.calls.length;
+		const textCallsAfterTurn = mockedGenerateText.mock.calls.length;
 
 		// Hydration (the load() a chat switch / reload performs) issues no
-		// provider request — the image comes back from the row.
+		// provider request — the image comes back from the row. The pin is
+		// total over all three AI SDK entry points (streamText, generateObject,
+		// generateText): any of them firing during hydration turns this red.
 		await chatStore.load(root.id);
-		expect(mockedStreamText.mock.calls).toHaveLength(callsAfterTurn);
+		expect(mockedStreamText.mock.calls).toHaveLength(streamCallsAfterTurn);
+		expect(mockedGenerateObject.mock.calls).toHaveLength(objectCallsAfterTurn);
+		expect(mockedGenerateText.mock.calls).toHaveLength(textCallsAfterTurn);
 
 		const assistant = chatStore.messages.find((m) => m.role === 'assistant');
 		expect(assistant).toBeDefined();
