@@ -5,6 +5,7 @@ import type { ProviderConfig } from '#lib/ai/types.js';
 import { MissingKeyError, NetworkError, ProviderHttpError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
+import { toastState } from '#lib/stores/toasts.svelte.js';
 import { buildMermaidFixPrompt } from '#lib/markdown/mermaid-repair.js';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
@@ -923,7 +924,8 @@ describe('root chat never offers propagation (027 FR-001, data layer)', () => {
 	// PROPAGATE_UNAVAILABLE_REPLY and tests/fixtures/mock-llm/server.mjs, the
 	// way the suite's e2e deck exercises the same journey; the data-layer
 	// invariant under test is the tool-set exclusion plus plain-reply
-	// persistence, independent of the mock's string matching.
+	// persistence, independent of the mock's string matching. Kept in sync by
+	// the drift guard, classification-markers.test.ts MIRRORS.
 	const PROPAGATE_TRIGGER = 'backpropagate this branch';
 	const PROPAGATE_UNAVAILABLE_REPLY =
 		'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
@@ -2678,12 +2680,18 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 
 		await chatStore.load(root.id);
 		await chatStore.send('draw a quokka');
-		const callsAfterTurn = mockedStreamText.mock.calls.length;
+		const streamCallsAfterTurn = mockedStreamText.mock.calls.length;
+		const objectCallsAfterTurn = mockedGenerateObject.mock.calls.length;
+		const textCallsAfterTurn = mockedGenerateText.mock.calls.length;
 
 		// Hydration (the load() a chat switch / reload performs) issues no
-		// provider request — the image comes back from the row.
+		// provider request — the image comes back from the row. The pin is
+		// total over all three AI SDK entry points (streamText, generateObject,
+		// generateText): any of them firing during hydration turns this red.
 		await chatStore.load(root.id);
-		expect(mockedStreamText.mock.calls).toHaveLength(callsAfterTurn);
+		expect(mockedStreamText.mock.calls).toHaveLength(streamCallsAfterTurn);
+		expect(mockedGenerateObject.mock.calls).toHaveLength(objectCallsAfterTurn);
+		expect(mockedGenerateText.mock.calls).toHaveLength(textCallsAfterTurn);
 
 		const assistant = chatStore.messages.find((m) => m.role === 'assistant');
 		expect(assistant).toBeDefined();
@@ -3555,9 +3563,17 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 		const { parent, child } = await seedBranch();
 		await chatStore.load(child.id);
 
+		// 038 US3 (FR-005): neither path pushes a toast — the page toasts iff
+		// `lastPropagation` is set after its OWN manual-control call, and the
+		// store itself never pushes (observed on the same `toastState`
+		// singleton `chat.svelte.ts` imports).
+		toastState.clear();
+		expect(toastState.toasts).toHaveLength(0);
+
 		// First run owns the latch, lands, and sets the record.
 		await chatStore.propagateToParent('raw');
 		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+		expect(toastState.toasts).toHaveLength(0);
 
 		// A foreign path now holds the latch; the refused second call must not
 		// leave the previous run's record observable (037 D2) — the page toasts
@@ -3568,6 +3584,12 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 		expect(chatStore.lastPropagation).toBeNull();
 		expect(chatStore.propagationStatus).toBe('idle');
 		expect(chatStore.propagationError).toBeNull();
+		// The refused call pushes nothing and lands nothing: the parent keeps
+		// exactly the first run's branch_artifact row.
+		expect(toastState.toasts).toHaveLength(0);
+		expect(
+			(await repos.messages.listByChat(parent.id)).filter((m) => m.kind === 'branch_artifact')
+		).toHaveLength(1);
 		// The refusing call did not steal or free the foreign path's latch.
 		expect(acquirePropagationLatch()).toBe(false);
 	});

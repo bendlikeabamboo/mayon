@@ -108,3 +108,57 @@ describe('mock-llm fixture strings stay single-sourced', () => {
 		}
 	});
 });
+
+/**
+ * Byte-mirror patrol (feature 038, FR-003/FR-004; contract
+ * specs/038-test-infra-accuracy/contracts/test-helpers.md §3).
+ *
+ * Fast-tier suites duplicate fixture-string values at use-site (house
+ * readability pattern — imports would rewire those suites' fail ergonomics),
+ * so THIS registry is the single add-a-mirror point that keeps the mirrors
+ * honest: each entry reads the mirror's source and asserts it contains the
+ * byte-exact value of every listed strings.mjs constant. One containment
+ * assertion catches both drift directions — a fixture rename strands the
+ * mirror's old bytes, a mirror retype strands the fixture's value — and the
+ * failure message names both files. Adding a mirror means adding one registry
+ * entry here; no other edit. (server.mjs and kitchen-sink.ts keep their
+ * stronger import-reexport guards above — they are producers, not mirrors.)
+ */
+const MIRRORS: ReadonlyArray<{
+	label: string; // human name in assertion messages
+	path: string; // repo-relative file URL resolved against this suite
+	constants: readonly string[]; // names exported by tests/fixtures/mock-llm/strings.mjs
+}> = [
+	{
+		label: 'src/lib/stores/chat.svelte.test.ts',
+		path: '../../../../src/lib/stores/chat.svelte.test.ts',
+		constants: ['PROPAGATE_TRIGGER', 'PROPAGATE_UNAVAILABLE_REPLY', 'PROPAGATE_TOOL_NAME']
+	},
+	{
+		label: 'src/lib/stores/quizzes.svelte.test.ts',
+		path: '../../../../src/lib/stores/quizzes.svelte.test.ts',
+		constants: ['LEVER_TRIGGER_CORRECT', 'LEVER_TRIGGER_WRONG']
+	},
+	{
+		label: 'src/lib/agent/loop.test.ts',
+		path: '../../../../src/lib/agent/loop.test.ts',
+		constants: ['PROPAGATE_TOOL_NAME']
+	}
+];
+
+describe('mock-llm fixture-string mirrors stay byte-identical (feature 038 patrol)', () => {
+	const sharedStrings = strings as Record<string, string>;
+	for (const mirror of MIRRORS) {
+		const mirrorSource = readFileSync(fileURLToPath(new URL(mirror.path, import.meta.url)), 'utf8');
+		it(`${mirror.label} carries the exact bytes of every fixture constant it mirrors`, () => {
+			for (const name of mirror.constants) {
+				expect(
+					mirrorSource,
+					`${mirror.label} must mirror "${name}" byte-exactly from ` +
+						'tests/fixtures/mock-llm/strings.mjs — update the fixture and the mirror ' +
+						'together in one commit, or import the constant instead of re-typing it'
+				).toContain(sharedStrings[name]);
+			}
+		});
+	}
+});

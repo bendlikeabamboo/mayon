@@ -5,6 +5,7 @@ import type { BrowserKeyStore } from './keystore/browser';
 import {
 	discoverModels,
 	MODEL_DISCOVERY_TIMEOUT_MS,
+	mergeDiscoveredModels,
 	mergeModelContextWindows,
 	parseCopilotModelEntries,
 	parseModelEntries,
@@ -341,6 +342,24 @@ describe('readAll', () => {
 			}
 		});
 		expect(await readAll(stream)).toBe('hello');
+	});
+});
+
+describe('mergeDiscoveredModels', () => {
+	it('puts discovered ids first in discovery order, dedupes, and keeps the manual tail', () => {
+		expect(mergeDiscoveredModels(['b', 'a'], ['manual', 'a'])).toEqual(['b', 'a', 'manual']);
+	});
+
+	it('returns existing unchanged when discovery is empty', () => {
+		expect(mergeDiscoveredModels([], ['manual', 'other'])).toEqual(['manual', 'other']);
+	});
+
+	it('returns empty for empty discovery and empty existing', () => {
+		expect(mergeDiscoveredModels([], [])).toEqual([]);
+	});
+
+	it('collapses stored duplicates of a discovered id', () => {
+		expect(mergeDiscoveredModels(['a'], ['a', 'a', 'manual'])).toEqual(['a', 'manual']);
 	});
 });
 

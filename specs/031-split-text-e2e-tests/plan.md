@@ -102,6 +102,7 @@ src/lib/ai/generate/classification-markers.test.ts # + shared-strings drift guar
 
 server/src/llm-proxy.test.ts           # UNCHANGED — already the in-process proxy proof (D5)
 .github/workflows/ci.yml               # UNCHANGED — verified, not edited (D6)
+*(2026-11-12, feature 038 / issue #75: the CI workflow was subsequently edited — cache-backed image builds + shard rebalance; see `specs/038-test-infra-accuracy/`.)*
 ```
 
 **Structure Decision**: no new directories or packages — the split weaves into the

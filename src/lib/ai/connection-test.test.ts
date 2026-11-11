@@ -4,6 +4,7 @@ import { testProviderConnection } from './connection-test';
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { SERVER_REQUIRED_HINT } from './errors';
 import { setHttpTransport, type HttpStreamTransport } from './http-transport';
+import { mergeDiscoveredModels } from './model-discovery';
 import {
 	CorsBlockedError,
 	NetworkError,
@@ -349,7 +350,7 @@ describe('testProviderConnection', () => {
 			expect(res.ok).toBe(true);
 
 			const discovered = res.models ?? [];
-			const merged = [...discovered, ...config.models.filter((m) => !discovered.includes(m))];
+			const merged = mergeDiscoveredModels(discovered, config.models);
 			await saveProviders([{ ...config, models: merged }]);
 
 			const record = (await listProviders()).find((p) => p.id === config.id);

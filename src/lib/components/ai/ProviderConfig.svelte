@@ -25,7 +25,7 @@
 		setActiveProvider,
 		setProviderKey
 	} from '#lib/ai/client.js';
-	import { mergeModelContextWindows } from '#lib/ai/model-discovery.js';
+	import { mergeDiscoveredModels, mergeModelContextWindows } from '#lib/ai/model-discovery.js';
 	import type {
 		HazardId,
 		ProviderConfig,
@@ -212,7 +212,7 @@
 			const entries = await discoverProviderModelEntries(p);
 			const discovered = entries.map((entry) => entry.id);
 			if (discovered.length > 0) {
-				const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
+				const merged = mergeDiscoveredModels(discovered, p.models);
 				providers = providers.map((x) =>
 					x.id === id
 						? {
@@ -269,7 +269,7 @@
 					const modelContextWindows = entries
 						? mergeModelContextWindows(p.modelContextWindows, entries)
 						: p.modelContextWindows;
-					const merged = [...discovered, ...p.models.filter((m) => !discovered.includes(m))];
+					const merged = mergeDiscoveredModels(discovered, p.models);
 					const defaultModel = p.defaultModel === '' ? discovered[0] : p.defaultModel;
 					providers = providers.map((x) =>
 						x.id === id ? { ...x, models: merged, defaultModel, modelContextWindows } : x

@@ -95,6 +95,16 @@ export function mergeModelContextWindows(
 }
 
 /**
+ * Discovered catalog merged ahead of stored manual additions: discovered IDs
+ * first in discovery order, deduplicated, existing models not already
+ * discovered appended in stored order. Empty `discovered` returns `existing`
+ * unchanged.
+ */
+export function mergeDiscoveredModels(discovered: string[], existing: string[]): string[] {
+	return [...discovered, ...existing.filter((m) => !discovered.includes(m))];
+}
+
+/**
  * Discover the available models from a provider's `/models` endpoint. Returns
  * a de-duplicated, alphabetically-sorted entry list with harvested context
  * windows.

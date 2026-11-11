@@ -174,5 +174,6 @@ Task: "Prune tests/e2e/telemetry.spec.ts"
 - [P] = different files, no dependencies on incomplete tasks
 - Add-before-remove is absolute (FR-008): no e2e assertion is deleted before its ledger disposition exists and its fast home is green
 - No product source, no new dependencies, no CI edits (research D6); verify with T021
+  *(2026-11-12, feature 038 / issue #75: the CI workflow was subsequently edited — cache-backed image builds + shard rebalance; see `specs/038-test-infra-accuracy/`.)*
 - No `+`-prefixed filenames (SvelteKit route namespace)
 - Commit after each task or logical group; worktree pushes to its own branch — never merge into `main` (AGENTS.md worktree rules)

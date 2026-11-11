@@ -133,6 +133,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   persisting metadata `{"declined":true,"ok":false}` that next-turn context
   reassembly surfaces verbatim, so the model can tell "the learner declined
   this" from an ordinary failure and stops re-offering declined actions.
+- **Test-infrastructure accuracy** (issue #75 / feature 038) — the shard e2e
+  reads only its own stack (compose project resolved from the runner's base
+  URL, not the first stack mounting the base compose file); the shared-strings
+  drift guard patrols every mirrored fixture constant, not just the original
+  two; declined and latch-refused propagation gains no-toast assertions at the
+  store tier plus e2e sweeps; the discovered-models merge formula is
+  single-homed as `mergeDiscoveredModels` with both call sites and the parity
+  test consuming it; CI image builds go through buildx with the Actions layer
+  cache and the e2e shards are rebalanced (≤18/15 by the `--list` oracle);
+  031's "no CI edits" artifacts carry dated addenda; and reload-hydration
+  parity pins all three AI SDK entry points
+  (`streamText`/`generateObject`/`generateText`).
 
 ## [0.9.0] - 2026-11-03
 

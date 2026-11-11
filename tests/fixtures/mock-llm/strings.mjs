@@ -8,7 +8,13 @@
  * tests/e2e/fixtures/kitchen-sink.ts re-exports them for e2e specs; fast-tier
  * tests import from here dynamically via fileURLToPath (tests/fixtures is
  * tsconfig-excluded). Both moves are drift-guarded by
- * src/lib/ai/generate/classification-markers.test.ts. Contract:
+ * src/lib/ai/generate/classification-markers.test.ts — so are the byte
+ * mirrors of these constants at use-site (PROPAGATE_* in
+ * src/lib/stores/chat.svelte.test.ts, LEVER_* in
+ * src/lib/stores/quizzes.svelte.test.ts, PROPAGATE_TOOL_NAME in
+ * src/lib/agent/loop.test.ts): the MIRRORS registry in that file patrols
+ * every mirror's source for the byte-exact constant values, and adding the
+ * next mirror means adding one entry there. Contract:
  * specs/031-split-text-e2e-tests/contracts/shared-fixtures.md.
  * Do not re-type these strings anywhere else.
  */

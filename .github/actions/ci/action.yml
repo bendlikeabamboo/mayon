@@ -20,6 +20,9 @@ runs:
     - shell: bash
       run: pnpm build
     - shell: bash
-      run: docker build .
+      # Same type=gha cache backend as the e2e shard pre-builds; keys are
+      # content-derived per Dockerfile, so these prod builds cache
+      # independently of the dev-image cache.
+      run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max .
     - shell: bash
-      run: docker build -f server/Dockerfile .
+      run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max -f server/Dockerfile .
