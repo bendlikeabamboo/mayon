@@ -116,8 +116,8 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Implementation for User Story 5
 
-- [ ] T013 [P] [US5] Edit `.github/workflows/ci.yml` e2e job (research D6): before `dev:shard:up` (:85) add `docker/setup-buildx-action@v3` then two commented buildx steps — `docker buildx build --cache-from type=gha --cache-to type=gha,mode=max --load -t mayon-dev-shard-${{ matrix.shard }}-web -f Dockerfile.dev .` and the `-server -f server/Dockerfile.dev` twin — so the shard path's plain `up -d` adopts the pre-built, cache-backed images. Keep comments explaining the tag↔compose-project coupling. In `.github/actions/ci/action.yml`, switch the two `docker build` lines to `docker buildx build` with the same cache flags. Validate: `pnpm lint` (Prettier covers YAML) + reasoning recorded in the commit; no local Docker use.
-- [ ] T014 [US5] Rebalance shards (research D7): move the `connection coaching` describe (:113-163, 2 tests) from `tests/e2e/provider-picker.spec.ts` into new `tests/e2e/provider-picker-coaching.spec.ts` (imports/fixtures copied verbatim; zero assertion changes). Measure `pnpm exec playwright test --list --shard=1/2` and `--shard=2/2`; acceptance ≤18/15 — if worse, also move the tool-capability describe (:58) and re-measure (never split a describe). Update `tests/e2e/README.md`: new ledger row for the split file (classification + dispositions copied from the provider-picker row) and trim the original row (policy 1).
+- [x] T013 [P] [US5] Edit `.github/workflows/ci.yml` e2e job (research D6): before `dev:shard:up` (:85) add `docker/setup-buildx-action@v3` then two commented buildx steps — `docker buildx build --cache-from type=gha --cache-to type=gha,mode=max --load -t mayon-dev-shard-${{ matrix.shard }}-web -f Dockerfile.dev .` and the `-server -f server/Dockerfile.dev` twin — so the shard path's plain `up -d` adopts the pre-built, cache-backed images. Keep comments explaining the tag↔compose-project coupling. In `.github/actions/ci/action.yml`, switch the two `docker build` lines to `docker buildx build` with the same cache flags. Validate: `pnpm lint` (Prettier covers YAML) + reasoning recorded in the commit; no local Docker use.
+- [x] T014 [US5] Rebalance shards (research D7): move the `connection coaching` describe (:113-163, 2 tests) from `tests/e2e/provider-picker.spec.ts` into new `tests/e2e/provider-picker-coaching.spec.ts` (imports/fixtures copied verbatim; zero assertion changes). Measure `pnpm exec playwright test --list --shard=1/2` and `--shard=2/2`; acceptance ≤18/15 — if worse, also move the tool-capability describe (:58) and re-measure (never split a describe). Update `tests/e2e/README.md`: new ledger row for the split file (classification + dispositions copied from the provider-picker row) and trim the original row (policy 1).
 
 **Checkpoint**: Balanced, listing-verified; ledger complete (11 rows for 11 files).
 
@@ -131,7 +131,7 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ### Implementation for User Story 6
 
-- [ ] T015 [US6] After T013 lands, append the dated addendum (research D8) beneath the three claims: `specs/031-split-text-e2e-tests/plan.md:103`, `specs/031-split-text-e2e-tests/research.md` (D6 section, :142-148), `specs/031-split-text-e2e-tests/tasks.md` (Notes bullet, :174-176) — "*(2026-11-<land-date>, feature 038 / issue #75: the CI workflow was subsequently edited — cache-backed image builds + shard rebalance; see `specs/038-test-infra-accuracy/`.)*" Original text untouched.
+- [x] T015 [US6] After T013 lands, append the dated addendum (research D8) beneath the three claims: `specs/031-split-text-e2e-tests/plan.md:103`, `specs/031-split-text-e2e-tests/research.md` (D6 section, :142-148), `specs/031-split-text-e2e-tests/tasks.md` (Notes bullet, :174-176) — "*(2026-11-<land-date>, feature 038 / issue #75: the CI workflow was subsequently edited — cache-backed image builds + shard rebalance; see `specs/038-test-infra-accuracy/`.)*" Original text untouched.
 
 ---
 
@@ -149,8 +149,8 @@ None — no shared infrastructure precedes the stories; the two extracted helper
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T017 Add the CHANGELOG entry inside `## [0.10.0]` → `### Fixed` (release-train style, bold lead + em-dash): test accuracy — shard e2e reads only its own stack; drift guard patrols every mirror; no-toast assertions for declined/latched propagation; single discovery merge; CI image-build cache + balanced shards; 031 artifacts annotated; reload parity over all AI SDK entry points (issue #75 / feature 038).
-- [ ] T018 Full validation per quickstart.md: capped runs — batch 1 `src/lib/dev/compose-project.test.ts src/lib/ai/generate/classification-markers.test.ts src/lib/stores/toasts.svelte.test.ts src/lib/ai/model-discovery.test.ts src/lib/ai/connection-test.test.ts`, batch 2 (own process) `src/lib/stores/chat.svelte.test.ts`; then `pnpm check` and `pnpm lint`; confirm shard listing still ≤18/15 and the ledger has 11 rows.
+- [x] T017 Add the CHANGELOG entry inside `## [0.10.0]` → `### Fixed` (release-train style, bold lead + em-dash): test accuracy — shard e2e reads only its own stack; drift guard patrols every mirror; no-toast assertions for declined/latched propagation; single discovery merge; CI image-build cache + balanced shards; 031 artifacts annotated; reload parity over all AI SDK entry points (issue #75 / feature 038).
+- [x] T018 Full validation per quickstart.md: capped runs — batch 1 `src/lib/dev/compose-project.test.ts src/lib/ai/generate/classification-markers.test.ts src/lib/stores/toasts.svelte.test.ts src/lib/ai/model-discovery.test.ts src/lib/ai/connection-test.test.ts`, batch 2 (own process) `src/lib/stores/chat.svelte.test.ts`; then `pnpm check` and `pnpm lint`; confirm shard listing still ≤18/15 and the ledger has 11 rows.
 
 ---
 
