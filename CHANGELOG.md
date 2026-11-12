@@ -158,6 +158,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference budget moves 60 s → 100 s (low-spec 200 s): the 0.10.0 suite
   measures 161 s on the 4-vCPU CI runner against the old 120 s low-spec
   ceiling.
+- **Live-block ids are zero-based again + stick-to-bottom survives growth
+  spurts (merge fix)** — `itemId` counted the item itself, so live blocks
+  mounted as `-1`/`-2` instead of the documented `-0`/`-1` (only the 035
+  interleaved e2e asserts exact ids, which is why nothing else caught it).
+  The bottom sentinel now keeps a 200 px margin so a transient exit during
+  streaming growth cannot permanently unlatch pinning, and the timeline's
+  frontier row always mounts even when the viewport never got near it.
 
 ## [0.9.0] - 2026-11-03
 

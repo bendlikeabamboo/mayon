@@ -173,7 +173,7 @@ describe('MessageList live-block ids', () => {
 	it('numbers same-variant live blocks from zero (029 per-block ids)', async () => {
 		const liveItems: LiveEntry[] = [
 			{ source: 'live', live: 'live_reasoning', buffer: 'thought one', streaming: true },
-			{ source: 'live', live: 'live_text', buffer: 'answer part', streaming: true },
+			{ source: 'live', live: 'live_text', buffer: 'answer part', pending: false },
 			{ source: 'live', live: 'live_reasoning', buffer: 'thought two', streaming: false }
 		];
 		const { container } = await render(MessageList, {

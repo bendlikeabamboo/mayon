@@ -161,7 +161,7 @@
 	{#if header}
 		{@render header()}
 	{/if}
-	{#each timeline as item (itemId(item))}
+	{#each timeline as item, i (itemId(item))}
 		<div id="msg-{itemId(item)}">
 			{#if isLiveEntry(item)}
 				{#if item.live === 'live_reasoning'}
@@ -183,7 +183,11 @@
 					/>
 				{/if}
 			{:else}
-				<LazyMount unmountFar rootMargin="1200px">
+				<!-- 035 T018 follow-up: the timeline frontier always mounts, so the
+					turn's latest row renders even when the viewport never got
+					near it (e.g. stick-to-bottom lost mid-turn and nothing
+					scrolled after). Older rows keep the unmountFar win. -->
+				<LazyMount unmountFar={i < timeline.length - 1} rootMargin="1200px">
 					{#if isToolGroup(item) || isOrphanToolResult(item)}
 						<ToolActivity {item} />
 					{:else if isDurableEntry(item)}

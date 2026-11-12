@@ -223,7 +223,14 @@
 					}
 				}
 			},
-			{ root: el, threshold: 0 }
+			// 035 T018 follow-up: a 200px bottom margin keeps the pin alive
+			// through streaming growth spurts (brief-card insert, fast frame
+			// bursts outpacing the rAF pin). Without it a transient 1px exit
+			// latches stickToBottom=false mid-turn and nothing recovers it —
+			// the turn's tail then lands below the fold and LazyMount keeps
+			// the trailing row unmounted. Intentional scroll-ups (>200px
+			// away) still release the pin as before.
+			{ root: el, threshold: 0, rootMargin: '0px 0px 200px 0px' }
 		);
 		io.observe(top);
 		io.observe(bottom);
