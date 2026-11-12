@@ -355,6 +355,15 @@ class ChatState {
 			for (let i = 0; i < blocks.length; i++) {
 				const b = blocks[i];
 				if (b.kind === 'reasoning') {
+					// LIVEDBG-THROWAWAY (revert): trace live reasoning mounting in CI.
+					console.log(
+						'[livedbg] liveItems reasoning textLen=',
+						b.text.length,
+						'open=',
+						b.open,
+						'streaming=',
+						this.streaming
+					);
 					if (!b.text.trim()) continue;
 					// 035 US2: the authoritative streaming flag — pulse renders
 					// only while the block is open (no view-side growth heuristics).
@@ -746,6 +755,15 @@ class ChatState {
 				},
 				updateReasoningBuffer: (n) => {
 					const last = this.liveBlocks[this.liveBlocks.length - 1];
+					// LIVEDBG-THROWAWAY (revert): trace live reasoning mounting in CI.
+					console.log(
+						'[livedbg] updateReasoningBuffer len=',
+						n.length,
+						'lastKind=',
+						last?.kind,
+						'streaming=',
+						this.streaming
+					);
 					if (last?.kind === 'reasoning') last.text = n;
 				},
 				onReasoningSegmentStart: () => {
@@ -753,6 +771,8 @@ class ChatState {
 					// reasoning block stops streaming at the next segment start.
 					for (const b of this.liveBlocks) b.open = false;
 					this.liveBlocks.push({ kind: 'reasoning', text: '', open: true });
+					// LIVEDBG-THROWAWAY (revert): trace live reasoning mounting in CI.
+					console.log('[livedbg] seg-start blocks=', this.liveBlocks.length);
 				},
 				onTextSegmentStart: (startOffset) => {
 					// 035 US2: close ALL open blocks (was text-only) — an earlier
@@ -765,6 +785,8 @@ class ChatState {
 				// at critic re-emit start); clearing the list subsumes closing.
 				// Teardown's close-then-clear stays the abort/error safety net.
 				onIterationBoundary: () => {
+					// LIVEDBG-THROWAWAY (revert).
+					console.log('[livedbg] iteration-boundary clear blocks=', this.liveBlocks.length);
 					this.liveBlocks = [];
 				},
 				appendAssistantText: async (content, opts) => {

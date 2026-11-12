@@ -70,6 +70,23 @@
 
 	const timeline = $derived(assembleTimeline(messages, liveItems, streaming));
 
+	// LIVEDBG-THROWAWAY (revert): prove the component re-renders with live items.
+	$effect(() => {
+		const live = timeline.filter((t) => t.source === 'live');
+		if (live.length > 0) {
+			const ids = [...document.querySelectorAll('[id^="msg-live-"]')].map((e) => e.id);
+			const allIds = [...document.querySelectorAll('[id^="msg-"]')].map((e) => e.id).slice(-8);
+			console.log(
+				'[livedbg] MessageList timeline live=',
+				live.map((t) => ('live' in t ? t.live : '?')).join(','),
+				'liveIds=',
+				JSON.stringify(ids),
+				'tailIds=',
+				JSON.stringify(allIds)
+			);
+		}
+	});
+
 	/**
 	 * Regenerate reveal gate (US5): only the newest timeline item qualifies
 	 * when generation is idle. `onRegenerate` deletes the whole reply turn and
