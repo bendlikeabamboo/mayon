@@ -35,6 +35,9 @@ pnpm-debug.log*
 coverage/
 test-results/
 playwright-report/
+.vitest/
+.vitest-attachments/
+**/__screenshots__/
 
 # Python cache (speckit scripts)
 __pycache__/

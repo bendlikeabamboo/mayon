@@ -8,7 +8,7 @@
 		"auth": "tsx src/auth/cli.ts",
 		"build": "tsup",
 		"start": "node dist/server.js",
-		"test": "vitest run"
+		"test": "NODE_OPTIONS=--max-old-space-size=500 vitest run --maxWorkers=1 --no-file-parallelism"
 	},
 	"dependencies": {
 		"@fastify/cookie": "^11.1.2",

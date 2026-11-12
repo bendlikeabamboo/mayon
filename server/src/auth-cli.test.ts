@@ -1,49 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
-import { migrate } from 'drizzle-orm/pglite/migrator';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { generateSync } from 'otplib';
 import { buildApp } from './server';
 import { createAuthStore, type AuthStore } from './auth/store';
 import { hashPassword, unwrapSecret, wrapSecret } from './auth/crypto';
 import { runCommand, type CliContext } from './auth/cli';
+import { createTestApp } from './testing/build-app';
 import type { PgPoolLike } from './pg';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, '../../drizzle');
-
-async function createPglitePool(): Promise<PgPoolLike> {
-	const client = new PGlite();
-	let closed = false;
-	await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_DIR });
-	const runQuery = async (text: string, params?: unknown[]) => {
-		const res = await client.query(text, params as unknown[]);
-		return {
-			rows: res.rows as Record<string, unknown>[],
-			fields: res.fields as { name: string }[],
-			rowCount: res.affectedRows ?? res.rows.length
-		};
-	};
-	return {
-		query: runQuery,
-		connect: async () => ({
-			query: runQuery,
-			release: () => undefined
-		}),
-		end: async () => {
-			if (closed) {
-				return;
-			}
-			closed = true;
-			await client.close();
-		}
-	};
-}
 
 const PASSWORD = 'correct horse battery';
 const NEW_PASSWORD = 'replacement horse battery';
@@ -79,24 +43,14 @@ interface TestApp {
 }
 
 async function startApp(): Promise<TestApp> {
-	const pool = await createPglitePool();
-	const clock = { now: Date.now() };
-	const keyFile = path.join(mkdtempSync(path.join(tmpdir(), 'mayon-auth-cli-')), 'auth-secret');
-	const app = buildApp(':memory:', {
-		pgPool: pool,
-		authNow: () => clock.now,
-		authKeyPath: keyFile
-	});
-	await app.listen({ port: 0, host: '0.0.0.0' });
+	const testApp = await createTestApp();
 	return {
-		app,
-		pool,
-		store: createAuthStore(pool, () => clock.now),
-		clock,
-		keyFile,
-		close: async () => {
-			await app.close();
-		}
+		app: testApp.app,
+		pool: testApp.pool!,
+		store: testApp.store,
+		clock: testApp.clock,
+		keyFile: testApp.keyFile,
+		close: testApp.close
 	};
 }
 
@@ -373,7 +327,6 @@ describe('auth-cli rotate-secret', () => {
 			authNow: () => testApp.clock.now,
 			authKeyPath: testApp.keyFile
 		});
-		await freshApp.listen({ port: 0, host: '0.0.0.0' });
 		const res = await freshApp.inject({
 			method: 'POST',
 			url: '/api/auth/login',

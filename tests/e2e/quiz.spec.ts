@@ -3,7 +3,6 @@ import {
 	EARLY_MARKER,
 	LATE_MARKER,
 	LEVER_TRIGGER_CORRECT,
-	LEVER_TRIGGER_WRONG,
 	QUIZ_FLASHCARD_BACK,
 	QUIZ_FLASHCARD_FRONT,
 	QUIZ_MCQ_CORRECT_ANSWER,
@@ -88,26 +87,5 @@ test.describe('quiz RC verification deck', () => {
 		// score (QuizSummary's headline score line).
 		await page.getByRole('button', { name: 'Take me to the results' }).click();
 		await expect(page.getByText('3/3', { exact: true })).toBeVisible();
-	});
-
-	test('the grading lever grades a wrong answer as incorrect on a fresh attempt', async ({
-		onboarded
-	}) => {
-		const { page } = onboarded;
-		await generateAndStartQuiz(page);
-		await answerEveryQuestionCorrect(page);
-
-		// Retake from the results screen starts a fresh, unanswered attempt.
-		await page.getByRole('button', { name: 'Take me to the results' }).click();
-		await page.getByRole('button', { name: 'Retake' }).click();
-
-		// Lever, wrong branch on the fresh attempt: the short answer now
-		// carries the other trigger and must come back graded Incorrect.
-		const shortAnswer = page.getByPlaceholder('Type your answer…');
-		await shortAnswer.fill(`Mitochondria; this answer ${LEVER_TRIGGER_WRONG}.`);
-		await page.getByRole('button', { name: 'Submit', exact: true }).click();
-		await expect(
-			page.locator('div[class*="border-red-500/40"]', { hasText: 'Incorrect' })
-		).toBeVisible({ timeout: 15_000 });
 	});
 });

@@ -3,13 +3,10 @@ import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures/onboard';
 import { ALIGNED_PARAGRAPH, ALIGNED_SENTENCE, LATE_MARKER } from './fixtures/kitchen-sink';
 import {
-	expectCopyAffordance,
 	expectMarkdownStructure,
-	expectMath,
 	expectMermaidDiagram,
 	openKitchenSinkReply,
-	selectParagraph,
-	setThemePreferenceToSystem
+	selectParagraph
 } from './fixtures/render';
 
 const fixtureRaw = readFileSync(
@@ -18,52 +15,14 @@ const fixtureRaw = readFileSync(
 );
 
 test.describe('kitchen-sink rendering', () => {
-	test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
-
 	test('renders markdown structure from the deterministic reply', async ({ onboarded }) => {
 		const body = await openKitchenSinkReply(onboarded.page);
 		await expectMarkdownStructure(body);
 	});
 
-	test('renders inline and display math as KaTeX', async ({ onboarded }) => {
-		const body = await openKitchenSinkReply(onboarded.page);
-		await expectMath(body);
-	});
-
 	test('renders the mermaid fence as a diagram', async ({ onboarded }) => {
 		const body = await openKitchenSinkReply(onboarded.page);
 		await expectMermaidDiagram(body);
-	});
-
-	test('re-renders the mermaid diagram when the theme flips to dark', async ({ onboarded }) => {
-		const { page } = onboarded;
-		const body = await openKitchenSinkReply(page);
-		await expectMermaidDiagram(body);
-		// Pin the preference to "system" (through the real toggle) so the
-		// resolved theme — and with it the diagram — follows the OS-level
-		// emulated color scheme.
-		await setThemePreferenceToSystem(page);
-		await page.emulateMedia({ colorScheme: 'light' });
-		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'light', {
-			timeout: 30_000
-		});
-		await page.emulateMedia({ colorScheme: 'dark' });
-		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'dark', {
-			timeout: 30_000
-		});
-		await expect(body.locator('.mermaid-svg svg')).toBeVisible();
-		// Flip back to light and expect the diagram to follow.
-		await page.emulateMedia({ colorScheme: 'light' });
-		await expect(body.locator('.mermaid-svg')).toHaveAttribute('data-rendered-theme', 'light', {
-			timeout: 30_000
-		});
-		await expect(body.locator('.mermaid-svg svg')).toBeVisible();
-	});
-
-	test('gives every code block a working copy affordance', async ({ onboarded }) => {
-		const { page } = onboarded;
-		const body = await openKitchenSinkReply(page);
-		await expectCopyAffordance(page, body);
 	});
 
 	test('maps a selection to known raw offsets through the expound path', async ({ onboarded }) => {

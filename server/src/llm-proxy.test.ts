@@ -13,7 +13,6 @@ describe('POST /api/llm/proxy', () => {
 
 	beforeAll(async () => {
 		app = buildApp(':memory:');
-		await app.listen({ port: 0, host: '0.0.0.0' });
 	});
 
 	afterAll(async () => {

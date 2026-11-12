@@ -3,35 +3,30 @@
 // concurrently with zero shared-state races (project mayon-dev-shard-N, web
 // host port 5200+N, disjoint volumes/network via the compose project prefix).
 //
-//   node scripts/dev-shard.mjs up 1/2     # boot shard-1's stack + readiness waits
-//   node scripts/dev-shard.mjs test 1/2   # playwright --shard=1/2 vs E2E_BASE_URL=:5201
+//   node scripts/dev-shard.mjs up 1/4     # boot shard-1's stack + readiness waits
+//   node scripts/dev-shard.mjs test 1/4   # playwright --shard=1/4 vs E2E_BASE_URL=:5201
 //   node scripts/dev-shard.mjs down 1     # tear shard-1's stack down
 //
-// The host-published langfuse-stub receiver is the one port tests hardcode
-// (telemetry.spec.ts asserts on 127.0.0.1:9998). Playwright shards whole spec
-// files, so exactly one shard owns telemetry.spec.ts; `up` detects the owner
-// (`playwright test --list --shard=N/M`) and publishes THAT shard's stub on
-// 9998 (other shards get 5500+N, unused host-side). If 9998 is already taken
-// — e.g. a running mayon-dev stack — `up` fails with instructions instead of
-// leaving the shard stack half-up.
+// Shard files are independent (no shared port ownership, no cross-spec chat or
+// provider id), so the configured total is whatever the caller passes and CI
+// runs one shard per capable runner. The capability gate is resolved here and
+// passed explicitly to the Playwright process through MAYON_TEST_MAX_WORKERS;
+// Playwright itself still applies the same gate (workers/fullyParallel).
 //
 // Compose is always invoked through scripts/dev-compose.mjs (--shard=N), so
 // engine resolution (MAYON_DEV_ENGINE) stays in one place.
 
 import { spawnSync } from 'node:child_process';
-import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { shardLangfusePort, shardProject, shardWebPort } from './dev-compose.mjs';
+import { shardProject, shardWebPort } from './dev-compose.mjs';
+import { reportCapacity } from './test-capacity.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const devCompose = path.join(repoRoot, 'scripts', 'dev-compose.mjs');
 
-/** Host port tests hardcode for the langfuse-stub receiver (telemetry.spec.ts). */
-const SHARED_STUB_PORT = 9998;
-const TELEMETRY_SPEC = 'telemetry.spec.ts';
 const usage =
-	'Usage: node scripts/dev-shard.mjs up|test <shard>/<total> | down <shard>[/<total>] (e.g. up 1/2)';
+	'Usage: node scripts/dev-shard.mjs up|test <shard>/<total> | down <shard>[/<total>] (e.g. up 1/4)';
 
 function fail(message) {
 	console.error(`✗ ${message}`);
@@ -59,21 +54,9 @@ function compose(shard, args, env = process.env) {
 	return result.status ?? 1;
 }
 
-/** True when something already listens on host 127.0.0.1:port. */
-function portHeld(port) {
-	return new Promise((resolve) => {
-		const socket = net.connect({ host: '127.0.0.1', port });
-		socket.setTimeout(2000);
-		socket.once('connect', () => {
-			socket.destroy();
-			resolve(true);
-		});
-		socket.once('timeout', () => {
-			socket.destroy();
-			resolve(false);
-		});
-		socket.once('error', () => resolve(false));
-	});
+/** Resolve the capability gate once and print its stable report line. */
+function capacity() {
+	return reportCapacity();
 }
 
 /** Poll until the shard web answers 200 (mirrors the CI readiness wait). */
@@ -121,51 +104,13 @@ function waitMockLlm(shard) {
 	}
 }
 
-/** This shard's assigned tests via playwright --list (whole files per shard). */
-function listShardTests(shard, total) {
-	const result = spawnSync(
-		'pnpm',
-		['exec', 'playwright', 'test', '--list', `--shard=${shard}/${total}`],
-		{ cwd: repoRoot, encoding: 'utf8' }
-	);
-	if (result.error || result.status !== 0) {
-		fail(`playwright --list failed for shard ${shard}/${total}: ${result.stderr ?? result.error}`);
-	}
-	return result.stdout;
-}
-
 async function cmdUp(shard, total) {
-	const ownsTelemetry = listShardTests(shard, total).includes(TELEMETRY_SPEC);
-	const env = {
-		...process.env,
-		SHARD_WEB_PORT: String(shardWebPort(shard)),
-		SHARD_LANGFUSE_PORT: String(ownsTelemetry ? SHARED_STUB_PORT : shardLangfusePort(shard))
-	};
+	const { mode, workers, reason } = capacity();
 	console.log(
-		`Bringing up ${shardProject(shard)} (web :${shardWebPort(shard)}, stub :${env.SHARD_LANGFUSE_PORT}${ownsTelemetry ? ' — owns telemetry' : ''})`
+		`Bringing up ${shardProject(shard)} (web :${shardWebPort(shard)}, shard ${shard}/${total}, ${mode} workers=${workers} reason=${reason})`
 	);
-	const code = compose(shard, ['up', '-d'], env);
-	if (code !== 0) {
-		if (ownsTelemetry && (await portHeld(SHARED_STUB_PORT))) {
-			fail(
-				`127.0.0.1:${SHARED_STUB_PORT} is already bound — shard ${shard} runs ${TELEMETRY_SPEC}, whose assertions read the stub receiver there. Stop the stack publishing it (e.g. the mayon-dev dev stack) and retry.`
-			);
-		}
-		process.exit(code);
-	}
-	if (ownsTelemetry) {
-		// A retry after a failed 9998 bind can start a half-created stub
-		// endpoint whose port never gets programmed (docker quirk) — detect the
-		// silent missing listener and recreate just the stub.
-		for (let held = await portHeld(SHARED_STUB_PORT), i = 0; !held && i < 3; i++) {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			compose(shard, ['up', '-d', '--force-recreate', 'langfuse-stub'], env);
-			held = await portHeld(SHARED_STUB_PORT);
-		}
-		if (!(await portHeld(SHARED_STUB_PORT))) {
-			fail(`langfuse-stub did not take 127.0.0.1:${SHARED_STUB_PORT}`);
-		}
-	}
+	const code = compose(shard, ['up', '-d']);
+	if (code !== 0) process.exit(code);
 	await waitWeb(shardWebPort(shard));
 	waitMockLlm(shard);
 	console.log(
@@ -174,10 +119,17 @@ async function cmdUp(shard, total) {
 }
 
 function cmdTest(shard, total) {
+	const { workers } = capacity();
+	const env = {
+		...process.env,
+		E2E_BASE_URL: `http://127.0.0.1:${shardWebPort(shard)}`
+	};
+	// Pass the resolved decision explicitly; an operator-supplied cap still wins.
+	env.MAYON_TEST_MAX_WORKERS ??= String(workers);
 	const result = spawnSync('pnpm', ['exec', 'playwright', 'test', `--shard=${shard}/${total}`], {
 		stdio: 'inherit',
 		cwd: repoRoot,
-		env: { ...process.env, E2E_BASE_URL: `http://127.0.0.1:${shardWebPort(shard)}` }
+		env
 	});
 	process.exit(result.status ?? 1);
 }

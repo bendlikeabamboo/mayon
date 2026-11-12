@@ -21,43 +21,93 @@ topology, and the invariants you must respect when editing.
 
 ## Commands
 
-| Command                            | What it does                                                                                                                                             |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install`                     | Install dependencies.                                                                                                                                    |
-| `pnpm dev`                         | Bring up the all-Docker dev stack (web HMR on http://localhost:5173, server on :4319, db), project `mayon-dev`. Docker or Podman via `MAYON_DEV_ENGINE`. |
-| `pnpm dev:up`                      | Same as `pnpm dev` but detached (`-d`). Engine selectable via `MAYON_DEV_ENGINE`.                                                                        |
-| `pnpm dev:down`                    | Stop and remove the dev stack (keeps `pg-data-dev`/`server-data-dev` volumes).                                                                           |
-| `pnpm dev:build`                   | Rebuild the dev images (after deps, config, or `@mayon/shared` changes). Engine selectable via `MAYON_DEV_ENGINE`.                                       |
-| `pnpm dev:shard:up 1/2`            | Boot a per-shard e2e stack (project `mayon-dev-shard-1`, web :5201) incl. readiness waits; used with `pnpm dev:shard:test`/`:down` for sharded e2e runs. |
-| `pnpm dev:vite`                    | Run Vite directly — used **inside** the dev `web` container.                                                                                             |
-| `pnpm --filter @mayon/server dev`  | Run the server (`tsx watch`) — used **inside** the dev `server` container.                                                                               |
-| `pnpm build`                       | Build the SPA into `build/`.                                                                                                                             |
-| `pnpm check`                       | Type-check with `svelte-check`.                                                                                                                          |
-| `pnpm lint`                        | ESLint (flat config) + Prettier `--check`.                                                                                                               |
-| `pnpm format`                      | Prettier `--write`.                                                                                                                                      |
-| `pnpm test`                        | Vitest (pglite test driver) — run once. Use this or `test:low-spec` per the profile rule below.                                                          |
-| `pnpm test:low-spec`               | Vitest with the low-spec profile (`--mode low-spec` → `.env.low-spec`: 1 worker, no file parallelism).                                                   |
-| `pnpm test:watch`                  | Vitest in watch mode.                                                                                                                                    |
-| `pnpm --filter @mayon/server test` | Vitest for the server package.                                                                                                                           |
-| `pnpm db:generate`                 | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                                                            |
-| `pnpm db:studio`                   | Open Drizzle Studio against the schema.                                                                                                                  |
-| `docker compose up`                | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first.                                          |
+| Command                                   | What it does                                                                                                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`                            | Install dependencies.                                                                                                                                    |
+| `pnpm dev`                                | Bring up the all-Docker dev stack (web HMR on http://localhost:5173, server on :4319, db), project `mayon-dev`. Docker or Podman via `MAYON_DEV_ENGINE`. |
+| `pnpm dev:up`                             | Same as `pnpm dev` but detached (`-d`). Engine selectable via `MAYON_DEV_ENGINE`.                                                                        |
+| `pnpm dev:down`                           | Stop and remove the dev stack (keeps `pg-data-dev`/`server-data-dev` volumes).                                                                           |
+| `pnpm dev:build`                          | Rebuild the dev images (after deps, config, or `@mayon/shared` changes). Engine selectable via `MAYON_DEV_ENGINE`.                                       |
+| `pnpm dev:shard:up 1/4`                   | Boot a per-shard e2e stack (project `mayon-dev-shard-1`, web :5201) incl. readiness waits; used with `pnpm dev:shard:test`/`:down` for sharded e2e runs. |
+| `pnpm dev:vite`                           | Run Vite directly — used **inside** the dev `web` container.                                                                                             |
+| `pnpm --filter @mayon/server dev`         | Run the server (`tsx watch`) — used **inside** the dev `server` container.                                                                               |
+| `pnpm build`                              | Build the SPA into `build/`.                                                                                                                             |
+| `pnpm check`                              | Type-check with `svelte-check`.                                                                                                                          |
+| `pnpm lint`                               | ESLint (flat config) + Prettier `--check`.                                                                                                               |
+| `pnpm format`                             | Prettier `--write`.                                                                                                                                      |
+| `pnpm test`                               | Tiers 1+2 (Node + Chromium), capability-gated; the local merge gate. Use `test:low-spec` per the profile rule below.                                     |
+| `pnpm test:unit`                          | Tier 1 only: in-process Node logic, repositories, and server-handler tests; no browser process.                                                          |
+| `pnpm test:browser`                       | Tier 2 only: real-Chromium component tests (`*.browser.test.ts`).                                                                                        |
+| `pnpm test:e2e`                           | Tier 3 Playwright against a running stack (`E2E_BASE_URL`, default http://127.0.0.1:5173).                                                               |
+| `pnpm test:ci`                            | CI wrapper for Tiers 1+2 + server; writes `test-results/tier-durations.json` and enforces budgets.                                                       |
+| `pnpm test:e2e:ci -- --shard=<n>/<total>` | Shard-aware Tier 3 CI wrapper; writes `test-results/tier3-shard-<n>.json` and enforces that shard's budget.                                              |
+| `pnpm test:integration`                   | Opt-in live-provider and other environment-dependent checks (excluded from the default suite).                                                           |
+| `pnpm test:low-spec`                      | Forces serial mode (`MAYON_TEST_PARALLEL=off`) with a 500 MB V8 heap; still selects every test.                                                          |
+| `pnpm test:watch`                         | Vitest in watch mode (Tiers 1+2).                                                                                                                        |
+| `pnpm check:tests`                        | Tier guardrails (`TT-001`–`TT-008`); exits 2 on violation.                                                                                               |
+| `pnpm check:budget`                       | Enforces per-tier time budgets from `test-budgets.json` for the tiers the current job owns.                                                              |
+| `pnpm --filter @mayon/server test`        | Server-package Tier 1 suite (Fastify `inject`), unchanged.                                                                                               |
+| `pnpm db:generate`                        | Generate a new drizzle migration from `src/lib/db/schema.ts` into `drizzle/`.                                                                            |
+| `pnpm db:studio`                          | Open Drizzle Studio against the schema.                                                                                                                  |
+| `docker compose up`                       | Run the prod stack from prebuilt GHCR images (web on :8080, server internal-only). `docker compose pull` first.                                          |
 
-### Choosing the test profile (low-spec vs normal)
+### Test tiers and the capability gate
 
-Before running any test, **first determine which profile the machine can take**
-by checking its CPU and RAM — never assume `pnpm test` is safe. Check with
-`nproc` (logical CPUs) and `free -h` or `grep MemTotal /proc/meminfo` (usable RAM).
+The suite has three enforced tiers. `pnpm test` runs Tiers 1+2; the server package
+keeps its own command.
 
-- **Low-spec** → `pnpm test:low-spec`: fewer than **8 logical CPUs** **or**
-  less than **8 GiB RAM**. These boundaries are estimates; when in doubt or
-  anywhere near them (or when other heavy processes are running), prefer
-  low-spec — slower tests beat a thrashed or OOM-killed machine.
-- **Normal** → `pnpm test`: at least **8 logical CPUs** **and** at least
-  **8 GiB RAM**.
+| Tier              | Environment                          | File pattern                                  | Command                                               | Budget (8-CPU/8-GiB reference) |
+| ----------------- | ------------------------------------ | --------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
+| 1 — logic/handler | Node, in-process; pglite for storage | `src/**/*.test.ts`, `server/src/**/*.test.ts` | `pnpm test:unit` / `pnpm --filter @mayon/server test` | 60 s (server 120 s)            |
+| 2 — component     | Real Chromium via Vitest browser     | `src/**/*.browser.test.ts`                    | `pnpm test:browser`                                   | 120 s                          |
+| 3 — integration   | Full stack via Playwright            | `tests/e2e/**/*.spec.ts`                      | `pnpm test:e2e`                                       | 120 s per shard                |
 
-The low-spec profile only changes Vitest scheduling (1 worker, no file
-parallelism), never test selection — every test still runs in both profiles.
+- `*.browser.test.ts` is the only Tier 2 suffix. `*.svelte.test.ts` is a rune-module
+  test and stays Tier 1; do not reclassify it by accident.
+- Tier 1 must not import `@vitest/browser*`, `vitest-browser-svelte`, Playwright, or
+  `@testing-library/*`, and must not start a browser, build, or HTTP listener
+  (transport-subject tests excepted).
+- Tier 2 renders the real component and queries by accessible role or test id.
+  Navigation, environment, and store dependencies come from `tests/mocks/app/*`
+  and `vi.mock` at the module boundary; it must not need the app server, Postgres,
+  docker compose, or the `tests/e2e` stack.
+- Tier 3 keeps only flows that need the real browser plus real server and
+  persistence/streaming. Provider/session setup runs once in
+  `tests/e2e/global-setup.ts`; specs consume `tests/e2e/fixtures/session.ts`,
+  never replay onboarding, never use fixed waits, and block third-party traffic
+  through `tests/e2e/fixtures/network.ts`.
+- Component-level network calls are mocked with MSW at the `fetch` boundary.
+  Shared handlers live in `tests/mocks/handlers.ts`; `tests/mocks/node.ts` and
+  `tests/mocks/browser.ts` are the two entry points. The worker asset under
+  `tests/mocks/public/` is served only by the test Vite server and is never
+  copied into `build/`.
+- Every removed or migrated source-text/end-to-end case is recorded in
+  `specs/032-test-suite-tiering/migration-ledger.md` with a replacement path or a
+  retirement rationale. Do not delete a test without a ledger row.
+- `pnpm check:tests` enforces the tier boundaries (`TT-001`–`TT-008`); CI runs it
+  as part of `pnpm test:ci`. `pnpm check:budget` enforces `test-budgets.json` for
+  the tiers owned by the current job.
+
+#### Choosing the test profile (low-spec vs normal)
+
+Before running any test, determine which profile the machine can take — never
+assume `pnpm test` is safe. The capability gate reads CPU and usable memory from
+the host and any cgroup limit (whichever is lower) and uses the same boundary as
+the profile:
+
+- **Low-spec / unknown** → `pnpm test:low-spec` (or `MAYON_TEST_PARALLEL=off pnpm test`):
+  fewer than **8 logical CPUs** **or** less than **8 GiB usable RAM**, or an
+  unreadable/contradictory reading. Serial: one worker, no file parallelism.
+- **Capable** → `pnpm test`: at least **8 logical CPUs** **and** at least
+  **8 GiB usable RAM**.
+
+`pnpm test:low-spec` sets `MAYON_TEST_PARALLEL=off` and
+`NODE_OPTIONS=--max-old-space-size=500`; it still selects every test. The gate
+never changes selection and never skips a test. Overrides:
+`MAYON_TEST_PARALLEL=auto|on|off` (`on` requires an explicit
+`MAYON_TEST_MAX_WORKERS`), `MAYON_TEST_MAX_WORKERS=<n>` caps workers, and
+`MAYON_TEST_MAX_OLD_SPACE_MB=<n>` caps each test worker's V8 heap. Both runners
+print a `[test-capacity]` line at startup.
 
 ## Worktrees
 

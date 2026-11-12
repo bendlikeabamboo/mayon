@@ -96,7 +96,6 @@ async function startApp(opts: StartOptions = {}): Promise<TestApp> {
 				sleepCalls.push(ms);
 			})
 	});
-	await app.listen({ port: 0, host: '0.0.0.0' });
 	return {
 		app,
 		pool,
