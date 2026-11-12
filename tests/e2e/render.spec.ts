@@ -159,6 +159,13 @@ test.describe('interleaved micro-thoughts (035 T018 — maintainer-only)', () =>
 		// a tools-bearing chat stream (kitchen sink), so the interleaved rows
 		// must be gone entirely: exactly [user, user, plain reply], no orphaned
 		// "Thought process" rows, no duplicate thoughts.
+		// Hover the row first (backprop pattern): the action row is
+		// hover-revealed, and revealing it in a separate step keeps the
+		// click itself from racing a scroll-into-view against hover.
+		const lastRow = page.locator('div.group\\/message', {
+			has: page.getByRole('button', { name: 'Regenerate response' })
+		});
+		await lastRow.hover();
 		await page.getByRole('button', { name: 'Regenerate response' }).click();
 		await expect(page.locator('[id^="msg-live-"]')).toHaveCount(0, { timeout: 30_000 });
 		await expect(page.locator('.markdown-body', { hasText: LATE_MARKER })).toBeVisible({
