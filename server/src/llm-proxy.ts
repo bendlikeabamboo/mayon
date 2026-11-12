@@ -49,6 +49,25 @@ function forwardCredentialHeaders(body: LlmProxyRequest, targetHost: string): bo
 	return declared !== null && declared === targetHost;
 }
 
+/**
+ * Dev/test exemption for the target-safety rule: exact hostnames the relay
+ * lets through without the non-public IP check, from
+ * `MAYON_LLM_RELAY_ALLOW_HOSTS` (comma-separated, same normalization as
+ * `authHost`). The dev compose file sets it to the mock provider host so the
+ * e2e shard stacks can reach it through the relay; every prod artifact leaves
+ * it unset (strict deny). Exact hostnames only — never wildcards or subnets —
+ * and the exemption skips just the IP-range check, never the credential rule.
+ */
+export function relayAllowHosts(): Set<string> {
+	const raw = process.env.MAYON_LLM_RELAY_ALLOW_HOSTS ?? '';
+	return new Set(
+		raw
+			.split(',')
+			.map((host) => normalizeHostname(host))
+			.filter((host) => host.length > 0)
+	);
+}
+
 const HOP_BY_HOP = new Set([
 	'content-encoding',
 	'content-length',
@@ -98,8 +117,12 @@ export function registerLlmProxy(app: FastifyInstance): void {
 		try {
 			// Target safety (032 / D4): validate the destination against the
 			// non-public IP range table before any upstream bytes move; resolver
-			// failures fall through to the 502 handler (fail-closed).
-			await assertPublicHttpTarget(body.url);
+			// failures fall through to the 502 handler (fail-closed). Exact
+			// dev/test hostnames (MAYON_LLM_RELAY_ALLOW_HOSTS) skip the
+			// IP-range check only — the credential rule above still applies.
+			if (!relayAllowHosts().has(normalizeHostname(parsed.hostname))) {
+				await assertPublicHttpTarget(body.url);
+			}
 			upstream = await fetch(body.url, {
 				method: body.method ?? 'GET',
 				headers,

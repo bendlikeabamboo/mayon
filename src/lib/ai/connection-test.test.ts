@@ -327,6 +327,25 @@ describe('testProviderConnection', () => {
 		expect((await testProviderConnection(config)).failure?.class).toBe('auth');
 	});
 
+	it('classifies the relay blocked-target 403 as relay refusal, not auth', async () => {
+		setHttpTransport({
+			request: async () => {
+				throw new ProviderHttpError(
+					'Provider returned HTTP 403',
+					403,
+					JSON.stringify({ error: 'blocked target', detail: 'private' })
+				);
+			}
+		});
+
+		const res = await testProviderConnection(config);
+
+		expect(res.failure?.class).toBe('http');
+		expect(res.failure?.title).toBe('Relay refused the target');
+		expect(res.failure?.message).toContain(config.baseUrl);
+		expect(res.failure?.status).toBe(403);
+	});
+
 	/**
 	 * The composed Settings-UI invariant: a successful probe hands the
 	 * discovered catalog to the caller, which merges it into the persisted

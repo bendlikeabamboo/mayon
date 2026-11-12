@@ -439,4 +439,80 @@ describe('POST /api/llm/proxy', () => {
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 		});
 	});
+
+	describe('target-safety dev exemption (MAYON_LLM_RELAY_ALLOW_HOSTS)', () => {
+		const VAR = 'MAYON_LLM_RELAY_ALLOW_HOSTS';
+		let saved: string | undefined;
+
+		beforeEach(() => {
+			saved = process.env[VAR];
+		});
+
+		afterEach(() => {
+			if (saved === undefined) delete process.env[VAR];
+			else process.env[VAR] = saved;
+		});
+
+		async function sendToPrivateHost(): Promise<{
+			fetchMock: ReturnType<typeof vi.fn>;
+			res: Awaited<ReturnType<typeof app.inject>>;
+		}> {
+			// The mock-provider shape: a compose-network hostname resolving to
+			// a private address (what the e2e shard stacks hit).
+			vi.spyOn(dnsPromises, 'lookup').mockResolvedValue([{ address: '172.18.0.5', family: 4 }]);
+			const fetchMock = vi.fn().mockResolvedValue(new Response('models-ok'));
+			vi.stubGlobal('fetch', fetchMock);
+			const res = await app.inject({
+				method: 'POST',
+				url: '/api/llm/proxy',
+				payload: { url: 'http://mock-llm:9999/v1/models', headers: {} }
+			});
+			return { fetchMock, res };
+		}
+
+		it('lets an allowlisted hostname through despite a private resolved address', async () => {
+			process.env[VAR] = 'mock-llm';
+			const { fetchMock, res } = await sendToPrivateHost();
+			expect(res.statusCode).toBe(200);
+			expect(res.body).toBe('models-ok');
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('matches allowlist entries after normalization (case + trailing dot)', async () => {
+			process.env[VAR] = 'Mock-LLM.';
+			const { fetchMock, res } = await sendToPrivateHost();
+			expect(res.statusCode).toBe(200);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('supports comma-separated entries with whitespace', async () => {
+			process.env[VAR] = 'other.test, mock-llm ,third.test';
+			const { fetchMock, res } = await sendToPrivateHost();
+			expect(res.statusCode).toBe(200);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('still blocks private targets not on the allowlist', async () => {
+			process.env[VAR] = 'mock-llm';
+			vi.spyOn(dnsPromises, 'lookup').mockResolvedValue([{ address: '192.168.1.1', family: 4 }]);
+			const fetchMock = vi.fn().mockResolvedValue(new Response('never'));
+			vi.stubGlobal('fetch', fetchMock);
+			const res = await app.inject({
+				method: 'POST',
+				url: '/api/llm/proxy',
+				payload: { url: 'https://intranet.example/x', headers: {} }
+			});
+			expect(res.statusCode).toBe(403);
+			expect(res.json()).toEqual({ error: 'blocked target', detail: 'private' });
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it('still blocks private targets when the variable is unset (strict deny)', async () => {
+			delete process.env[VAR];
+			const { fetchMock, res } = await sendToPrivateHost();
+			expect(res.statusCode).toBe(403);
+			expect(res.json()).toEqual({ error: 'blocked target', detail: 'private' });
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+	});
 });

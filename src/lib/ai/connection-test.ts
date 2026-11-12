@@ -102,6 +102,21 @@ async function classify(
 		};
 	}
 	if (err instanceof ProviderHttpError) {
+		// Our own relay's SSRF refusal (403 `blocked target`) is not an
+		// authentication problem — misclassifying it as one sends the user to
+		// check their API key for a request that never left the server.
+		if (err.status === 403 && isRelayBlock(err.body)) {
+			return {
+				ok: false,
+				failure: {
+					class: 'http',
+					title: 'Relay refused the target',
+					message: `Mayon's server relay refused to contact ${config.baseUrl} (blocked target). The relay never forwards to non-public addresses — serve the provider on a public host or reach it browser-direct.`,
+					status: 403,
+					detail: err.body
+				}
+			};
+		}
 		if (err.status === 401 || err.status === 403) {
 			return fail(
 				'auth',
@@ -189,6 +204,12 @@ async function probeReachability(
 			hint: SERVER_REQUIRED_HINT
 		}
 	};
+}
+
+/** True when the upstream body is our relay's SSRF refusal (`403` with a
+ *  `blocked target` error payload) rather than the provider answering. */
+function isRelayBlock(body: string | undefined): boolean {
+	return typeof body === 'string' && body.includes('blocked target');
 }
 
 /** Row 5: the page is HTTPS but the target is plain HTTP — the browser blocks

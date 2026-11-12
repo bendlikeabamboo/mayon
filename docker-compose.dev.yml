@@ -47,6 +47,11 @@ services:
       # service below can exercise the delivery path out of the box (delivery
       # itself only starts once telemetry is enabled in settings).
       MAYON_LANGFUSE_SECRET_KEY: ${MAYON_LANGFUSE_SECRET_KEY:-dev-langfuse-stub-secret}
+      # Relay target-safety exemption for the mock provider: mock-llm resolves
+      # to a compose-network (private-range) address, which the relay's SSRF
+      # guard otherwise refuses with 403. Prod (docker-compose.yml) leaves this
+      # unset — strict deny. Exact hostnames only, no wildcards.
+      MAYON_LLM_RELAY_ALLOW_HOSTS: ${MAYON_LLM_RELAY_ALLOW_HOSTS:-mock-llm}
     depends_on:
       db:
         condition: service_healthy

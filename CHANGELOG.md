@@ -145,6 +145,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   031's "no CI edits" artifacts carry dated addenda; and reload-hydration
   parity pins all three AI SDK entry points
   (`streamText`/`generateObject`/`generateText`).
+- **LLM relay reaches the compose-network mock provider again (merge fix)**
+  — the issue-#69 target-safety guard refused every non-public relay
+  destination, including the e2e mock host (`mock-llm` resolves to a
+  private-range address), which stalled all relayed e2e flows and surfaced
+  as a misleading "Authentication failed" in the connection test. The relay
+  now honors `MAYON_LLM_RELAY_ALLOW_HOSTS` (exact hostnames, dev compose
+  sets `mock-llm`; prod leaves it unset for strict deny), and
+  `testProviderConnection` reports the relay's `403 blocked target` as a
+  relay refusal instead of an auth failure.
+- **Tier-1 time budget recalibrated for the grown suite (merge fix)** — the
+  reference budget moves 60 s → 100 s (low-spec 200 s): the 0.10.0 suite
+  measures 161 s on the 4-vCPU CI runner against the old 120 s low-spec
+  ceiling.
 
 ## [0.9.0] - 2026-11-03
 

@@ -53,6 +53,18 @@ Responses:
 | Hostname unresolvable / resolver error | `502` | `{"error":"upstream fetch failed","detail":"…"}` (fail-closed) |
 | Upstream returns 3xx | `502` | `{"error":"upstream fetch failed","detail":"…"}` — redirects are **not followed** (`redirect: 'error'`) |
 
+## Dev/test hostname exemption (merge fix, PR #79)
+
+`MAYON_LLM_RELAY_ALLOW_HOSTS` (comma-separated exact hostnames, same
+normalization as `authHost`) lets named hosts skip the IP-range check. The dev
+compose file sets it to `mock-llm` — the e2e mock provider resolves to a
+compose-network (private-range) address that the guard otherwise refuses with
+`403 blocked target`, which breaks every relayed e2e flow (chat, discovery,
+image materialization) and misclassifies in `testProviderConnection` as an
+auth failure. Every prod artifact leaves the variable unset (strict deny). The
+exemption skips only the IP-range check; the credential-forwarding rule above
+still applies, and matching is exact-hostname (no wildcards, no subnets).
+
 ## Response streaming (amended)
 
 Unchanged pass-through contract (status + filtered headers + `x-accel-buffering: no`, hop-by-hop
