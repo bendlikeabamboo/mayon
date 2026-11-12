@@ -113,10 +113,12 @@
 		if (item.live === 'live_text' || item.live === 'live_reasoning') {
 			// Per-block key (029 T008): index among same-variant live entries so
 			// interleaved blocks keep stable, unique keys (append-only, FR-011).
+			// Zero-based: count predecessors only — the item itself must not
+			// increment its own index (first block is -0, not -1).
 			let n = 0;
 			for (const t of timeline) {
-				if (isLiveEntry(t) && t.live === item.live) n++;
 				if (t === item) break;
+				if (isLiveEntry(t) && t.live === item.live) n++;
 			}
 			return `${item.live === 'live_text' ? 'live-text' : 'live-reasoning'}-${n}`;
 		}
