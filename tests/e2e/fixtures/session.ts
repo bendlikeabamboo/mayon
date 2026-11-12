@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 
+import { DEFAULT_TITLE } from '../../../src/lib/ai/generate/generate-title';
 import { createChat } from './seed';
 import { test as networkTest } from './network';
 
@@ -27,8 +28,11 @@ export const test = networkTest.extend<{ session: Session }, { providerId: strin
 		const url = baseURL ?? DEFAULT_BASE_URL;
 		// page.request shares the browser context cookies, so a locked server
 		// accepts the DB write when the setup project stored an authenticated
-		// session.
-		const chatId = await createChat(page.request, url, `E2E chat ${testInfo.workerIndex}`);
+		// session. Fresh chats carry the product default title so first-turn
+		// behavior (no tools, auto-title, brief intake) matches a UI-created
+		// chat — the interleaved-thoughts journey and the first-turn tool
+		// gate depend on the title check in isFirstRootTurn.
+		const chatId = await createChat(page.request, url, DEFAULT_TITLE);
 		await page.goto(new URL(`/chat/${chatId}`, url).toString());
 		await expect(page.getByPlaceholder(/Message the active provider/)).toBeVisible();
 		await use({ page, workerIndex: testInfo.workerIndex, providerId, chatId });
