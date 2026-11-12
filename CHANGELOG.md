@@ -163,8 +163,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mounted as `-1`/`-2` instead of the documented `-0`/`-1` (only the 035
   interleaved e2e asserts exact ids, which is why nothing else caught it).
   The bottom sentinel now keeps a 200 px margin so a transient exit during
-  streaming growth cannot permanently unlatch pinning, and the timeline's
-  frontier row always mounts even when the viewport never got near it.
+  streaming growth cannot permanently unlatch pinning, the view re-pins once
+  when the turn settles (unless deep-linked), and the timeline frontier row
+  always mounts even when the viewport never got near it.
 
 ## [0.9.0] - 2026-11-03
 

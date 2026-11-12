@@ -130,6 +130,8 @@
 	let topVisible = $state(false);
 	let bottomVisible = $state(false);
 	let stickToBottom = $state(true);
+	// Previous streaming value, for the end-of-turn pin below.
+	let wasStreamingPin = false;
 	let fadeTop = $state(0);
 	let fadeBottom = $state(0);
 	let scrolledToHash = $state(false);
@@ -150,6 +152,21 @@
 	$effect(() => {
 		void chatStore.messages.length;
 		if (scrolledToHash || !stickToBottom) return;
+		if (viewport) {
+			viewport.scrollTop = viewport.scrollHeight;
+		}
+	});
+
+	// End-of-turn pin recovery (035 T018 follow-up): if the sentinel latch
+	// died mid-turn (a growth spurt outpacing the rAF pin — brief-card
+	// insert, fast frame bursts), the turn's tail lands below the fold with
+	// nothing scrolling after it. Re-pin once when the turn settles so the
+	// reply end is always revealed. Deep-link jumps are exempt.
+	$effect(() => {
+		const settled = wasStreamingPin && !chatStore.streaming;
+		wasStreamingPin = chatStore.streaming;
+		if (!settled || scrolledToHash) return;
+		stickToBottom = true;
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
