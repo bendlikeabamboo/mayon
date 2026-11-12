@@ -267,6 +267,143 @@ describe('updateArtifactContent', () => {
 		const result = await repos.messages.updateArtifactContent('nonexistent', 'x', {});
 		expect(result).toBeNull();
 	});
+
+	it('stores parts atomically with content and metadata in one update (037 US6)', async () => {
+		const { chat } = await seedChat();
+		const art = await repos.messages.insertAnchored(
+			chat.id,
+			{
+				role: 'user',
+				content: 'original',
+				kind: 'branch_artifact',
+				metadata: artifactMeta({ mode: 'summary', summaryTraceId: 'trace-1' })
+			},
+			{ afterOrd: 0, beforeOrd: 1 }
+		);
+		const parts = [{ type: 'text', text: 'regenerated: ' }, testImage];
+
+		const updated = await repos.messages.updateArtifactContent(
+			art.id,
+			'regenerated: ',
+			{ regeneratedAt: '2026-11-11T00:00:00.000Z' },
+			parts
+		);
+
+		expect(updated).not.toBeNull();
+		// Same row identity (020 regeneration contract): id and ord unchanged.
+		expect(updated!.id).toBe(art.id);
+		expect(updated!.ord).toBe(art.ord);
+		expect(updated!.content).toBe('regenerated: ');
+		expect(updated!.parts).toBe(JSON.stringify(parts));
+		const meta = JSON.parse(updated!.metadata!) as BranchArtifactMetadata;
+		expect(meta.mode).toBe('summary');
+		expect(meta.summaryTraceId).toBe('trace-1');
+		expect(meta.regeneratedAt).toBe('2026-11-11T00:00:00.000Z');
+		// Round-trip: content, metadata, and parts landed together on the row.
+		const reread = await repos.messages.getById(art.id);
+		expect(reread!.content).toBe('regenerated: ');
+		expect(reread!.parts).toBe(JSON.stringify(parts));
+		expect(partsOf(reread!)).toEqual(parts);
+	});
+
+	it('rejects parts with more than 8 images — row untouched', async () => {
+		const { chat } = await seedChat();
+		const art = await repos.messages.insertAnchored(
+			chat.id,
+			{ role: 'user', content: 'original', kind: 'branch_artifact', metadata: artifactMeta() },
+			{ afterOrd: 0, beforeOrd: 1 }
+		);
+		const nineImages = Array.from({ length: 9 }, () => testImage);
+
+		await expect(
+			repos.messages.updateArtifactContent(art.id, 'new', {}, nineImages)
+		).rejects.toThrow('at most 8 image parts');
+
+		const row = await repos.messages.getById(art.id);
+		expect(row!.content).toBe('original');
+		expect(row!.parts).toBeNull();
+	});
+
+	it('rejects text parts that do not concatenate to content — row untouched', async () => {
+		const { chat } = await seedChat();
+		const art = await repos.messages.insertAnchored(
+			chat.id,
+			{ role: 'user', content: 'original', kind: 'branch_artifact', metadata: artifactMeta() },
+			{ afterOrd: 0, beforeOrd: 1 }
+		);
+
+		await expect(
+			repos.messages.updateArtifactContent(art.id, 'content', {}, [
+				{ type: 'text', text: 'different' }
+			])
+		).rejects.toThrow('concatenate');
+
+		const row = await repos.messages.getById(art.id);
+		expect(row!.content).toBe('original');
+		expect(row!.parts).toBeNull();
+	});
+
+	it('parts: null clears the parts column', async () => {
+		const { chat } = await seedChat();
+		const parts = [{ type: 'text', text: 'with image ' }, testImage];
+		const art = await repos.messages.insertAnchored(
+			chat.id,
+			{
+				role: 'user',
+				content: 'with image ',
+				kind: 'branch_artifact',
+				metadata: artifactMeta({ mode: 'summary' }),
+				parts
+			},
+			{ afterOrd: 0, beforeOrd: 1 }
+		);
+		expect(art.parts).not.toBeNull();
+
+		const updated = await repos.messages.updateArtifactContent(art.id, 'image-less now', {}, null);
+
+		expect(updated!.parts).toBeNull();
+		expect((await repos.messages.getById(art.id))!.parts).toBeNull();
+	});
+
+	it('parts: undefined leaves the parts column untouched (backwards compatibility)', async () => {
+		const { chat } = await seedChat();
+		const parts = [{ type: 'text', text: 'with image ' }, testImage];
+		const withParts = await repos.messages.insertAnchored(
+			chat.id,
+			{
+				role: 'user',
+				content: 'with image ',
+				kind: 'branch_artifact',
+				metadata: artifactMeta({ mode: 'summary' }),
+				parts
+			},
+			{ afterOrd: 0, beforeOrd: 1 }
+		);
+		const withoutParts = await repos.messages.insertAnchored(
+			chat.id,
+			{ role: 'user', content: 'plain', kind: 'branch_artifact', metadata: artifactMeta() },
+			{ afterOrd: 1, beforeOrd: null }
+		);
+
+		const kept = await repos.messages.updateArtifactContent(withParts.id, 'kept: ', {});
+		const cleared = await repos.messages.updateArtifactContent(withoutParts.id, 'still plain', {});
+
+		expect(kept!.parts).toBe(JSON.stringify(parts));
+		expect(cleared!.parts).toBeNull();
+	});
+
+	it('still refuses a non-artifact row when parts are given', async () => {
+		const { chat, a } = await seedChat();
+		const updated = await repos.messages.updateArtifactContent(a.id, 'overwritten', {}, [
+			{ type: 'text', text: 'overwritten' }
+		]);
+
+		expect(updated).toBeNull();
+		const row = await repos.messages.getById(a.id);
+		expect(row!.content).toBe('a');
+		expect(row!.parts).toBeNull();
+		expect(await repos.messages.listByChat(chat.id)).toHaveLength(2);
+	});
 });
 
 describe('recordUsage', () => {

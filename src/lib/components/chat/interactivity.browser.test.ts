@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { userEvent } from 'vitest/browser';
 
-import type { DurableEntry } from '#lib/chat/entries.js';
+import type { DurableEntry, LiveEntry } from '#lib/chat/entries.js';
 import type { Message } from '#lib/db/index.js';
 
 import { render } from '../../../../tests/browser/render';
@@ -166,5 +166,26 @@ describe('MessageList active-gate derivation', () => {
 		await expect.element(getByText('Beta')).toBeVisible();
 		expect(getByRole('button', { name: 'Beta' }).query()).toBeNull();
 		expect(store.send).not.toHaveBeenCalled();
+	});
+});
+
+describe('MessageList live-block ids', () => {
+	it('numbers same-variant live blocks from zero (029 per-block ids)', async () => {
+		const liveItems: LiveEntry[] = [
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought one', streaming: true },
+			{ source: 'live', live: 'live_text', buffer: 'answer part', pending: false },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought two', streaming: false }
+		];
+		const { container } = await render(MessageList, {
+			...messageListProps([]),
+			liveItems,
+			streaming: true
+		});
+
+		expect(container.querySelector('#msg-live-reasoning-0')).not.toBeNull();
+		expect(container.querySelector('#msg-live-reasoning-1')).not.toBeNull();
+		expect(container.querySelector('#msg-live-reasoning-2')).toBeNull();
+		expect(container.querySelector('#msg-live-text-0')).not.toBeNull();
+		expect(container.querySelector('#msg-live-text-1')).toBeNull();
 	});
 });

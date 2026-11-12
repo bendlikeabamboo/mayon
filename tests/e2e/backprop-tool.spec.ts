@@ -102,5 +102,18 @@ test.describe('conversational back-propagation tool (027 V6)', () => {
 		await expect(page.getByRole('button', { name: /Back-propagated from/ })).toBeVisible({
 			timeout: TURN_TIMEOUT
 		});
+
+		// Toast hygiene sweep (038 US3, FR-006): the toast layer stays absent
+		// through the tool-path approval journey — the success toast is wired
+		// only to the manual propagation control (+page.svelte runPropagation),
+		// never to the approved tool path. Maintainer-verified: REQUIRES the
+		// Docker dev stack (`pnpm dev`, web on :5173 — the playwright baseURL
+		// default) with the embedded mock-llm; left runnable — no `test.skip` —
+		// per the 035 T018 pattern (specs/035-micro-thoughts-fixes quickstart).
+		// `button[aria-label="Dismiss"]` is unique to the toast layer today
+		// (src/lib/components/Toaster.svelte); brief-intake Dismiss buttons are
+		// text-labelled. If a future non-toast control ever adopts that
+		// aria-label, scope this locator to the Toaster's container instead.
+		await expect(page.locator('button[aria-label="Dismiss"]')).toHaveCount(0);
 	});
 });

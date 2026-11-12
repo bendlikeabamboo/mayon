@@ -7,12 +7,24 @@ import type { LanguageModel } from 'ai';
 import type { ProviderConfig } from '#lib/ai/types.js';
 import { generateBranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
 import type { BranchArtifactSummary } from '#lib/ai/generate/generate-branch-artifact-summary.js';
-import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import {
+	acquirePropagationLatch,
+	buildRawDelta,
+	buildRawPayload,
+	releasePropagationLatch
+} from '#lib/chat/propagation.js';
 import type { BranchArtifactMetadata, ImagePart, MessagePart, TextPart } from '#lib/chat/kinds.js';
 
 vi.mock('#lib/ai/generate/generate-branch-artifact-summary.js', () => ({
 	generateBranchArtifactSummary: vi.fn()
 }));
+
+// 037 T010: wrap `buildRawPayload` in a vi.fn (real behavior by default) so the
+// raw-mode mid-tool abort test can abort the signal while generation resolves.
+vi.mock('#lib/chat/propagation.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/chat/propagation.js')>();
+	return { ...actual, buildRawPayload: vi.fn(actual.buildRawPayload) };
+});
 
 const testDb = useFileTestDb();
 beforeAll(() => testDb.setup());
@@ -308,6 +320,62 @@ describe('propagate_to_parent', () => {
 		expect(firstAgain.metadata).toBe(art.metadata);
 	});
 
+	it('US1 payload parity: chrome-bearing branch lands the content-only twin payload byte-identically (037 T003)', async () => {
+		// Twin: content-only branch — same anchor + turns, no propagation chrome.
+		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });
+		const twinAnchor = await repos.messages.append(twinParent.id, 'user', 'hello');
+		await repos.messages.append(twinParent.id, 'assistant', 'world');
+		const twin = await repos.chats.createChild({
+			parentId: twinParent.id,
+			branchPointMessageId: twinAnchor.id,
+			title: 'Twin branch'
+		});
+		await repos.messages.append(twin.id, 'user', 'branch question');
+		await repos.messages.append(twin.id, 'assistant', 'branch answer');
+
+		// Chrome-bearing branch: same content rows + one declined earlier
+		// attempt (tool_call, approval ask, declined tool_result).
+		const { parent, child } = await seedBranch();
+		await repos.messages.append(child.id, 'assistant', '', {
+			toolCallId: 'tc-old',
+			toolName: 'propagate_to_parent',
+			metadata: JSON.stringify({ mode: 'raw' })
+		});
+		await repos.messages.append(
+			child.id,
+			'assistant',
+			'propagate_to_parent — back-propagate this branch',
+			{
+				kind: 'approval',
+				toolCallId: 'tc-old',
+				toolName: 'propagate_to_parent',
+				metadata: JSON.stringify({
+					toolName: 'propagate_to_parent',
+					description: 'back-propagate this branch',
+					args: {},
+					outcome: null
+				})
+			}
+		);
+		await repos.messages.appendToolResult(child.id, {
+			toolCallId: 'tc-old',
+			toolName: 'propagate_to_parent',
+			summary: 'user declined',
+			ok: false
+		});
+
+		const result = await toolsRun('propagate_to_parent', {}, ctx(child.id, parent.id));
+		expect(result.ok).toBe(true);
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		const twinDelta = await buildRawDelta(twin.id);
+		const manualPayload = await buildRawPayload(twin.id);
+		expect(art.content).toBe(twinDelta);
+		expect(art.content).toBe(manualPayload.content);
+	});
+
 	it("carries the branch turns' image parts on the artifact row (030 T021)", async () => {
 		const { parent, child } = await seedBranch();
 		const image: ImagePart = {
@@ -386,6 +454,50 @@ describe('propagate_to_parent', () => {
 		expect(result).toEqual({ ok: false, summary: 'aborted' });
 		const after = await repos.messages.listByChat(parent.id);
 		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('aborted between summary generation and the write: generation resolving anyway returns aborted, zero writes, latch released (037 T010)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		const ctrl = new AbortController();
+		vi.mocked(generateBranchArtifactSummary).mockImplementationOnce(async () => {
+			ctrl.abort();
+			return { summary: 'late summary', traceId: 'trace-abort' };
+		});
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'summary' },
+			{ ...ctx(child.id, parent.id), signal: ctrl.signal }
+		);
+
+		expect(result).toEqual({ ok: false, summary: 'aborted' });
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(after.filter((m) => m.kind === 'branch_artifact')).toHaveLength(0);
+		expect(acquirePropagationLatch()).toBe(true);
+	});
+
+	it('aborted between raw payload and the write: payload resolving anyway returns aborted, zero writes, latch released (037 T010)', async () => {
+		const { parent, child } = await seedBranch();
+		const before = await repos.messages.listByChat(parent.id);
+		const ctrl = new AbortController();
+		vi.mocked(buildRawPayload).mockImplementationOnce(async () => {
+			ctrl.abort();
+			return { content: 'raw delta text', imageParts: [] };
+		});
+
+		const result = await toolsRun(
+			'propagate_to_parent',
+			{ mode: 'raw' },
+			{ ...ctx(child.id, parent.id), signal: ctrl.signal }
+		);
+
+		expect(result).toEqual({ ok: false, summary: 'aborted' });
+		const after = await repos.messages.listByChat(parent.id);
+		expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+		expect(after.filter((m) => m.kind === 'branch_artifact')).toHaveLength(0);
 		expect(acquirePropagationLatch()).toBe(true);
 	});
 

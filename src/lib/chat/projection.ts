@@ -76,19 +76,39 @@ function isImagePart(p: MessagePart): p is ImagePart {
 }
 
 /**
- * Wire content for a row carrying parts (specs/030-image-generation/contracts/message-parts.md §5):
- * ordered parts — text part(s) first (omitted when empty, i.e. image-only),
- * then one image part per stored image in order. The AI SDK image part takes
- * the stored data-URL string directly. Falls back to the row's canonical
- * content when nothing survives, so the payload never goes out empty.
+ * Wire content for a row carrying parts (specs/030-image-generation/contracts/message-parts.md §5,
+ * amended by specs/033-image-output-finalize-paths/contracts/assistant-projection.md): ordered
+ * parts — text part(s) first (omitted when empty, i.e. image-only), then one image-bearing part
+ * per stored image in order. The image-bearing shape depends on the target: user rows keep the
+ * 018 AI SDK image part (`{ type: 'image', image }` — byte-identical history, legal for user
+ * content); assistant rows emit provider file parts (`{ type: 'file', mediaType, data:
+ * <base64-only> }` — the SDK AssistantContent union has no image part). Falls back to the row's
+ * canonical content when nothing survives, so the payload never goes out empty.
  */
-function wireContent(parts: MessagePart[], fallbackText: string): unknown[] {
+function wireContent(
+	parts: MessagePart[],
+	fallbackText: string,
+	target: 'user' | 'assistant'
+): unknown[] {
 	const content: unknown[] = [];
 	for (const p of parts) {
 		if (isTextPart(p)) {
 			if (p.text) content.push({ type: 'text', text: p.text });
 		} else if (isImagePart(p)) {
-			content.push({ type: 'image', image: p.data });
+			if (target === 'assistant') {
+				// Assistant images ride the wire as provider file parts (033 §1):
+				// base64-only body (data-URL prefix stripped at the first comma)
+				// plus explicit mediaType from the stored part. A part lacking
+				// either cannot produce an SDK-valid file part and is skipped
+				// silently (defensive; composition upstream guarantees both).
+				const comma = p.data.indexOf(',');
+				const base64 = comma === -1 ? '' : p.data.slice(comma + 1);
+				if (base64 && p.mimeType) {
+					content.push({ type: 'file', mediaType: p.mimeType, data: base64 });
+				}
+			} else {
+				content.push({ type: 'image', image: p.data });
+			}
 		}
 	}
 	if (content.length === 0) {
@@ -267,14 +287,15 @@ export function projectEntries(
 			// vision-capable models).
 			raw.push({
 				role: 'user' as const,
-				content: wireContent(parts, r.content)
+				content: wireContent(parts, r.content, 'user')
 			} as unknown as ModelMessage);
 			continue;
 		}
 
 		if (k === 'assistant_message') {
-			// 030 (specs/030-image-generation/contracts/message-parts.md §5): assistant image parts ride the
-			// wire only for vision-capable targets; otherwise text-only, silently.
+			// 030 §5 (amended by 033, contracts/assistant-projection.md): assistant
+			// image parts ride the wire as provider file parts, only for
+			// vision-capable targets; otherwise text-only, silently.
 			const parts = opts?.visionCapable ? rowParts(r) : null;
 			if (!parts) {
 				raw.push({
@@ -285,7 +306,7 @@ export function projectEntries(
 			}
 			raw.push({
 				role: 'assistant' as const,
-				content: wireContent(parts, r.content)
+				content: wireContent(parts, r.content, 'assistant')
 			} as unknown as ModelMessage);
 			continue;
 		}

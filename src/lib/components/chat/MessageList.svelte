@@ -5,6 +5,7 @@
 	import type { ExpoundOptions } from '#lib/chat/expound.js';
 	import {
 		assembleTimeline,
+		lastRegeneratableAssistantId,
 		type TimelineItem,
 		type LiveEntry,
 		isDurableEntry,
@@ -71,15 +72,16 @@
 
 	/**
 	 * Regenerate reveal gate (US5): only the newest timeline item qualifies
-	 * when generation is idle. `onRegenerate` deletes a reply row and re-sends
-	 * the preceding user turn, which appends at the end — chronology-safe only
-	 * for the latest turn (interrupted replies always sit there). Live tails or
-	 * trailing entries (e.g. choices) disable it.
+	 * when generation is idle. `onRegenerate` deletes the whole reply turn and
+	 * re-sends the preceding user turn, which appends at the end —
+	 * chronology-safe only for the latest turn (interrupted replies always sit
+	 * there). Live tails or trailing entries (e.g. choices) disable it. 035
+	 * US3: trailing anchored reasoning rows are part of the last turn, so the
+	 * gate delegates the tail walk to `lastRegeneratableAssistantId`.
 	 */
 	const lastAssistantId = $derived.by(() => {
 		if (streaming || timeline.length === 0) return null;
-		const last = timeline[timeline.length - 1];
-		return isDurableEntry(last) && last.kind === 'assistant_message' ? last.entry.id : null;
+		return lastRegeneratableAssistantId(timeline);
 	});
 
 	const takenChoices = $derived.by(() => {
@@ -111,10 +113,12 @@
 		if (item.live === 'live_text' || item.live === 'live_reasoning') {
 			// Per-block key (029 T008): index among same-variant live entries so
 			// interleaved blocks keep stable, unique keys (append-only, FR-011).
+			// Zero-based: count predecessors only — the item itself must not
+			// increment its own index (first block is -0, not -1).
 			let n = 0;
 			for (const t of timeline) {
-				if (isLiveEntry(t) && t.live === item.live) n++;
 				if (t === item) break;
+				if (isLiveEntry(t) && t.live === item.live) n++;
 			}
 			return `${item.live === 'live_text' ? 'live-text' : 'live-reasoning'}-${n}`;
 		}
@@ -157,11 +161,11 @@
 	{#if header}
 		{@render header()}
 	{/if}
-	{#each timeline as item (itemId(item))}
+	{#each timeline as item, i (itemId(item))}
 		<div id="msg-{itemId(item)}">
 			{#if isLiveEntry(item)}
 				{#if item.live === 'live_reasoning'}
-					<ReasoningEntry live={true} buffer={item.buffer} />
+					<ReasoningEntry live={true} buffer={item.buffer} streaming={item.streaming} />
 				{:else if item.live === 'live_text'}
 					<AssistantMessage live={true} buffer={item.buffer} pending={item.pending} {personaName} />
 					{#if chatStore.pendingImageCount > 0}
@@ -179,7 +183,11 @@
 					/>
 				{/if}
 			{:else}
-				<LazyMount unmountFar rootMargin="1200px">
+				<!-- 035 T018 follow-up: the timeline frontier always mounts, so the
+					turn's latest row renders even when the viewport never got
+					near it (e.g. stick-to-bottom lost mid-turn and nothing
+					scrolled after). Older rows keep the unmountFar win. -->
+				<LazyMount unmountFar={i < timeline.length - 1} rootMargin="1200px">
 					{#if isToolGroup(item) || isOrphanToolResult(item)}
 						<ToolActivity {item} />
 					{:else if isDurableEntry(item)}

@@ -8,6 +8,7 @@ import { buildSourceMap, _testPlugins, _clearSourceMapCache } from './sourcemap'
 import type { Segment, SegmentKind } from './sourcemap';
 import { renderMarkdown } from './render';
 import { admonition } from './admonition';
+import { EXCLUDED_CHROME_SELECTORS } from '#lib/chat/selection.js';
 
 function seg(kind: SegmentKind, rendered: string, startChar: number, endChar: number): Segment {
 	return { kind, rendered, startChar, endChar };
@@ -192,14 +193,6 @@ describe('buildSourceMap', () => {
 });
 
 describe('canonical === filtered DOM textContent', () => {
-	const EXCLUDED_SELECTORS = [
-		'.katex',
-		'.callout-title',
-		'code.language-mermaid',
-		'.mermaid-error',
-		'.mermaid-repaired'
-	];
-
 	function domCanonical(html: string): string {
 		const dom = new JSDOM(`<!DOCTYPE html><div id="root">${html}</div>`);
 		const root = dom.window.document.getElementById('root')!;
@@ -207,7 +200,7 @@ describe('canonical === filtered DOM textContent', () => {
 		function isExcluded(node: Node): boolean {
 			if (node.nodeType === 1) {
 				const el = node as Element;
-				for (const sel of EXCLUDED_SELECTORS) {
+				for (const sel of EXCLUDED_CHROME_SELECTORS) {
 					if (el.closest(sel)) return true;
 				}
 			}

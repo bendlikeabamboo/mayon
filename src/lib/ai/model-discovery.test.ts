@@ -5,6 +5,7 @@ import type { BrowserKeyStore } from './keystore/browser';
 import {
 	discoverModels,
 	MODEL_DISCOVERY_TIMEOUT_MS,
+	mergeDiscoveredModels,
 	mergeModelContextWindows,
 	parseCopilotModelEntries,
 	parseModelEntries,
@@ -12,6 +13,19 @@ import {
 	readAll
 } from './model-discovery';
 import { MissingKeyError, ProviderHttpError, type ProviderConfig } from './types';
+import { serverStatus } from '#lib/services/status.svelte.js';
+
+vi.mock('#lib/services/status.svelte.js', () => ({
+	serverStatus: {
+		has: vi.fn().mockReturnValue(false),
+		connected: false,
+		caps: [],
+		version: null,
+		error: null,
+		markConnected: vi.fn(),
+		markDisconnected: vi.fn()
+	}
+}));
 
 const keys = vi.hoisted(() => ({ current: {} as Record<string, string> }));
 
@@ -331,6 +345,24 @@ describe('readAll', () => {
 	});
 });
 
+describe('mergeDiscoveredModels', () => {
+	it('puts discovered ids first in discovery order, dedupes, and keeps the manual tail', () => {
+		expect(mergeDiscoveredModels(['b', 'a'], ['manual', 'a'])).toEqual(['b', 'a', 'manual']);
+	});
+
+	it('returns existing unchanged when discovery is empty', () => {
+		expect(mergeDiscoveredModels([], ['manual', 'other'])).toEqual(['manual', 'other']);
+	});
+
+	it('returns empty for empty discovery and empty existing', () => {
+		expect(mergeDiscoveredModels([], [])).toEqual([]);
+	});
+
+	it('collapses stored duplicates of a discovered id', () => {
+		expect(mergeDiscoveredModels(['a'], ['a', 'a', 'manual'])).toEqual(['a', 'manual']);
+	});
+});
+
 describe('mergeModelContextWindows', () => {
 	it('overwrites with the latest reported value', () => {
 		expect(mergeModelContextWindows({ a: 128000 }, [{ id: 'a', contextWindow: 200000 }])).toEqual({
@@ -438,6 +470,27 @@ describe('discoverModels', () => {
 		).rejects.toBeInstanceOf(ProviderHttpError);
 	});
 
+	it('declares the baseUrl host as authHost when discovery rides the proxy', async () => {
+		vi.mocked(serverStatus.has).mockReturnValue(true);
+		await fakeKeyStore.set(config.id, 'sk-or');
+		const envelopes: Array<Record<string, unknown>> = [];
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_input: RequestInfo | URL, init?: RequestInit) => {
+				envelopes.push(JSON.parse((init?.body as string) ?? '{}'));
+				return jsonBody(JSON.stringify({ data: [{ id: 'm' }] }));
+			}
+		);
+
+		const entries = await discoverModels(config, { hasKey: (id) => fakeKeyStore.has(id) });
+
+		expect(entries).toEqual([{ id: 'm' }]);
+		expect(envelopes).toHaveLength(1);
+		expect(envelopes[0].url).toBe('https://openrouter.ai/api/v1/models');
+		expect(envelopes[0].authHost).toBe('openrouter.ai');
+		expect((envelopes[0].headers as Record<string, string>)['authorization']).toBe('Bearer sk-or');
+		vi.mocked(serverStatus.has).mockReturnValue(false);
+	});
+
 	it('tolerates a trailing slash on the base URL', async () => {
 		await fakeKeyStore.set(config.id, 'k');
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -542,6 +595,40 @@ describe('discoverModels', () => {
 				discoverModels(copilotConfig, { hasKey: (id) => fakeKeyStore.has(id) })
 			).rejects.toBeInstanceOf(MissingKeyError);
 			expect(globalThis.fetch).not.toHaveBeenCalled();
+		});
+
+		it('declares the session-endpoint host as authHost when discovery rides the proxy', async () => {
+			vi.mocked(serverStatus.has).mockReturnValue(true);
+			keys.current = { [copilotConfig.id]: 'ghu_grant' };
+			const envelopes: Array<Record<string, unknown>> = [];
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+				async (input: RequestInfo | URL, init?: RequestInit) => {
+					const url = typeof input === 'string' ? input : (input as URL).href;
+					if (url === '/api/llm/copilot/token') {
+						return jsonBody(JSON.stringify(sessionDescriptor));
+					}
+					envelopes.push(JSON.parse((init?.body as string) ?? '{}'));
+					return jsonBody(
+						JSON.stringify({
+							data: [{ id: 'gpt-5', object: 'model', capabilities: { type: 'chat' } }]
+						})
+					);
+				}
+			);
+
+			const entries = await discoverModels(copilotConfig, {
+				hasKey: (id) => fakeKeyStore.has(id)
+			});
+
+			expect(entries).toEqual([{ id: 'gpt-5' }]);
+			expect(envelopes).toHaveLength(1);
+			// The session endpoint host — not the config.baseUrl host — is the host
+			// the inline Authorization targets.
+			expect(envelopes[0].url).toBe('https://api.business.githubcopilot.com/models');
+			expect(envelopes[0].authHost).toBe('api.business.githubcopilot.com');
+			const headers = envelopes[0].headers as Record<string, string>;
+			expect(headers['authorization']).toBe(`Bearer ${sessionDescriptor.token}`);
+			vi.mocked(serverStatus.has).mockReturnValue(false);
 		});
 	});
 });

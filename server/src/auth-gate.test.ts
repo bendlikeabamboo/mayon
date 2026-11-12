@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { promises as dnsPromises } from 'node:dns';
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -624,15 +625,26 @@ describe('auth gate — locked mode with-session pass-through', () => {
 	it('POST /api/llm/proxy streams the hijacked upstream through with a session', async () => {
 		const { token } = await mintSession();
 		const before = upstreamHits;
-		const res = await app.inject({
-			method: 'POST',
-			url: '/api/llm/proxy',
-			headers: { cookie: `mayon_session=${token}` },
-			body: { url: `http://127.0.0.1:${upstreamPort}/stream`, method: 'GET' }
-		});
-		expect(res.statusCode).toBe(200);
-		expect(res.payload).toBe('chunk-1chunk-2');
-		expect(upstreamHits).toBe(before + 1);
+		const lookupSpy = vi
+			.spyOn(dnsPromises, 'lookup')
+			.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) =>
+			realFetch(`http://127.0.0.1:${upstreamPort}/stream`, init)) as typeof globalThis.fetch;
+		try {
+			const res = await app.inject({
+				method: 'POST',
+				url: '/api/llm/proxy',
+				headers: { cookie: `mayon_session=${token}` },
+				body: { url: 'http://provider.example/stream', method: 'GET' }
+			});
+			expect(res.statusCode).toBe(200);
+			expect(res.payload).toBe('chunk-1chunk-2');
+			expect(upstreamHits).toBe(before + 1);
+		} finally {
+			globalThis.fetch = realFetch;
+			lookupSpy.mockRestore();
+		}
 	});
 
 	it('POST /api/llm/proxy without a session is refused before the handler hijacks', async () => {

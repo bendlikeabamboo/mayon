@@ -108,4 +108,31 @@ describe('PropagatedArtifact', () => {
 			.toBeVisible();
 		await expect.element(getByText('Raw')).toBeVisible();
 	});
+
+	it('renders legacy duplicate image parts as distinct thumbnails (037 US5)', async () => {
+		// Ported from the retired source-text guard
+		// (PropagatedArtifact.test.ts): the grid's each-key is composite
+		// (image.data + index, Composer pattern), so duplicated parts from a
+		// pre-dedupe row still mount one thumbnail each instead of collapsing.
+		const duplicate = {
+			type: 'image',
+			data: 'data:image/png;base64,iVBORw0KGgo=',
+			mimeType: 'image/png',
+			width: 1,
+			height: 1,
+			bytes: 16
+		};
+		const { getByRole } = await render(PropagatedArtifact, {
+			entry: artifact({
+				parts: JSON.stringify([{ type: 'text', text: 'dup' }, duplicate, duplicate])
+			})
+		});
+
+		await userEvent.click(getByRole('button', { name: /Back-propagated from/ }));
+		const thumbnails = getByRole('button', { name: 'View image full size' }).all();
+		expect(thumbnails).toHaveLength(2);
+		for (const thumbnail of thumbnails) {
+			await expect.element(thumbnail).toBeVisible();
+		}
+	});
 });

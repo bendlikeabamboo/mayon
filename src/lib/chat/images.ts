@@ -293,18 +293,32 @@ async function reencodeOutputImage(
 }
 
 /**
+ * Per-row result of the output budget pass (033, research D6): `images` are
+ * the kept parts in arrival order; `dropped` holds the images whose re-encode
+ * failed. The pass never rejects — a per-image failure drops that image
+ * instead of rejecting the finalize.
+ */
+export interface OutputBudgetResult {
+	images: ImagePart[];
+	dropped: ImagePart[];
+}
+
+/**
  * Apply the output-side budget to the images of one assistant row before
  * finalize (030 contracts/stream-image-parts.md §3). In-budget images pass
  * through untouched (byte-identical); anything over the per-image cap — or
  * pushing the row past the per-message total — is re-encoded down via the
  * existing canvas pipeline, never rejected. Earlier images keep their bytes;
- * later ones absorb the squeeze when the total binds.
+ * later ones absorb the squeeze when the total binds. A re-encode failure
+ * (decode or encode) drops that image and leaves in-budget siblings
+ * untouched (033 FR-006 containment).
  */
 export async function applyOutputBudget(
 	images: ImagePart[],
 	ops: ImageIntakeOps = browserOps
-): Promise<ImagePart[]> {
+): Promise<OutputBudgetResult> {
 	const kept: ImagePart[] = [];
+	const dropped: ImagePart[] = [];
 	let remaining = MAX_OUTPUT_TOTAL_DATA_URL_BYTES;
 	for (const image of images) {
 		if (image.bytes <= MAX_OUTPUT_IMAGE_BYTES && image.data.length <= remaining) {
@@ -315,11 +329,36 @@ export async function applyOutputBudget(
 		// Base64 expands ~4/3, so the decoded target is 3/4 of what's left; at
 		// least 0 so a drained budget still yields a (tiny) best-effort image.
 		const target = Math.min(MAX_OUTPUT_IMAGE_BYTES, Math.floor((Math.max(remaining, 0) * 3) / 4));
-		const rebuilt = await reencodeOutputImage(image, target, ops);
-		remaining -= rebuilt.data.length;
-		kept.push(rebuilt);
+		try {
+			const rebuilt = await reencodeOutputImage(image, target, ops);
+			remaining -= rebuilt.data.length;
+			kept.push(rebuilt);
+		} catch {
+			dropped.push(image);
+		}
 	}
-	return kept;
+	return { images: kept, dropped };
+}
+
+/**
+ * Decoder-independent validity gate for a base64 image candidate (033,
+ * research D6, finalize-composition §2 cap rule 1): decodes the base64 body
+ * (undecodable base64 is an invalid payload by definition) and resolves the
+ * mime with `resolveMime` — sniffed magic bytes win, a declared supported
+ * media type is the fallback — the same semantics as `fetchImageCandidate`.
+ * Deliberately node-safe: no bitmap decoder is consulted, so a
+ * `candidateToImagePart` dimension-probe failure (no `createImageBitmap` in
+ * node/test runtimes) is never misread as corruption.
+ */
+export function isValidImageCandidate(candidate: { mediaType?: string; base64?: string }): boolean {
+	if (candidate.base64 === undefined) return false;
+	let bytes: Uint8Array;
+	try {
+		bytes = dataUrlToBytes(`data:;base64,${candidate.base64}`);
+	} catch {
+		return false;
+	}
+	return resolveMime(sniffImageMime(bytes), candidate.mediaType ?? null) !== null;
 }
 
 /**
@@ -362,13 +401,23 @@ export async function candidateToImagePart(
 export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
 /**
+ * Byte cap on remote-URL image materialization (032): `fetchImageCandidate`
+ * reads via a streaming reader and bails (null) once the body exceeds this,
+ * so an oversized or hostile link can never balloon the tab's heap. Well above
+ * legitimate generated images (request-side ceiling is 16 MiB) and below the
+ * relay's 64 MiB response cap.
+ */
+export const IMAGE_FETCH_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
  * Materialize one remote-URL image candidate (030 R-4) by fetching its bytes
  * through the provider fetch (keychain auth + server proxy apply) and
  * returning a ready `{ mediaType, base64 }` candidate — display never depends
  * on the live link. The caller passes the provider's fetch; tests inject a
  * stub. Returns null when the link is un-fetchable (network error, non-2xx,
- * truncated body, non-image payload) — never throws — so the caller can render
- * a contained inline notice instead of a broken frame or a dropped message.
+ * truncated body, body over IMAGE_FETCH_MAX_BYTES, non-image payload) — never
+ * throws — so the caller can render a contained inline notice instead of a
+ * broken frame or a dropped message.
  */
 export async function fetchImageCandidate(
 	url: string,
@@ -378,7 +427,36 @@ export async function fetchImageCandidate(
 	try {
 		const res = await fetchImpl(url, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
 		if (!res.ok) return null;
-		const bytes = new Uint8Array(await res.arrayBuffer());
+		// Bounded read (032): accumulate chunks and stop (null) past the cap so a
+		// huge body is never fully buffered; plain arrayBuffer only when the
+		// runtime exposes no stream, with the same length check.
+		let bytes: Uint8Array;
+		if (res.body) {
+			const reader = res.body.getReader();
+			const chunks: Uint8Array[] = [];
+			let total = 0;
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				if (!value) continue;
+				total += value.byteLength;
+				if (total > IMAGE_FETCH_MAX_BYTES) {
+					reader.cancel().catch(() => {});
+					return null;
+				}
+				chunks.push(value);
+			}
+			bytes = new Uint8Array(total);
+			let offset = 0;
+			for (const chunk of chunks) {
+				bytes.set(chunk, offset);
+				offset += chunk.byteLength;
+			}
+		} else {
+			const buffer = await res.arrayBuffer();
+			if (buffer.byteLength > IMAGE_FETCH_MAX_BYTES) return null;
+			bytes = new Uint8Array(buffer);
+		}
 		const declared = res.headers.get('content-type')?.split(';')[0]?.trim() || mediaType || null;
 		const mime = resolveMime(sniffImageMime(bytes), declared);
 		if (!mime) return null;

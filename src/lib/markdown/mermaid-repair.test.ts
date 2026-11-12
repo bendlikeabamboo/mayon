@@ -1,6 +1,7 @@
 /**
- * Corpus tests for repairMermaidSource (spec 028 US2): a pure, deterministic,
- * idempotent repair pass for common model-produced mermaid syntax faults.
+ * Corpus tests for repairMermaidSource (spec 028 US2, re-scoped by feature
+ * 036 — contracts/repair-semantics.md): a pure, deterministic, idempotent,
+ * family-scoped repair pass for common model-produced mermaid syntax faults.
  * Parseability claims are verified against the real mermaid parser, not
  * string-shape assertions.
  */
@@ -12,11 +13,54 @@ import { repairMermaidSource, buildMermaidFixPrompt } from './mermaid-repair.js'
 // comma-separated quoted-string list inside an edge label — unparseable.
 const SPEC_EXAMPLE = 'graph TD\n  A["waking"] -->|"sad", "SAD", "sleepy", "del"| B["tring"]';
 
+// Unparseable ONLY via the missing `end`; the init directive is valid syntax
+// that repair must never rewrite (036 preservation).
+const MISSING_END =
+	'%%{init: {"theme":"dark", "logLevel": 1}}%%\ngraph TD\n  subgraph "Outer group"\n    A --> B';
+
+// Valid C4 argument lists — non-flowchart family, never rewritten (036).
+const C4_CONTEXT = [
+	'C4Context',
+	'  title Sample C4 context diagram',
+	'  Person(pA, "Alice", "A user of the system")',
+	'  Person_Ext(pB, "Bob", "External user")',
+	'  Container(c1, "DB", "Stores data")',
+	'  Rel(pA, c1, "Reads from", "Sync")'
+].join('\n');
+
+// Valid xychart quoted/numeric data lists — never rewritten (036).
+const XYCHART = [
+	'xychart-beta',
+	'  title "Sales by month"',
+	'  x-axis "months" ["Jan", "Feb", "Mar"]',
+	'  y-axis "units" 0 --> 50',
+	'  bar [10, 20, 30]'
+].join('\n');
+
+// N-element quoted edge-label list (036: must collapse in a single pass).
+const EIGHT_CHAIN = 'graph TD\n  A -->|"a", "b", "c", "d", "e", "f", "g", "h"| B';
+
+// Quoted-string prose in a sequenceDiagram message — non-flowchart family,
+// never rewritten (036).
+const SEQUENCE_PROSE = 'sequenceDiagram\n  Alice->>Bob: say "a", "b" out loud';
+
 const CORPUS = [
 	{ name: 'spec example', source: SPEC_EXAMPLE },
 	{ name: 'smart quotes in label', source: 'graph TD\n  A["it’s “waking” now"] --> B' },
 	{ name: 'embedded quotes in label', source: 'graph TD\n  A["the "best" thing"] --> B' },
-	{ name: 'unquoted comma label', source: 'graph TD\n  A[hello, world] --> B' }
+	{ name: 'unquoted comma label', source: 'graph TD\n  A[hello, world] --> B' },
+	{ name: 'empty quoted pair in edge label', source: 'graph TD\n  A -->|"", ""| B' },
+	{ name: 'comma-only node label', source: 'graph TD\n  A[,] --> B' },
+	{
+		name: 'mixed quote/comma node label',
+		source: 'graph TD\n  A[the "best", "worst" thing] --> B'
+	},
+	{ name: '8-element quoted chain', source: EIGHT_CHAIN },
+	{ name: 'smart quotes + comma edge list', source: 'graph TD\n  A -->|“yes”, “no”| B' },
+	{ name: 'sequenceDiagram prose with quoted pair', source: SEQUENCE_PROSE },
+	{ name: 'init directive on missing-end graph', source: MISSING_END },
+	{ name: 'C4 context argument lists', source: C4_CONTEXT },
+	{ name: 'xychart data lists', source: XYCHART }
 ];
 
 const VALID_SOURCES = [
@@ -63,9 +107,11 @@ describe('repairMermaidSource', () => {
 		expect(await parses(repaired)).toBe(true);
 	});
 
-	it('is idempotent for every corpus entry: repair(repair(x)) === repair(x)', () => {
+	it('is idempotent over the corpus and every first-pass output: repair(repair(x)) === repair(x)', () => {
 		for (const { name, source } of CORPUS) {
 			const once = repairMermaidSource(source);
+			// `once` is repair(x); requiring repair(once) === once asserts the
+			// property on the input and closes it over the first-pass output.
 			expect(repairMermaidSource(once), name).toBe(once);
 		}
 	});
@@ -74,6 +120,30 @@ describe('repairMermaidSource', () => {
 		for (const source of VALID_SOURCES) {
 			expect(repairMermaidSource(source)).toBe(source);
 		}
+	});
+
+	it('preserves the init directive on a missing-end graph (still unparseable)', async () => {
+		expect(await parses(MISSING_END)).toBe(false);
+		expect(repairMermaidSource(MISSING_END)).toBe(MISSING_END);
+	});
+
+	it('preserves valid C4 argument lists', () => {
+		expect(repairMermaidSource(C4_CONTEXT)).toBe(C4_CONTEXT);
+	});
+
+	it('preserves valid xychart data lists', () => {
+		expect(repairMermaidSource(XYCHART)).toBe(XYCHART);
+	});
+
+	it('preserves quoted prose in sequenceDiagram messages', () => {
+		expect(repairMermaidSource(SEQUENCE_PROSE)).toBe(SEQUENCE_PROSE);
+	});
+
+	it('collapses an 8-element quoted chain to one quoted label in a single pass', async () => {
+		expect(await parses(EIGHT_CHAIN)).toBe(false);
+		const repaired = repairMermaidSource(EIGHT_CHAIN);
+		expect(repaired).toBe('graph TD\n  A -->|"a, b, c, d, e, f, g, h"| B');
+		expect(await parses(repaired)).toBe(true);
 	});
 
 	it('smart-quote case: typographic quotes normalized, repaired output parses', async () => {

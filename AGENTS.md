@@ -58,7 +58,7 @@ keeps its own command.
 
 | Tier              | Environment                          | File pattern                                  | Command                                               | Budget (8-CPU/8-GiB reference) |
 | ----------------- | ------------------------------------ | --------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
-| 1 — logic/handler | Node, in-process; pglite for storage | `src/**/*.test.ts`, `server/src/**/*.test.ts` | `pnpm test:unit` / `pnpm --filter @mayon/server test` | 60 s (server 120 s)            |
+| 1 — logic/handler | Node, in-process; pglite for storage | `src/**/*.test.ts`, `server/src/**/*.test.ts` | `pnpm test:unit` / `pnpm --filter @mayon/server test` | 100 s (server 120 s)           |
 | 2 — component     | Real Chromium via Vitest browser     | `src/**/*.browser.test.ts`                    | `pnpm test:browser`                                   | 120 s                          |
 | 3 — integration   | Full stack via Playwright            | `tests/e2e/**/*.spec.ts`                      | `pnpm test:e2e`                                       | 120 s per shard                |
 

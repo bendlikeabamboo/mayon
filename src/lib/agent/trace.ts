@@ -139,6 +139,19 @@ export class TraceBuilder {
 		this._empty = v;
 	}
 
+	/**
+	 * Drop a trailing whitespace-only reasoning segment: the loop defers
+	 * opening a segment until non-whitespace arrives (029), so a pending
+	 * whitespace-only tail was never a real segment. Closing events are the
+	 * honest boundary — prune on the next `reasoning-start`, on
+	 * `reasoning-end`, and at `finish` (035 US5, research D6); strictly
+	 * `!trim()`, so real trailing thoughts survive.
+	 */
+	private pruneWhitespaceSegment(): void {
+		const segs = this.current?.reasoningSegments;
+		if (segs && segs.length > 0 && !segs[segs.length - 1]!.trim()) segs.pop();
+	}
+
 	emit(event: TraceEvent): void {
 		if (this.startTime === null) this.startTime = Date.now();
 
@@ -183,8 +196,8 @@ export class TraceBuilder {
 					// Mirror the loop's segment semantics (029): every reasoning-start
 					// opens a new segment, but a pending whitespace-only segment was
 					// never opened by the loop, so drop it instead of counting it.
+					this.pruneWhitespaceSegment();
 					const segs = this.current.reasoningSegments;
-					if (segs.length > 0 && !segs[segs.length - 1].trim()) segs.pop();
 					segs.push('');
 				} else if (
 					(event.type === 'reasoning-delta' || event.type === 'reasoning') &&
@@ -195,8 +208,13 @@ export class TraceBuilder {
 					const segs = this.current.reasoningSegments;
 					if (segs.length === 0) segs.push('');
 					segs[segs.length - 1] += text;
-				} else if (event.type === 'finish' && payload?.finishReason) {
-					this.current.finishReason = String(payload.finishReason);
+				} else if (event.type === 'reasoning-end') {
+					this.pruneWhitespaceSegment();
+				} else if (event.type === 'finish') {
+					this.pruneWhitespaceSegment();
+					if (payload?.finishReason) {
+						this.current.finishReason = String(payload.finishReason);
+					}
 				} else if (event.type === 'tool-call' && payload) {
 					if (
 						!this.current.toolCalls.some((tc) => tc.toolCallId === String(payload.toolCallId ?? ''))

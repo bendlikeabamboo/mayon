@@ -7,6 +7,166 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-10
+
+### Added
+
+- **Back-propagate a branch's outcome into its parent (027)** — the new
+  `propagate_to_parent` tool ships with a shared in-flight latch, per-turn
+  gating and offer-once etiquette in the capabilities preamble, an
+  approve/decline UI, and durable branch-artifact rows; the mock-llm fixture
+  gains dispatch modes and e2e covers the flow (PR #65, commits
+  `20729c6`..`0578fbb`).
+- **Mermaid diagrams that fail to render are contained and self-repaired
+  (028)** — a styled error block replaces raw render errors
+  (`suppressErrorRendering`), backed by pure parse-verified source-repair
+  rules and exactly one deterministic repair pass at the render seam; a
+  "repaired" badge discloses the original source, and a fix-diagram
+  follow-up affordance offers recovery (PR #64, commits `7c41261`..`b6499ae`,
+  `6788baa`, `3238e9b`).
+- **Interleaved micro-thoughts / per-segment reasoning (029)** — segment-aware
+  stream consumption renders live interleaved reasoning/text blocks, anchored
+  per-segment reasoning rows persist arrival-ordered, reorderTurn v2 keeps
+  turns aligned, and per-segment reasoning appears in the turn trace and the
+  diagnostics panel (PR #66, commits `ab57f73`..`5ac35a0`).
+- **Image generation in chat (030)** — vision-gated assistant image parts
+  behind a capability flag and budget, stream recognition of image parts
+  (raw-chunk shim), per-turn pending images with a live placeholder, atomic
+  assistant-parts persistence, URL materialization at finalize, segmented
+  assistant rendering, a shared lightbox with download, and `[image]` markers
+  in back-propagated artifacts (PR #67, commits `24a567d`..`9a52cff`).
+- **Faster, split test suites (031)** — behavior invariants migrate to
+  fast-tier homes (`useFileTestDb()`), the e2e inventory becomes a
+  classification + parity ledger, fixture strings are single-homed with a
+  drift guard, onboarded fixtures seed directly, and per-shard e2e stacks
+  arrive via `pnpm dev:shard:up` (PR #68, commits `5e1846f`..`1589d0f`).
+
+### Fixed
+
+- **Provider API keys are no longer attached to model-supplied image URLs**
+  (issue #69 / feature 032) — the credential-attaching fetch seams (keychain
+  fetch, streaming HTTP transport) now learn the provider's `baseUrl` host
+  and attach the key only on an exact host match, closing a
+  credential-exfiltration and SSRF path through the LLM proxy: the relay
+  forwards `authorization` / `x-api-key` / `x-goog-api-key` only to the
+  client-declared provider host (`authHost`), strips them for every other
+  target, refuses non-public destinations (loopback/private/link-local/etc.
+  answer `403 blocked target` with no upstream call), never follows
+  redirects, and caps streamed responses at 64 MiB; assistant image
+  materialization is size-bounded (32 MiB), with oversized images degrading
+  to the existing "image could not be loaded" notice instead of buffering
+  the whole body.
+- **Assistant image replies no longer break the chat's follow-up turns**
+  (issue #70 / feature 033) — stored assistant image parts now project onto
+  the wire as AI SDK provider file parts (the assistant-legal image-bearing
+  shape) instead of the user-only `type: 'image'` part, which previously made
+  every subsequent turn of an image-bearing chat fail as an invalid prompt
+  ("Network error"). The finalize/persist path around it was fixed with the
+  same change: image-only replies persist and render as durable image-only
+  rows; aborted turns keep all completed turn images (`interrupted: true`);
+  replies over the eight-image cap persist the first eight with a bracketed
+  drop notice; the text/image arrival order survives reload; corrupt or
+  un-encodable images degrade to a contained per-image notice instead of
+  losing the whole turn; and the typed "No image produced" refinement is
+  reachable during streaming failures (keyed on a turn-scoped recognized
+  image count), with an advisory no-image notice on image-output-expected
+  turns that recognized none.
+- **Image e2e engine hardcoding (PR #77)** — `image-round-trip.spec.ts` now
+  resolves the container engine (Docker or Podman) through the dev-compose
+  seam instead of hardcoding `docker` (`d881d75`).
+- **Micro-thoughts follow-ups: interleaved reasoning survives corrections,
+  renders once, and regenerates cleanly** (issue #71 / feature 035) —
+  critic-corrected replies keep the original stream's reasoning rows before
+  the corrected text; live thought blocks reset at iteration boundaries and
+  stop pulsing once finished instead of lingering beside their durable rows;
+  regenerate handles multi-row interleaved turns (the reveal gate skips
+  trailing anchored thoughts, and the whole-turn delete removes every row
+  after the previous user message instead of orphaning them); paced presets
+  finalize multi-block turns with at most one eased drain instead of stalling
+  ~1.2 s per extra block; and the turn trace prunes phantom whitespace-only
+  reasoning segments.
+- **Mermaid repair no longer mangles valid syntax, and its failure path is
+  readable and orphan-free** (issue #72 / feature 036) — the pure repair pass
+  is redesigned as surgical, idempotent, single-pass-per-rule rules scoped by
+  diagram family that never rewrite `%%{…}%%` directive/comment lines or valid
+  C4/xychart/init syntax (unrepairable faults stay identity and surface the
+  real error instead of a false "repaired" render); a provider-less send
+  preflights provider resolution before persisting, so "Fix this diagram" and
+  every other entry point surface the usual configuration guidance and leave
+  no orphan user row; the render-failure block shows the full wrapped failure
+  text (`name: message`) with the diagram source collapsed behind a
+  disclosure; and the sourcemap coverage test derives its excluded-selector
+  list from the live `EXCLUDED_CHROME_SELECTORS` export instead of a hardcoded
+  copy.
+- **Back-propagated artifacts no longer embed the propagation tool's own
+  timeline chrome** (issue #73 / feature 037) — the shared payload builder now
+  drops rows with `toolName === 'propagate_to_parent'` (its tool_call,
+  approval, and tool_result rows), and because the filter lives inside the
+  propagation helpers both paths use, tool artifacts are byte-identical to
+  manually back-propagated ones by construction.
+- **A latched second propagation no longer toasts a stale success record**
+  (issue #73) — a latch-refused `propagateToParent` call clears
+  `lastPropagation` on return, so the page's "toast iff record set" logic
+  can no longer fire off the previous run's success.
+- **Root-chat guidance no longer dead-ends at the manual back-propagate
+  control** (issue #73) — the capabilities preamble's fallback now splits
+  by case: a root chat is told it needs a child context (offer to branch),
+  while the manual-control pointer survives only for the
+  provider-without-tools-on-a-branch case.
+- **Stopping the agent mid-propagation no longer writes the artifact**
+  (issue #73) — an abort re-check immediately before the artifact write
+  closes the generation→write gap in both modes: an aborted run returns
+  `{ok: false, summary: 'aborted'}`, inserts nothing, and releases the
+  latch.
+- **Duplicate image data no longer crashes the propagated-artifact grid**
+  (issue #73) — image collection dedupes by part data (first occurrence,
+  order preserved) before the eight-image cap, and the artifact grid's keyed
+  each uses a composite `data + ':' + index` key so legacy rows that already
+  store duplicates render without duplicate-key errors.
+- **Summary-artifact regeneration no longer leaves stale image parts**
+  (issue #73) — `updateArtifactContent` accepts an optional validated
+  `parts` array in the same atomic update (null clears, undefined leaves
+  untouched), and regeneration passes the source branch's current
+  chrome-excluded, deduped image set — or none.
+- **A declined tool call is now durably legible to the model** (issue #73) —
+  the loop-synthesized declined result carries `detail: {declined: true}`,
+  persisting metadata `{"declined":true,"ok":false}` that next-turn context
+  reassembly surfaces verbatim, so the model can tell "the learner declined
+  this" from an ordinary failure and stops re-offering declined actions.
+- **Test-infrastructure accuracy** (issue #75 / feature 038) — the shard e2e
+  reads only its own stack (compose project resolved from the runner's base
+  URL, not the first stack mounting the base compose file); the shared-strings
+  drift guard patrols every mirrored fixture constant, not just the original
+  two; declined and latch-refused propagation gains no-toast assertions at the
+  store tier plus e2e sweeps; the discovered-models merge formula is
+  single-homed as `mergeDiscoveredModels` with both call sites and the parity
+  test consuming it; CI image builds go through buildx with the Actions layer
+  cache and the e2e shards are rebalanced (≤18/15 by the `--list` oracle);
+  031's "no CI edits" artifacts carry dated addenda; and reload-hydration
+  parity pins all three AI SDK entry points
+  (`streamText`/`generateObject`/`generateText`).
+- **LLM relay reaches the compose-network mock provider again (merge fix)**
+  — the issue-#69 target-safety guard refused every non-public relay
+  destination, including the e2e mock host (`mock-llm` resolves to a
+  private-range address), which stalled all relayed e2e flows and surfaced
+  as a misleading "Authentication failed" in the connection test. The relay
+  now honors `MAYON_LLM_RELAY_ALLOW_HOSTS` (exact hostnames, dev compose
+  sets `mock-llm`; prod leaves it unset for strict deny), and
+  `testProviderConnection` reports the relay's `403 blocked target` as a
+  relay refusal instead of an auth failure.
+- **Tier-1 time budget recalibrated for the grown suite (merge fix)** — the
+  reference budget moves 60 s → 100 s (low-spec 200 s): the 0.10.0 suite
+  measures 161 s on the 4-vCPU CI runner against the old 120 s low-spec
+  ceiling.
+- **Live-block ids are zero-based again + stick-to-bottom survives growth
+  spurts (merge fix)** — `itemId` counted the item itself, so live blocks
+  mounted as `-1`/`-2` instead of the documented `-0`/`-1` (only the 035
+  interleaved e2e asserts exact ids, which is why nothing else caught it).
+  The bottom sentinel now keeps a 200 px margin so a transient exit during
+  streaming growth cannot permanently unlatch pinning, the view re-pins once
+  when the turn settles (unless deep-linked), and the timeline frontier row
+  always mounts even when the viewport never got near it.
+
 ## [0.9.0] - 2026-11-03
 
 ### Added

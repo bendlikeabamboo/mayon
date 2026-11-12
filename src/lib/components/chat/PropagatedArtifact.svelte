@@ -114,9 +114,9 @@
 			<pre
 				class="max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">{entry.content}</pre>
 			{#if images.length > 0}
-				<!-- Shared thumbnail grid (same markup as UserMessage/AssistantMessage rows). -->
+				<!-- Shared thumbnail grid (same markup as UserMessage/AssistantMessage rows); composite key (Composer pattern) tolerates legacy duplicate parts (037 US5). -->
 				<div class="flex flex-wrap gap-1.5 px-1">
-					{#each images as image (image.data)}
+					{#each images as image, i (image.data + ':' + i)}
 						<button
 							type="button"
 							class="overflow-hidden rounded-lg border border-border transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

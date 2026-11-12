@@ -23,6 +23,7 @@
 import { COPILOT_HEADERS } from './copilot-fetch';
 import { getCopilotSession } from './copilot-session';
 import { getHttpTransport } from './http-transport';
+import { normalizeUrlHost } from './llm-target';
 import { createBrowserKeyStore } from './keystore/browser';
 import { MissingKeyError, type ProviderConfig } from './types';
 
@@ -94,6 +95,16 @@ export function mergeModelContextWindows(
 }
 
 /**
+ * Discovered catalog merged ahead of stored manual additions: discovered IDs
+ * first in discovery order, deduplicated, existing models not already
+ * discovered appended in stored order. Empty `discovered` returns `existing`
+ * unchanged.
+ */
+export function mergeDiscoveredModels(discovered: string[], existing: string[]): string[] {
+	return [...discovered, ...existing.filter((m) => !discovered.includes(m))];
+}
+
+/**
  * Discover the available models from a provider's `/models` endpoint. Returns
  * a de-duplicated, alphabetically-sorted entry list with harvested context
  * windows.
@@ -127,7 +138,9 @@ export async function discoverModels(
 	}
 
 	const body = await getHttpTransport().request(
-		{ url, method: req.method, auth: req.auth },
+		// authHost declares the baseUrl host (032): `/models` shares the
+		// provider origin the key targets, so the relay must forward auth here.
+		{ url, method: req.method, auth: req.auth, authHost: normalizeUrlHost(config.baseUrl) },
 		signal
 	);
 	return parseModelEntries(await readAll(body));
@@ -155,7 +168,10 @@ async function discoverCopilotModels(
 		{
 			url,
 			method: 'GET',
-			headers: { Authorization: `Bearer ${session.token}`, ...COPILOT_HEADERS }
+			headers: { Authorization: `Bearer ${session.token}`, ...COPILOT_HEADERS },
+			// The session token is valid for the endpoint the session names (032):
+			// declare that host so the relay forwards the inline `Authorization`.
+			authHost: normalizeUrlHost(session.endpoint || config.baseUrl)
 		},
 		signal
 	);

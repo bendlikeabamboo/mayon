@@ -724,6 +724,19 @@ silently converted.
 | 11 | `src/lib/components/chat/MessageRow.mount.test.ts` | `promote-static` | Render instrumentation and `LazyMount` `rootMargin` are static perf contracts; `scripts/check-static-invariants.mjs#render-instrumentation` enforces both. |
 | 30 | `src/routes/chat/[id]/visibility-sentinel.test.ts` | `promote-static` | Layout-read strategy (`IntersectionObserver` present, `updateVisibility`/`onScroll` absent) is a static performance invariant, not a rendered behavior; `scripts/check-static-invariants.mjs#visibility-sentinel` enforces it. |
 
+## Merge addendum — PR #79 triage-branch additions inside tiered files
+
+The 0.10.0 triage branch (issues #69–#75) added assertions to files this
+ledger had already tiered away. Their disposition on merge keeps coverage
+without resurrecting the deleted files:
+
+| Triage addition | Disposition |
+|---|---|
+| `PropagatedArtifact.test.ts`: image-grid composite each-key guard (037 US5) | `convert` → `src/lib/components/chat/PropagatedArtifact.browser.test.ts` ("renders legacy duplicate image parts as distinct thumbnails"): duplicate parts mount two thumbnails through the real grid. |
+| `AssistantMessage.actions.test.ts`: `lastRegeneratableAssistantId(timeline)` source assertion (037) | `pruned-covered` → helper proven in `src/lib/chat/entries.test.ts` (035 T009) and gating behavior proven in `AssistantMessage.actions.browser.test.ts` ("gates regenerate to the newest assistant turn"). |
+| `backprop-tool.spec.ts` approval-test toast-absence sweep (038 US3, FR-006) | `retained-ui` → rides in the ledger's retained row 1 case, which stays an 8-journey spec. |
+| `backprop-tool.spec.ts` decline-test toast-absence sweep (038 US3, FR-006) | `migrated` → `src/lib/chat/backprop-endstate.test.ts` asserts the same guarantee on the `toastState` singleton (empty across the declined journey); the e2e decline case itself stays ledgered as removed row 17. |
+
 ## Final verification (T061–T066)
 
 Measured on this host: **12 logical CPUs but 7.1 GiB usable RAM**, i.e. low-spec

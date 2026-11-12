@@ -46,10 +46,17 @@ session safety net, first-turn blackout, 64-definition cap.
    - `mode: 'summary'`: `generateBranchArtifactSummary(chatId, signal)` — generate
      first, insert only on success; abort/throw → `{ok: false, summary: 'summary generation failed: <reason>'}`,
      zero writes.
+   - *(Amended by 037, `specs/037-backprop-tool-integrity/contracts/payload-parity.md`)*:
+     "verbatim delta" excludes the propagation tool's own chrome rows (its
+     `tool_call`, `approval`, and `tool_result` rows — `toolName ===
+     'propagate_to_parent'`), on both the tool and manual paths; collected images
+     dedupe by data before the 8-image cap.
 5. **Write**: one `repos.messages.insertAnchored(parentId, {role:'user', kind:'branch_artifact', content, metadata}, placement)`
    — identical inputs to the manual path (same `resolveAnchor`, same metadata builder).
 6. **Abort** (turn aborted mid-run): release latch; report `{ok: false, summary: 'aborted'}`;
-   the pre-insert ordering guarantees no partial write.
+   the pre-insert ordering guarantees no partial write. *(Amended by 037)*: the abort
+   state is re-checked after payload generation and immediately before the write, so a
+   stop landing mid-generation persists nothing further.
 
 ## Result shapes
 
@@ -90,8 +97,12 @@ substance:
    most once, in plain terms; if declined or ignored, drop it (no re-request).
 4. After success: confirm in 1–2 sentences naming the parent chat and mode; reproduce
    none of the propagated content as chat text.
-5. If the tool is not available (root chat, provider without tool support), say the
-   manual back-propagate control is the path; never imitate propagation in prose.
+5. If the tool is not available, guide by case *(amended by 037 — the root case
+   previously pointed at the manual control, which is hidden on roots)*: on a **root
+   chat**, say this chat is a root — propagation moves a branch's outcome to its
+   parent, so it needs a child context (offer to branch) — and never imitate
+   propagation in prose; on a **branch chat whose provider lacks tool support**, point
+   at the manual back-propagate control instead.
 
 ## Invariants (must hold in review)
 
@@ -99,5 +110,7 @@ substance:
 - The tool never imports the chat store; repositories + `src/lib/chat/propagation.ts` +
   the summary generator only.
 - Identical-artifact guarantee: same helpers, same insert — not a reimplementation.
+  *(Amended by 037)*: identical means byte-identical for the same conversation content
+  with propagation chrome excluded — see `specs/037-backprop-tool-integrity/contracts/payload-parity.md`.
 - `docs/reference/tool-map.qmd` (+ `agent-map.qmd` if applicable) updated in the same
   change.

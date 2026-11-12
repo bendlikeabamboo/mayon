@@ -257,7 +257,8 @@ export function buildCapabilitiesPreamble(): string {
 		'Call propagate_to_parent only when the learner explicitly asks to back-propagate, or after they agree to your single offer — never unprompted.',
 		'When the learner signals the branch is done without asking, offer back-propagation at most once, in plain terms; if declined or ignored, drop it — no re-request.',
 		'After a successful back-propagation, confirm in 1–2 sentences naming the parent chat and the mode; reproduce none of the propagated content as chat text.',
-		'If the propagate_to_parent tool is not available (root chat, or a provider without tool support), point the learner to the manual back-propagate control instead — never imitate propagation in prose.'
+		"If the propagate_to_parent tool is not available because this is a root chat, say this chat is a root: propagation moves a branch's outcome to its parent, so it needs a child context (offer to branch) — and never imitate propagation in prose.",
+		'If the propagate_to_parent tool is not available because this is a branch chat whose provider lacks tool support, point the learner to the manual back-propagate control instead — never imitate propagation in prose.'
 	];
 
 	const mcpState = buildMcpRuntimeState();

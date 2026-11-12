@@ -468,6 +468,24 @@ describe('buildCapabilitiesPreamble', () => {
 		expect(preamble).toContain('at most once');
 		expect(preamble).toContain('if declined or ignored, drop it');
 	});
+
+	it('splits unavailable-tool guidance by case: root points to a child context, branch keeps the manual control (037 US3)', () => {
+		const lines = buildCapabilitiesPreamble().split('\n');
+		const rootLine = lines.find(
+			(l) => l.includes('propagate_to_parent') && l.includes('root chat')
+		)!;
+		const branchLine = lines.find((l) => l.includes('lacks tool support'))!;
+
+		// Root case: the manual control is hidden on roots, so the guidance must
+		// point at the only real path there — a child context (branch).
+		expect(rootLine).toContain('child context');
+		expect(rootLine).toContain('never imitate propagation in prose');
+		expect(rootLine).not.toContain('manual back-propagate control');
+
+		// Provider-without-tools on a branch: the manual control is visible there.
+		expect(branchLine).toContain('manual back-propagate control');
+		expect(branchLine).toContain('never imitate propagation in prose');
+	});
 });
 
 describe('buildFirstTurnOrientationPreamble', () => {

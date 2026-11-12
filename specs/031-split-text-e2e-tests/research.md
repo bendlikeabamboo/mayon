@@ -151,6 +151,8 @@ the 025 no-new-gates stance and this spec's own assumptions.
 suite already runs in one job); demote e2e to non-blocking (rejected: spec keeps both
 tiers merge-blocking).
 
+*(2026-11-12, feature 038 / issue #75: the CI workflow was subsequently edited — cache-backed image builds + shard rebalance; see `specs/038-test-infra-accuracy/`.)*
+
 ## D7 — Placement and naming of new fast-tier tests
 
 **Decision**: Colocated `*.test.ts` beside the logic under test (house pattern):

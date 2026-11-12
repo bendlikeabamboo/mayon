@@ -1,8 +1,16 @@
 import { execSync } from 'node:child_process';
 import { resolveEngine } from '../../scripts/dev-compose.mjs';
+import { selectComposeProject, type ComposeProjectEntry } from '../../src/lib/dev/compose-project';
 import { expect, test } from './fixtures/onboard';
 import { IMAGE_DATA_URL, IMAGE_REPLY_TEXT, IMAGE_TRIGGER } from './fixtures/kitchen-sink';
 import { liveText } from './fixtures/render';
+
+/** Parsed `<engine> compose ls --format json` output (running compose projects). */
+function parseComposeLs(): ComposeProjectEntry[] {
+	return JSON.parse(
+		execSync(`${ENGINE} compose ls --format json`, { encoding: 'utf8' })
+	) as ComposeProjectEntry[];
+}
 
 // Image replies stream slower than the standard fixture (600ms per frame, see
 // IMAGE_FRAME_INTERVAL_MS in the mock) so the caption stays live-visible long
@@ -14,24 +22,19 @@ const TURN_TIMEOUT = 30_000;
 // stdout (`[mock-llm] POST /v1/chat/completions -> kind` in server.mjs), so
 // the container's log is the request log the zero-provider assertion reads.
 // Healthcheck GETs to /v1/models never log, so every matched line is a
-// completion request. Resolving the compose project through `<engine> compose
-// ls` (matched against this checkout's dev compose file) stays correct when
-// several dev stacks run side by side. This observes the mock's log only —
-// the request path itself is never intercepted (FR-005 guardrail).
-const COMPOSE_FILE = `${process.cwd()}/docker-compose.dev.yml`;
+// completion request. The compose project is resolved from the NAME this
+// runner's base URL implies (E2E_BASE_URL; 5173 → mayon-dev, 5200+N →
+// mayon-dev-shard-N, via src/lib/dev/compose-project.ts), then verified to
+// mount THIS checkout's compose files — so sibling shard stacks sharing the
+// base file can never leak their logs in, and a mismatch throws instead of
+// falling back. This observes the mock's log only — the request path itself
+// is never intercepted (FR-005 guardrail).
 const MOCK_REQUEST_LINE = /\[mock-llm\] POST \S+ -> (\S+)/;
 const ENGINE = resolveEngine()?.engine ?? 'docker';
 
 /** Provider completion requests the mock has logged so far, optionally one kind. */
 function mockRequestCount(kind?: string): number {
-	const project = (() => {
-		const projects = JSON.parse(
-			execSync(`${ENGINE} compose ls --format json`, { encoding: 'utf8' })
-		) as Array<{ Name: string; ConfigFiles: string }>;
-		const found = projects.find((p) => p.ConfigFiles.split(',').includes(COMPOSE_FILE));
-		if (!found) throw new Error(`no running compose project mounts ${COMPOSE_FILE}`);
-		return found;
-	})();
+	const project = selectComposeProject(parseComposeLs(), { baseUrl: process.env.E2E_BASE_URL });
 	const logs = execSync(`${ENGINE} logs ${project.Name}-mock-llm-1`, { encoding: 'utf8' });
 	return logs
 		.split('\n')

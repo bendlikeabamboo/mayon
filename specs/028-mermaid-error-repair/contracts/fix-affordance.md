@@ -12,9 +12,13 @@ an ordinary follow-up user message.
   given the optional fix-action callback prop. Only durable assistant rows wire
   it (`AssistantMessage.svelte` → `chatStore.send`). Labs, quizzes, user
   messages, and tool results render the same error block without the action.
-- With no provider configured the conversation cannot send at all (existing
-  composer behavior); the action is therefore unavailable exactly when sending
-  is (spec Story 3 scenario 3).
+- The send path preflights provider resolution (amended in place by feature
+  036 — `specs/036-mermaid-repair-integrity/contracts/fix-send-preflight.md`):
+  `send()` resolves the active provider BEFORE persisting the user row, so with
+  no resolvable provider an activation surfaces the same configuration guidance
+  the composer shows and persists NOTHING (never an orphan user row) — the
+  action's effect is therefore safe exactly when sending is (spec Story 3
+  scenario 3).
 
 ## Trigger payload
 

@@ -5,10 +5,16 @@ import type { ProviderConfig } from '#lib/ai/types.js';
 import { MissingKeyError, NetworkError, ProviderHttpError } from '#lib/ai/types.js';
 import type { LanguageModel } from 'ai';
 import { chatStore, ExcerptOverlapError } from './chat.svelte';
+import { toastState } from '#lib/stores/toasts.svelte.js';
+import { buildMermaidFixPrompt } from '#lib/markdown/mermaid-repair.js';
 import { assembleContext } from '#lib/chat/context.js';
 import { deriveContextGauge } from '#lib/chat/context-usage.js';
 import { projectEntries } from '#lib/chat/projection.js';
-import { assembleTimeline, isDurableEntry } from '#lib/chat/entries.js';
+import {
+	assembleTimeline,
+	isDurableEntry,
+	lastRegeneratableAssistantId
+} from '#lib/chat/entries.js';
 import { buildExpoundPrompt, serializeAddFormats, parseAddFormats } from '#lib/chat/expound.js';
 import { parseBrief, disabledToolsForBrief } from '#lib/chat/brief.js';
 import type { LearningBrief } from '#lib/chat/brief.js';
@@ -20,7 +26,11 @@ import type {
 	TextPart
 } from '#lib/chat/kinds.js';
 import { attachmentsOf, partsOf } from '#lib/chat/kinds.js';
-import { acquirePropagationLatch, releasePropagationLatch } from '#lib/chat/propagation.js';
+import {
+	acquirePropagationLatch,
+	buildRawDelta,
+	releasePropagationLatch
+} from '#lib/chat/propagation.js';
 import { toolsRun } from '#lib/agent/registry.js';
 import type { ToolContext } from '#lib/agent/registry.js';
 
@@ -83,6 +93,18 @@ vi.mock('#lib/agent/loop.js', async (importOriginal) => {
 		})
 	};
 });
+
+// Real critic except validateTurn, which tests override per-call (delegates to
+// the real implementation by default, so unmocked suites keep native behavior).
+vi.mock('#lib/agent/critic.js', async (importOriginal) => {
+	const real = await importOriginal<typeof import('#lib/agent/critic.js')>();
+	return {
+		...real,
+		validateTurn: vi.fn((markdown: string) => real.validateTurn(markdown))
+	};
+});
+
+const { validateTurn } = await import('#lib/agent/critic.js');
 
 const { getActiveSdkProvider } = await import('#lib/ai/client.js');
 const mockedGetActiveSdkProvider = vi.mocked(getActiveSdkProvider);
@@ -902,7 +924,8 @@ describe('root chat never offers propagation (027 FR-001, data layer)', () => {
 	// PROPAGATE_UNAVAILABLE_REPLY and tests/fixtures/mock-llm/server.mjs, the
 	// way the suite's e2e deck exercises the same journey; the data-layer
 	// invariant under test is the tool-set exclusion plus plain-reply
-	// persistence, independent of the mock's string matching.
+	// persistence, independent of the mock's string matching. Kept in sync by
+	// the drift guard, classification-markers.test.ts MIRRORS.
 	const PROPAGATE_TRIGGER = 'backpropagate this branch';
 	const PROPAGATE_UNAVAILABLE_REPLY =
 		'This conversation is a root chat, so it cannot back-propagate; use the manual back-propagate control in the message menu instead.';
@@ -1141,18 +1164,20 @@ describe('029 live blocks (T010)', () => {
 
 		const sendP = chatStore.send('hello');
 		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(4));
+		// 035 US2 amendment: blocks close at the next segment/text start, so the
+		// earlier reasoning blocks are no longer open once a later segment began.
 		expect(chatStore.liveBlocks).toEqual([
-			{ kind: 'reasoning', text: 'thought one', open: true },
+			{ kind: 'reasoning', text: 'thought one', open: false },
 			{ kind: 'text', start: 0, open: false },
-			{ kind: 'reasoning', text: 'thought two', open: true },
+			{ kind: 'reasoning', text: 'thought two', open: false },
 			{ kind: 'text', start: 13, open: true }
 		]);
 
 		await new Promise((r) => setTimeout(r, 100));
 		expect(chatStore.liveItems).toEqual([
-			{ source: 'live', live: 'live_reasoning', buffer: 'thought one' },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought one', streaming: false },
 			{ source: 'live', live: 'live_text', buffer: 'answer part 1', pending: false },
-			{ source: 'live', live: 'live_reasoning', buffer: 'thought two' },
+			{ source: 'live', live: 'live_reasoning', buffer: 'thought two', streaming: false },
 			{ source: 'live', live: 'live_text', buffer: 'answer part 2', pending: false }
 		]);
 
@@ -1203,6 +1228,111 @@ describe('029 live blocks (T010)', () => {
 		await sendP;
 
 		for (const b of chatStore.liveBlocks) expect(b.open).toBe(false);
+		expect(chatStore.liveItems).toEqual([]);
+	});
+
+	// 035 US2 (T006a): at an iteration boundary the store clears liveBlocks, so
+	// iteration 2's reasoning streams alone — iteration 1's blocks are durable
+	// rows by then (contracts/iteration-boundary.md).
+	function mockTwoIterationTurn(blocked: Promise<void>): void {
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			// iteration 1: reasoning + text, then the loop's interim persist
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('iter-one thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('iter-one answer');
+			await deps.appendReasoning?.('iter-one thought', 0);
+			await deps.appendAssistantText('iter-one answer');
+			// post-T007 the loop fires the boundary here, after the interim persist
+			deps.onIterationBoundary?.();
+			// iteration 2: reasoning streams
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('iter-two thought');
+			await blocked;
+			return { aborted: false };
+		});
+	}
+
+	it('two-iteration turn: iteration 2 reasoning streams alone, no stale live rows from iteration 1 (T006a)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockTwoIterationTurn(turnBlocked);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() =>
+			expect(
+				chatStore.liveBlocks.some((b) => b.kind === 'reasoning' && b.text === 'iter-two thought')
+			).toBe(true)
+		);
+		await new Promise((r) => setTimeout(r, 100));
+
+		// exactly ONE live reasoning entry (iteration 2's), and no stale
+		// empty-buffer live text entry from iteration 1
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_reasoning', buffer: 'iter-two thought', streaming: true }
+		]);
+
+		resolveTurn();
+		await sendP;
+	});
+
+	it('streaming flag: earlier reasoning block closes at the next text segment start and stops streaming (T006b)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
+			deps.onReasoningSegmentStart?.();
+			deps.updateReasoningBuffer('early thought');
+			deps.onTextSegmentStart?.(0);
+			deps.updateStreamBuffer('answer');
+			await turnBlocked;
+			return { aborted: false };
+		});
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() => expect(chatStore.liveBlocks).toHaveLength(2));
+
+		const reasoning = chatStore.liveBlocks.find((b) => b.kind === 'reasoning');
+		expect(reasoning?.open).toBe(false);
+		const reasoningItems = chatStore.liveItems.filter((i) => i.live === 'live_reasoning');
+		expect(reasoningItems).toHaveLength(1);
+		expect(reasoningItems[0]).toEqual({
+			source: 'live',
+			live: 'live_reasoning',
+			buffer: 'early thought',
+			streaming: false
+		});
+
+		resolveTurn();
+		await sendP;
+	});
+
+	it('turn teardown still closes and clears all live blocks after iteration boundaries (T006c)', async () => {
+		let resolveTurn!: () => void;
+		const turnBlocked = new Promise<void>((r) => (resolveTurn = r));
+		mockTwoIterationTurn(turnBlocked);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		await vi.waitFor(() =>
+			expect(
+				chatStore.liveBlocks.some((b) => b.kind === 'reasoning' && b.text === 'iter-two thought')
+			).toBe(true)
+		);
+		resolveTurn();
+		await sendP;
+
+		expect(chatStore.liveBlocks).toEqual([]);
 		expect(chatStore.liveItems).toEqual([]);
 	});
 });
@@ -1306,6 +1436,254 @@ describe('029 reload fidelity (T017)', () => {
 			.filter(isDurableEntry)
 			.map((t) => t.kind);
 		expect(kinds).toEqual(['user_message', 'reasoning', 'assistant_message']);
+	});
+});
+
+// 035 US1 (T003): the critic-corrected turn persists the ORIGINAL stream's
+// reasoning row before the corrected text row and survives a fresh load
+// (contracts/corrected-persist.md).
+describe('035 corrected-persist round-trip (T003)', () => {
+	afterEach(() => {
+		vi.mocked(validateTurn).mockClear();
+	});
+
+	it('critic-corrected turn persists [reasoning(anchored), assistant(corrected)], identical after fresh load', async () => {
+		vi.mocked(validateTurn)
+			.mockResolvedValueOnce([{ type: 'mermaid', message: 'parse error' }])
+			.mockResolvedValueOnce([]);
+
+		const original = '```mermaid\nbad';
+		const corrected = '```mermaid\ngraph TD\nA-->B\n```';
+		mockedStreamText
+			.mockReturnValueOnce({
+				textStream: (async function* () {
+					yield original;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'reasoning-start', id: 'r' };
+					yield { type: 'reasoning-delta', text: 'thinking…' };
+					yield { type: 'reasoning-end', id: 'r' };
+					yield { type: 'text-delta', text: original };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: original,
+				response: { id: 'test' }
+			} as never)
+			.mockReturnValueOnce({
+				textStream: (async function* () {
+					yield corrected;
+				})(),
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: corrected };
+					yield { type: 'finish', finishReason: 'stop' };
+				})(),
+				text: corrected,
+				response: { id: 'test' }
+			} as never);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		await chatStore.load(root.id);
+		await chatStore.send('hello');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const turn = msgs.filter((m) => m.role === 'assistant');
+		// self_corrected label first (loop call site precedes the persist branch),
+		// then the flushed original-stream reasoning, then the corrected text row
+		expect(turn.map((m) => [m.kind, m.content])).toEqual([
+			['self_corrected', expect.any(String)],
+			['reasoning', 'thinking…'],
+			['assistant_message', corrected]
+		]);
+		const reasoning = turn.find((m) => m.kind === 'reasoning')!;
+		expect(JSON.parse(reasoning.metadata!)).toEqual({ iteration: 0, anchored: true });
+		expect(msgs.find((m) => m.role === 'user')!.content).toBe('hello');
+
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages
+			.filter((m) => m.role === 'assistant')
+			.map((m) => [m.kind, m.content]);
+		expect(reloaded).toEqual(turn.map((m) => [m.kind, m.content]));
+	});
+});
+
+// 035 US3 (T010, contracts/regenerate-scope.md): deleteLastAssistantTurn
+// removes the WHOLE assistant turn — every row strictly after the previous
+// user row (reasoning + text + trailing reasoning, all kinds) — and returns
+// the re-send payload. A whole-turn delete avoids orphan tool-result rows.
+describe('035 deleteLastAssistantTurn (T010)', () => {
+	it('deletes all non-user rows of an interleaved turn, keeps the user row, returns the resend payload', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		const user = await repos.messages.append(root.id, 'user', 'hi');
+		const r1 = await repos.messages.append(root.id, 'assistant', 'think one', {
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		const a1 = await repos.messages.append(root.id, 'assistant', 'ans');
+		const r2 = await repos.messages.append(root.id, 'assistant', ' done thinking.', {
+			kind: 'reasoning',
+			metadata: JSON.stringify({ iteration: 0, anchored: true })
+		});
+		await chatStore.load(root.id);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([user.id, r1.id, a1.id, r2.id]);
+
+		const payload = await chatStore.deleteLastAssistantTurn(a1.id);
+
+		expect(payload).toEqual({ userText: 'hi', attachments: [] });
+		const after = await repos.messages.listByChat(root.id);
+		expect(after.map((m) => m.id)).toEqual([user.id]);
+		expect(chatStore.messages.map((m) => m.id)).toEqual([user.id]);
+	});
+
+	it('returns null (no-op) for an unknown row id', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await repos.messages.append(root.id, 'user', 'hi');
+		await chatStore.load(root.id);
+
+		const payload = await chatStore.deleteLastAssistantTurn('no-such-row');
+
+		expect(payload).toBeNull();
+		expect(await repos.messages.listByChat(root.id)).toHaveLength(1);
+	});
+});
+
+// 035 (T017, quickstart V6): the mock's `chat_interleaved` shape — frame order
+// of tests/fixtures/mock-llm/server.mjs:187–205 (reasoning×2 → content×2 →
+// reasoning×2 → content×2 → trailing reasoning), replayed with start/delta/end
+// part framing — through the REAL loop+store. Regression bar: the durable walk
+// lands [reasoning, text, reasoning, text, trailing reasoning], each live
+// thought renders exactly once while streaming, and the 035 US3 regenerate
+// gate resolves on the turn (fails before `lastRegeneratableAssistantId`
+// existed; must pass after Phases 3–5).
+describe('035 interleaved mock shape (T017)', () => {
+	it('real-loop interleaved turn: five-row walk order, one live thought each, regenerate gate resolves', async () => {
+		const R1 = ' considering the question… it is a simple arithmetic sum…';
+		const T1 = 'Sure — 2 + 2 = 4.';
+		const R2 = ' double-checking after answering… the sum holds under recheck…';
+		const T2 = ' That stays 4.';
+		const R3 = ' done thinking.';
+
+		// Park the scripted stream after each segment group so the test can
+		// sample the live view between segments — the loop consumes parts as
+		// fast as microtasks allow, so ungated polling would only ever see the
+		// torn-down state.
+		const releases: Array<() => void> = [];
+		const holds = [0, 1, 2, 3, 4].map(() => new Promise<void>((r) => releases.push(r)));
+
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValueOnce({
+			textStream: (async function* () {
+				yield T1 + T2;
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'reasoning-start', id: 'r1' };
+				yield { type: 'reasoning-delta', id: 'r1', text: ' considering the question…' };
+				yield { type: 'reasoning-delta', id: 'r1', text: ' it is a simple arithmetic sum…' };
+				yield { type: 'reasoning-end', id: 'r1' };
+				await holds[0]!;
+				yield { type: 'text-start', id: 't1' };
+				yield { type: 'text-delta', id: 't1', text: 'Sure — ' };
+				yield { type: 'text-delta', id: 't1', text: '2 + 2 = 4.' };
+				yield { type: 'text-end', id: 't1' };
+				await holds[1]!;
+				yield { type: 'reasoning-start', id: 'r2' };
+				yield { type: 'reasoning-delta', id: 'r2', text: ' double-checking after answering…' };
+				yield { type: 'reasoning-delta', id: 'r2', text: ' the sum holds under recheck…' };
+				yield { type: 'reasoning-end', id: 'r2' };
+				await holds[2]!;
+				yield { type: 'text-start', id: 't2' };
+				yield { type: 'text-delta', id: 't2', text: ' That stays ' };
+				yield { type: 'text-delta', id: 't2', text: '4.' };
+				yield { type: 'text-end', id: 't2' };
+				await holds[3]!;
+				yield { type: 'reasoning-start', id: 'r3' };
+				yield { type: 'reasoning-delta', id: 'r3', text: ' done thinking.' };
+				yield { type: 'reasoning-end', id: 'r3' };
+				await holds[4]!;
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: T1 + T2,
+			response: { id: 'test' }
+		} as never);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+
+		const sendP = chatStore.send('hello');
+		// While streaming, every live snapshot holds each thought exactly once:
+		// blocks close as the next segment starts (035 US2) but never duplicate,
+		// and the trailing thought stays open until teardown.
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: true }
+			])
+		);
+		releases[0]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false }
+			])
+		);
+		releases[1]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: true }
+			])
+		);
+		releases[2]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T2, pending: false }
+			])
+		);
+		releases[3]!();
+		await vi.waitFor(() =>
+			expect(chatStore.liveItems).toEqual([
+				{ source: 'live', live: 'live_reasoning', buffer: R1, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T1, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R2, streaming: false },
+				{ source: 'live', live: 'live_text', buffer: T2, pending: false },
+				{ source: 'live', live: 'live_reasoning', buffer: R3, streaming: true }
+			])
+		);
+		releases[4]!();
+		await sendP;
+		expect(chatStore.liveItems).toEqual([]);
+
+		// Durable walk order (029 T012 walk + trailing thought last), all three
+		// thoughts anchored to their arrival positions.
+		const msgs = await repos.messages.listByChat(root.id);
+		expect(msgs[0]!.role).toBe('user');
+		expect(msgs.slice(1).map((m) => [m.role, m.kind, m.content])).toEqual([
+			['assistant', 'reasoning', R1],
+			['assistant', 'assistant_message', T1],
+			['assistant', 'reasoning', R2],
+			['assistant', 'assistant_message', T2],
+			['assistant', 'reasoning', R3]
+		]);
+		for (const thought of msgs.filter((m) => m.kind === 'reasoning')) {
+			expect(JSON.parse(thought.metadata ?? '{}')).toEqual({ iteration: 0, anchored: true });
+		}
+
+		// Regenerate gate (035 US3): the trailing anchored thought must not hide
+		// the turn's last text row.
+		const timeline = assembleTimeline(chatStore.messages);
+		expect(timeline.filter(isDurableEntry).map((t) => t.kind)).toEqual([
+			'user_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning',
+			'assistant_message',
+			'reasoning'
+		]);
+		const lastText = msgs.find((m) => m.kind === 'assistant_message' && m.content === T2)!;
+		expect(lastRegeneratableAssistantId(timeline)).toBe(lastText.id);
 	});
 });
 
@@ -1436,6 +1814,47 @@ describe('chatStore provider error surfacing (T015)', () => {
 			hint: 'Add an API key for this provider in Settings.'
 		});
 		expect(chatStore.lastFailedPrompt).toBe('hello');
+	});
+
+	// 036 T004(a) — send preflight (contracts/fix-send-preflight.md): the
+	// provider resolves BEFORE the user-row append, so a rejecting provider
+	// persists nothing (today exactly one orphan user row survives — the
+	// failure this test pins).
+	it('preflight: rejecting provider persists NO user row and arms the retry state', async () => {
+		mockedGetActiveSdkProvider.mockRejectedValue(new MissingKeyError(undefined, 'cop-1'));
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		await chatStore.send('fix this diagram');
+
+		const rows = await repos.messages.listByChat(root.id);
+		expect(rows.filter((m) => m.role === 'user')).toHaveLength(0);
+		expect(rows).toHaveLength(0);
+		expect(chatStore.streaming).toBe(false);
+		expect(chatStore.error).toEqual({
+			title: 'Missing API key',
+			message: 'No API key configured for this provider.',
+			hint: 'Add an API key for this provider in Settings.'
+		});
+		expect(chatStore.lastFailedPrompt).toBe('fix this diagram');
+	});
+
+	// 036 T004(b) — the 028 fix affordance sends through the same path: a
+	// resolvable provider yields exactly one visible (non-hidden) user row.
+	it('fix-prompt send with a resolvable provider persists exactly one visible user row', async () => {
+		mockDefaultProvider();
+		mockStreamReply(['ok']);
+
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		await chatStore.send(buildMermaidFixPrompt('graph TD\n  A -->', 'Error: bad syntax'));
+
+		const rows = await repos.messages.listByChat(root.id);
+		const userRows = rows.filter((m) => m.role === 'user');
+		expect(userRows).toHaveLength(1);
+		const meta = userRows[0]!.metadata;
+		const parsedMeta: Record<string, unknown> = meta === null ? {} : JSON.parse(meta);
+		expect(parsedMeta.hidden).toBeUndefined();
 	});
 });
 
@@ -1970,7 +2389,11 @@ describe('chatStore send with attachments (T010 — specs/018 User Story 1)', ()
 
 	it('(b) a failed send with attachments leaves no assistant row and arms the retry state', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
-		mockedGetActiveSdkProvider.mockRejectedValue(new Error('boom'));
+		// 036: provider resolution preflights BEFORE the user-row append, so a
+		// provider-rejection mock no longer reaches the post-append failure
+		// path — fail the turn instead to exercise the dangling-row contract.
+		mockDefaultProvider();
+		vi.mocked(runAgentTurn).mockRejectedValueOnce(new Error('boom'));
 		await chatStore.load(root.id);
 
 		const attachments = [makeAttachment(IMAGE_A)];
@@ -1992,7 +2415,10 @@ describe('chatStore send with attachments (T010 — specs/018 User Story 1)', ()
 
 	it('(c) retry re-sends with text AND attachments restored, deleting the dangling user row first', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
-		mockedGetActiveSdkProvider.mockRejectedValue(new Error('boom'));
+		// 036: fail the turn post-append (see (b)) — the preflight owns
+		// provider-rejection failures now, and this flow needs a dangling row.
+		mockDefaultProvider();
+		vi.mocked(runAgentTurn).mockRejectedValueOnce(new Error('boom'));
 		await chatStore.load(root.id);
 
 		const attachments = [makeAttachment(IMAGE_A, 'retry.png'), makeAttachment(IMAGE_B)];
@@ -2164,38 +2590,62 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 		expect(parts[1].mimeType).toBe('image/png');
 	});
 
-	it('(b) abort after an image arrives persists it on the interrupted row', async () => {
+	// 033 T010 (FR-008): exercise the REAL loop abort path (research D3) —
+	// issue #70's core complaint is that the mocked-turn version of this test
+	// never drove the actual consumeStream abort, so the images were lost.
+	// Scripted image stream → chatStore.stop() mid-stream → the interrupted
+	// row reloaded from the DB carries the image parts.
+	it('(b) abort after an image arrives persists it on the interrupted row (real loop path)', async () => {
 		const root = await repos.chats.createRoot({ title: 'Root' });
 		mockDefaultProvider();
 
-		vi.mocked(runAgentTurn).mockImplementation(async (deps) => {
-			deps.updateStreamBuffer('partial reply');
-			await new Promise<void>((resolve) => {
-				deps.signal.addEventListener('abort', () => resolve(), { once: true });
-			});
-			const opts = { images: [{ mediaType: 'image/png', base64: PNG_B64 }] };
-			await deps.appendAssistantText(
-				'partial reply',
-				opts as unknown as Parameters<typeof deps.appendAssistantText>[1]
-			);
-			return { aborted: true };
+		mockedStreamText.mockImplementation((opts?: Record<string, unknown>) => {
+			const signal = opts?.abortSignal as AbortSignal | undefined;
+			return {
+				fullStream: (async function* () {
+					yield { type: 'text-delta', text: 'painting partial…' };
+					yield {
+						type: 'file',
+						file: {
+							base64: PNG_B64,
+							uint8Array: new Uint8Array([1, 2, 3]),
+							mediaType: 'image/png'
+						}
+					};
+					await new Promise<void>((resolve) =>
+						signal?.addEventListener('abort', () => resolve(), { once: true })
+					);
+					// the stream dies with the abort: nothing after the stop point
+				})(),
+				text: '',
+				response: { id: 'test' }
+			} as never;
 		});
 
 		await chatStore.load(root.id);
 		const sendP = chatStore.send('draw a quokka');
-		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('partial reply'));
+		await vi.waitFor(() => expect(chatStore.streamBuffer).toBe('painting partial…'));
 		chatStore.stop();
 		await sendP;
 
-		const msgs = await repos.messages.listByChat(root.id);
-		const interrupted = msgs.find(
+		const interrupted = (await repos.messages.listByChat(root.id)).find(
 			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
 		);
 		expect(interrupted).toBeDefined();
-		expect(interrupted!.content).toBe('partial reply');
+		expect(interrupted!.content).toBe('painting partial…');
 		const parts = JSON.parse(interrupted!.parts!);
-		expect(parts[0]).toEqual({ type: 'text', text: 'partial reply' });
+		expect(parts).toHaveLength(2);
+		expect(parts[0]).toEqual({ type: 'text', text: 'painting partial…' });
 		expect(parts[1]).toMatchObject({ type: 'image', data: `data:image/png;base64,${PNG_B64}` });
+
+		// the reloaded chat shows the interrupted image-bearing row
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find(
+			(m) => m.role === 'assistant' && m.metadata && JSON.parse(m.metadata).interrupted === true
+		);
+		expect(reloaded).toBeDefined();
+		expect(reloaded!.id).toBe(interrupted!.id);
+		expect(JSON.parse(reloaded!.parts!)).toHaveLength(2);
 	});
 
 	it('(c) pendingImages never leak: the next image-less turn persists a parts-less assistant row', async () => {
@@ -2230,12 +2680,18 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 
 		await chatStore.load(root.id);
 		await chatStore.send('draw a quokka');
-		const callsAfterTurn = mockedStreamText.mock.calls.length;
+		const streamCallsAfterTurn = mockedStreamText.mock.calls.length;
+		const objectCallsAfterTurn = mockedGenerateObject.mock.calls.length;
+		const textCallsAfterTurn = mockedGenerateText.mock.calls.length;
 
 		// Hydration (the load() a chat switch / reload performs) issues no
-		// provider request — the image comes back from the row.
+		// provider request — the image comes back from the row. The pin is
+		// total over all three AI SDK entry points (streamText, generateObject,
+		// generateText): any of them firing during hydration turns this red.
 		await chatStore.load(root.id);
-		expect(mockedStreamText.mock.calls).toHaveLength(callsAfterTurn);
+		expect(mockedStreamText.mock.calls).toHaveLength(streamCallsAfterTurn);
+		expect(mockedGenerateObject.mock.calls).toHaveLength(objectCallsAfterTurn);
+		expect(mockedGenerateText.mock.calls).toHaveLength(textCallsAfterTurn);
 
 		const assistant = chatStore.messages.find((m) => m.role === 'assistant');
 		expect(assistant).toBeDefined();
@@ -2246,6 +2702,218 @@ describe('chatStore image reply persistence (T004 — specs/030 US1)', () => {
 			type: 'image',
 			data: `data:image/png;base64,${PNG_B64}`,
 			mimeType: 'image/png'
+		});
+	});
+
+	// 033 T007 (research D2, finalize-composition §2): an images-with-no-text
+	// reply persists the contract-legal image-only row (content '', image
+	// parts only) through the REAL loop's finalize fallback, and the row is
+	// present after reload. Today the turn persists nothing.
+	it('(e) an image-only stream persists ONE assistant row with only image parts, surviving reload', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield {
+					type: 'file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1, 2, 3]), mediaType: 'image/png' }
+				};
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe('');
+		expect(row.model).toBe('stub-model');
+		const parts = JSON.parse(row.parts!);
+		expect(parts).toHaveLength(1);
+		expect(parts[0].type).toBe('image');
+		expect(parts[0].data).toBe(`data:image/png;base64,${PNG_B64}`);
+		expect(parts[0].mimeType).toBe('image/png');
+
+		// the image-only row survives a reload (data-level)
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find((m) => m.role === 'assistant');
+		expect(reloaded).toBeDefined();
+		expect(reloaded!.id).toBe(row.id);
+		expect(reloaded!.content).toBe('');
+		const reloadedParts = partsOf(reloaded!);
+		expect(reloadedParts).toHaveLength(1);
+		expect(reloadedParts[0]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`,
+			mimeType: 'image/png'
+		});
+	});
+
+	// 033 T012 (research D4, finalize-composition §2 cap rule 2): over-cap
+	// finalize degrades gracefully — the first MAX_IMAGES_PER_MESSAGE (8) images
+	// keep the row, the rest drop with a bracketed notice, and nothing throws.
+	// Today the ninth image makes repos.messages.append's validateParts reject
+	// the append, so the turn is lost entirely.
+	it('(f) nine base64 candidates finalize capped: one row, exactly 8 image parts, a bracketed drop notice, no throw (033 T012)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'Nine images' };
+				for (let n = 0; n < 9; n++) {
+					yield {
+						type: 'file',
+						file: {
+							base64: PNG_B64,
+							uint8Array: new Uint8Array([1, 2, 3]),
+							mediaType: 'image/png'
+						}
+					};
+				}
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw nine quokkas');
+
+		expect(chatStore.error).toBeNull();
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe(
+			'Nine images\n\n[1 image was dropped: at most 8 images can be attached per message.]'
+		);
+		const parts = JSON.parse(row.parts!) as MessagePart[];
+		expect(parts.filter((p) => p.type === 'image')).toHaveLength(8);
+		expect(parts.filter((p) => p.type === 'text')).toEqual([
+			{ type: 'text', text: 'Nine images' },
+			{
+				type: 'text',
+				text: '\n\n[1 image was dropped: at most 8 images can be attached per message.]'
+			}
+		]);
+	});
+
+	// 033 T015 (research D5, finalize-composition §2 arrival order): a
+	// `text → image → text` stream persists ONE row whose parts run
+	// [text-a, image, text-b] — the row text split at the image's arrival
+	// offset — and reload reproduces that order. Text parts concatenate
+	// byte-for-byte to `content`. Today all images ride the single text row's
+	// tail: parts come out [full-text, image].
+	it('(g) text → image → text persists one row with parts [text-a, image, text-b], surviving reload (033 T015)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'Halfway' };
+				yield {
+					type: 'file',
+					file: {
+						base64: PNG_B64,
+						uint8Array: new Uint8Array([1, 2, 3]),
+						mediaType: 'image/png'
+					}
+				};
+				yield { type: 'text-delta', text: ' and done.' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw one quokka');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe('Halfway and done.');
+		const parts = JSON.parse(row.parts!) as MessagePart[];
+		expect(parts[0]).toEqual({ type: 'text', text: 'Halfway' });
+		expect(parts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`,
+			mimeType: 'image/png'
+		});
+		expect(parts[2]).toEqual({ type: 'text', text: ' and done.' });
+
+		// reload reproduces the parts order (data-level; renderer interleaves)
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find((m) => m.role === 'assistant');
+		expect(reloaded).toBeDefined();
+		expect(reloaded!.id).toBe(row.id);
+		const reloadedParts = partsOf(reloaded!);
+		expect(reloadedParts[0]).toEqual({ type: 'text', text: 'Halfway' });
+		expect(reloadedParts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`
+		});
+		expect(reloadedParts[2]).toEqual({ type: 'text', text: ' and done.' });
+	});
+
+	// 033 T018 (research D6, finalize-composition §2 cap rule 1): a corrupt
+	// candidate is contained per image — the sniff gate (magic bytes, node-safe)
+	// drops it with a bracketed notice while the valid image and the text
+	// persist. Today the garbage base64 makes candidateToImagePart's atob
+	// throw, the compose rejects, and the whole turn is lost as "Network error".
+	it('(h) a garbage-base64 candidate drops with a bracketed notice; valid image and text persist (033 T018)', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield { type: 'text-delta', text: 'Here' };
+				yield {
+					type: 'file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1, 2, 3]), mediaType: 'image/png' }
+				};
+				yield {
+					type: 'file',
+					file: {
+						base64: '!!!garbage!!!',
+						uint8Array: new Uint8Array([9, 9, 9]),
+						mediaType: 'image/png'
+					}
+				};
+				yield { type: 'text-delta', text: ' and text' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw two quokkas');
+
+		expect(chatStore.error).toBeNull();
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe(
+			'Here and text\n\n[1 image was dropped: the image data was not a valid image.]'
+		);
+		const parts = JSON.parse(row.parts!) as MessagePart[];
+		expect(parts.filter((p) => p.type === 'image')).toHaveLength(1);
+		expect(parts[0]).toEqual({ type: 'text', text: 'Here' });
+		expect(parts[1]).toMatchObject({
+			type: 'image',
+			data: `data:image/png;base64,${PNG_B64}`,
+			mimeType: 'image/png'
+		});
+		expect(parts[2]).toEqual({ type: 'text', text: ' and text' });
+		expect(parts[3]).toEqual({
+			type: 'text',
+			text: '\n\n[1 image was dropped: the image data was not a valid image.]'
 		});
 	});
 });
@@ -2454,9 +3122,14 @@ describe('chatStore image-unsupported error wiring (T021 — specs/018 User Stor
 describe('chatStore image-output failure refinement (T018 — specs/030 US2)', () => {
 	const PNG_B64 = 'QUFB'; // "AAA"
 
-	/** Turn mock: hands an image to finalize, whose assistant append fails. */
+	/**
+	 * Turn mock: recognizes an image on the stream (033 T022 — the refinement
+	 * keys on the turn-scoped recognized count, finalize-composition §4),
+	 * hands it to finalize, whose assistant append then fails.
+	 */
 	function imageTurnFailingAtFinalize(): void {
 		vi.mocked(runAgentTurn).mockImplementationOnce(async (deps) => {
+			deps.onImageRecognized?.({ mediaType: 'image/png', base64: PNG_B64 });
 			await deps.appendAssistantText('drawing your quokka', {
 				images: [{ mediaType: 'image/png', base64: PNG_B64 }]
 			} as unknown as Parameters<typeof deps.appendAssistantText>[1]);
@@ -2512,6 +3185,97 @@ describe('chatStore image-output failure refinement (T018 — specs/030 US2)', (
 
 		expect(chatStore.error?.title).toBe('Network error');
 		expect(chatStore.error?.message).toBe('offline');
+	});
+});
+
+// 033 T021 (US7, contract finalize-composition.md §4): the failure refinement
+// keys on the turn-scoped recognized-image counter (the stream died before any
+// finalize append, so pendingImages is empty — today unreachable), and a
+// successful image-expecting turn that produced zero images carries the
+// bracketed no-image notice on its final row.
+describe('chatStore zero-image refinement + notice (T021 — specs/033 US7)', () => {
+	const PNG_B64 = 'QUFB'; // "AAA"
+	const NO_IMAGE_NOTICE =
+		'[No image was produced this turn. Set "Image output" to "On" in provider settings, or switch to a model that produces images.]';
+
+	beforeEach(() => {
+		if (baseRunAgentTurnImpl) {
+			vi.mocked(runAgentTurn).mockImplementation(baseRunAgentTurnImpl);
+		}
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('(a) stream recognized an image, then failed with a ProviderHttpError 4xx → typed "No image produced" notice, not the raw error', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			fullStream: (async function* () {
+				yield {
+					type: 'file',
+					file: { base64: PNG_B64, uint8Array: new Uint8Array([1, 2, 3]), mediaType: 'image/png' }
+				};
+				yield {
+					type: 'error',
+					error: new ProviderHttpError('Provider returned HTTP 400', 400, 'image rejected')
+				};
+			})(),
+			text: '',
+			response: { id: 'test' }
+		} as never);
+
+		await chatStore.load(root.id);
+		await chatStore.send('draw a quokka');
+
+		expect(chatStore.error).toEqual({
+			title: 'No image produced',
+			message: 'stub-model did not produce an image.',
+			hint: 'Set "Image output" to "On" in provider settings to force the attempt, or switch to a model that produces images.'
+		});
+		expect(chatStore.error?.title).not.toBe('Network error');
+		expect(chatStore.error?.title).not.toBe('Provider error (400)');
+	});
+
+	it('(b) a successful text-only turn against an image-output-expected model carries the bracketed no-image notice on the final row', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockedGetActiveSdkProvider.mockResolvedValue({
+			model: {} as LanguageModel,
+			config: { ...stubConfig, imageOutput: 'on' },
+			toolCapability: true
+		});
+		mockStreamReply(['Here is your answer']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('tell me about quokkas');
+
+		expect(chatStore.error).toBeNull();
+		const msgs = await repos.messages.listByChat(root.id);
+		const assistantRows = msgs.filter((m) => m.role === 'assistant');
+		expect(assistantRows).toHaveLength(1);
+		const row = assistantRows[0]!;
+		expect(row.content).toBe(`Here is your answer\n\n${NO_IMAGE_NOTICE}`);
+		expect(row.parts).toBeNull();
+
+		// reload serves the notice from the persisted row
+		await chatStore.load(root.id);
+		const reloaded = chatStore.messages.find((m) => m.role === 'assistant');
+		expect(reloaded!.content).toBe(`Here is your answer\n\n${NO_IMAGE_NOTICE}`);
+	});
+
+	it('(c) the same successful text-only turn against a non-expected model carries no notice', async () => {
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		mockDefaultProvider(); // stubConfig has no imageOutput → 'auto' → non-expected model
+		mockStreamReply(['Here is your answer']);
+
+		await chatStore.load(root.id);
+		await chatStore.send('tell me about quokkas');
+
+		const msgs = await repos.messages.listByChat(root.id);
+		const row = msgs.find((m) => m.role === 'assistant')!;
+		expect(row.content).toBe('Here is your answer');
+		expect(row.content).not.toContain('[No image was produced');
 	});
 });
 
@@ -2794,6 +3558,104 @@ describe('chatStore.propagateToParent (020 US1)', () => {
 
 		expect(acquirePropagationLatch()).toBe(true);
 	});
+
+	it('latch refusal clears the prior success record; latch-free success still sets it (037 US2)', async () => {
+		const { parent, child } = await seedBranch();
+		await chatStore.load(child.id);
+
+		// 038 US3 (FR-005): neither path pushes a toast — the page toasts iff
+		// `lastPropagation` is set after its OWN manual-control call, and the
+		// store itself never pushes (observed on the same `toastState`
+		// singleton `chat.svelte.ts` imports).
+		toastState.clear();
+		expect(toastState.toasts).toHaveLength(0);
+
+		// First run owns the latch, lands, and sets the record.
+		await chatStore.propagateToParent('raw');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+		expect(toastState.toasts).toHaveLength(0);
+
+		// A foreign path now holds the latch; the refused second call must not
+		// leave the previous run's record observable (037 D2) — the page toasts
+		// iff the record is set after its call returns.
+		expect(acquirePropagationLatch()).toBe(true);
+		await chatStore.propagateToParent('raw');
+
+		expect(chatStore.lastPropagation).toBeNull();
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.propagationError).toBeNull();
+		// The refused call pushes nothing and lands nothing: the parent keeps
+		// exactly the first run's branch_artifact row.
+		expect(toastState.toasts).toHaveLength(0);
+		expect(
+			(await repos.messages.listByChat(parent.id)).filter((m) => m.kind === 'branch_artifact')
+		).toHaveLength(1);
+		// The refusing call did not steal or free the foreign path's latch.
+		expect(acquirePropagationLatch()).toBe(false);
+	});
+
+	it('manual raw propagation on a branch carrying a declined attempt excludes that chrome — parity with the content-only twin (037 US1)', async () => {
+		// Twin: content-only branch — same anchor + turns, no propagation chrome.
+		const twinParent = await repos.chats.createRoot({ title: 'Twin root' });
+		const twinAnchor = await repos.messages.append(twinParent.id, 'user', 'hello');
+		const twin = await repos.chats.createChild({
+			parentId: twinParent.id,
+			branchPointMessageId: twinAnchor.id,
+			title: 'Twin branch'
+		});
+		await repos.messages.append(twin.id, 'user', 'branch question');
+		await repos.messages.append(twin.id, 'assistant', 'branch answer');
+
+		// Branch carrying a declined propagation attempt's chrome rows.
+		const { parent, child } = await seedBranch();
+		await repos.messages.append(child.id, 'assistant', '', {
+			toolCallId: 'tc-declined',
+			toolName: 'propagate_to_parent',
+			metadata: JSON.stringify({ mode: 'raw' })
+		});
+		await repos.messages.append(
+			child.id,
+			'assistant',
+			'propagate_to_parent — back-propagate this branch',
+			{
+				kind: 'approval',
+				toolCallId: 'tc-declined',
+				toolName: 'propagate_to_parent',
+				metadata: JSON.stringify({
+					toolName: 'propagate_to_parent',
+					description: 'back-propagate this branch',
+					args: {},
+					outcome: null
+				})
+			}
+		);
+		await repos.messages.appendToolResult(child.id, {
+			toolCallId: 'tc-declined',
+			toolName: 'propagate_to_parent',
+			summary: 'user declined',
+			ok: false
+		});
+		await chatStore.load(child.id);
+
+		await chatStore.propagateToParent('raw');
+
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(art.content).toBe(await buildRawDelta(twin.id));
+		expect(art.content).toBe(
+			[
+				'[excerpt]',
+				'hello',
+				'[/excerpt]',
+				'',
+				'[user] branch question',
+				'[assistant] branch answer'
+			].join('\n')
+		);
+		expect(chatStore.propagationStatus).toBe('idle');
+		expect(chatStore.lastPropagation).toEqual({ parentChatId: parent.id, mode: 'raw' });
+	});
 });
 
 describe('propagate_to_parent availability gating (027 V4)', () => {
@@ -2916,6 +3778,97 @@ describe('chatStore artifact management (020 US3)', () => {
 		expect(mockedGenerateText).not.toHaveBeenCalled();
 		expect(chatStore.propagationStatus).toBe('error');
 		expect(chatStore.propagationError).toContain('summary');
+	});
+
+	it("regenerate replaces stale parts with the source branch's current collected images (037 US6)", async () => {
+		const { child, art } = await seedArtifact('summary');
+		const imgA: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,AAAA',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		const imgB: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,BBBB',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		expect(art.parts).toBeNull();
+		// Image-set change on the source branch: image A twice (duplicate data,
+		// distinct names — dedupe keeps the first), then image B.
+		await repos.messages.append(child.id, 'assistant', 'first ', {
+			parts: [
+				{ type: 'text', text: 'first ' },
+				{ ...imgA, name: 'one' }
+			]
+		});
+		await repos.messages.append(child.id, 'assistant', '', {
+			parts: [{ ...imgA, name: 'two' }, imgB]
+		});
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const updated = (await repos.messages.getById(art.id))!;
+		expect(updated.content).toBe('Regenerated summary');
+		const parts = JSON.parse(updated.parts!) as MessagePart[];
+		expect(parts[0]).toEqual({ type: 'text', text: 'Regenerated summary' });
+		// Current collected set: deduped by data (one imgA — the first name
+		// survives), order preserved — mirrors fresh propagation's collection.
+		expect(parts.filter((p) => p.type === 'image')).toEqual([{ ...imgA, name: 'one' }, imgB]);
+		// The store's view carries the refreshed row too.
+		expect(JSON.parse(chatStore.messages.find((m) => m.id === art.id)!.parts!)).toEqual(parts);
+		expect(chatStore.propagationStatus).toBe('idle');
+	});
+
+	it('regenerate clears parts when the source branch no longer has images (037 US6)', async () => {
+		// Seeded inline so the artifact is propagated while the branch still
+		// carries an image — then the image-set empties.
+		const parent = await repos.chats.createRoot({ title: 'Root' });
+		const a = await repos.messages.append(parent.id, 'user', 'hello');
+		await repos.messages.append(parent.id, 'assistant', 'world');
+		const child = await repos.chats.createChild({
+			parentId: parent.id,
+			branchPointMessageId: a.id,
+			title: 'Branch of Root'
+		});
+		const img: ImagePart = {
+			type: 'image',
+			data: 'data:image/png;base64,Zm9v',
+			mimeType: 'image/png',
+			width: 4,
+			height: 4,
+			bytes: 8
+		};
+		const imageRow = await repos.messages.append(child.id, 'assistant', 'pic ', {
+			parts: [{ type: 'text', text: 'pic ' }, img]
+		});
+		await chatStore.load(child.id);
+		mockDefaultProvider();
+		mockedGenerateText.mockResolvedValueOnce({ text: 'First summary' } as never);
+		await chatStore.propagateToParent('summary');
+		const art = (await repos.messages.listByChat(parent.id)).find(
+			(m) => m.kind === 'branch_artifact'
+		)!;
+		expect(JSON.parse(art.parts!)).toHaveLength(2);
+		await chatStore.load(parent.id);
+
+		// The branch's only image-bearing row is gone: the branch has no images.
+		await repos.messages.delete(imageRow.id);
+		mockedGenerateText.mockResolvedValueOnce({ text: 'Regenerated summary' } as never);
+
+		await chatStore.regenerateArtifact(art.id);
+
+		const updated = (await repos.messages.getById(art.id))!;
+		expect(updated.content).toBe('Regenerated summary');
+		expect(updated.parts).toBeNull();
+		expect(chatStore.messages.find((m) => m.id === art.id)!.parts).toBeNull();
+		expect(chatStore.propagationStatus).toBe('idle');
 	});
 
 	it('delete removes only the artifact row; parent composition no longer contains it', async () => {
@@ -3117,6 +4070,70 @@ describe('chatStore paced streaming (022 US1)', () => {
 		const assistant = msgs.find((m) => m.role === 'assistant');
 		expect(assistant!.content).toBe('Deferred drain reply ');
 		expect(chatStore.streamPhase).toBe('idle');
+	});
+
+	it('interleaved text blocks: the second durable row lands without the drain deadline (035 US4 T013)', async () => {
+		chatStore.setStreamPreset('calm');
+		const root = await repos.chats.createRoot({ title: 'Root' });
+		await chatStore.load(root.id);
+		mockDefaultProvider();
+		mockedStreamText.mockReturnValue({
+			textStream: (async function* () {
+				yield 'First block answer. ';
+				yield 'Second block answer. ';
+			})(),
+			fullStream: (async function* () {
+				yield { type: 'text-start', id: 't1' };
+				yield { type: 'text-delta', id: 't1', text: 'First block answer. ' };
+				yield { type: 'text-end', id: 't1' };
+				yield { type: 'reasoning-start', id: 'r1' };
+				yield { type: 'reasoning-delta', id: 'r1', text: 'mid thought. ' };
+				yield { type: 'reasoning-end', id: 'r1' };
+				yield { type: 'text-start', id: 't2' };
+				yield { type: 'text-delta', id: 't2', text: 'Second block answer. ' };
+				yield { type: 'text-end', id: 't2' };
+				yield { type: 'finish', finishReason: 'stop' };
+			})(),
+			text: 'First block answer. Second block answer. ',
+			response: { id: 'test' }
+		} as never);
+
+		const sendP = chatStore.send('hello');
+		// Block 1 keeps its eased drain: advance until the first durable
+		// assistant row lands (walk order: text row, reasoning row, text row).
+		let firstLanded = false;
+		for (let i = 0; i < 300 && !firstLanded; i++) {
+			await vi.advanceTimersByTimeAsync(16);
+			firstLanded = (await repos.messages.listByChat(root.id)).some((m) => m.role === 'assistant');
+		}
+		expect(firstLanded).toBe(true);
+
+		// Drain-once (contracts/drain-once.md): the second finalize block has
+		// nothing left to release (the first append cleared streamBuffer and
+		// reset the pacer), so it must persist WITHOUT burning the 1200 ms
+		// DRAIN_DEADLINE_MS — 40 × 16 ms (640 ms) stays strictly below it.
+		let secondLanded = false;
+		for (let i = 0; i < 40 && !secondLanded; i++) {
+			await vi.advanceTimersByTimeAsync(16);
+			secondLanded = (await repos.messages.listByChat(root.id)).some(
+				(m) => m.role === 'assistant' && m.content === 'Second block answer. '
+			);
+		}
+		expect(secondLanded).toBe(true);
+
+		await vi.advanceTimersByTimeAsync(50);
+		await sendP;
+		expect(chatStore.streamPhase).toBe('idle');
+		const msgs = await repos.messages.listByChat(root.id);
+		const rows = msgs.map((m) => [m.role, m.kind, m.content]);
+		expect(rows[0]![0]).toBe('user');
+		expect(rows.slice(1)).toEqual([
+			['assistant', 'assistant_message', 'First block answer. '],
+			['assistant', 'reasoning', 'mid thought. '],
+			['assistant', 'assistant_message', 'Second block answer. ']
+		]);
+		const thought = msgs.find((m) => m.kind === 'reasoning');
+		expect(JSON.parse(thought!.metadata ?? '{}')).toEqual({ iteration: 0, anchored: true });
 	});
 
 	it('abort during a paced stream persists the raw buffer immediately with interrupted:true', async () => {

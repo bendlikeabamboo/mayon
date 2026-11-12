@@ -4,6 +4,7 @@ import { testProviderConnection } from './connection-test';
 import { useFileTestDb } from '#lib/db/driver/pg-test.js';
 import { SERVER_REQUIRED_HINT } from './errors';
 import { setHttpTransport, type HttpStreamTransport } from './http-transport';
+import { mergeDiscoveredModels } from './model-discovery';
 import {
 	CorsBlockedError,
 	NetworkError,
@@ -326,6 +327,25 @@ describe('testProviderConnection', () => {
 		expect((await testProviderConnection(config)).failure?.class).toBe('auth');
 	});
 
+	it('classifies the relay blocked-target 403 as relay refusal, not auth', async () => {
+		setHttpTransport({
+			request: async () => {
+				throw new ProviderHttpError(
+					'Provider returned HTTP 403',
+					403,
+					JSON.stringify({ error: 'blocked target', detail: 'private' })
+				);
+			}
+		});
+
+		const res = await testProviderConnection(config);
+
+		expect(res.failure?.class).toBe('http');
+		expect(res.failure?.title).toBe('Relay refused the target');
+		expect(res.failure?.message).toContain(config.baseUrl);
+		expect(res.failure?.status).toBe(403);
+	});
+
 	/**
 	 * The composed Settings-UI invariant: a successful probe hands the
 	 * discovered catalog to the caller, which merges it into the persisted
@@ -349,7 +369,7 @@ describe('testProviderConnection', () => {
 			expect(res.ok).toBe(true);
 
 			const discovered = res.models ?? [];
-			const merged = [...discovered, ...config.models.filter((m) => !discovered.includes(m))];
+			const merged = mergeDiscoveredModels(discovered, config.models);
 			await saveProviders([{ ...config, models: merged }]);
 
 			const record = (await listProviders()).find((p) => p.id === config.id);

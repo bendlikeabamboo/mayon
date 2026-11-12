@@ -79,6 +79,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @mayon/shared build
       - run: pnpm exec playwright install --with-deps chromium
+      # Pre-build the shard stack's images through Buildx so the GitHub Actions
+      # layer cache serves them across runs. Compose names project images
+      # `<project>-<service>`, so the tags below are exactly what project
+      # mayon-dev-shard-N's `web`/`server` resolve to — and
+      # scripts/dev-shard.mjs runs plain `up -d` (no --build), which adopts
+      # pre-loaded images instead of building them cold. Both shard legs share
+      # one dev-image cache (keys are content-derived per Dockerfile, so these
+      # never collide with the prod builds in the web job / release pipeline).
+      - uses: docker/setup-buildx-action@v3
+      - name: Pre-build shard web image (cache-backed, compose-named tag)
+        run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max --load -t mayon-dev-shard-${{ matrix.shard }}-web -f Dockerfile.dev .
+      - name: Pre-build shard server image (cache-backed, compose-named tag)
+        run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max --load -t mayon-dev-shard-${{ matrix.shard }}-server -f server/Dockerfile.dev .
       # Resolve the capability gate once per runner and pass the decision to
       # every shard process. Spec files are independent (no shared ports, chat
       # ids, or provider ids), so four runners can run four shards safely.

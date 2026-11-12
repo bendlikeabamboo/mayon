@@ -247,4 +247,75 @@ describe('createFetchTransport', () => {
 		expect(url).toBe('https://api.example.test/v1/chat');
 		expect(await collectStream(stream)).toBe('direct');
 	});
+
+	describe('authHost credential gate (032)', () => {
+		it('attaches the credential when the request matches the declared authHost', async () => {
+			const transport = createFetchTransport(makeFakeStore({ p1: 'secret' }));
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(cannedResponse('ok'));
+
+			await transport.request({
+				url: 'https://api.provider.test/v1/chat',
+				auth: { header: 'Authorization', scheme: 'Bearer', keyId: 'p1' },
+				authHost: 'api.provider.test'
+			});
+
+			const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+			expect(((init as RequestInit).headers as Record<string, string>)['Authorization']).toBe(
+				'Bearer secret'
+			);
+		});
+
+		it('normalizes the declared authHost (mixed case, trailing dot)', async () => {
+			const transport = createFetchTransport(makeFakeStore({ p1: 'raw' }));
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(cannedResponse('ok'));
+
+			await transport.request({
+				url: 'https://api.provider.test/v1/chat',
+				auth: { header: 'x-api-key', keyId: 'p1' },
+				authHost: 'API.Provider.TEST.'
+			});
+
+			const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+			expect(((init as RequestInit).headers as Record<string, string>)['x-api-key']).toBe('raw');
+		});
+
+		it('omits the credential on a foreign host and never throws MissingKeyError', async () => {
+			const transport = createFetchTransport(makeFakeStore());
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(cannedResponse('anon'));
+
+			const stream = await transport.request({
+				url: 'https://attacker.example/x.png',
+				auth: { header: 'Authorization', scheme: 'Bearer', keyId: 'p1' },
+				authHost: 'api.provider.test'
+			});
+
+			expect(globalThis.fetch).toHaveBeenCalledOnce();
+			const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+			expect(
+				((init as RequestInit).headers as Record<string, string>)['Authorization']
+			).toBeUndefined();
+			expect(await collectStream(stream)).toBe('anon');
+		});
+
+		it('forwards authHost verbatim in the proxy envelope when routing through the proxy', async () => {
+			vi.mocked(serverStatus.has).mockReturnValue(true);
+			const transport = createFetchTransport(makeFakeStore({ p1: 'secret' }));
+			const fakeRes = new Response('proxied', {
+				status: 200,
+				headers: { 'content-type': 'text/event-stream' }
+			});
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(fakeRes);
+
+			await transport.request({
+				url: 'https://api.provider.test/v1/chat',
+				auth: { header: 'Authorization', scheme: 'Bearer', keyId: 'p1' },
+				authHost: 'API.Provider.TEST.'
+			});
+
+			const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+			const sentBody = JSON.parse((init as RequestInit).body as string);
+			expect(sentBody.authHost).toBe('API.Provider.TEST.');
+			expect(sentBody.headers['authorization']).toBe('Bearer secret');
+		});
+	});
 });
