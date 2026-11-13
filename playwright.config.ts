@@ -34,8 +34,14 @@ export default defineConfig({
 	// low-spec/unknown gate or an explicit MAYON_E2E_WORKERS forces a number.
 	workers: e2eWorkers ?? capacity.workers ?? undefined,
 	fullyParallel: capacity.fullyParallel,
+	// Vite dev refetches and transforms a route's module graph on every full
+	// navigation/reload; in parallel on a small runner that can outlast the
+	// framework's 5s expect default even though the app is still rendering.
+	expect: { timeout: 20_000 },
 	reporter: [['list']],
-	timeout: 60_000,
+	// A test can cold-compile several routes (fixture plus its own navigations),
+	// so keep the per-test cap above the sum of those waits.
+	timeout: 90_000,
 	use: {
 		// 127.0.0.1, not localhost: Node's DNS ordering can resolve localhost to
 		// ::1, which the dev web container does not accept.
