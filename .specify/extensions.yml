@@ -1,5 +1,6 @@
 installed:
 - assess
+- bug
 - prespec
 settings:
   auto_execute_hooks: true
