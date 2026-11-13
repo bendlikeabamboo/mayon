@@ -7,11 +7,14 @@
 //   node scripts/dev-shard.mjs test 1/4   # playwright --shard=1/4 vs E2E_BASE_URL=:5201
 //   node scripts/dev-shard.mjs down 1     # tear shard-1's stack down
 //
-// Shard files are independent (no shared port ownership, no cross-spec chat or
-// provider id), so the configured total is whatever the caller passes and CI
-// runs one shard per capable runner. The capability gate is resolved here and
-// passed explicitly to the Playwright process through MAYON_TEST_MAX_WORKERS;
-// Playwright itself still applies the same gate (workers/fullyParallel).
+// Shard files are independent (no shared port ownership, no cross-spec chat
+// ids, and provider-picker-coaching owns its provider), so the configured total
+// is whatever the caller passes. CI builds the dev images once, pulls them onto
+// one runner, and runs the whole suite there as shard 1/1 with parallel
+// workers; this command remains the local way to split work across stacks. The
+// capability gate is resolved here and passed explicitly to the Playwright
+// process through MAYON_TEST_MAX_WORKERS; Playwright itself still applies the
+// same gate (workers/fullyParallel).
 //
 // Compose is always invoked through scripts/dev-compose.mjs (--shard=N), so
 // engine resolution (MAYON_DEV_ENGINE) stays in one place.
@@ -107,7 +110,7 @@ function waitMockLlm(shard) {
 async function cmdUp(shard, total) {
 	const { mode, workers, reason } = capacity();
 	console.log(
-		`Bringing up ${shardProject(shard)} (web :${shardWebPort(shard)}, shard ${shard}/${total}, ${mode} workers=${workers} reason=${reason})`
+		`Bringing up ${shardProject(shard)} (web :${shardWebPort(shard)}, shard ${shard}/${total}, ${mode} workers=${workers ?? 'auto'} reason=${reason})`
 	);
 	const code = compose(shard, ['up', '-d']);
 	if (code !== 0) process.exit(code);
@@ -125,7 +128,8 @@ function cmdTest(shard, total) {
 		E2E_BASE_URL: `http://127.0.0.1:${shardWebPort(shard)}`
 	};
 	// Pass the resolved decision explicitly; an operator-supplied cap still wins.
-	env.MAYON_TEST_MAX_WORKERS ??= String(workers);
+	// Capable mode returns null workers, leaving Playwright at its own default.
+	if (workers !== null) env.MAYON_TEST_MAX_WORKERS ??= String(workers);
 	const result = spawnSync('pnpm', ['exec', 'playwright', 'test', `--shard=${shard}/${total}`], {
 		stdio: 'inherit',
 		cwd: repoRoot,

@@ -544,7 +544,7 @@
 					{@const dialect = describeDialect(p, p.defaultModel)}
 					{@const samplingLocked = dialect?.locksSampling === true}
 					{@const preview = resolveRequestSettings(p, p.defaultModel, previewEfforts[p.id] ?? 'on')}
-					<li class="space-y-3 rounded-lg border border-border p-4">
+					<li class="space-y-3 rounded-lg border border-border p-4" data-provider-id={p.id}>
 						<div class="flex items-start justify-between gap-2">
 							<div class="min-w-0 space-y-0.5">
 								<div class="flex items-center gap-2">

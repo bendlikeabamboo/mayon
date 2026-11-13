@@ -84,7 +84,7 @@ function writeReport(capacity, budgets, tiers) {
 			logicalCpus: capacity.logicalCpus,
 			usableMemoryBytes: capacity.usableMemoryBytes,
 			override: capacity.override,
-			workers: capacity.workers
+			workers: capacity.workers ?? 'auto'
 		},
 		tiers: tiers.map(({ id, measuredSeconds }) => ({
 			id,

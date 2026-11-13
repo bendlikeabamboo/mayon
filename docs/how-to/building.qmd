@@ -98,12 +98,14 @@ remove the duplicate and record the replacement or retirement rationale in
 `specs/032-test-suite-tiering/migration-ledger.md`. Every removed or migrated
 source-text and end-to-end case needs a ledger row.
 
-The capability gate parallelizes only at ≥8 logical CPUs and ≥8 GiB usable RAM;
-low-spec or unreadable machines run serially. On a low-spec machine use
+The capability gate parallelizes at more than 2 logical CPUs and at least 8 GiB
+usable RAM (a GitHub-hosted standard runner qualifies); 2-or-fewer-CPU,
+sub-8-GiB, or unreadable machines run serially. On a low-spec machine use
 `pnpm test:low-spec` (it sets `MAYON_TEST_PARALLEL=off` and a 500 MB V8 heap);
-`MAYON_TEST_MAX_WORKERS` caps a capable machine. The gate changes concurrency,
-never test selection. `pnpm check:tests` enforces the tier boundaries and CI
-enforces per-tier budgets from `test-budgets.json` via `pnpm check:budget`.
+`MAYON_TEST_MAX_WORKERS` caps a capable machine, and without a cap Vitest sizes
+its own pool from the available cores. The gate changes concurrency, never test
+selection. `pnpm check:tests` enforces the tier boundaries and CI enforces
+per-tier budgets from `test-budgets.json` via `pnpm check:budget`.
 
 ## Browser E2E tests
 
@@ -115,7 +117,8 @@ logic and component tests own everything else; every removed case is recorded in
 `specs/032-test-suite-tiering/migration-ledger.md`. The reply comes from a tests-owned mock
 LLM service (`mock-llm` in `docker-compose.dev.yml`) that speaks the OpenAI chat protocol —
 no real AI service, no API key, no external network. The suite runs automatically in the
-`e2e` CI job on every pull request.
+`e2e` CI job on same-repo pull requests, `main`, and tags; fork pull requests skip e2e and
+the `web` job remains their gate.
 
 Since feature 020 the mock also discriminates request kinds — chat, quiz generation, lab generation,
 short-answer grading, and learning-brief generation — and answers each with its own deterministic
@@ -158,11 +161,17 @@ docker compose -p mayon-e2e -f docker-compose.dev.yml -f docker-compose.e2e.yml 
 
 ### Sharded runs
 
-The suite can be split across concurrently running Playwright shards (this is
-how the `e2e` CI job runs — one shard job each with its own stack). Each shard
-gets its own compose project (`mayon-dev-shard-N`, web on host port `5200+N`,
-volumes/network isolated by the project prefix), so there are no shared-state
-races between shards:
+CI builds the two dev images once per commit (one parallel matrix leg per image,
+pushed to GHCR), then runs the whole suite on one runner against one stack: it
+pulls those images, boots `mayon-dev-shard-1` with `pnpm dev:shard:up 1/1`, and
+runs Playwright with parallel workers (`MAYON_E2E_WORKERS=4`).
+`MAYON_E2E_WORKERS` overrides the capability gate's Playwright worker count;
+without it the gate decides.
+
+The suite can still be split across concurrently running shards locally. Each
+shard gets its own compose project (`mayon-dev-shard-N`, web on host port
+`5200+N`, volumes/network isolated by the project prefix), so there are no
+shared-state races between shards:
 
 ```bash
 pnpm dev:shard:up 1/4    # boot shard-1's stack + readiness waits
@@ -170,8 +179,6 @@ pnpm dev:shard:test 1/4  # playwright --shard=1/4 against that stack
 pnpm dev:shard:down 1    # tear the stack down
 ```
 
-CI runs four shards; run them in separate terminals to divide the wall time. The
-shard override file uses the compose merge tag `!override` for its port lists,
-which requires Docker Compose v2.24 or newer. The capability gate decides each
-runner's worker count, and sharding only distributes work across runners that
-individually meet the threshold.
+Run them in separate terminals to divide the wall time. The shard override file
+uses the compose merge tag `!override` for its port lists, which requires Docker
+Compose v2.24 or newer.

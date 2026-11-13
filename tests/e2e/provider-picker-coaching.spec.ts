@@ -1,26 +1,95 @@
 import net from 'node:net';
 import { expect, test } from './fixtures/onboard';
-import { MOCK_BASE_URL } from './fixtures/kitchen-sink';
+import { MOCK_BASE_URL, MODEL_ID } from './fixtures/kitchen-sink';
 import { modelListFooter, settledModelFooter } from './fixtures/onboard';
 import type { Locator, Page } from '@playwright/test';
 
 // Split from provider-picker.spec.ts along its describe boundaries (issue #75
 // / feature 038 shard rebalance): the coaching pair moved first, and the
 // tool-capability describe followed after measurement — Playwright shards
-// whole files, and this placement balances the listing to 17/16. Tests are
-// byte-identical to their originals.
+// whole files, and this placement balances the listing to 17/16. The coaching
+// tests are byte-identical to their originals; the capability test now owns
+// its provider so the suite can share one stack.
+
+// CI now runs the whole suite on one stack with parallel workers, so this
+// file's provider mutations must not race each other. The capability test
+// below also owns a provider of its own instead of mutating the shared seeded
+// one, and every other spec treats that seeded provider as read-only.
+test.describe.configure({ mode: 'serial' });
+
+/** Read the persisted providers map from the direct DB seam. */
+async function readProviders(page: Page): Promise<Record<string, Record<string, unknown>>> {
+	const res = await page.request.post('/api/db/query', {
+		data: { op: 'query', sql: "SELECT value FROM settings WHERE key = 'providers'" }
+	});
+	expect(res.ok(), `providers read failed: ${res.status()}`).toBeTruthy();
+	const { rows } = (await res.json()) as { rows: Array<[string]> };
+	return rows.length > 0
+		? (JSON.parse(rows[0]![0]) as Record<string, Record<string, unknown>>)
+		: {};
+}
+
+/**
+ * Merge one provider row idempotently into the stored map: the seeded provider
+ * keeps its position, and repeated runs overwrite only this row. Never touches
+ * `activeProvider`.
+ */
+async function mergeProvider(
+	page: Page,
+	id: string,
+	config: Record<string, unknown>
+): Promise<void> {
+	const providers = await readProviders(page);
+	const res = await page.request.post('/api/db/query', {
+		data: {
+			op: 'query',
+			sql: "INSERT INTO settings (key, value) VALUES ('providers', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+			params: [JSON.stringify({ ...providers, [id]: config })]
+		}
+	});
+	expect(res.ok(), `providers write failed: ${res.status()}`).toBeTruthy();
+}
+
+/** Overwrite one existing provider row in place (order and active id unchanged). */
+async function updateProvider(
+	page: Page,
+	id: string,
+	patch: Record<string, unknown>
+): Promise<void> {
+	const providers = await readProviders(page);
+	const res = await page.request.post('/api/db/query', {
+		data: {
+			op: 'query',
+			sql: "UPDATE settings SET value = $1 WHERE key = 'providers'",
+			params: [JSON.stringify({ ...providers, [id]: { ...providers[id]!, ...patch } })]
+		}
+	});
+	expect(res.ok(), `providers update failed: ${res.status()}`).toBeTruthy();
+}
 
 test.describe('tool capability toggle', () => {
 	// What the loop offered to the endpoint per capability state is proven in
 	// src/lib/agent/loop.test.ts (031 parity); the spec keeps the card UI,
 	// its persistence, and the legacy display contract.
 	test('Enabled default renders the option pair with its hint, flips to Disabled, and the state persists', async ({
-		onboarded
+		session
 	}) => {
-		const { page, providerCard } = onboarded;
+		const { page, providerId, workerIndex } = session;
+		await mergeProvider(page, providerId, {
+			id: providerId,
+			kind: 'openai-compatible',
+			name: `E2E tool capability ${workerIndex}`,
+			baseUrl: MOCK_BASE_URL,
+			defaultModel: MODEL_ID,
+			models: [MODEL_ID, 'gpt-4o-mini', 'claude-sonnet-4-5'],
+			discoverable: false,
+			requiresKey: false,
+			toolCapability: 'on'
+		});
 
 		// Card contract: two explicit options, Enabled default, plain-language hint.
 		await page.goto('/settings#providers');
+		const providerCard = page.locator(`#providers li[data-provider-id="${providerId}"]`);
 		const capability = providerCard.getByLabel('Tool capability');
 		await expect(capability).toHaveValue('on');
 		await expect(capability.locator('option')).toHaveText(['Enabled', 'Disabled']);
@@ -39,27 +108,11 @@ test.describe('tool capability toggle', () => {
 
 		// Legacy normalization display: stored 'auto' (pre-upgrade data) on this
 		// non-allowlisted custom URL displays as Disabled — the prior effective
-		// behavior, made explicit (write pattern mirrors the onboarded fixture's
-		// direct /api/db/query access).
-		const provRes = await page.request.post('/api/db/query', {
-			data: { op: 'query', sql: "SELECT value FROM settings WHERE key = 'providers'" }
-		});
-		const { rows } = (await provRes.json()) as { rows: Array<[string]> };
-		const stored = JSON.parse(rows[0]![0]) as Record<string, Record<string, unknown>>;
-		const providerId = Object.keys(stored)[0]!;
-		stored[providerId] = {
-			...stored[providerId]!,
+		// behavior, made explicit. Only this test's own row is rewritten.
+		await updateProvider(page, providerId, {
 			toolCapability: 'auto',
 			baseUrl: 'http://localhost:9999/v1'
-		};
-		const legacyRes = await page.request.post('/api/db/query', {
-			data: {
-				op: 'query',
-				sql: "UPDATE settings SET value = $1 WHERE key = 'providers'",
-				params: [JSON.stringify(stored)]
-			}
 		});
-		expect(legacyRes.ok(), `legacy write failed: ${legacyRes.status()}`).toBeTruthy();
 		await page.goto('/settings#providers');
 		await expect(providerCard.getByLabel('Tool capability')).toHaveValue('off');
 	});

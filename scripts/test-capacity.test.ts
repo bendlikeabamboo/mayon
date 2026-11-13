@@ -2,42 +2,45 @@ import { describe, expect, it } from 'vitest';
 
 import { GIB, TestCapacityError, formatCapacityReport, resolveCapacity } from './test-capacity.mjs';
 
-const CAPABLE = { logicalCpus: 8, hostMemoryBytes: 8 * GIB };
+/** GitHub-hosted standard runner: 4 vCPU / 16 GiB. Must be capable. */
+const CAPABLE = { logicalCpus: 4, hostMemoryBytes: 16 * GIB };
 
 describe('resolveCapacity', () => {
-	it('reports capable at the 8 CPU / 8 GiB threshold with gate-derived workers', () => {
+	it('reports the GitHub standard runner (4 CPU / 16 GiB) as capable with no worker cap', () => {
 		const capacity = resolveCapacity({ ...CAPABLE });
 
 		expect(capacity).toMatchObject({
 			mode: 'capable',
-			logicalCpus: 8,
-			usableMemoryBytes: 8 * GIB,
+			logicalCpus: 4,
+			usableMemoryBytes: 16 * GIB,
 			override: 'auto',
-			workers: 4,
+			workers: null,
 			fileParallelism: true,
 			fullyParallel: true,
 			reason: 'thresholds-met'
 		});
 	});
 
-	it('caps capable workers at the explicit MAX_WORKERS value', () => {
-		expect(resolveCapacity({ ...CAPABLE, maxWorkers: 3 }).workers).toBe(3);
-		expect(resolveCapacity({ ...CAPABLE, maxWorkers: 12 }).workers).toBe(4);
+	it('treats 3 CPUs with 8 GiB as the capable boundary', () => {
+		expect(resolveCapacity({ logicalCpus: 3, hostMemoryBytes: 8 * GIB })).toMatchObject({
+			mode: 'capable',
+			workers: null
+		});
 	});
 
-	it('treats fewer than 8 CPUs as low-spec and serial', () => {
-		const capacity = resolveCapacity({ logicalCpus: 4, hostMemoryBytes: 16 * GIB });
+	it('treats 2 or fewer CPUs as low-spec and serial even with plenty of memory', () => {
+		const capacity = resolveCapacity({ logicalCpus: 2, hostMemoryBytes: 16 * GIB });
 
 		expect(capacity).toMatchObject({
 			mode: 'low-spec',
 			workers: 1,
 			fileParallelism: false,
 			fullyParallel: false,
-			reason: 'cpus-below-8'
+			reason: 'cpus-at-or-below-2'
 		});
 	});
 
-	it('treats less than 8 GiB as low-spec and serial', () => {
+	it('treats less than 8 GiB as low-spec and serial even with many CPUs', () => {
 		const capacity = resolveCapacity({ logicalCpus: 16, hostMemoryBytes: 8 * GIB - 1 });
 
 		expect(capacity).toMatchObject({
@@ -49,11 +52,35 @@ describe('resolveCapacity', () => {
 
 	it('reports both thresholds when both are low', () => {
 		expect(resolveCapacity({ logicalCpus: 2, hostMemoryBytes: 2 * GIB }).reason).toBe(
-			'cpus-and-memory-below-8'
+			'cpus-and-memory-low'
 		);
 	});
 
+	it('uses an explicit worker cap verbatim without clamping', () => {
+		expect(resolveCapacity({ ...CAPABLE, maxWorkers: 3 }).workers).toBe(3);
+		expect(resolveCapacity({ ...CAPABLE, maxWorkers: 12 }).workers).toBe(12);
+	});
+
+	it('reads an explicit worker cap from the env map', () => {
+		expect(resolveCapacity({ ...CAPABLE, env: { MAYON_TEST_MAX_WORKERS: '3' } }).workers).toBe(3);
+	});
+
 	it('lets a cgroup CPU quota override a capable host reading', () => {
+		const capacity = resolveCapacity({
+			logicalCpus: 16,
+			hostMemoryBytes: 16 * GIB,
+			cgroupCpus: 2
+		});
+
+		expect(capacity).toMatchObject({
+			mode: 'low-spec',
+			logicalCpus: 2,
+			reason: 'cpus-at-or-below-2',
+			workers: 1
+		});
+	});
+
+	it('keeps a 4-CPU cgroup quota capable', () => {
 		const capacity = resolveCapacity({
 			logicalCpus: 16,
 			hostMemoryBytes: 16 * GIB,
@@ -61,10 +88,10 @@ describe('resolveCapacity', () => {
 		});
 
 		expect(capacity).toMatchObject({
-			mode: 'low-spec',
+			mode: 'capable',
 			logicalCpus: 4,
-			reason: 'cpus-below-8',
-			workers: 1
+			reason: 'thresholds-met',
+			workers: null
 		});
 	});
 
@@ -183,17 +210,17 @@ describe('resolveCapacity', () => {
 });
 
 describe('formatCapacityReport', () => {
-	it('prints the stable capable line', () => {
+	it('prints the stable GitHub-runner capable line with auto workers', () => {
 		expect(formatCapacityReport(resolveCapacity({ ...CAPABLE }))).toBe(
-			'[test-capacity] mode=capable cpus=8 mem=8.0GiB override=auto workers=4 reason=thresholds-met'
+			'[test-capacity] mode=capable cpus=4 mem=16.0GiB override=auto workers=auto reason=thresholds-met'
 		);
 	});
 
 	it('prints the stable low-spec line', () => {
 		expect(
-			formatCapacityReport(resolveCapacity({ logicalCpus: 4, hostMemoryBytes: 7.8 * GIB }))
+			formatCapacityReport(resolveCapacity({ logicalCpus: 2, hostMemoryBytes: 7.8 * GIB }))
 		).toBe(
-			'[test-capacity] mode=low-spec cpus=4 mem=7.8GiB override=auto workers=1 reason=cpus-and-memory-below-8'
+			'[test-capacity] mode=low-spec cpus=2 mem=7.8GiB override=auto workers=1 reason=cpus-and-memory-low'
 		);
 	});
 
@@ -202,6 +229,14 @@ describe('formatCapacityReport', () => {
 			formatCapacityReport(resolveCapacity({ logicalCpus: 8, hostMemoryBytes: 7.8 * GIB }))
 		).toBe(
 			'[test-capacity] mode=low-spec cpus=8 mem=7.8GiB override=auto workers=1 reason=memory-below-8GiB'
+		);
+	});
+
+	it('names the CPU threshold when only CPUs are low', () => {
+		expect(
+			formatCapacityReport(resolveCapacity({ logicalCpus: 2, hostMemoryBytes: 16 * GIB }))
+		).toBe(
+			'[test-capacity] mode=low-spec cpus=2 mem=16.0GiB override=auto workers=1 reason=cpus-at-or-below-2'
 		);
 	});
 

@@ -60,7 +60,7 @@ keeps its own command.
 | ----------------- | ------------------------------------ | --------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
 | 1 — logic/handler | Node, in-process; pglite for storage | `src/**/*.test.ts`, `server/src/**/*.test.ts` | `pnpm test:unit` / `pnpm --filter @mayon/server test` | 100 s (server 120 s)           |
 | 2 — component     | Real Chromium via Vitest browser     | `src/**/*.browser.test.ts`                    | `pnpm test:browser`                                   | 120 s                          |
-| 3 — integration   | Full stack via Playwright            | `tests/e2e/**/*.spec.ts`                      | `pnpm test:e2e`                                       | 120 s per shard                |
+| 3 — integration   | Full stack via Playwright            | `tests/e2e/**/*.spec.ts`                      | `pnpm test:e2e`                                       | 120 s (single run)             |
 
 - `*.browser.test.ts` is the only Tier 2 suffix. `*.svelte.test.ts` is a rune-module
   test and stays Tier 1; do not reclassify it by accident.
@@ -96,10 +96,12 @@ the host and any cgroup limit (whichever is lower) and uses the same boundary as
 the profile:
 
 - **Low-spec / unknown** → `pnpm test:low-spec` (or `MAYON_TEST_PARALLEL=off pnpm test`):
-  fewer than **8 logical CPUs** **or** less than **8 GiB usable RAM**, or an
+  **2 or fewer logical CPUs** **or** less than **8 GiB usable RAM**, or an
   unreadable/contradictory reading. Serial: one worker, no file parallelism.
-- **Capable** → `pnpm test`: at least **8 logical CPUs** **and** at least
-  **8 GiB usable RAM**.
+- **Capable** → `pnpm test`: **more than 2 logical CPUs** **and** at least
+  **8 GiB usable RAM**. A GitHub-hosted standard runner (4 vCPU / 16 GiB) is
+  capable. Without an explicit cap the Vitest configs omit `maxWorkers`, so
+  Vitest sizes its pool from the available cores.
 
 `pnpm test:low-spec` sets `MAYON_TEST_PARALLEL=off` and
 `NODE_OPTIONS=--max-old-space-size=500`; it still selects every test. The gate
@@ -108,6 +110,12 @@ never changes selection and never skips a test. Overrides:
 `MAYON_TEST_MAX_WORKERS`), `MAYON_TEST_MAX_WORKERS=<n>` caps workers, and
 `MAYON_TEST_MAX_OLD_SPACE_MB=<n>` caps each test worker's V8 heap. Both runners
 print a `[test-capacity]` line at startup.
+
+Tier 3 uses the same gate for its default Playwright worker count.
+`MAYON_E2E_WORKERS=<n>` overrides it (CI runs one stack with
+`MAYON_E2E_WORKERS=4`); local sharding via
+`pnpm dev:shard:up|test|down <n>/<total>` still works for splitting the suite
+across stacks.
 
 ## Worktrees
 

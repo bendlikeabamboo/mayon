@@ -123,11 +123,13 @@ higher-tier copy. `pnpm test` runs Tiers 1+2 and is the local merge gate;
 - `pnpm check:tests` enforces tier placement (`TT-001`–`TT-008`); CI also
   enforces per-tier budgets from `test-budgets.json` via `pnpm check:budget`.
 
-The capability gate parallelizes only at ≥8 logical CPUs and ≥8 GiB usable RAM;
-low-spec or unreadable machines run serially. Use `pnpm test:low-spec` on
-low-spec machines (it sets `MAYON_TEST_PARALLEL=off` and a 500 MB heap) and
-`MAYON_TEST_MAX_WORKERS` to cap a capable machine. The gate changes concurrency,
-never test selection.
+The capability gate parallelizes at more than 2 logical CPUs and at least 8 GiB
+usable RAM (a GitHub-hosted standard runner qualifies); 2-or-fewer-CPU, sub-8-GiB,
+or unreadable machines run serially. Use `pnpm test:low-spec` on low-spec machines
+(it sets `MAYON_TEST_PARALLEL=off` and a 500 MB heap) and `MAYON_TEST_MAX_WORKERS`
+to cap a capable machine. Without an explicit cap the Vitest configs omit
+`maxWorkers`, so Vitest sizes its pool from the available cores. The gate changes
+concurrency, never test selection.
 
 ## Release Candidate Testing
 

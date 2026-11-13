@@ -16,6 +16,16 @@ function envNumber(env: Record<string, string>, name: string, fallback: number) 
 	return parsed;
 }
 
+function envOptionalNumber(env: Record<string, string>, name: string): number | null {
+	const value = env[name];
+	if (value === undefined || value === '') return null;
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < 1) {
+		throw new Error(`${name} must be a positive integer, received '${value}'`);
+	}
+	return parsed;
+}
+
 function envBoolean(env: Record<string, string>, name: string, fallback: boolean) {
 	const value = env[name];
 	if (value === undefined || value === '') return fallback;
@@ -33,6 +43,7 @@ export default defineProject(({ mode }) => {
 		500
 	);
 	const pool = env.VITEST_POOL ?? 'forks';
+	const maxWorkers = envOptionalNumber(env, 'VITEST_MAX_WORKERS') ?? capacity.workers;
 
 	return {
 		plugins: [
@@ -55,7 +66,9 @@ export default defineProject(({ mode }) => {
 			exclude: [...configDefaults.exclude, '**/*.browser.test.ts', '**/*.integration.test.ts'],
 			environment: 'node',
 			testTimeout: 15_000,
-			maxWorkers: envNumber(env, 'VITEST_MAX_WORKERS', capacity.workers),
+			// Capable hosts omit maxWorkers entirely so Vitest sizes its own pool
+			// from the available cores; low-spec keeps the single capped worker.
+			...(maxWorkers === null ? {} : { maxWorkers }),
 			fileParallelism: envBoolean(env, 'VITEST_FILE_PARALLELISM', capacity.fileParallelism),
 			pool,
 			// Cap each test worker's V8 heap so a low-spec machine is not

@@ -4,7 +4,6 @@ import { expect, test as sessionTest } from './session';
 
 export interface Onboarded {
 	page: Page;
-	providerCard: Locator;
 }
 
 /**
@@ -24,16 +23,11 @@ export function settledModelFooter(count: number): RegExp {
 /**
  * Shared session state (setup project) + the session fixture replace the old
  * per-test onboarding journey. The seeded provider and chat come from the
- * direct `/api/db/query` seam, so this fixture only exposes locators.
+ * direct `/api/db/query` seam, so this fixture only exposes the page.
  */
 export const test = sessionTest.extend<{ onboarded: Onboarded }>({
 	onboarded: async ({ session }, use) => {
-		await use({
-			page: session.page,
-			// providerCard resolves lazily: consumers that use it navigate to
-			// /settings#providers first, where the seeded card is the only item.
-			providerCard: session.page.locator('#providers li').first()
-		});
+		await use({ page: session.page });
 	}
 });
 
