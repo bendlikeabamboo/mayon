@@ -34,7 +34,11 @@ export const test = networkTest.extend<{ session: Session }, { providerId: strin
 		// gate depend on the title check in isFirstRootTurn.
 		const chatId = await createChat(page.request, url, DEFAULT_TITLE);
 		await page.goto(new URL(`/chat/${chatId}`, url).toString());
-		await expect(page.getByPlaceholder(/Message the active provider/)).toBeVisible();
+		// Vite dev compiles the route on first request; the default 5s expect
+		// timeout is not enough when every parallel worker navigates cold at once.
+		await expect(page.getByPlaceholder(/Message the active provider/)).toBeVisible({
+			timeout: 20_000
+		});
 		await use({ page, workerIndex: testInfo.workerIndex, providerId, chatId });
 	}
 });
