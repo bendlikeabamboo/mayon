@@ -1231,6 +1231,40 @@ describe('029 live blocks (T010)', () => {
 		expect(chatStore.liveItems).toEqual([]);
 	});
 
+	it('streaming with empty liveBlocks emits a single pending live_text (Thinking…)', () => {
+		chatStore.streaming = true;
+		chatStore.liveBlocks = [];
+		chatStore.streamBufferRender = '';
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_text', buffer: '', pending: true }
+		]);
+		chatStore.streaming = false;
+		chatStore.liveBlocks = [];
+	});
+
+	it('streaming with only an empty reasoning block still emits pending live_text', () => {
+		chatStore.streaming = true;
+		chatStore.liveBlocks = [{ kind: 'reasoning', text: '   ', open: true }];
+		chatStore.streamBufferRender = '';
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_text', buffer: '', pending: true }
+		]);
+		chatStore.streaming = false;
+		chatStore.liveBlocks = [];
+	});
+
+	it('first text delta replaces the synthetic pending row instead of duplicating it', () => {
+		chatStore.streaming = true;
+		chatStore.liveBlocks = [{ kind: 'text', start: 0, open: true }];
+		chatStore.streamBufferRender = 'hello';
+		expect(chatStore.liveItems).toEqual([
+			{ source: 'live', live: 'live_text', buffer: 'hello', pending: false }
+		]);
+		chatStore.streaming = false;
+		chatStore.liveBlocks = [];
+		chatStore.streamBufferRender = '';
+	});
+
 	// 035 US2 (T006a): at an iteration boundary the store clears liveBlocks, so
 	// iteration 2's reasoning streams alone — iteration 1's blocks are durable
 	// rows by then (contracts/iteration-boundary.md).

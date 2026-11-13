@@ -383,6 +383,13 @@ class ChatState {
 					pending: isLastText && b.open && buffer.length === 0
 				});
 			}
+			// Thinking-loader fallback: while streaming with no visible live
+			// text/reasoning yet (pre-first-token wait, empty reasoning block,
+			// or iteration-boundary clear), emit a single pending row so the
+			// timeline shows the `Thinking…` pulse instead of nothing.
+			if (items.length === 0) {
+				items.push({ source: 'live', live: 'live_text', buffer: '', pending: true });
+			}
 		}
 		for (const a of this.pendingApprovals) {
 			const payload: LiveAskPayload = {
