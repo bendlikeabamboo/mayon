@@ -34,7 +34,7 @@ Place each test at the lowest tier that can prove its claim; if two tiers can pr
 - `*.browser.test.ts` — **Tier 2**, `pnpm test:browser`: rendered component behavior in real Chromium. Supply `$app/*` and store dependencies at the module boundary, mock `fetch` with MSW (`tests/mocks/handlers.ts`), and never require the app server, Postgres, or docker compose.
 - `tests/e2e/*.spec.ts` — **Tier 3**, `pnpm test:e2e`: only flows needing real streaming, persistence, multi-page navigation, hydration, or auth/setup. Reuse the shared session state, use condition-based assertions, never replay onboarding per test, and block third-party traffic.
 
-`pnpm check:tests` enforces the tier boundaries (`TT-001`–`TT-008`). Every removed or migrated source-text and end-to-end case is recorded with its replacement or retirement rationale in `specs/032-test-suite-tiering/migration-ledger.md`; no test is deleted without a ledger row. Parallelism is capability-gated at ≥8 logical CPUs and ≥8 GiB usable RAM, with serial fallback on low-spec or unknown machines.
+`pnpm check:tests` enforces the tier boundaries (`TT-001`–`TT-008`). Every removed or migrated source-text and end-to-end case is recorded with its replacement or retirement rationale in `specs/032-test-suite-tiering/migration-ledger.md`; no test is deleted without a ledger row. Parallelism is capability-gated: more than 2 logical CPUs and at least 8 GiB usable RAM (a GitHub-hosted standard runner qualifies) enables parallel execution, with serial fallback at 2-or-fewer CPUs, under 8 GiB, or unreadable hardware. When no explicit `MAYON_TEST_MAX_WORKERS` cap is set, Vitest chooses its own worker count.
 
 ## Where the browser is allowed to matter
 

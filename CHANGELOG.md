@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Faster CI on PRs and standard runners** — CI no longer builds the web and
+  server Docker images on pull requests (pushes to `main` and tags still verify
+  both), and the test capability gate now treats low-spec as **2 or fewer
+  logical CPUs or under 8 GiB usable RAM**, so a 4 vCPU / 16 GiB GitHub runner
+  runs Tier 1, Tier 2, and the server suite file-parallel. When no explicit
+  `MAYON_TEST_MAX_WORKERS` cap is set, the Vitest configs omit `maxWorkers` and
+  Vitest sizes its own pool from the available cores.
+- **E2E runs once per commit on one runner** — a new `build-e2e-images` job
+  builds both dev images in parallel and pushes them to GHCR (SHA-tagged), so
+  the `e2e` job pulls them instead of rebuilding per shard. The whole suite now
+  runs on one runner against one dev stack with parallel Playwright workers
+  (`MAYON_E2E_WORKERS=4`), replacing the four-shard matrix. Fork PRs skip the
+  image build and e2e (the `web` job remains their gate). The dev base images
+  are digest-pinned for a stable layer cache, and the provider-picker coaching
+  spec now mutates its own provider so specs can share one stack.
+
 ## [0.10.0] - 2026-11-10
 
 ### Added

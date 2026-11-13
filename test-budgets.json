@@ -4,7 +4,7 @@
 	"tier1": 100,
 	"tier2": 120,
 	"tier3": 120,
-	"tier3Scope": "per-shard",
-	"totalTier3WorkSeconds": 480,
+	"tier3Scope": "single-run",
+	"totalTier3WorkSeconds": 120,
 	"server": 120
 }

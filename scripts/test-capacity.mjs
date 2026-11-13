@@ -18,6 +18,12 @@
 //
 // The effective CPU/memory values are the minimum of the host reading and every
 // readable cgroup limit, because either can be the real constraint.
+//
+// Low-spec is intentionally narrow: 2 or fewer logical CPUs, or less than 8 GiB
+// usable memory. A GitHub-hosted standard runner (4 vCPU / 16 GiB) is capable,
+// so Vitest runs file-parallel there. When no explicit worker cap is given,
+// `workers` is null and the test configs omit `maxWorkers`, letting Vitest size
+// its own pool from the available cores.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,9 +31,8 @@ import * as os from 'node:os';
 import process from 'node:process';
 
 export const GIB = 1024 ** 3;
-export const MIN_CAPABLE_CPUS = 8;
+export const LOW_SPEC_MAX_CPUS = 2;
 export const MIN_CAPABLE_MEMORY_BYTES = 8 * GIB;
-export const DEFAULT_CAPABLE_WORKERS = 4;
 export const CGROUP_ROOT = '/sys/fs/cgroup';
 
 /** Configuration error raised with `process.exitCode = 2` semantics. */
@@ -116,14 +121,16 @@ function classify(logicalCpus, usableMemoryBytes) {
 					: 'memory-unknown';
 		return { mode: 'unknown', reason };
 	}
-	if (logicalCpus < MIN_CAPABLE_CPUS && usableMemoryBytes < MIN_CAPABLE_MEMORY_BYTES) {
-		return { mode: 'low-spec', reason: 'cpus-and-memory-below-8' };
+	const cpusLow = logicalCpus <= LOW_SPEC_MAX_CPUS;
+	const memoryLow = usableMemoryBytes < MIN_CAPABLE_MEMORY_BYTES;
+	if (cpusLow && memoryLow) {
+		return { mode: 'low-spec', reason: 'cpus-and-memory-low' };
 	}
-	if (usableMemoryBytes < MIN_CAPABLE_MEMORY_BYTES) {
+	if (memoryLow) {
 		return { mode: 'low-spec', reason: 'memory-below-8GiB' };
 	}
-	if (logicalCpus < MIN_CAPABLE_CPUS) {
-		return { mode: 'low-spec', reason: 'cpus-below-8' };
+	if (cpusLow) {
+		return { mode: 'low-spec', reason: 'cpus-at-or-below-2' };
 	}
 	return { mode: 'capable', reason: 'thresholds-met' };
 }
@@ -161,8 +168,9 @@ export function resolveCapacity(readings = {}) {
 		// intentional oversubscription is reported, never silently clamped.
 		workers = maxWorkers;
 	} else if (mode === 'capable') {
-		const derived = Math.min(DEFAULT_CAPABLE_WORKERS, logicalCpus ?? DEFAULT_CAPABLE_WORKERS);
-		workers = Math.max(1, maxWorkers === null ? derived : Math.min(derived, maxWorkers));
+		// No implicit cap: null tells the Vitest configs to omit `maxWorkers`
+		// and let the runner size its pool. An explicit cap still wins.
+		workers = maxWorkers;
 	}
 
 	return {
@@ -303,7 +311,7 @@ export function formatCapacityReport(capacity) {
 		`cpus=${cpus}`,
 		`mem=${formatMemory(capacity?.usableMemoryBytes ?? null)}`,
 		`override=${capacity?.override ?? 'auto'}`,
-		`workers=${capacity?.workers ?? 1}`,
+		`workers=${capacity?.workers ?? 'auto'}`,
 		`reason=${capacity?.reason ?? 'readings-unknown'}`
 	].join(' ');
 }

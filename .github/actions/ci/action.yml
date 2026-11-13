@@ -31,10 +31,16 @@ runs:
         if-no-files-found: ignore
     - shell: bash
       run: pnpm build
-    - shell: bash
+    # Production Docker image builds are a release-path smoke test, not a PR
+    # gate. PRs spend ~5 minutes building both images even with the GHA cache;
+    # pushes to main/tags still verify them. (The e2e job's dev images are built
+    # separately by build-e2e-images and shared through GHCR.)
+    - if: github.event_name != 'pull_request'
+      shell: bash
       # Same type=gha cache backend as the e2e shard pre-builds; keys are
       # content-derived per Dockerfile, so these prod builds cache
       # independently of the dev-image cache.
       run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max .
-    - shell: bash
+    - if: github.event_name != 'pull_request'
+      shell: bash
       run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max -f server/Dockerfile .

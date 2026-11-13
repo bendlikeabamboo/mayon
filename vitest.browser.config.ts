@@ -8,9 +8,9 @@ import { configDefaults, defineProject } from 'vitest/config';
 
 import { readCapacity } from './scripts/test-capacity.mjs';
 
-function envNumber(env: Record<string, string>, name: string, fallback: number) {
+function envOptionalNumber(env: Record<string, string>, name: string): number | null {
 	const value = env[name];
-	if (value === undefined || value === '') return fallback;
+	if (value === undefined || value === '') return null;
 	const parsed = Number(value);
 	if (!Number.isInteger(parsed) || parsed < 1) {
 		throw new Error(`${name} must be a positive integer, received '${value}'`);
@@ -73,6 +73,7 @@ const setPointerMedia = defineBrowserCommand(async ({ context, page }, coarse: b
 export default defineProject(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '');
 	const capacity = readCapacity(env);
+	const maxWorkers = envOptionalNumber(env, 'VITEST_MAX_WORKERS') ?? capacity.workers;
 
 	return {
 		plugins: [tailwindcss(), svelte({ preprocess: vitePreprocess() })],
@@ -131,7 +132,8 @@ export default defineProject(({ mode }) => {
 				instances: [{ browser: 'chromium' }],
 				commands: { setPointerMedia }
 			},
-			maxWorkers: envNumber(env, 'VITEST_MAX_WORKERS', capacity.workers),
+			// Capable hosts omit maxWorkers so Vitest sizes its own pool.
+			...(maxWorkers === null ? {} : { maxWorkers }),
 			fileParallelism: envBoolean(env, 'VITEST_FILE_PARALLELISM', capacity.fileParallelism),
 			// Caps the Node-side worker; Chromium's own RSS is not bounded by this.
 			execArgv: ['--max-old-space-size=500']
